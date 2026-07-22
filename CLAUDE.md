@@ -71,8 +71,10 @@ Each roadmap increment is built the same way (the **full lane**):
 4. **Specify** — add/update `REQ-###` entries in `docs/REQUIREMENTS.md` (EARS).
 5. **Plan** — write `docs/plans/NNNN-*.md`, explain it to the user, get approval **before** code.
 6. **Implement** — code + tests, each carrying `REQ-###` anchors (§4).
-7. **Reconcile** — update REQUIREMENTS status + traceability, mark ROADMAP progress, write/
-   update ADRs for decisions taken, touch VISION only if a principle actually changed.
+7. **Reconcile (on the branch, *before* opening the PR)** — update REQUIREMENTS status +
+   traceability anchors, mark ROADMAP progress, write/update ADRs for decisions taken, touch
+   VISION only if a principle actually changed. The PR carries the code **and** these spec
+   updates, so the reviewer can verify traceability from the diff.
 8. **Review** — a **separate agent** code-reviews the diff against plan + requirements (§6).
 9. **Close** — mark the increment done in ROADMAP; add newly-found work to the backlog.
 
@@ -126,8 +128,10 @@ traceability honest and still produce a DoD report.
 - **App-code changes (Swift sources, logic, tests) → worktree + branch + PR + squash-merge:**
   1. Create a **git worktree** for the change (keeps `main` clean).
   2. Branch name: `inc-NN-slug` (increment) or `fix-slug` (fix).
-  3. Open a PR; **squash-merge**.
-  4. After merge: delete the branch (**local + remote**), remove the worktree, drop any
+  3. **Reconcile the specs on the branch *before* opening the PR** — REQUIREMENTS status +
+     traceability anchors, ROADMAP, ADRs — so the PR carries code **and** its spec updates.
+  4. Open a PR; **squash-merge**.
+  5. After merge: delete the branch (**local + remote**), remove the worktree, drop any
      stashes you created. **Leave no trace you created.**
 - **Never destroy work:** before deleting/cleaning anything, verify it is yours *and*
   merged or genuinely obsolete.
