@@ -26,7 +26,7 @@ The spec-driven documentation system and operating manual.
 A real editor over real `.md` files — **plain-text editing only** (no styling yet).
 - Fix the template's `com.example.plain-text` UTType placeholder → proper Markdown types.
 - Wire up the document lifecycle: open / save / autosave / Versions / tabs / Recents.
-- Standard behaviors: find & replace, undo/redo, spell-check, Light/Dark.
+- Standard behaviors: undo/redo, spell-check, Light/Dark (find & replace deferred to INC-02).
 - *Discovery first:* its own research + requirements + plan, approved before coding.
 
 ## SPIKE-01 · Text engine — `[discovery/spike]` ⚪ Planned  *(between INC-01 and INC-02)*
