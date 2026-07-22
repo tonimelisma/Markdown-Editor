@@ -1,0 +1,564 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 110;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		3B35309A3010892A00668387 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3B3530813010892800668387 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3B3530883010892800668387;
+			remoteInfo = "Markdown Editor";
+		};
+		3B3530A43010892B00668387 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3B3530813010892800668387 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3B3530883010892800668387;
+			remoteInfo = "Markdown Editor";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		3B3530893010892900668387 /* Markdown Editor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Markdown Editor.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		3B3530993010892A00668387 /* Markdown EditorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Markdown EditorTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		3B3530A33010892B00668387 /* Markdown EditorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Markdown EditorUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		3B3530A93010892B00668387 /* Exceptions for "Markdown Editor" folder in "Markdown Editor" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 3B3530883010892800668387 /* Markdown Editor */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		3B35308B3010892900668387 /* Markdown Editor */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				3B3530A93010892B00668387 /* Exceptions for "Markdown Editor" folder in "Markdown Editor" target */,
+			);
+			path = "Markdown Editor";
+			sourceTree = "<group>";
+		};
+		3B35309C3010892A00668387 /* Markdown EditorTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Markdown EditorTests";
+			sourceTree = "<group>";
+		};
+		3B3530A63010892B00668387 /* Markdown EditorUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Markdown EditorUITests";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3B3530863010892800668387 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		3B3530963010892A00668387 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		3B3530A03010892B00668387 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3B3530803010892800668387 = {
+			isa = PBXGroup;
+			children = (
+				3B35308B3010892900668387 /* Markdown Editor */,
+				3B35309C3010892A00668387 /* Markdown EditorTests */,
+				3B3530A63010892B00668387 /* Markdown EditorUITests */,
+				3B35308A3010892900668387 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		3B35308A3010892900668387 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				3B3530893010892900668387 /* Markdown Editor.app */,
+				3B3530993010892A00668387 /* Markdown EditorTests.xctest */,
+				3B3530A33010892B00668387 /* Markdown EditorUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3B3530883010892800668387 /* Markdown Editor */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3B3530AA3010892B00668387 /* Build configuration list for PBXNativeTarget "Markdown Editor" */;
+			buildPhases = (
+				3B3530853010892800668387 /* Sources */,
+				3B3530863010892800668387 /* Frameworks */,
+				3B3530873010892800668387 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				3B35308B3010892900668387 /* Markdown Editor */,
+			);
+			name = "Markdown Editor";
+			productName = "Markdown Editor";
+			productReference = 3B3530893010892900668387 /* Markdown Editor.app */;
+			productType = "com.apple.product-type.application";
+		};
+		3B3530983010892A00668387 /* Markdown EditorTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3B3530AF3010892B00668387 /* Build configuration list for PBXNativeTarget "Markdown EditorTests" */;
+			buildPhases = (
+				3B3530953010892A00668387 /* Sources */,
+				3B3530963010892A00668387 /* Frameworks */,
+				3B3530973010892A00668387 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3B35309B3010892A00668387 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				3B35309C3010892A00668387 /* Markdown EditorTests */,
+			);
+			name = "Markdown EditorTests";
+			productName = "Markdown EditorTests";
+			productReference = 3B3530993010892A00668387 /* Markdown EditorTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		3B3530A23010892B00668387 /* Markdown EditorUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3B3530B23010892B00668387 /* Build configuration list for PBXNativeTarget "Markdown EditorUITests" */;
+			buildPhases = (
+				3B35309F3010892B00668387 /* Sources */,
+				3B3530A03010892B00668387 /* Frameworks */,
+				3B3530A13010892B00668387 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3B3530A53010892B00668387 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				3B3530A63010892B00668387 /* Markdown EditorUITests */,
+			);
+			name = "Markdown EditorUITests";
+			productName = "Markdown EditorUITests";
+			productReference = 3B3530A33010892B00668387 /* Markdown EditorUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		3B3530813010892800668387 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					3B3530883010892800668387 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					3B3530983010892A00668387 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = 3B3530883010892800668387;
+					};
+					3B3530A23010892B00668387 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = 3B3530883010892800668387;
+					};
+				};
+			};
+			buildConfigurationList = 3B3530843010892800668387 /* Build configuration list for PBXProject "Markdown Editor" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 3B3530803010892800668387;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 3B35308A3010892900668387 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				3B3530883010892800668387 /* Markdown Editor */,
+				3B3530983010892A00668387 /* Markdown EditorTests */,
+				3B3530A23010892B00668387 /* Markdown EditorUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3B3530873010892800668387 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		3B3530973010892A00668387 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		3B3530A13010892B00668387 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3B3530853010892800668387 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		3B3530953010892A00668387 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		3B35309F3010892B00668387 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3B35309B3010892A00668387 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3B3530883010892800668387 /* Markdown Editor */;
+			targetProxy = 3B35309A3010892A00668387 /* PBXContainerItemProxy */;
+		};
+		3B3530A53010892B00668387 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3B3530883010892800668387 /* Markdown Editor */;
+			targetProxy = 3B3530A43010892B00668387 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		3B3530AB3010892B00668387 /* Debug configuration for PBXNativeTarget "Markdown Editor" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Z9VXJBZG8C;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Markdown Editor/Info.plist";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "net.melisma.Markdown-Editor";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		3B3530AC3010892B00668387 /* Release configuration for PBXNativeTarget "Markdown Editor" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Z9VXJBZG8C;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Markdown Editor/Info.plist";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "net.melisma.Markdown-Editor";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		3B3530AD3010892B00668387 /* Debug configuration for PBXProject "Markdown Editor" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = Z9VXJBZG8C;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		3B3530AE3010892B00668387 /* Release configuration for PBXProject "Markdown Editor" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = Z9VXJBZG8C;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		3B3530B03010892B00668387 /* Debug configuration for PBXNativeTarget "Markdown EditorTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Z9VXJBZG8C;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "net.melisma.Markdown-EditorTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Markdown Editor.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Markdown Editor";
+			};
+			name = Debug;
+		};
+		3B3530B13010892B00668387 /* Release configuration for PBXNativeTarget "Markdown EditorTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Z9VXJBZG8C;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "net.melisma.Markdown-EditorTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Markdown Editor.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Markdown Editor";
+			};
+			name = Release;
+		};
+		3B3530B33010892B00668387 /* Debug configuration for PBXNativeTarget "Markdown EditorUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Z9VXJBZG8C;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "net.melisma.Markdown-EditorUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = "Markdown Editor";
+			};
+			name = Debug;
+		};
+		3B3530B43010892B00668387 /* Release configuration for PBXNativeTarget "Markdown EditorUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Z9VXJBZG8C;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "net.melisma.Markdown-EditorUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = "Markdown Editor";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3B3530843010892800668387 /* Build configuration list for PBXProject "Markdown Editor" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3B3530AD3010892B00668387 /* Debug configuration for PBXProject "Markdown Editor" */,
+				3B3530AE3010892B00668387 /* Release configuration for PBXProject "Markdown Editor" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		3B3530AA3010892B00668387 /* Build configuration list for PBXNativeTarget "Markdown Editor" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3B3530AB3010892B00668387 /* Debug configuration for PBXNativeTarget "Markdown Editor" */,
+				3B3530AC3010892B00668387 /* Release configuration for PBXNativeTarget "Markdown Editor" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		3B3530AF3010892B00668387 /* Build configuration list for PBXNativeTarget "Markdown EditorTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3B3530B03010892B00668387 /* Debug configuration for PBXNativeTarget "Markdown EditorTests" */,
+				3B3530B13010892B00668387 /* Release configuration for PBXNativeTarget "Markdown EditorTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		3B3530B23010892B00668387 /* Build configuration list for PBXNativeTarget "Markdown EditorUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3B3530B33010892B00668387 /* Debug configuration for PBXNativeTarget "Markdown EditorUITests" */,
+				3B3530B43010892B00668387 /* Release configuration for PBXNativeTarget "Markdown EditorUITests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 3B3530813010892800668387 /* Project object */;
+	validationLevel = 1;
+}
