@@ -88,9 +88,9 @@ Run these in order at the *end* of a task, once the work itself is finished:
    never your own leftovers.
 4. **DoD report (§9).**
 
-**Doc-only increment:** commit straight to `main` — **no** worktree, PR, review, or
-self-cleanup (there's nothing to clean; you never left `main`). Then the stale-work sweep
-(§7) and DoD report (§9).
+**Doc-only or config-only increment:** commit straight to `main` — **no** worktree, PR,
+review, or self-cleanup (there's nothing to clean; you never left `main`). Then the
+stale-work sweep (§7) and DoD report (§9).
 
 **Fast lane** (typos, one-liners, doc tweaks): skip lifecycle steps 2–5; still keep
 traceability honest and still produce a DoD report.
@@ -110,8 +110,9 @@ traceability honest and still produce a DoD report.
 
 ## 5. Git & change workflow
 
-- **Doc-only changes → commit straight to `main`.** No branch, no PR.
-- **Code changes → worktree + branch + PR + squash-merge:**
+- **Doc-only and project-config changes → commit straight to `main`.** No branch, no PR.
+  *Project-config* = Xcode project files (`project.pbxproj`), build settings, entitlements.
+- **App-code changes (Swift sources, logic, tests) → worktree + branch + PR + squash-merge:**
   1. Create a **git worktree** for the change (keeps `main` clean).
   2. Branch name: `inc-NN-slug` (increment) or `fix-slug` (fix).
   3. Open a PR; **squash-merge**.
@@ -166,7 +167,7 @@ Report a red/green checklist confirming each applicable step was followed (or �
 
 - Docs reconciled (VISION / REQUIREMENTS / ROADMAP / ADRs / research / plans, as affected)
 - Traceability intact (REQ anchors ↔ code ↔ tests)
-- Git workflow followed (doc→`main`, or code→worktree/PR/squash)
+- Git workflow followed (doc/config→`main`, or app-code→worktree/PR/squash)
 - Branches / stashes / worktrees cleaned (local + remote)
 - Code review done (code changes only)
 - Stale-work sweep done + reported
