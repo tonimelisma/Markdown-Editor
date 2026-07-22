@@ -40,6 +40,20 @@ struct Markdown_EditorTests {
         #expect(doc.data() == crlf)
     }
 
+    // Verifies: REQ-007 — a leading UTF-8 BOM is preserved (no silent data loss).
+    @Test func preservesUTF8BOM() throws {
+        let withBOM = Data([0xEF, 0xBB, 0xBF]) + Data("# Title\n".utf8)
+        let doc = try Markdown_EditorDocument(data: withBOM)
+        #expect(doc.data() == withBOM)
+    }
+
+    // Verifies: REQ-003 — a 0-byte file reads as empty and round-trips.
+    @Test func readsEmptyFile() throws {
+        let doc = try Markdown_EditorDocument(data: Data())
+        #expect(doc.text.isEmpty)
+        #expect(doc.data() == Data())
+    }
+
     // Verifies: REQ-004
     @Test func invalidUTF8ThrowsReadError() {
         let invalid = Data([0xFF, 0xFE, 0xFD])

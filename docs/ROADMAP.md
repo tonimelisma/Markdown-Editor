@@ -21,7 +21,7 @@ The spec-driven documentation system and operating manual.
 - ADRs 0001–0005 (decisions already made) + doc templates (ADR / research / plan).
 - GitHub remote (`origin`, private) configured.
 
-## INC-01 · Editor foundation — `[build]` 🔵 Active (discovery done · build pending)
+## INC-01 · Editor foundation — `[build]` 🔵 Active (code-complete · manual GUI verification pending)
 
 A real editor over real `.md` files — **plain-text editing only** (no styling yet).
 - Fix the template's `com.example.plain-text` UTType placeholder → proper Markdown types.

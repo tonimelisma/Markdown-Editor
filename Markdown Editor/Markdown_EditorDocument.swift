@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 // REQ-001: documents are UTF-8 plain-text Markdown (.md / .markdown). The type is
 // already declared by the system (net.daringfireball.markdown) and conforms to plain text.
 extension UTType {
-    static var markdown: UTType { UTType(importedAs: "net.daringfireball.markdown") }
+    nonisolated static var markdown: UTType { UTType(importedAs: "net.daringfireball.markdown") }
 }
 
 nonisolated struct Markdown_EditorDocument: FileDocument {
@@ -30,22 +30,24 @@ nonisolated struct Markdown_EditorDocument: FileDocument {
     // Read/WriteConfiguration, so the document's behavior can be unit-tested directly.
 
     // REQ-004: invalid UTF-8 is a read error, never silent corruption.
+    // REQ-007 / INV-2: `String(validating:as:)` preserves a leading BOM (which
+    // `String(data:encoding:)` would silently strip) while still rejecting invalid UTF-8.
     init(data: Data) throws {
-        guard let string = String(data: data, encoding: .utf8) else {
+        guard let string = String(validating: data, as: UTF8.self) else {
             throw CocoaError(.fileReadCorruptFile)
         }
         self.text = string
     }
 
     // REQ-007: encode as UTF-8; unedited content round-trips byte-for-byte, so existing
-    // line endings are preserved and nothing is normalized on save.
+    // line endings (and any leading BOM) are preserved and nothing is normalized on save.
     func data() -> Data {
         Data(text.utf8)
     }
 
     init(configuration: ReadConfiguration) throws {
         guard let data = configuration.file.regularFileContents else {
-            throw CocoaError(.fileReadCorruptFile)
+            throw CocoaError(.fileReadUnknown)
         }
         try self.init(data: data)
     }
