@@ -130,8 +130,9 @@ traceability honest and still produce a DoD report.
   merged or genuinely obsolete.
 - Commit trailer: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 
-> No git remote is configured yet. Until one is added, "remote" steps (push, remote branch
-> cleanup, PRs via `gh`) are N/A — note this in the DoD, don't silently skip it.
+> A GitHub remote (`origin`, private) is configured. **Doc/config commits** are pushed to
+> `origin/main`. **App-code changes** use `gh` for the PR (create + squash-merge), and remote
+> branch cleanup (delete the branch on `origin` after merge) applies.
 
 ---
 
