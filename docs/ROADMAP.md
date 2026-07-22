@@ -21,7 +21,7 @@ The spec-driven documentation system and operating manual.
 - ADRs 0001–0005 (decisions already made) + doc templates (ADR / research / plan).
 - GitHub remote (`origin`, private) configured.
 
-## INC-01 · Editor foundation — `[build]` 🔵 Active (discovery)
+## INC-01 · Editor foundation — `[build]` 🔵 Active (discovery done · build pending)
 
 A real editor over real `.md` files — **plain-text editing only** (no styling yet).
 - Fix the template's `com.example.plain-text` UTType placeholder → proper Markdown types.
@@ -82,3 +82,5 @@ Captured so nothing is lost; not scheduled. Promote to an increment when it earn
   REQUIREMENTS skeleton, ADRs 0001–0005, templates, and a private GitHub remote. Text-engine
   work split out as standalone SPIKE-01 between INC-01 and INC-02, per the discovery/build
   separation rule.
+- *(INC-01 discovery, done)* — RESEARCH-0001; requirements REQ-001…032; PLAN-0001;
+  ADR-0006 (FileDocument) and ADR-0007 (interim TextEditor). Build unit is next.
