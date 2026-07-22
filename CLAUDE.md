@@ -89,12 +89,15 @@ Each roadmap increment is built the same way (the **full lane**):
 Run these in order at the *end* of a task, once the work itself is finished:
 
 **Code increment:**
-1. Squash-merge the PR → integrate into `main`.
-2. Clean up **your own** artifacts — worktree, branch (local + remote), WIP, stashes.
-3. **Stale-work sweep (§7)** — *only now*, after your own artifacts are gone, scan for any
+1. **Rebase if needed** — if `main` advanced, rebase the branch onto it so the PR is current.
+2. **PR-comment triage (§6a)** — review the last 10 PRs and their comments; claim, properly
+   fix, and record the fixing commit for every unaddressed comment.
+3. Squash-merge the PR → integrate into `main`.
+4. Clean up **your own** artifacts — worktree, branch (local + remote), WIP, stashes.
+5. **Stale-work sweep (§7)** — *only now*, after your own artifacts are gone, scan for any
    *other* unrecognized work. This ordering is deliberate: it guarantees what you find is
    never your own leftovers.
-4. **DoD report (§9).**
+6. **DoD report (§9)** — including the code-smell / quality analysis.
 
 **Doc-only or config-only increment:** commit straight to `main` — **no** worktree, PR,
 review, or self-cleanup (there's nothing to clean; you never left `main`). Then the
@@ -139,7 +142,22 @@ traceability honest and still produce a DoD report.
 ## 6. Code review
 
 Every **code** increment is reviewed by a **separate agent** against the plan and the
-requirements before merge. Doc-only changes don't require a separate review pass.
+requirements before merge. **Spawn this review subagent automatically — do not ask the user
+first.** The reviewer posts its findings as comments on the PR. Doc-only changes don't require
+a separate review pass.
+
+## 6a. PR-comment triage (end of each build increment, before the DoD)
+
+After the separate-agent review has posted its findings, and before squash-merge:
+
+1. **Rebase** the branch onto `main` if `main` has advanced.
+2. **Review the last 10 PRs and their comments** (this PR and recent ones) — nothing rots.
+3. For every **unclaimed** comment (a finding not yet addressed):
+   - **Claim it** by replying `to fix`.
+   - **Design a proper, root-cause fix — never a bandaid.**
+   - Apply it and commit; keep a comment's fix in **one commit**.
+   - After committing, **reply to the comment with the fixing commit SHA**.
+4. Squash-merge only once every comment is claimed and fixed.
 
 ---
 
@@ -178,10 +196,12 @@ Report a red/green checklist confirming each applicable step was followed (or �
 - Traceability intact (REQ anchors ↔ code ↔ tests)
 - Git workflow followed (doc/config→`main`, or app-code→worktree/PR/squash)
 - Branches / stashes / worktrees cleaned (local + remote)
-- Code review done (code changes only)
+- Code review done (code changes only) — review subagent spawned automatically
+- PR-comment triage done — last 10 PRs' comments reviewed; unclaimed ones claimed, properly fixed, fixing commit noted (code increments)
 - Stale-work sweep done + reported
 - **CLAUDE.md self-check** — updated if the process changed, still matches reality
 - **Informed consent** — everything written to `docs/**` this task was shown to and approved by the user first
 - User corrections propagated to durable docs
+- **Code-smell / quality scan** — remaining code smells or quality issues analyzed and reported (every DoD)
 
 Use ✅ / ❌ (and ➖ for N/A). If any box is ❌, say so plainly and explain.
