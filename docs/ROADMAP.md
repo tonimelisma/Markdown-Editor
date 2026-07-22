@@ -29,7 +29,7 @@ A real editor over real `.md` files — **plain-text editing only** (no styling 
 - Standard behaviors: undo/redo, spell-check, Light/Dark (find & replace deferred to INC-02).
 - *Discovery first:* its own research + requirements + plan, approved before coding.
 
-## SPIKE-01 · Text engine — `[discovery/spike]` ⚪ Planned  *(between INC-01 and INC-02)*
+## SPIKE-01 · Text engine — `[discovery/spike]` 🔵 Active  *(between INC-01 and INC-02)*
 
 Decide the editor's text foundation **before** we need live styling.
 - Evaluate **TextKit 1 vs TextKit 2 vs a third-party view** for: live syntax highlighting,
