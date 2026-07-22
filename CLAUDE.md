@@ -114,10 +114,13 @@ traceability honest and still produce a DoD report.
 
 - **Code anchor:** `// REQ-012: autosave 500ms after last keystroke`
 - **Test anchor:** `// Verifies: REQ-012`
-- Each requirement row in `REQUIREMENTS.md` lists its code + test anchors.
-- **Forward:** every requirement has ≥1 test. **Backward:** every `REQ-###` in code exists
-  in REQUIREMENTS.md. A requirement with no test, or a code anchor with no requirement, is a
-  DoD failure.
+- Each requirement row in `REQUIREMENTS.md` lists its code + verification anchors.
+- **No manual tests, ever.** Verification is **automated** (`test`) or **inherent** (satisfied
+  by construction — adopting a standard framework component that provides the behavior, or code
+  inspection such as "makes no network calls"). Never mark a requirement verified by hand.
+- **Forward:** every requirement has ≥1 verification (a `test`, or a justified `inherent`).
+  **Backward:** every `REQ-###` in code exists in REQUIREMENTS.md. A requirement with no
+  verification, or a code anchor with no requirement, is a DoD failure.
 
 ---
 

@@ -21,7 +21,7 @@ The spec-driven documentation system and operating manual.
 - ADRs 0001–0005 (decisions already made) + doc templates (ADR / research / plan).
 - GitHub remote (`origin`, private) configured.
 
-## INC-01 · Editor foundation — `[build]` 🔵 Active (code-complete · manual GUI verification pending)
+## INC-01 · Editor foundation — `[build]` ✅ Done
 
 A real editor over real `.md` files — **plain-text editing only** (no styling yet).
 - Fix the template's `com.example.plain-text` UTType placeholder → proper Markdown types.
@@ -84,3 +84,6 @@ Captured so nothing is lost; not scheduled. Promote to an increment when it earn
   separation rule.
 - *(INC-01 discovery, done)* — RESEARCH-0001; requirements REQ-001…032; PLAN-0001;
   ADR-0006 (FileDocument) and ADR-0007 (interim TextEditor). Build unit is next.
+- *(INC-01 build, done)* — merged (squash `6211ecb`, PR #1); 7 unit tests; review fixes
+  (BOM fidelity, Swift-6 isolation, `.fileReadUnknown`, Info.plist); traceability reconciled;
+  framework behaviors verified `inherent` (no manual tests).

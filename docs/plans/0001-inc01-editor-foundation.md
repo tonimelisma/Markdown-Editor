@@ -40,8 +40,8 @@ standard macOS document behaviors (autosave, Versions, tabs, Recents, Light/Dark
 3. Set `readable`/`writableContentTypes` + declare the document type in the project. → REQ-003
    · *verify:* Open panel lists `.md`; double-click opens.
 4. `ContentView` plain-text editing. → REQ-010/011/012 · *verify:* type/undo/redo; spell-check.
-5. Verify inherited behaviors: autosave, Versions, tabs, Open Recent, Light/Dark. →
-   REQ-005/006/020/021/022 · *verify:* manual (edit→autosave; Revert To; open two docs as tabs).
+5. Framework-provided behaviors: autosave, Versions, tabs, Open Recent, Light/Dark. →
+   REQ-005/006/020/021/022 · *verify:* inherent (provided by DocumentGroup/FileDocument; no manual tests).
 6. Confirm non-functionals: no network calls, no telemetry, VoiceOver/keyboard usable. →
    REQ-030/031/032 · *verify:* inspection + accessibility check.
 
@@ -49,8 +49,8 @@ standard macOS document behaviors (autosave, Versions, tabs, Recents, Light/Dark
 
 Unit tests target the document type (the testable core): round-trip fidelity, CRLF
 preservation, invalid-UTF-8 error, empty-new-doc. Each carries `// Verifies: REQ-###`.
-UI-level behaviors (tabs, Recents, autosave, appearance) are verified manually for INC-01;
-lightweight UI tests optional.
+UI-level behaviors (tabs, Recents, autosave, appearance) are framework-provided and verified
+`inherent` (no manual tests).
 
 ## Risks / open questions
 
