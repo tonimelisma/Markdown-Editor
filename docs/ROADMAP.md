@@ -14,12 +14,12 @@ and **spikes are standalone**, never folded into a coding increment.
 
 ---
 
-## INC-00 · Docs & process foundation — `[docs]` 🔵 Active
+## INC-00 · Docs & process foundation — `[docs]` ✅ Done
 
 The spec-driven documentation system and operating manual.
-- Landed: `VISION.md`, `CLAUDE.md`, this `ROADMAP.md`.
-- Still to come (consent-gated): `REQUIREMENTS.md`, doc templates (ADR / research / plan),
-  and the first ADRs recording decisions already made.
+- `VISION.md`, `CLAUDE.md`, `ROADMAP.md`, `REQUIREMENTS.md` (skeleton).
+- ADRs 0001–0005 (decisions already made) + doc templates (ADR / research / plan).
+- GitHub remote (`origin`, private) configured.
 
 ## INC-01 · Editor foundation — `[build]` ⚪ Planned
 
@@ -78,5 +78,7 @@ Captured so nothing is lost; not scheduled. Promote to an increment when it earn
 
 ## Change log
 
-- *(INC-00, active)* — Roadmap created. Text-engine work split out as standalone SPIKE-01
-  between INC-01 and INC-02, per the discovery/build separation rule.
+- *(INC-00, done)* — Documentation foundation complete: VISION, CLAUDE.md, ROADMAP,
+  REQUIREMENTS skeleton, ADRs 0001–0005, templates, and a private GitHub remote. Text-engine
+  work split out as standalone SPIKE-01 between INC-01 and INC-02, per the discovery/build
+  separation rule.
