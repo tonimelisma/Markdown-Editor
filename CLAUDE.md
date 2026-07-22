@@ -76,6 +76,14 @@ Each roadmap increment is built the same way (the **full lane**):
 8. **Review** — a **separate agent** code-reviews the diff against plan + requirements (§6).
 9. **Close** — mark the increment done in ROADMAP; add newly-found work to the backlog.
 
+> **Discovery and build never mix.** Research, spikes, discovery, requirements-setting, and
+> planning (steps 2–5) are completed and approved as their **own unit(s) — with no production
+> code** — before any implementation. **Spikes are standalone units** (their POC code is
+> throwaway, not merged). A **build unit** (step 6) implements an already-approved plan; it
+> does not define new requirements or decisions. (Reconciling requirement *status* and
+> traceability *after* coding — step 7 — is part of the build unit and is fine; *setting*
+> requirements is discovery.)
+
 ### Closing sequence — order matters
 
 Run these in order at the *end* of a task, once the work itself is finished:
