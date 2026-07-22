@@ -29,7 +29,7 @@ A real editor over real `.md` files — **plain-text editing only** (no styling 
 - Standard behaviors: undo/redo, spell-check, Light/Dark (find & replace deferred to INC-02).
 - *Discovery first:* its own research + requirements + plan, approved before coding.
 
-## SPIKE-01 · Text engine — `[discovery/spike]` 🔵 Active  *(between INC-01 and INC-02)*
+## SPIKE-01 · Text engine — `[discovery/spike]` ✅ Done  *(between INC-01 and INC-02)*
 
 Decide the editor's text foundation **before** we need live styling.
 - Evaluate **TextKit 1 vs TextKit 2 vs a third-party view** for: live syntax highlighting,
@@ -43,7 +43,7 @@ Make the raw-source mode **live-styled** (styled in place, markup still visible)
 - Parse CommonMark + GFM + the Tier-2 writing extensions.
 - Live syntax styling as you type; **syntax-highlighted fenced code blocks**.
 - Live word / character count.
-- Builds on SPIKE-01's decision.
+- Builds on SPIKE-01's decision: **TextKit 1 `NSTextView`** ([ADR-0008](decisions/0008-textkit1-nstextview-editor-engine.md)), replacing the interim `TextEditor`.
 
 ## INC-03 · Images (first-class) — `[build]` ⚪ Planned
 
@@ -87,3 +87,5 @@ Captured so nothing is lost; not scheduled. Promote to an increment when it earn
 - *(INC-01 build, done)* — merged (squash `6211ecb`, PR #1); 7 unit tests; review fixes
   (BOM fidelity, Swift-6 isolation, `.fileReadUnknown`, Info.plist); traceability reconciled;
   framework behaviors verified `inherent` (no manual tests).
+- *(SPIKE-01, done)* — RESEARCH-0002 + POC on macOS 27; text engine = TextKit 1 `NSTextView`
+  (ADR-0008). POC code was throwaway (not merged).
