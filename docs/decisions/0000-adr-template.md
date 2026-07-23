@@ -1,8 +1,8 @@
-# ADR-0000 — <short decision title>
+# ADR-0000 — {short decision title}
 
 - **Status:** Proposed | Accepted | Superseded by ADR-XXXX | Deprecated
 - **Date:** YYYY-MM-DD
-- **Deciders:** <who>
+- **Deciders:** {who}
 - **Related:** REQ-###, INC-##, ADR-####, VISION §#
 
 > ADRs are **living, not immutable.** When a decision changes, update the affected ADR (or add
@@ -24,4 +24,4 @@ The choice we made, stated plainly. **One decision per ADR.**
 
 ## Alternatives considered
 
-- **<option>** — why not (or not yet).
+- **{option}** — why not (or not yet).

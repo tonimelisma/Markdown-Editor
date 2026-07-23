@@ -9,6 +9,11 @@
   `NSTextStorage` attributes (never the string). Recorded as [ADR-0010](../decisions/0010-concurrency-highlighting-pipeline.md)
   (pipeline) and [ADR-0009](../decisions/0009-regex-live-highlighting-engine.md) (regex engine).
 
+> **Historical scope note (2026-07-22):** the performance and concurrency findings remain
+> current. References below to “Tier-2 extensions” describe the INC-02 implementation, not the
+> current dialect contract. [ADR-0003](../decisions/0003-markdown-dialect-commonmark-and-formal-gfm.md)
+> and COR-01 supersede that dialect choice.
+
 ## Question
 
 How do we make live syntax highlighting feel instant and never introduce jank, and how exactly
@@ -46,9 +51,11 @@ is our store (NSString-backed, contiguous-ish). Fine to low-MB; it's *why* huge 
 buffer. Viewport-limited work is a possible future optimization, not the INC-02 implementation.
 
 **Highlighting engines:** tree-sitter is incremental and grammatical (why serious *code* editors
-use it). For **Markdown source**, regex is the pragmatic standard (Marklight, HighlightedTextEditor)
-and covers our Tier-2 extensions — hence [ADR-0009](../decisions/0009-regex-live-highlighting-engine.md).
-tree-sitter-markdown stays a future option (esp. for in-fence language coloring).
+use it). For fast **Markdown source presentation**, regex is a pragmatic lexical option
+(Marklight, HighlightedTextEditor), hence
+[ADR-0009](../decisions/0009-regex-live-highlighting-engine.md). It does not establish parser
+conformance. tree-sitter-markdown remains a possible future option, especially for in-fence
+language coloring.
 
 ## 3. macOS / Swift mechanics that bite
 
@@ -70,7 +77,8 @@ tree-sitter-markdown stays a future option (esp. for in-fence language coloring)
 
 ## 4. Engineering spec (adopted → ADR-0010)
 
-**Threading contract**
+### Threading contract
+
 - **Main actor** owns all AppKit: `NSTextView`, `NSTextStorage`, `NSLayoutManager`, delegate
   callbacks, and applying `NSTextStorage` attributes. Per-keystroke main-thread work = the native
   text insertion only.

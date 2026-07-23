@@ -1,112 +1,118 @@
 # ROADMAP
 
-Increments in logical order, built the way [CLAUDE.md §3](../CLAUDE.md) prescribes.
-**Future vs. existing is explicit:** a capability is not "in the app" until its build
-increment is `Done` and its requirements carry real code/test anchors in
-[REQUIREMENTS.md](REQUIREMENTS.md).
+Increments in logical order, built through the lifecycle in
+[CLAUDE.md §3](../CLAUDE.md). A capability is not delivered until its build increment is
+`Done` and its requirements have real code and automated-verification anchors.
 
-**Discovery and build are separate units** (CLAUDE.md §3). Every build increment is
-preceded by its own approved discovery — research → open questions → requirements → plan —
-and **spikes are standalone**, never folded into a coding increment.
+Discovery and build remain separate units. Approved research, requirements, and a plan authorize
+a later build; they do not mean the app already behaves that way.
 
-**Status:** ✅ Done · 🔵 Active · ⚪ Planned · 🅿️ Parked (post-MVP)
+**Status:** ✅ Done · 🔵 Active · ⚪ Planned · 🅿️ Parked
 **Unit type:** `[docs]` · `[discovery/spike]` · `[build]`
 
 ---
 
-## INC-00 · Docs & process foundation — `[docs]` ✅ Done
+## INC-00 · Docs and process foundation — `[docs]` ✅ Done
 
-The spec-driven documentation system and operating manual.
-- `VISION.md`, `CLAUDE.md`, `ROADMAP.md`, `REQUIREMENTS.md` (skeleton).
-- ADRs 0001–0005 (decisions already made) + doc templates (ADR / research / plan).
-- GitHub remote (`origin`, private) configured.
+Established the conservative spec-driven documentation model, operating manual, templates,
+living ADRs, and private GitHub remote.
 
 ## INC-01 · Editor foundation — `[build]` ✅ Done
 
-A real editor over real `.md` files — **plain-text editing only** (no styling yet).
-- Fix the template's `com.example.plain-text` UTType placeholder → proper Markdown types.
-- Wire up the document lifecycle: open / save / autosave / Versions / tabs / Recents.
-- Standard behaviors: undo/redo, spell-check, Light/Dark (find & replace deferred to INC-02).
-- *Discovery first:* its own research + requirements + plan, approved before coding.
+Delivered ordinary UTF-8 Markdown documents, open/new/save/autosave, Versions, tabs, Recents,
+undo/redo, spelling, and native appearance.
 
-## SPIKE-01 · Text engine — `[discovery/spike]` ✅ Done  *(between INC-01 and INC-02)*
+## SPIKE-01 · Text engine — `[discovery/spike]` ✅ Done
 
-Decide the editor's text foundation **before** we need live styling.
-- Evaluate **TextKit 1 vs TextKit 2 vs a third-party view** for: live syntax highlighting,
-  large-document performance, and scrolling/viewport stability.
-- Throwaway POC(s) only — **no production code merged**.
-- Output: a research doc + recommendation + an ADR. Feeds INC-02.
+Evaluated TextKit 1, TextKit 2, and third-party options. Selected TextKit 1 `NSTextView`; the
+throwaway POC was not merged.
 
-## INC-02 · Markdown engine + live-styled source — `[build]` ✅ Done
+## INC-02 · Live-styled source — `[build]` ✅ Done
 
-Make the raw-source mode **live-styled** (styled in place, markup still visible).
-- Uses a lexical (regex) Markdown highlighter for GFM core and the implemented light Tier-2
-  extensions; it deliberately does not claim full grammatical parsing.
-- Live-styles source as the user types with display attributes only; fenced code blocks are
-  distinguished with a monospaced font and subtle tint. In-fence language coloring remains
-  deferred.
-- Displays live word and character counts off the main actor, with cancellation-aware stale-work
-  coalescing.
-- Replaces the interim `TextEditor` with the SPIKE-01-selected **TextKit 1 `NSTextView`**
-  ([ADR-0008](decisions/0008-textkit1-nstextview-editor-engine.md)), including native Find &
-  Replace, undo, and spell-check.
+Delivered lexical styling with visible markup, fenced-code treatment, live word/character
+counts, native Find and Replace, off-main computation, cancellation, and a large-document cap.
+The regex highlighter is a presentation aid, not a Markdown parser.
 
-## INC-03 · Images (first-class) — `[build]` 🔵 Active (discovery)
+INC-02 also delivered styling for a proposed “Tier-2” extension bundle. Subsequent standards
+research found that bundle was an undocumented house dialect and that its `~text~` subscript
+meaning conflicts with formal GFM. The delivered behavior remains recorded truthfully in
+REQ-042 and is scheduled for correction next.
 
-- Import and manage images through paste and drag-drop; insert portable source Markdown.
-- Auto-managed per-document sibling assets folder; preserve original files where possible.
-- Source mode continues to display `![]()` markup, not an inline image. WYSIWYG rendering is
-  INC-04 work.
-- Do not add a sizing syntax in this increment until a compatibility decision is explicitly made.
-- *(Order relative to INC-04 is provisional — this roadmap is living.)*
+## COR-01 · Markdown dialect conformance correction — `[build]` 🔵 Active
 
-## INC-04 · WYSIWYG mode (flagship) — `[build]` ⚪ Planned
+**Discovery and plan approved; build is next.**
 
-- Inline rendering (markup hidden); **flip the default to WYSIWYG**.
-- Mode toggle stays display-only (VISION INV — never mutates the file).
-- **Completes the MVP.**
+- Establish CommonMark 0.31.2 plus formal GFM 0.29-gfm as the only supported MVP dialect.
+- Remove claimed footnote, highlight, superscript, and subscript semantics from live styling.
+- Treat both valid one- and two-tilde forms as formal-GFM strikethrough, never subscript.
+- Preserve unfamiliar extension source without styling it as supported semantics.
+- Add focused spec-derived tilde and image-destination fixtures.
+- Keep the highlighter explicitly lexical; do not add a structural parser in this correction.
+
+Approved design: [PLAN-0004](plans/0004-markdown-dialect-conformance-correction.md).
+
+## INC-03 · Paste and drop images — `[build]` ⚪ Planned
+
+**Discovery and plan approved; blocked only on COR-01.**
+
+- Users add images by paste or drag-and-drop; there is no Import document command.
+- Copy supported file-backed PNG, JPEG, GIF, HEIC, and HEIF byte-for-byte into a visible shared
+  sibling `assets/` directory. Never transcode HEIC/HEIF.
+- Encode bitmap-only clipboard data as PNG.
+- Insert ordinary relative `![](assets/name.ext)` source only after all destinations exist.
+- Use portable deterministic names, byte-identical reuse, hash-on-collision, exclusive writes,
+  resolved containment, and non-destructive failure handling.
+- Keep empty image descriptions visible and easy to author; never use a filename as fake alt text.
+- Source undo and reference deletion never delete assets.
+- Untitled documents save first. Save As/move never silently relocates a shared assets directory.
+- Source mode continues to show Markdown; inline rendering is INC-04.
+
+Approved research and design:
+[RESEARCH-0004](research/0004-inc03-image-assets-and-portability.md),
+[ADR-0011](decisions/0011-image-placement-and-portability.md), and
+[PLAN-0003](plans/0003-inc03-image-assets.md).
+
+## INC-04 · WYSIWYG mode — `[build]` ⚪ Planned
+
+- Research and select a structural parser against the exact CommonMark/formal-GFM contract.
+- Render inline while preserving the same source file.
+- Make WYSIWYG the default and provide a display-only mode toggle.
+- Render referenced images without changing source syntax.
+- Complete the MVP.
 
 ---
 
-## Post-MVP backlog (uncommitted — the "random ideas" bucket)
+## Post-MVP backlog
 
-Captured so nothing is lost; not scheduled. Promote to an increment when it earns priority.
+Uncommitted ideas. Each needs research, explicit requirements, and approval before promotion.
 
-**Named for later:**
+- Named dialect profiles for footnotes, highlight, superscript, subscript, smart typography,
+  definition lists, emoji, and heading attributes
 - Mermaid diagrams
 - YAML front matter
-- Notes-app syntax (wiki-links, transclusion, tags)
-
-**Candidate ideas to weigh later:**
-- HTML / PDF export
-- Focus mode & typewriter scrolling
-- Themes / typography options
-- Document outline (table-of-contents) sidebar
+- Wiki-links, transclusion, and tags
+- Language-aware coloring inside fenced code
+- Image sizing with an explicit compatibility contract
+- Metadata inspection or stripping
+- Explicit “Save a Copy with Assets”
+- Explicit, ownership-safe unreferenced-asset cleanup
+- Remote-image download
+- HTML/PDF export
+- Focus mode and typewriter scrolling
+- Themes and typography options
+- Document-outline sidebar
 
 ---
 
 ## Change log
 
-- *(INC-00, done)* — Documentation foundation complete: VISION, CLAUDE.md, ROADMAP,
-  REQUIREMENTS skeleton, ADRs 0001–0005, templates, and a private GitHub remote. Text-engine
-  work split out as standalone SPIKE-01 between INC-01 and INC-02, per the discovery/build
-  separation rule.
-- *(INC-01 discovery, done)* — RESEARCH-0001; requirements REQ-001…032; PLAN-0001;
-  ADR-0006 (FileDocument) and ADR-0007 (interim TextEditor). Build unit is next.
-- *(INC-01 build, done)* — merged (squash `6211ecb`, PR #1); 7 unit tests; review fixes
-  (BOM fidelity, Swift-6 isolation, `.fileReadUnknown`, Info.plist); traceability reconciled;
-  framework behaviors verified `inherent` (no manual tests).
-- *(SPIKE-01, done)* — RESEARCH-0002 + POC on macOS 27; text engine = TextKit 1 `NSTextView`
-  (ADR-0008). POC code was throwaway (not merged).
-- *(INC-02 build, done)* — merged (squash `a139213`, PR #2); `MarkdownTextView` replaces
-  `TextEditor`; regex source styling covers GFM core plus footnotes/highlight/superscript/
-  subscript; fenced blocks are monospaced and tinted; live counts and native Find & Replace
-  landed. The final review fixed large-document main-thread restyling, stale count-work
-  cancellation, and longer fence closers. `NSTextStorage` display attributes were adopted after
-  implementation showed temporary attributes cannot provide the required font styling; the saved
-  string remains unchanged (INV-2). In-fence language coloring and the remaining Tier-2 dialect
-  stay deferred.
-- *(INC-03 discovery, active)* — research and a draft plan are in progress. Current recommendation:
-  content-local `<document-stem>.assets/` folders, byte-preserving imports, and standard relative
-  `![]()` syntax; source mode remains source-only. Asset naming, collision handling, supported
-  formats, and any future sizing extension await explicit approval before requirements or code.
+- **INC-00:** documentation foundation and lifecycle established.
+- **INC-01 discovery/build:** RESEARCH-0001, PLAN-0001, ADR-0006/0007; merged PR #1
+  (`6211ecb`) with seven unit tests and traceability reconciliation.
+- **SPIKE-01:** RESEARCH-0002 and throwaway POC selected TextKit 1; ADR-0008.
+- **INC-02:** RESEARCH-0003, ADR-0009/0010, PLAN-0002; merged PR #2 (`a139213`). Review fixed
+  main-thread large-document styling, stale count cancellation, and longer fence closers.
+- **COR-01 and INC-03 discovery:** broader standards and ecosystem review replaced the custom
+  dialect and per-document managed-folder proposals. Approved outcomes are formal GFM, shared
+  non-owned `assets/`, exact-copy PNG/JPEG/GIF/HEIC/HEIF, transactional placement, and no
+  Import command. COR-01 must land before INC-03.

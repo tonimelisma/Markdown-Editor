@@ -1,4 +1,4 @@
-# PLAN-0000 — <increment title>
+# PLAN-0000 — {increment title}
 
 - **Increment:** INC-##
 - **Date:** YYYY-MM-DD

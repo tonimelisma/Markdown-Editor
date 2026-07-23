@@ -28,6 +28,7 @@ onward): TextKit 1 `NSTextView`, TextKit 2 `NSTextView`, or a third-party view?
 ## Findings
 
 **POC (empirical, macOS 27):**
+
 - Default `NSTextView` uses **TextKit 2** (`textLayoutManager != nil`).
 - `NSTextView(usingTextLayoutManager: false)` **forces TextKit 1** (`layoutManager` present,
   no `textLayoutManager`) — a supported, one-line opt-out at init.
@@ -36,6 +37,7 @@ onward): TextKit 1 `NSTextView`, TextKit 2 `NSTextView`, or a third-party view?
   mutating text storage).
 
 **Research:**
+
 - TextKit 2's `setRenderingAttributes` / `addRenderingAttribute` for **dynamic subrange
   highlighting is documented-unreliable** — doesn't reliably refresh until a window resize
   ([Apple forums 817471](https://developer.apple.com/forums/thread/817471),

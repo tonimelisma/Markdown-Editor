@@ -2,12 +2,18 @@
 
 - **Increment:** INC-02
 - **Date:** 2026-07-22
-- **Status:** Implemented — merged via PR #2 (squash `a139213`, 2026-07-23)
+- **Status:** Implemented — merged via PR #2 (squash `a139213`, 2026-07-22)
 - **Requirements:** REQ-040…046; reconcile REQ-010/011/012
 - **Depends on:** [RESEARCH-0003](../research/0003-editor-performance-and-concurrency.md),
   [ADR-0008](../decisions/0008-textkit1-nstextview-editor-engine.md) (TextKit 1),
   [ADR-0009](../decisions/0009-regex-live-highlighting-engine.md) (regex),
   [ADR-0010](../decisions/0010-concurrency-highlighting-pipeline.md) (pipeline)
+
+> **Historical scope note (2026-07-22):** this plan accurately records what INC-02 delivered.
+> Its “light Tier-2” dialect choice was later found to conflict with formal GFM and is superseded
+> by [ADR-0003](../decisions/0003-markdown-dialect-commonmark-and-formal-gfm.md) and
+> [PLAN-0004](0004-markdown-dialect-conformance-correction.md). COR-01 removes those semantic
+> styling claims; the TextKit, performance, and concurrency design remains current.
 
 ## Goal
 
@@ -70,5 +76,7 @@ coordinator guards, not separately unit-tested UI behavior.
 
 ## Out of scope
 
-In-fence language coloring, images (INC-03), WYSIWYG (INC-04), remaining Tier-2 (smart
-typography, definition lists, emoji, heading anchors), and `swift-markdown` structured rendering.
+In-fence language coloring, images (INC-03), and WYSIWYG (INC-04). The former “remaining
+Tier-2” list and preselection of `swift-markdown` were subsequently superseded: writing
+extensions now require explicit dialect-profile research, and INC-04 must select a structural
+parser against the approved formal dialect.

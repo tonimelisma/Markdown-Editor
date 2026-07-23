@@ -9,7 +9,9 @@ increment** during the discovery phase (the *Specify* step of [CLAUDE.md §3](..
 - **EARS notation** — UPPER-CASE keywords: `WHEN` (event), `WHILE` (state), `IF…THEN`
   (unwanted), `WHERE` (optional); otherwise a ubiquitous "The system shall …". One "shall"
   per requirement.
-- **Status:** `Planned` · `Active` · `Done` · `Deferred`.
+- **Status:** `Planned` · `Active` · `Done` · `Correction` · `Deferred`. `Correction` means
+  delivered behavior is known to conflict with an approved replacement and remains truthful
+  until that replacement is built.
 - **Traceability:** code carries `// REQ-###`, tests carry `// Verifies: REQ-###`
   ([CLAUDE.md §4](../CLAUDE.md)). Each row lists its code + verification anchors. `—` = not built.
 - **Verification kinds (no manual tests, ever):** `test` = automated test (unit/UI) · `inherent`
@@ -68,8 +70,8 @@ increment** during the discovery phase (the *Specify* step of [CLAUDE.md §3](..
 | ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
 |----|--------------------|-----|--------|----------------|-------------|
 | REQ-040 | WHILE in the source editor, the system shall apply live syntax styling as the user types, using display attributes that never modify the file bytes (INV-2). | INC-02 | Done | `MarkdownTextView.Coordinator.apply` | tests `attributeStylingLeavesStringUnchanged`, `rangesWithinBounds` |
-| REQ-041 | The system shall style GFM elements: headings, bold, italic, inline code, fenced code blocks, links, images, ordered/unordered lists, task lists, blockquotes, tables, strikethrough, thematic breaks. | INC-02 | Done | `MarkdownHighlighter` + `MarkdownTheme` | tests `stylesHeadingWithLevel`, `stylesInlineElements`, `stylesFencedCodeBlock`, `returnsAttributesPerStyle` |
-| REQ-042 | The system shall style the light Tier-2 elements: footnotes, `==highlight==`, superscript, subscript. | INC-02 | Done | `MarkdownHighlighter` | test `stylesLightTier2` |
+| REQ-041 | The system shall lexically style common Markdown/GFM source constructs: headings, bold, italic, inline code, fenced code blocks, links, images, ordered/unordered lists, task lists, blockquotes, tables, strikethrough, and thematic breaks. | INC-02 | Done | `MarkdownHighlighter` + `MarkdownTheme` | tests `stylesHeadingWithLevel`, `stylesInlineElements`, `stylesFencedCodeBlock`, `returnsAttributesPerStyle` |
+| REQ-042 | The system shall style the previously selected light Tier-2 tokens: footnotes, `==highlight==`, superscript, and subscript. | INC-02 | Correction | `MarkdownHighlighter` (currently delivered; superseded by REQ-047–REQ-049 after COR-01) | existing test `stylesLightTier2`; replacement tests planned in COR-01 |
 | REQ-043 | The system shall visually distinguish fenced code blocks (monospace + subtle tint). | INC-02 | Done | `MarkdownHighlighter` + `MarkdownTheme` | test `stylesFencedCodeBlock` |
 | REQ-044 | The system shall display a live word and character count for the document. | INC-02 | Done | `TextStats`, `TextStatsComputer`, `ContentView` | tests `countsWordsAndCharacters`, `computesCountsOffMainActor` |
 | REQ-045 | WHILE editing a large document, the system shall keep typing latency imperceptible (highlighting debounced and computed off the main thread). | INC-02 | Done | `MarkdownTextView.Coordinator` (120 ms debounce, version gate, 100,000 UTF-16-unit styling cap) + `TextStatsComputer` (off-main, cancellation-aware scan) | test `computesCountsOffMainActor`; inherent (native insertion is the synchronous edit path; over-cap styling is suspended) |
@@ -80,7 +82,60 @@ increment** during the discovery phase (the *Specify* step of [CLAUDE.md §3](..
 
 ---
 
-*Deferred to later increments:* images (INC-03), WYSIWYG (INC-04), in-fence language
-syntax coloring, remaining Tier-2 (definition lists, emoji, heading anchors).
+## COR-01 · Markdown dialect conformance correction — 🔵 Active
 
-*Next free IDs: REQ-008 (A), REQ-013 (B), REQ-023 (C), REQ-033 (D), REQ-047 (E).*
+This correction removes the conflicting house-extension claims before new image syntax is added.
+The regex engine remains a lexical styling aid, not a conforming parser.
+
+| ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
+|----|--------------------|-----|--------|----------------|-------------|
+| REQ-047 | The system shall present CommonMark 0.31.2 plus formal GFM 0.29-gfm as the only supported MVP source dialect. | COR-01 | Active | — | planned tests `supportedDialectContainsOnlyCommonMarkAndFormalGFMStyles`, documentation inspection |
+| REQ-048 | WHEN source contains a valid formal-GFM strikethrough delimiter using one or two tildes, the system shall apply the strikethrough source style without interpreting that syntax as subscript. | COR-01 | Active | — | planned table test `stylesFormalGFMTildeStrikethroughFixtures` |
+| REQ-049 | WHEN source contains an unsupported writing extension, the system shall preserve its text unchanged without presenting it as supported footnote, highlight, superscript, or subscript semantics. | COR-01 | Active | — | planned test `preservesUnknownExtensionsWithoutSemanticStyles` |
+| REQ-050 | WHEN source contains a focused valid CommonMark image destination fixture, the system shall style its source range without changing the source text. | COR-01 | Active | — | planned table test `stylesCommonMarkImageDestinationFixtures` |
+| REQ-051 | WHILE applying lexical styling, the system shall keep every attributed range within the source bounds and leave the source string unchanged. | COR-01 | Active | — | tests `attributeStylingLeavesStringUnchanged`, `rangesWithinBounds`; expanded COR-01 fixtures |
+
+## INC-03 · Paste and drop images — ⚪ Planned
+
+“Add image” means paste or drag-and-drop into the source editor. There is no Import document
+command. All requirements below were approved with [PLAN-0003](plans/0003-inc03-image-assets.md).
+
+### F · Input and representations
+
+| ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
+|----|--------------------|-----|--------|----------------|-------------|
+| REQ-060 | WHEN the user pastes or drops a supported image into a saved document, the system shall add it at the current source selection. | INC-03 | Planned | — | planned coordinator tests `placesPastedImageAtSelection`, `placesDroppedImagesInProviderOrder` |
+| REQ-061 | WHEN a regular file is detected as PNG, JPEG, GIF, HEIC, or HEIF, the system shall copy its bytes unchanged without transcoding it. | INC-03 | Planned | — | planned table test `copiesSupportedFileRepresentationsByteForByte` |
+| REQ-062 | WHEN a pasteboard item provides bitmap data but no supported file or file promise, the system shall encode the bitmap as PNG. | INC-03 | Planned | — | planned test `encodesBitmapOnlyPasteAsPNG` |
+| REQ-063 | IF an item is corrupt, its detected representation is unsupported, or its claimed extension disagrees with an unsafe/unsupported representation, THEN the system shall reject the entire user action with a clear error. | INC-03 | Planned | — | planned table tests `rejectsUnsupportedOrCorruptRepresentations`, `detectsTypeFromContent` |
+| REQ-064 | WHEN paste or drag content contains meaningful non-image text, the system shall preserve native plain-text paste or drag behavior rather than consume it as an image action. | INC-03 | Planned | — | planned tests `mixedTextAndImageFallsThroughToTextPaste`, `nonImageDragFallsThrough` |
+
+### G · Placement, naming, and source
+
+| ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
+|----|--------------------|-----|--------|----------------|-------------|
+| REQ-065 | WHEN adding an image, the system shall use a visible sibling `assets/` directory as a shared non-owned destination, creating it only when needed. | INC-03 | Planned | — | planned tests `createsSiblingAssetsDirectoryWhenNeeded`, `reusesExistingRealAssetsDirectoryWithoutOwnership` |
+| REQ-066 | The system shall generate a lowercase ASCII filename that is safe across common macOS, Linux, and Windows filesystems and uses the detected representation’s canonical extension. | INC-03 | Planned | — | planned table test `generatesPortableAssetNames` |
+| REQ-067 | WHEN a destination filename already exists, the system shall reuse it only for byte-identical content and otherwise select a deterministic SHA-256-suffixed non-overwriting name using case-insensitive collision checks. | INC-03 | Planned | — | planned tests `reusesIdenticalAsset`, `hashSuffixesDifferentCollision`, `extendsHashOnPrefixConflict`, `resolvesWriteRaceWithoutOverwrite` |
+| REQ-068 | WHEN placement succeeds, the system shall insert standard relative Markdown `![](assets/name.ext)` without a title, dimensions, HTML, base64, percent-encoded filename, or private metadata. | INC-03 | Planned | — | planned table test `generatesPortableCommonMarkImageReferences` |
+| REQ-069 | WHEN one action contains multiple images, the system shall preserve provider order and insert their references separated by one line break as one undoable source replacement. | INC-03 | Planned | — | planned test `commitsOrderedBatchAsOneUndoableReplacement` |
+
+### H · Transaction, lifecycle, safety, and accessibility
+
+| ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
+|----|--------------------|-----|--------|----------------|-------------|
+| REQ-070 | WHEN adding one or more images, the system shall insert no source reference until every required destination file exists at its final contained path. | INC-03 | Planned | — | planned tests `insertsOnlyAfterAllDestinationsExist`, `partialFailureInsertsNothing` |
+| REQ-071 | IF placement fails before source insertion, THEN the system shall remove only temporary and newly-created files proven to belong exclusively to that action, leaving all source, reused, and pre-existing files untouched. | INC-03 | Planned | — | planned failure-matrix test `cleansOnlyExclusiveBatchFilesOnFailure` |
+| REQ-072 | IF asynchronous placement overlaps a subsequent edit at the tracked insertion range, THEN the system shall cancel source insertion rather than guess a new location. | INC-03 | Planned | — | planned range-tracker tests `translatesNonOverlappingEdits`, `cancelsOnOverlappingEdit` |
+| REQ-073 | WHEN inserting one image reference, the system shall use an empty image description and select it for immediate authoring without inventing alternative text from the filename. | INC-03 | Planned | — | planned test `selectsEmptyDescriptionForSingleImage`; accessibility assertion |
+| REQ-074 | WHEN image-reference insertion is undone or a reference is deleted, the system shall leave every asset file in place. | INC-03 | Planned | — | planned test `sourceUndoRetainsPlacedAssets` |
+| REQ-075 | WHEN an untitled document receives an image action, the system shall complete the normal Save flow before creating `assets/`, canceling the action if Save is canceled. | INC-03 | Planned | — | planned tests `saveThenResumesPlacement`, `cancelSaveCreatesNothing` |
+| REQ-076 | WHEN Save As, rename, or move changes the document parent and a generated `assets/…` reference no longer resolves, the system shall warn without silently copying, moving, or deleting companion files. | INC-03 | Planned | — | planned decision test `warnsWhenParentChangeBreaksGeneratedReference` |
+| REQ-077 | The system shall perform image inspection, hashing, promise receipt, and file I/O off the main actor while rejecting symlinks, aliases, packages, non-regular sources, symlinked destinations, and paths outside the resolved sibling `assets/` directory. | INC-03 | Planned | — | planned tests `rejectsUnsafeFilesystemObjects`, `provesResolvedContainment`, `placementIOIsOffMainActor` |
+
+---
+
+*Deferred:* WYSIWYG (INC-04), in-fence language syntax coloring, dialect profiles, image sizing,
+transcoding, metadata stripping, remote images, automatic asset cleanup, and asset-aware Save Copy.
+
+*Next free IDs: REQ-008 (A), REQ-013 (B), REQ-023 (C), REQ-033 (D), REQ-052 (E), REQ-078 (F–H).*

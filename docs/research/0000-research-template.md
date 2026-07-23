@@ -1,10 +1,10 @@
-# RESEARCH-0000 — <topic>
+# RESEARCH-0000 — {topic}
 
 - **Date:** YYYY-MM-DD
 - **For:** INC-## / SPIKE-## (what this unblocks)
 - **Type:** online research | native-API investigation | spike/POC
 - **Status:** In progress | Done
-- **Outcome:** <one line — the recommendation or finding, filled in when Done>
+- **Outcome:** {one-line recommendation or finding, filled in when done}
 
 > Research docs capture *investigation*, not decisions. A decision that comes out of research
 > is recorded separately as an [ADR](../decisions/). Spike/POC code is throwaway (per

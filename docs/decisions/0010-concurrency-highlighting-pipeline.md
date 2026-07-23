@@ -18,6 +18,7 @@ be async. We're on Swift 6 + AppKit, where views are `@MainActor` and cross-thre
 ## Decision
 
 **Threading contract:**
+
 - **Main actor owns all AppKit** — `NSTextView`, `NSTextStorage`, `NSLayoutManager`, delegate
   callbacks, and *applying* attributes. The only per-keystroke main-thread work is the native
   text insertion.
