@@ -24,7 +24,9 @@ A native macOS Markdown editor — pure and simple.
 
 ## 3. Editing model
 
-- Two modes over the *same* file: **WYSIWYG (the default)** and **raw source**, toggleable.
+- Two modes over the *same* file: **WYSIWYG (the default)** and **live-styled source**,
+  toggleable. The source mode shows the raw Markdown *with live styling* (markup visible but
+  formatted) — there is no separate plain-unstyled mode.
 - Switching modes is **display-only** — it never alters the file.
 - We build up to it: **plain-text → live-styled source → WYSIWYG-default** (see [ROADMAP.md](ROADMAP.md)).
 
