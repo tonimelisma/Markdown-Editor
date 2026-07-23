@@ -51,10 +51,13 @@ Make the raw-source mode **live-styled** (styled in place, markup still visible)
   ([ADR-0008](decisions/0008-textkit1-nstextview-editor-engine.md)), including native Find &
   Replace, undo, and spell-check.
 
-## INC-03 · Images (first-class) — `[build]` ⚪ Planned
+## INC-03 · Images (first-class) — `[build]` 🔵 Active (discovery)
 
-- Inline display in the editor; insert via paste & drag-drop.
-- Auto-managed sibling assets folder; image sizing syntax.
+- Import and manage images through paste and drag-drop; insert portable source Markdown.
+- Auto-managed per-document sibling assets folder; preserve original files where possible.
+- Source mode continues to display `![]()` markup, not an inline image. WYSIWYG rendering is
+  INC-04 work.
+- Do not add a sizing syntax in this increment until a compatibility decision is explicitly made.
 - *(Order relative to INC-04 is provisional — this roadmap is living.)*
 
 ## INC-04 · WYSIWYG mode (flagship) — `[build]` ⚪ Planned
@@ -103,3 +106,7 @@ Captured so nothing is lost; not scheduled. Promote to an increment when it earn
   implementation showed temporary attributes cannot provide the required font styling; the saved
   string remains unchanged (INV-2). In-fence language coloring and the remaining Tier-2 dialect
   stay deferred.
+- *(INC-03 discovery, active)* — research and a draft plan are in progress. Current recommendation:
+  content-local `<document-stem>.assets/` folders, byte-preserving imports, and standard relative
+  `![]()` syntax; source mode remains source-only. Asset naming, collision handling, supported
+  formats, and any future sizing extension await explicit approval before requirements or code.

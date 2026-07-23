@@ -28,6 +28,9 @@ A native macOS Markdown editor — pure and simple.
   source, toggleable. The source mode shows the raw Markdown *with live styling* (markup visible
   but formatted) — there is no separate plain-unstyled mode. INC-02 delivers the source mode;
   WYSIWYG and the mode toggle remain INC-04 work.
+- **Source-mode boundary:** source mode displays the source. In particular, an image remains its
+  `![]()` Markdown syntax there; it is not replaced by an inline attachment or thumbnail. Visual
+  image rendering belongs to the WYSIWYG mode.
 - Switching modes is **display-only** — it never alters the file.
 - We build up to it: **plain-text → live-styled source → WYSIWYG-default** (see [ROADMAP.md](ROADMAP.md)).
 
@@ -41,10 +44,12 @@ A native macOS Markdown editor — pure and simple.
   INC-02 provides the source-level visual treatment (monospace + tint); language-aware
   in-fence coloring remains deferred until a code-highlighting engine is selected.
 - **Images (first-class):**
-  - Inline display in the editor (not just the `![]()` markup).
-  - Insert via clipboard **paste** and **drag-and-drop**.
+  - Images render inline in WYSIWYG; source mode retains visible `![]()` syntax.
+  - Insert via clipboard **paste** and **drag-and-drop**, preserving image bytes when an original
+    file is available.
   - **Auto-managed sibling assets folder** for pasted/dropped files.
-  - **Image sizing syntax** (exact syntax chosen during the images increment).
+  - Maximum-compatible insertion emits standard Markdown image syntax; any serialized image
+    sizing extension requires a separately approved compatibility decision.
   - Referenced by path — **never** embedded as base64.
 - **Deferred to the post-MVP backlog:** Mermaid diagrams, YAML front matter, and notes-app
   syntax (wiki-links, transclusion, tags). See the [ROADMAP backlog](ROADMAP.md).

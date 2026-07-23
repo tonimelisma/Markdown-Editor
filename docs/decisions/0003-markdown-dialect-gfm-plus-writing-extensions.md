@@ -20,8 +20,10 @@ The supported dialect is:
 - **Writing extensions:** footnotes; `==highlight==`; superscript `^x^`; subscript `~x~`;
   smart typography; definition lists; emoji shortcodes; heading anchors/attributes.
 - **Syntax-highlighted fenced code blocks.**
-- **First-class images:** inline display, paste & drag-drop, an auto-managed sibling assets
-  folder, and image sizing syntax; referenced by path — never base64.
+- **First-class images:** paste/drag-drop import into an auto-managed sibling assets folder and
+  path references — never base64. Source mode retains the standard Markdown image syntax; visual
+  inline rendering belongs to WYSIWYG. Any sizing syntax is deferred until it has an explicit
+  compatibility decision.
 - **Deferred to the post-MVP backlog:** Mermaid, YAML front matter, and notes-app syntax
   (wiki-links, transclusion, tags). Math, callouts, and CriticMarkup are **out of scope**
   (not planned) unless explicitly added later.
@@ -35,8 +37,9 @@ The supported dialect is:
   which implements GFM core plus footnotes, highlight, superscript, and subscript but is not a
   full grammatical parser. Smart typography, definition lists, emoji, and heading attributes
   remain deferred; so does language-aware coloring inside fences.
-- **Follow-ups:** image sizing syntax is chosen during the images increment (INC-03). Adopt a
-  structural parser only when an increment needs behavior beyond the accepted lexical limits.
+- **Follow-ups:** INC-03 discovery chooses the asset lifecycle and supported import formats. A
+  sizing syntax remains deferred until it can be justified against portable standard Markdown.
+  Adopt a structural parser only when an increment needs behavior beyond the accepted lexical limits.
 
 ## Alternatives considered
 
