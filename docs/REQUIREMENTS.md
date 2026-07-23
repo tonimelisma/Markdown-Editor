@@ -61,7 +61,26 @@ increment** during the discovery phase (the *Specify* step of [CLAUDE.md §3](..
 
 ---
 
-*Deferred to later increments:* find & replace (INC-02, needs the `NSTextView` surface),
-live syntax styling / word count (INC-02), images (INC-03), WYSIWYG (INC-04).
+## INC-02 · Markdown engine + live-styled source — 🔵 Active (discovery)
 
-*Next free IDs: REQ-008 (A), REQ-013 (B), REQ-023 (C), REQ-033 (D).*
+### E · Live-styled source
+
+| ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
+|----|--------------------|-----|--------|----------------|-------------|
+| REQ-040 | WHILE in the source editor, the system shall apply live syntax styling as the user types, using rendering-only attributes that never modify the file bytes (INV-2). | INC-02 | Planned | — | — |
+| REQ-041 | The system shall style GFM elements: headings, bold, italic, inline code, fenced code blocks, links, images, ordered/unordered lists, task lists, blockquotes, tables, strikethrough, thematic breaks. | INC-02 | Planned | — | — |
+| REQ-042 | The system shall style the light Tier-2 elements: footnotes, `==highlight==`, superscript, subscript. | INC-02 | Planned | — | — |
+| REQ-043 | The system shall visually distinguish fenced code blocks (monospace + subtle tint). | INC-02 | Planned | — | — |
+| REQ-044 | The system shall display a live word and character count for the document. | INC-02 | Planned | — | — |
+| REQ-045 | WHILE editing a large document, the system shall keep typing latency imperceptible (highlighting debounced and computed off the main thread). | INC-02 | Planned | — | — |
+| REQ-046 | The system shall support standard find and replace within the document. | INC-02 | Planned | — | — |
+
+*Reconciled during the INC-02 build:* REQ-010/011/012 (plain-text editing, undo/redo,
+spell-check) re-point from `TextEditor` to the TextKit 1 `NSTextView` wrapper.
+
+---
+
+*Deferred to later increments:* images (INC-03), WYSIWYG (INC-04), in-fence language
+syntax coloring, remaining Tier-2 (definition lists, emoji, heading anchors).
+
+*Next free IDs: REQ-008 (A), REQ-013 (B), REQ-023 (C), REQ-033 (D), REQ-047 (E).*
