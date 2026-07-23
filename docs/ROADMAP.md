@@ -37,7 +37,7 @@ Decide the editor's text foundation **before** we need live styling.
 - Throwaway POC(s) only — **no production code merged**.
 - Output: a research doc + recommendation + an ADR. Feeds INC-02.
 
-## INC-02 · Markdown engine + live-styled source — `[build]` ⚪ Planned
+## INC-02 · Markdown engine + live-styled source — `[build]` 🔵 Active (discovery)
 
 Make the raw-source mode **live-styled** (styled in place, markup still visible).
 - Parse CommonMark + GFM + the Tier-2 writing extensions.
