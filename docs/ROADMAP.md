@@ -37,13 +37,19 @@ Decide the editor's text foundation **before** we need live styling.
 - Throwaway POC(s) only — **no production code merged**.
 - Output: a research doc + recommendation + an ADR. Feeds INC-02.
 
-## INC-02 · Markdown engine + live-styled source — `[build]` 🔵 Active (discovery)
+## INC-02 · Markdown engine + live-styled source — `[build]` ✅ Done
 
 Make the raw-source mode **live-styled** (styled in place, markup still visible).
-- Parse CommonMark + GFM + the Tier-2 writing extensions.
-- Live syntax styling as you type; **syntax-highlighted fenced code blocks**.
-- Live word / character count.
-- Builds on SPIKE-01's decision: **TextKit 1 `NSTextView`** ([ADR-0008](decisions/0008-textkit1-nstextview-editor-engine.md)), replacing the interim `TextEditor`.
+- Uses a lexical (regex) Markdown highlighter for GFM core and the implemented light Tier-2
+  extensions; it deliberately does not claim full grammatical parsing.
+- Live-styles source as the user types with display attributes only; fenced code blocks are
+  distinguished with a monospaced font and subtle tint. In-fence language coloring remains
+  deferred.
+- Displays live word and character counts off the main actor, with cancellation-aware stale-work
+  coalescing.
+- Replaces the interim `TextEditor` with the SPIKE-01-selected **TextKit 1 `NSTextView`**
+  ([ADR-0008](decisions/0008-textkit1-nstextview-editor-engine.md)), including native Find &
+  Replace, undo, and spell-check.
 
 ## INC-03 · Images (first-class) — `[build]` ⚪ Planned
 
@@ -89,3 +95,11 @@ Captured so nothing is lost; not scheduled. Promote to an increment when it earn
   framework behaviors verified `inherent` (no manual tests).
 - *(SPIKE-01, done)* — RESEARCH-0002 + POC on macOS 27; text engine = TextKit 1 `NSTextView`
   (ADR-0008). POC code was throwaway (not merged).
+- *(INC-02 build, done)* — merged (squash `a139213`, PR #2); `MarkdownTextView` replaces
+  `TextEditor`; regex source styling covers GFM core plus footnotes/highlight/superscript/
+  subscript; fenced blocks are monospaced and tinted; live counts and native Find & Replace
+  landed. The final review fixed large-document main-thread restyling, stale count-work
+  cancellation, and longer fence closers. `NSTextStorage` display attributes were adopted after
+  implementation showed temporary attributes cannot provide the required font styling; the saved
+  string remains unchanged (INV-2). In-fence language coloring and the remaining Tier-2 dialect
+  stay deferred.

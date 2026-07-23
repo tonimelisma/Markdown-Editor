@@ -17,24 +17,25 @@ From INC-02 the editor needs **live syntax highlighting**, which requires an `NS
 third-party views ([RESEARCH-0002](../research/0002-textkit-engine-spike.md)):
 
 - POC (macOS 27): default is TextKit 2; `NSTextView(usingTextLayoutManager: false)` forces
-  TextKit 1; TextKit 1 `setTemporaryAttributes` (rendering-only highlight) works and is
-  retrievable.
+  TextKit 1; TextKit 1 `setTemporaryAttributes` works for temporary rendering overlays.
 - TextKit 2's dynamic rendering-attributes are documented-unreliable (won't refresh until a
   resize), plus viewport/scroll jank and silent TK1 fallback.
 - Third-party views are TextKit 2-based and add a dependency.
 
 ## Decision
 
-Use **TextKit 1 `NSTextView`**, created with `NSTextView(usingTextLayoutManager: false)`, and
-apply live syntax styling via `NSLayoutManager.setTemporaryAttributes` (rendering-only — never
-mutating the text storage, protecting round-trip fidelity, INV-2). Wrap it in an
-`NSViewRepresentable`. This replaces the interim stock `TextEditor` ([ADR-0007](0007-editor-surface-interim-texteditor.md)) starting in INC-02.
+Use **TextKit 1 `NSTextView`**, created with `NSTextView(usingTextLayoutManager: false)` and
+wrapped in an `NSViewRepresentable`. INC-02 applies live styling through `NSTextStorage` display
+attributes: temporary attributes cannot provide the font and size changes required for headings,
+bold text, and code blocks. This still protects INV-2 because the document saves the storage's
+string, which attribute application never changes. The wrapper replaces the interim stock
+`TextEditor` ([ADR-0007](0007-editor-surface-interim-texteditor.md)).
 
 ## Consequences
 
-- **Positive:** stable, proven highlighting mechanism (POC-confirmed on macOS 27); avoids
-  TextKit 2's documented rendering-attribute unreliability; no third-party dependency;
-  rendering-only attributes keep the file bytes untouched.
+- **Positive:** stable TextKit 1 editing and layout behavior; avoids TextKit 2's documented
+  rendering-attribute unreliability; no third-party dependency; display attributes leave the
+  saved string and file bytes untouched.
 - **Negative / costs:** TextKit 1 is the older engine and Apple's stated long-term direction is
   TextKit 2; some newer TK2-only features (e.g. certain Writing Tools animations) are
   unavailable; we own the `NSViewRepresentable` bridge (focus, undo, first-responder).

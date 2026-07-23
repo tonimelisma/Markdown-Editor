@@ -30,10 +30,13 @@ The supported dialect is:
 
 - **Positive:** covers what people actually write without becoming a knowledge base; keeps the
   product coherent with the non-goals.
-- **Negative / costs:** several extensions are beyond what a stock GFM parser gives; the parser
-  choice and per-extension work are assessed during INC-02.
-- **Follow-ups:** parser selection is its own decision (recorded when made); image sizing
-  syntax is chosen during the images increment (INC-03).
+- **Negative / costs:** several extensions are beyond what a stock GFM parser gives. INC-02
+  chose lexical compiled-regex source styling ([ADR-0009](0009-regex-live-highlighting-engine.md)),
+  which implements GFM core plus footnotes, highlight, superscript, and subscript but is not a
+  full grammatical parser. Smart typography, definition lists, emoji, and heading attributes
+  remain deferred; so does language-aware coloring inside fences.
+- **Follow-ups:** image sizing syntax is chosen during the images increment (INC-03). Adopt a
+  structural parser only when an increment needs behavior beyond the accepted lexical limits.
 
 ## Alternatives considered
 

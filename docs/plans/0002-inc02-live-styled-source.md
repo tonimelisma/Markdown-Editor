@@ -2,7 +2,7 @@
 
 - **Increment:** INC-02
 - **Date:** 2026-07-22
-- **Status:** Approved
+- **Status:** Implemented — merged via PR #2 (squash `a139213`, 2026-07-23)
 - **Requirements:** REQ-040…046; reconcile REQ-010/011/012
 - **Depends on:** [RESEARCH-0003](../research/0003-editor-performance-and-concurrency.md),
   [ADR-0008](../decisions/0008-textkit1-nstextview-editor-engine.md) (TextKit 1),
@@ -25,15 +25,18 @@ and find & replace. Styling uses display attributes only, so the file bytes neve
   inlineCode, codeBlock, link, image, listMarker, taskMarker, blockquote, table, strikethrough,
   thematicBreak, footnote, highlight, superscript, subscript).
 - **`MarkdownHighlighter`** — an `actor` holding once-compiled `NSRegularExpression`s;
-  `func tokens(for text: String, version: Int) -> HighlightPass` returning `[(NSRange, TokenStyle)]`.
-  Pure, `Sendable` in/out. (Testable seam.)
+  `func tokens(for text: String) -> [Token]`. `Token` is a `Sendable` pair of `NSRange` and
+  `TokenStyle`, so the computation crosses the actor boundary without AppKit objects.
 - **Pipeline** — `textDidChange` → bump `version` → `Task { await highlighter.tokens(...) }` →
   `@MainActor` → drop if stale → apply `NSTextStorage` attributes (display-only; string unchanged)
-  for each token. Debounced; size threshold caps live styling for very large files.
+  for each token. The pipeline debounces for 120 ms and uses a monotonic version plus matching
+  text snapshot to discard stale results. Above 100,000 UTF-16 code units it cancels pending work
+  and suspends styling rather than synchronously resetting the whole storage.
 - **`MarkdownTheme`** — maps `TokenStyle` → attributes (font/size/weight, color), light/dark aware;
-  dims syntax markers.
-- **Counts** — `word`/`character` counts from the text (computed off-main for large docs), shown
-  in a status bar.
+  distinguishes headings, inline elements, syntax markers, and code blocks; code blocks receive
+  a monospaced font and subtle purple tint.
+- **Counts** — `word`/`character` counts are computed by a cancellation-aware `TextStatsComputer`
+  actor and published into view state for the status bar; the SwiftUI body does not rescan text.
 
 ## Steps
 
@@ -43,25 +46,29 @@ and find & replace. Styling uses display attributes only, so the file bytes neve
 3. `MarkdownTextView` (`NSViewRepresentable` + `Coordinator`), TextKit 1, binding-safe. → REQ-010/011/012
    re-point; REQ-046 find bar · *verify:* `inherent` (NSTextView) + binding tests where feasible.
 4. Wire the coalesced pipeline (version + debounce + size threshold) applying `NSTextStorage` attributes.
-   → REQ-040/045 · *tests:* highlighting leaves `text` byte-identical (INV-2); stale versions dropped.
-5. Word/char count in a status bar. → REQ-044 · *tests:* counts for sample inputs.
+   → REQ-040/045 · *tests:* highlighting leaves `text` byte-identical (INV-2); actor-boundary
+   count computation verifies the off-main seam. The version/snapshot and over-cap behavior are
+   verified by construction in the thin coordinator.
+5. Word/char count in a status bar. → REQ-044 · *tests:* counts for sample inputs and actor path.
 6. Replace `TextEditor` with `MarkdownTextView` in `ContentView`.
 
 ## Testing
 
-Unit-test the pure pieces: `MarkdownHighlighter.tokens` (ranges/kinds per element), `MarkdownTheme`
-(style→attributes), counts, and the INV-2 guarantee (apply a pass, assert the document string is
-unchanged) and version-coalescing logic. The `NSViewRepresentable` glue stays thin; its
-framework behaviors (editing/undo/spell-check/find) are `inherent`.
+The implemented test suite covers token kinds and UTF-16 bounds, both backtick and tilde fenced
+blocks with longer closing fences, theme attributes (including the code-block tint), pure and
+actor-based counts, and the INV-2 guarantee that applying attributes preserves the string.
+The `NSViewRepresentable` glue remains thin; editing, undo, spell-check, and Find & Replace are
+framework-provided/inherent. Version/snapshot stale-result rejection and over-cap suspension are
+coordinator guards, not separately unit-tested UI behavior.
 
 ## Risks / open questions
 
 - `NSViewRepresentable` update loops (guarded per ADR-0010) — watch for double `updateNSView`.
 - Regex correctness on nested/edge constructs — cover with targeted tests; accept lexical limits
   (ADR-0009).
-- Large-file threshold value — tune; start conservative.
+- Large-file threshold value (currently 100,000 UTF-16 code units) — tune against real documents.
 
 ## Out of scope
 
-In-fence language coloring, images (INC-03), WYSIWYG (INC-04), remaining Tier-2 (definition lists,
-emoji, heading anchors), `swift-markdown` structured rendering.
+In-fence language coloring, images (INC-03), WYSIWYG (INC-04), remaining Tier-2 (smart
+typography, definition lists, emoji, heading anchors), and `swift-markdown` structured rendering.

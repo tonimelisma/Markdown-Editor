@@ -5,7 +5,8 @@
 - **Deciders:** Toni Melisma
 - **Related:** [ADR-0002](0002-swiftui-first-appkit-where-needed.md), [ADR-0007](0007-editor-surface-interim-texteditor.md); [RESEARCH-0001](../research/0001-inc01-editor-foundation.md); INC-01
 
-> Living decision — **explicitly expected to be revisited** (see "Revisit trigger").
+> Living decision — reassessed during INC-02; `FileDocument` remains adequate for the current
+> single-document, local-first editor (see "Revisit trigger").
 
 ## Context
 
@@ -32,9 +33,10 @@ and gives autosave + Versions for free.
 - **Positive:** minimal code; standard document lifecycle, tabs, Recents, and Versions inherited.
 - **Negative / costs (accepted for now):** awkward undo tracking, no control over autosave
   timing, and the whole file lives in memory (fine for typical Markdown, not for huge files).
-- **Revisit trigger:** re-evaluate at **INC-02** (when the `NSTextView` editor lands) or sooner
-  if undo fidelity (INV-1 no data loss), large files, or external-change handling prove
-  inadequate — likely moving to `ReferenceFileDocument` or `NSDocument`. Update this ADR then.
+- **Revisit outcome / trigger:** INC-02 retained `FileDocument`; the TextKit 1 wrapper binds the
+  same string-backed document model and did not require a model change. Re-evaluate if undo
+  fidelity (INV-1 no data loss), large files, or external-change handling prove inadequate —
+  likely moving to `ReferenceFileDocument` or `NSDocument`.
 
 ## Alternatives considered
 

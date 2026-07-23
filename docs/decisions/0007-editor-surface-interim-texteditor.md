@@ -1,12 +1,12 @@
 # ADR-0007 — Editor surface: stock SwiftUI TextEditor (interim, INC-01 only)
 
-- **Status:** Accepted (interim)
+- **Status:** Superseded by ADR-0008 (implemented in INC-02)
 - **Date:** 2026-07-22
 - **Deciders:** Toni Melisma
 - **Related:** [ADR-0002](0002-swiftui-first-appkit-where-needed.md), [ADR-0006](0006-document-model-filedocument.md); [RESEARCH-0001](../research/0001-inc01-editor-foundation.md); INC-01, SPIKE-01, INC-02
 
-> Living decision — **interim by design.** SPIKE-01 owns the definitive text-engine choice;
-> this ADR will be updated/superseded when INC-02 adopts it.
+> Historical decision — **interim by design.** SPIKE-01 selected TextKit 1 and INC-02 replaced
+> this surface with `MarkdownTextView`; see [ADR-0008](0008-textkit1-nstextview-editor-engine.md).
 
 ## Context
 
@@ -31,8 +31,8 @@ no text engine, leaving that choice entirely to SPIKE-01.
 - **Negative / costs:** no syntax styling; **find/replace deferred to INC-02**; the `TextEditor`
   is largely **throwaway** — INC-02 replaces it with the SPIKE-01-chosen `NSTextView`-based
   surface.
-- **Revisit trigger:** SPIKE-01 selects the engine; **INC-02** swaps the surface and this ADR
-  is updated/superseded accordingly.
+- **Outcome:** SPIKE-01 selected TextKit 1 and INC-02 swapped the surface as planned. This ADR
+  is superseded and retained only as the INC-01 historical record.
 
 ## Alternatives considered
 

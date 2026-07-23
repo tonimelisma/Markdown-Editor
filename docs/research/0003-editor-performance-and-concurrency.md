@@ -42,8 +42,8 @@ brain's predictive motor model — you needn't consciously perceive it to be slo
 
 **Data structures** (gap buffer / piece table / rope): we don't own the buffer — `NSTextStorage`
 is our store (NSString-backed, contiguous-ish). Fine to low-MB; it's *why* huge files slow down
-(it's not a rope), so the mitigation is viewport-limited work + a size threshold, not replacing
-the buffer.
+(it's not a rope), so the initial mitigation is a size threshold rather than replacing the
+buffer. Viewport-limited work is a possible future optimization, not the INC-02 implementation.
 
 **Highlighting engines:** tree-sitter is incremental and grammatical (why serious *code* editors
 use it). For **Markdown source**, regex is the pragmatic standard (Marklight, HighlightedTextEditor)
@@ -75,14 +75,16 @@ tree-sitter-markdown stays a future option (esp. for in-fence language coloring)
   callbacks, and applying `NSTextStorage` attributes. Per-keystroke main-thread work = the native
   text insertion only.
 - **Highlight compute is always off-main:** `actor MarkdownHighlighter` holds the once-compiled
-  `NSRegularExpression`s; `func tokens(for text: String, version: Int) -> [Token]`, `Token =
-  (NSRange, TokenStyle)` — only `Sendable` values cross the boundary (String in, value tokens out).
+  `NSRegularExpression`s; `func tokens(for text: String) -> [Token]`. `Token` is a `Sendable`
+  value containing only `NSRange` and `TokenStyle`; a `String` goes in and value tokens return.
 - **Pipeline:** `textDidChange` (main) → bump `version` → `Task { await highlighter.tokens(...) }`
-  → back on `@MainActor`, **discard if `version` is stale** (coalesces async races) → apply
-  `NSTextStorage` attributes (display-only; the string is never changed ⇒ INV-2).
-- **Debounce + viewport-first:** coalesce rapid edits; style the visible range + margin first,
-  then the rest. Above a size threshold, cap/disable live highlighting.
-- Only invalidate/repaint changed ranges.
+  → back on `@MainActor`, **discard if `version` is stale or the text snapshot differs**
+  (coalesces async races) → apply `NSTextStorage` attributes (display-only; the string is never
+  changed ⇒ INV-2).
+- **Debounce + cap:** INC-02 uses a 120 ms debounce. Above 100,000 UTF-16 code units it cancels
+  pending work and suspends styling rather than doing a full synchronous attribute reset.
+- **Counts:** `TextStatsComputer` is a cancellation-aware actor, so a new edit coalesces stale
+  whole-document count scans instead of leaving detached work queued behind it.
 
 ## Sources
 

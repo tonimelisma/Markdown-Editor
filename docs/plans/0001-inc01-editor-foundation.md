@@ -2,7 +2,7 @@
 
 - **Increment:** INC-01
 - **Date:** 2026-07-22
-- **Status:** Approved
+- **Status:** Implemented — merged via PR #1 (squash `6211ecb`, 2026-07-22)
 - **Requirements:** REQ-001…007, REQ-010…012, REQ-020…022, REQ-030…032
 - **Depends on:** [RESEARCH-0001](../research/0001-inc01-editor-foundation.md),
   [ADR-0006](../decisions/0006-document-model-filedocument.md) (FileDocument),
@@ -24,7 +24,7 @@ standard macOS document behaviors (autosave, Versions, tabs, Recents, Light/Dark
   and `writableContentTypes` to `[.markdown]`; read `Data` → decode UTF-8, throwing
   `CocoaError(.fileReadCorruptFile)` on failure; write `text` back as UTF-8; default initializer
   produces an **empty** document (drop `"Hello, world!"`). Storing the file as a `String`
-  preserves untouched bytes and existing line endings (no normalization).
+  preserves untouched bytes, including existing line endings and a leading BOM (no normalization).
 - **Editor (`ContentView`)** — `TextEditor(text: $document.text)`; undo/redo and spell-check
   are provided by the framework.
 - **Project config** — declare the imported type + document type (via build settings /
@@ -35,8 +35,8 @@ standard macOS document behaviors (autosave, Versions, tabs, Recents, Light/Dark
 
 1. Add `UTType.markdown`. → REQ-001 · *test:* resolves to `net.daringfireball.markdown`.
 2. Update document read/write: UTF-8, invalid-UTF-8 throws, empty new doc, round-trip fidelity
-   (incl. CRLF). → REQ-001/002/003/004/007 · *tests:* round-trip bytes, CRLF preserved,
-   invalid-UTF-8 error, new doc empty.
+   (incl. CRLF and BOM). → REQ-001/002/003/004/007 · *tests:* round-trip bytes, CRLF and BOM
+   preserved, invalid-UTF-8 error, new doc empty.
 3. Set `readable`/`writableContentTypes` + declare the document type in the project. → REQ-003
    · *verify:* Open panel lists `.md`; double-click opens.
 4. `ContentView` plain-text editing. → REQ-010/011/012 · *verify:* type/undo/redo; spell-check.

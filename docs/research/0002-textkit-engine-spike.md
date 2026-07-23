@@ -4,9 +4,10 @@
 - **For:** SPIKE-01 (standalone spike; feeds INC-02)
 - **Type:** native-API investigation (throwaway POC) + online research
 - **Status:** Done
-- **Outcome:** **TextKit 1 `NSTextView`** for the editor surface, with
-  `setTemporaryAttributes` for live syntax highlighting. Recorded as
-  [ADR-0008](../decisions/0008-textkit1-nstextview-editor-engine.md).
+- **Outcome:** **TextKit 1 `NSTextView`** for the editor surface. The POC confirmed temporary
+  attributes as a rendering mechanism; INC-02 subsequently established that full typography
+  requires `NSTextStorage` display attributes while still preserving the saved string. Recorded
+  in [ADR-0008](../decisions/0008-textkit1-nstextview-editor-engine.md) and ADR-0010.
 
 > Spike per [ADR-0005](../decisions/0005-discovery-and-build-are-separate-units.md): POC code
 > is throwaway (lived in the scratchpad, never merged). This doc + the ADR are the outputs.
@@ -48,10 +49,11 @@ onward): TextKit 1 `NSTextView`, TextKit 2 `NSTextView`, or a third-party view?
 
 ## Recommendation
 
-**TextKit 1 `NSTextView`** via `usingTextLayoutManager: false`, highlighting with
-`setTemporaryAttributes`, wrapped in `NSViewRepresentable` (per [ADR-0002](../decisions/0002-swiftui-first-appkit-where-needed.md)).
-Stable, proven, empirically working; sidesteps TextKit 2's rendering-attribute unreliability —
-our exact use case. Revisit TextKit 2 only if/when it matures.
+**TextKit 1 `NSTextView`** via `usingTextLayoutManager: false`, wrapped in `NSViewRepresentable`
+(per [ADR-0002](../decisions/0002-swiftui-first-appkit-where-needed.md)). The POC's temporary
+attributes remain useful evidence about TextKit 1, but INC-02 uses `NSTextStorage` display
+attributes because temporary overlays do not supply the necessary typography. Revisit TextKit 2
+only if/when it matures.
 
 ## Decision (user-approved 2026-07-22)
 

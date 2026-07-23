@@ -22,20 +22,24 @@ be async. We're on Swift 6 + AppKit, where views are `@MainActor` and cross-thre
   callbacks, and *applying* attributes. The only per-keystroke main-thread work is the native
   text insertion.
 - **Highlight compute is always off-main**, modelled as `actor MarkdownHighlighter` holding the
-  once-compiled `NSRegularExpression`s. Its API is `func tokens(for text: String, version: Int)
-  -> [Token]` where `Token == (NSRange, TokenStyle)` and only `Sendable` values cross the actor
-  boundary (String in; value tokens out — **no AppKit types cross**).
+  once-compiled `NSRegularExpression`s. Its API is `func tokens(for text: String) -> [Token]`,
+  where `Token` contains only `NSRange` and `TokenStyle` value data. The actor boundary carries a
+  `String` in and `Sendable` value tokens out — **no AppKit object crosses**.
 - **Coalesced pipeline:** `textDidChange` (main) → bump a monotonic `version` → `Task { await
-  highlighter.tokens(for: snapshot, version:) }` → hop to `@MainActor` → **discard if `version`
-  is stale** → apply.
+  highlighter.tokens(for: snapshot) }` → hop to `@MainActor` → **discard if `version` is stale
+  or the text no longer matches the snapshot** → apply.
 - **Apply styling via `NSTextStorage` attributes** (font, color, …). This is *display* state:
   it changes how text is drawn but **never the string** — which is what we save — so INV-2 holds
   (no file change). (`NSLayoutManager` temporary attributes were considered but can't change
   font/size, so they can't render headings or bold weight; storage attributes are required.)
   Applied from `textDidChange` (never inside `processEditing()`) and batched in
   `beginEditing()`/`endEditing()` to avoid caret jumps and coalesce notifications.
-- **Debounce + viewport-first:** coalesce rapid edits; style the visible range + margin first,
-  the remainder after. Above a size threshold, cap or disable live highlighting.
+- **Debounce + cap:** coalesce rapid edits with a 120 ms debounce. Above 100,000 UTF-16 code
+  units, cancel pending work and suspend live styling; do not synchronously walk the whole text
+  storage to reset attributes. Viewport-first incremental styling remains a future optimization,
+  not current behavior.
+- **Counts are secondary work too:** `TextStatsComputer` is an actor. It scans a text snapshot
+  off-main, checks cancellation while scanning, and publishes only the latest completed result.
 - **`NSViewRepresentable`:** the `Coordinator` holds the `Binding`; guard update loops with a
   programmatic-update flag + compare-before-set.
 
@@ -44,8 +48,8 @@ be async. We're on Swift 6 + AppKit, where views are `@MainActor` and cross-thre
 - **Positive:** IntelliJ-style "keystroke first, everything async"; INV-2 safe by construction;
   Swift-6-clean isolation (pure `Sendable` compute, `@MainActor` apply); stale results can't
   clobber fresh ones.
-- **Negative / costs:** an extra actor hop and version bookkeeping; viewport logic to maintain;
-  a size threshold to tune.
+- **Negative / costs:** actor hops and version bookkeeping; live styling deliberately stops above
+  the cap; the threshold must be tuned against real documents.
 - **Revisit trigger:** if the regex compute itself becomes the bottleneck, move to incremental
   (tree-sitter) rather than changing the threading contract.
 

@@ -61,18 +61,18 @@ increment** during the discovery phase (the *Specify* step of [CLAUDE.md §3](..
 
 ---
 
-## INC-02 · Markdown engine + live-styled source — ✅ build (pending merge)
+## INC-02 · Markdown engine + live-styled source — ✅ Done
 
 ### E · Live-styled source
 
 | ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
 |----|--------------------|-----|--------|----------------|-------------|
 | REQ-040 | WHILE in the source editor, the system shall apply live syntax styling as the user types, using display attributes that never modify the file bytes (INV-2). | INC-02 | Done | `MarkdownTextView.Coordinator.apply` | tests `attributeStylingLeavesStringUnchanged`, `rangesWithinBounds` |
-| REQ-041 | The system shall style GFM elements: headings, bold, italic, inline code, fenced code blocks, links, images, ordered/unordered lists, task lists, blockquotes, tables, strikethrough, thematic breaks. | INC-02 | Done | `MarkdownHighlighter` + `MarkdownTheme` | tests `stylesHeadingWithLevel`, `stylesInlineElements`, `returnsAttributesPerStyle` |
+| REQ-041 | The system shall style GFM elements: headings, bold, italic, inline code, fenced code blocks, links, images, ordered/unordered lists, task lists, blockquotes, tables, strikethrough, thematic breaks. | INC-02 | Done | `MarkdownHighlighter` + `MarkdownTheme` | tests `stylesHeadingWithLevel`, `stylesInlineElements`, `stylesFencedCodeBlock`, `returnsAttributesPerStyle` |
 | REQ-042 | The system shall style the light Tier-2 elements: footnotes, `==highlight==`, superscript, subscript. | INC-02 | Done | `MarkdownHighlighter` | test `stylesLightTier2` |
 | REQ-043 | The system shall visually distinguish fenced code blocks (monospace + subtle tint). | INC-02 | Done | `MarkdownHighlighter` + `MarkdownTheme` | test `stylesFencedCodeBlock` |
-| REQ-044 | The system shall display a live word and character count for the document. | INC-02 | Done | `TextStats` + `ContentView` | test `countsWordsAndCharacters` |
-| REQ-045 | WHILE editing a large document, the system shall keep typing latency imperceptible (highlighting debounced and computed off the main thread). | INC-02 | Done | `MarkdownTextView.Coordinator` (off-main compute, debounce, size threshold) | inherent (by construction: keystroke path does only native insertion) |
+| REQ-044 | The system shall display a live word and character count for the document. | INC-02 | Done | `TextStats`, `TextStatsComputer`, `ContentView` | tests `countsWordsAndCharacters`, `computesCountsOffMainActor` |
+| REQ-045 | WHILE editing a large document, the system shall keep typing latency imperceptible (highlighting debounced and computed off the main thread). | INC-02 | Done | `MarkdownTextView.Coordinator` (120 ms debounce, version gate, 100,000 UTF-16-unit styling cap) + `TextStatsComputer` (off-main, cancellation-aware scan) | test `computesCountsOffMainActor`; inherent (native insertion is the synchronous edit path; over-cap styling is suspended) |
 | REQ-046 | The system shall support standard find and replace within the document. | INC-02 | Done | `MarkdownTextView` (`usesFindBar`) | inherent (framework-provided) |
 
 *Reconciled:* REQ-010/011/012 (plain-text editing, undo/redo, spell-check) re-pointed from

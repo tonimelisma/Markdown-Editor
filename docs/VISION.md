@@ -24,9 +24,10 @@ A native macOS Markdown editor — pure and simple.
 
 ## 3. Editing model
 
-- Two modes over the *same* file: **WYSIWYG (the default)** and **live-styled source**,
-  toggleable. The source mode shows the raw Markdown *with live styling* (markup visible but
-  formatted) — there is no separate plain-unstyled mode.
+- Target: two modes over the *same* file — **WYSIWYG (the eventual default)** and live-styled
+  source, toggleable. The source mode shows the raw Markdown *with live styling* (markup visible
+  but formatted) — there is no separate plain-unstyled mode. INC-02 delivers the source mode;
+  WYSIWYG and the mode toggle remain INC-04 work.
 - Switching modes is **display-only** — it never alters the file.
 - We build up to it: **plain-text → live-styled source → WYSIWYG-default** (see [ROADMAP.md](ROADMAP.md)).
 
@@ -37,6 +38,8 @@ A native macOS Markdown editor — pure and simple.
   smart typography (curly quotes, em/en-dashes, ellipses); definition lists; emoji shortcodes
   `:name:`; heading anchors/attributes `{#id}`.
 - **Syntax-highlighted fenced code blocks** — language-aware coloring inside ` ``` ` fences.
+  INC-02 provides the source-level visual treatment (monospace + tint); language-aware
+  in-fence coloring remains deferred until a code-highlighting engine is selected.
 - **Images (first-class):**
   - Inline display in the editor (not just the `![]()` markup).
   - Insert via clipboard **paste** and **drag-and-drop**.
@@ -64,10 +67,11 @@ Only what is actually decided lives here.
 - **Ride the platform.** Prefer native, system-provided behaviors (autosave, Versions, tabs,
   find, spell-check, …) over reinventing them.
 
-**Deferred to increment-1 research (not decided here):** the text engine (TextKit 1 vs
-TextKit 2 vs a third-party view), the Markdown parser, the document model (`FileDocument`
-vs `NSDocument`/`ReferenceFileDocument`), and any third-party dependency decisions. These
-will be resolved by spikes and recorded as ADRs before implementation.
+**Resolved architecture:** the editor uses TextKit 1 `NSTextView` through an AppKit bridge
+([ADR-0008](decisions/0008-textkit1-nstextview-editor-engine.md)); live source styling uses a
+compiled-regex highlighter ([ADR-0009](decisions/0009-regex-live-highlighting-engine.md)); and
+the document model remains `FileDocument` ([ADR-0006](decisions/0006-document-model-filedocument.md)).
+Third-party dependencies remain unadopted. Revisit these decisions only through their living ADRs.
 
 ## 7. Invariants
 
