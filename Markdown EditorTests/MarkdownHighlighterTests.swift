@@ -21,7 +21,7 @@ struct MarkdownHighlighterTests {
 
     // Verifies: REQ-041
     @Test func stylesInlineElements() async {
-        let tokens = await MarkdownHighlighter().tokens(for: "**b** *i* `c` [a](b) ![x](y)")
+        let tokens = await MarkdownHighlighter().tokens(for: "**b** *i* _also italic_ `c` [a](b) ![x](y)")
         #expect(tokens.contains { $0.style == .bold })
         #expect(tokens.contains { $0.style == .italic })
         #expect(tokens.contains { $0.style == .inlineCode })
@@ -40,8 +40,8 @@ struct MarkdownHighlighterTests {
 
     // Verifies: REQ-043
     @Test func stylesFencedCodeBlock() async {
-        let tokens = await MarkdownHighlighter().tokens(for: "```\ncode\n```")
-        #expect(tokens.contains { $0.style == .codeBlock })
+        let tokens = await MarkdownHighlighter().tokens(for: "```swift\nlet answer = 42\n```\n\n~~~\ncode\n~~~")
+        #expect(tokens.filter { $0.style == .codeBlock }.count == 2)
     }
 
     // Verifies: REQ-040 — token ranges stay within the text bounds.
@@ -74,6 +74,7 @@ struct MarkdownThemeTests {
         #expect(theme.attributes(for: .heading(level: 1))[.font] != nil)
         #expect(theme.attributes(for: .inlineCode)[.font] != nil)
         #expect(theme.attributes(for: .highlight)[.backgroundColor] != nil)
+        #expect(theme.attributes(for: .codeBlock)[.backgroundColor] != nil)
     }
 }
 

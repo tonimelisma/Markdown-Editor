@@ -29,8 +29,12 @@ struct MarkdownTheme {
             return [.font: NSFont.systemFont(ofSize: baseFontSize, weight: .bold)]
         case .italic:
             return [.font: NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)]
-        case .inlineCode, .codeBlock, .table:
+        case .inlineCode, .table:
             return [.font: monoFont, .foregroundColor: NSColor.systemPurple]
+        case .codeBlock:
+            return [.font: monoFont,
+                    .foregroundColor: NSColor.systemPurple,
+                    .backgroundColor: NSColor.systemPurple.withAlphaComponent(0.10)]
         case .link, .image:
             return [.foregroundColor: NSColor.linkColor]
         case .listMarker, .taskMarker, .thematicBreak, .blockquote:
