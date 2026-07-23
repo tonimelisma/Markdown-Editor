@@ -40,7 +40,7 @@ struct MarkdownHighlighterTests {
 
     // Verifies: REQ-043
     @Test func stylesFencedCodeBlock() async {
-        let tokens = await MarkdownHighlighter().tokens(for: "```swift\nlet answer = 42\n```\n\n~~~\ncode\n~~~")
+        let tokens = await MarkdownHighlighter().tokens(for: "````swift\nlet answer = 42\n`````\n\n~~~\ncode\n~~~~")
         #expect(tokens.filter { $0.style == .codeBlock }.count == 2)
     }
 

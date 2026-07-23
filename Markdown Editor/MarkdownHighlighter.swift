@@ -24,7 +24,8 @@ actor MarkdownHighlighter {
         }
         headingRegex = re(#"^(#{1,6})[ \t]+\S.*$"#)
         rules = [
-            Rule(regex: re(#"(?m)^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$"#), style: .codeBlock),
+            Rule(regex: re(#"(?m)^`{3,}[^\n]*\n[\s\S]*?^`{3,}[ \t]*$"#), style: .codeBlock),
+            Rule(regex: re(#"(?m)^~{3,}[^\n]*\n[\s\S]*?^~{3,}[ \t]*$"#), style: .codeBlock),
             Rule(regex: re(#"`[^`\n]+`"#), style: .inlineCode),
             Rule(regex: re(#"!\[[^\]]*\]\([^)\s]*\)"#), style: .image),
             Rule(regex: re(#"\[[^\]]*\]\([^)\s]*\)"#), style: .link),
