@@ -13,7 +13,7 @@
 
 Replace the interim `TextEditor` with a TextKit 1 `NSTextView` that live-styles the raw Markdown
 as the user types — GFM core + light Tier-2 — with imperceptible latency, plus a word/char count
-and find & replace. Styling is rendering-only, so the file bytes never change (INV-2).
+and find & replace. Styling uses display attributes only, so the file bytes never change (INV-2).
 
 ## Approach (per ADR-0010)
 
@@ -28,8 +28,8 @@ and find & replace. Styling is rendering-only, so the file bytes never change (I
   `func tokens(for text: String, version: Int) -> HighlightPass` returning `[(NSRange, TokenStyle)]`.
   Pure, `Sendable` in/out. (Testable seam.)
 - **Pipeline** — `textDidChange` → bump `version` → `Task { await highlighter.tokens(...) }` →
-  `@MainActor` → drop if stale → `layoutManager.setTemporaryAttributes` for each token. Debounced;
-  visible range + margin first. Size threshold caps live styling for very large files.
+  `@MainActor` → drop if stale → apply `NSTextStorage` attributes (display-only; string unchanged)
+  for each token. Debounced; size threshold caps live styling for very large files.
 - **`MarkdownTheme`** — maps `TokenStyle` → attributes (font/size/weight, color), light/dark aware;
   dims syntax markers.
 - **Counts** — `word`/`character` counts from the text (computed off-main for large docs), shown
@@ -42,7 +42,7 @@ and find & replace. Styling is rendering-only, so the file bytes never change (I
    · *tests:* given source, tokens cover the expected ranges/kinds (pure-function tests).
 3. `MarkdownTextView` (`NSViewRepresentable` + `Coordinator`), TextKit 1, binding-safe. → REQ-010/011/012
    re-point; REQ-046 find bar · *verify:* `inherent` (NSTextView) + binding tests where feasible.
-4. Wire the coalesced pipeline (version + debounce + viewport) applying `setTemporaryAttributes`.
+4. Wire the coalesced pipeline (version + debounce + size threshold) applying `NSTextStorage` attributes.
    → REQ-040/045 · *tests:* highlighting leaves `text` byte-identical (INV-2); stale versions dropped.
 5. Word/char count in a status bar. → REQ-044 · *tests:* counts for sample inputs.
 6. Replace `TextEditor` with `MarkdownTextView` in `ContentView`.
