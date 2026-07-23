@@ -81,9 +81,9 @@ struct MarkdownTextView: NSViewRepresentable {
             let snapshot = textView.string
             task?.cancel()
 
-            // Above the threshold, keep only base styling to protect typing latency (REQ-045).
+            // Above the threshold, suspend styling entirely. Resetting attributes here would
+            // synchronously traverse the full storage on every keystroke, defeating REQ-045.
             if snapshot.utf16.count > maxHighlightLength {
-                applyBaseOnly()
                 return
             }
             task = Task { [weak self] in
@@ -96,12 +96,6 @@ struct MarkdownTextView: NSViewRepresentable {
                 if Task.isCancelled { return }
                 self.apply(tokens, expectedVersion: expectedVersion, expectedText: snapshot)
             }
-        }
-
-        private func applyBaseOnly() {
-            guard let storage = textView?.textStorage else { return }
-            storage.setAttributes(theme.baseAttributes,
-                                  range: NSRange(location: 0, length: storage.length))
         }
 
         // REQ-040/041/042/043: style via NSTextStorage attributes — display only; the saved
