@@ -10,6 +10,7 @@ import SwiftUI
 struct ContentView: View {
     @Binding var document: Markdown_EditorDocument
     @State private var counts = TextStats.Counts(words: 0, characters: 0)
+    @State private var statsComputer = TextStatsComputer()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,13 +27,11 @@ struct ContentView: View {
             }
         }
         // REQ-044/045: count a snapshot off-main so a large document does not add CPU work
-        // to the synchronous text-editing path. SwiftUI cancels the previous task on new input.
+        // to the synchronous text-editing path. The actor observes task cancellation while
+        // scanning, so a newer edit coalesces stale count work promptly.
         .task(id: document.text) {
             let snapshot = document.text
-            let next = await Task.detached(priority: .utility) {
-                TextStats.counts(snapshot)
-            }.value
-            guard !Task.isCancelled else { return }
+            guard let next = await statsComputer.counts(for: snapshot), !Task.isCancelled else { return }
             counts = next
         }
     }

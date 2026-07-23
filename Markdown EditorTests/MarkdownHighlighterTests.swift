@@ -63,6 +63,13 @@ struct TextStatsTests {
         #expect(TextStats.characterCount("abc") == 3)
         #expect(TextStats.counts("one two") == .init(words: 2, characters: 7))
     }
+
+    // Verifies: REQ-044/045
+    @Test func computesCountsOffMainActor() async {
+        let computer = TextStatsComputer()
+        let counts = await computer.counts(for: "one two")
+        #expect(counts == .init(words: 2, characters: 7))
+    }
 }
 
 @MainActor
