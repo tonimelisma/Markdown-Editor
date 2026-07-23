@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Binding var document: Markdown_EditorDocument
+    @State private var counts = TextStats.Counts(words: 0, characters: 0)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,12 +18,22 @@ struct ContentView: View {
             HStack {
                 Spacer()
                 // REQ-044: live word / character count.
-                Text("\(TextStats.wordCount(document.text)) words · \(TextStats.characterCount(document.text)) characters")
+                Text("\(counts.words) words · \(counts.characters) characters")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
             }
+        }
+        // REQ-044/045: count a snapshot off-main so a large document does not add CPU work
+        // to the synchronous text-editing path. SwiftUI cancels the previous task on new input.
+        .task(id: document.text) {
+            let snapshot = document.text
+            let next = await Task.detached(priority: .utility) {
+                TextStats.counts(snapshot)
+            }.value
+            guard !Task.isCancelled else { return }
+            counts = next
         }
     }
 }

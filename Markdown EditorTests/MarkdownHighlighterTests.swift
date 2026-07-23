@@ -61,6 +61,7 @@ struct TextStatsTests {
         #expect(TextStats.wordCount("  spaced \n out \t words ") == 3)
         #expect(TextStats.wordCount("") == 0)
         #expect(TextStats.characterCount("abc") == 3)
+        #expect(TextStats.counts("one two") == .init(words: 2, characters: 7))
     }
 }
 
