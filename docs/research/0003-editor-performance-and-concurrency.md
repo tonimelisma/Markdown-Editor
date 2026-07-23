@@ -5,8 +5,8 @@
 - **Type:** online research (deep dive)
 - **Status:** Done
 - **Outcome:** A concurrency + highlighting pipeline that keeps typing on the main thread with
-  nothing else in the path, computes styling off-main, and applies it as rendering-only
-  attributes. Recorded as [ADR-0010](../decisions/0010-concurrency-highlighting-pipeline.md)
+  nothing else in the path, computes styling off-main, and applies it as display-only
+  `NSTextStorage` attributes (never the string). Recorded as [ADR-0010](../decisions/0010-concurrency-highlighting-pipeline.md)
   (pipeline) and [ADR-0009](../decisions/0009-regex-live-highlighting-engine.md) (regex engine).
 
 ## Question
@@ -52,9 +52,11 @@ tree-sitter-markdown stays a future option (esp. for in-fence language coloring)
 
 ## 3. macOS / Swift mechanics that bite
 
-- **Rendering-only attributes protect INV-2.** `NSLayoutManager.setTemporaryAttributes(_:forCharacterRange:)`
-  is display-only — never touches `NSTextStorage`'s string or stored attributes ⇒ no file
-  mutation, no undo pollution, no selection change
+- **Styling is display state, not the string — that's what protects INV-2.** We save the
+  `NSTextStorage` *string*, which attribute styling never changes. `NSLayoutManager`'s
+  `setTemporaryAttributes` is purely display but can't change font/size, so we style via
+  `NSTextStorage` attributes instead — still string-safe, applied from `textDidChange` (not
+  `processEditing()`) and batched in `beginEditing()`/`endEditing()` to avoid caret jumps
   ([Tietze](https://christiantietze.de/posts/2017/11/syntax-highlight-nstextstorage-insertion-point-change/)).
 - **Never highlight inside `processEditing()`** — `NSTextStorage` unions `edited(...)` ranges,
   so the selection-fix runs on the widened range and **jumps the caret**. Highlight from
@@ -70,14 +72,14 @@ tree-sitter-markdown stays a future option (esp. for in-fence language coloring)
 
 **Threading contract**
 - **Main actor** owns all AppKit: `NSTextView`, `NSTextStorage`, `NSLayoutManager`, delegate
-  callbacks, and applying temporary attributes. Per-keystroke main-thread work = the native text
-  insertion only.
+  callbacks, and applying `NSTextStorage` attributes. Per-keystroke main-thread work = the native
+  text insertion only.
 - **Highlight compute is always off-main:** `actor MarkdownHighlighter` holds the once-compiled
   `NSRegularExpression`s; `func tokens(for text: String, version: Int) -> [Token]`, `Token =
   (NSRange, TokenStyle)` — only `Sendable` values cross the boundary (String in, value tokens out).
 - **Pipeline:** `textDidChange` (main) → bump `version` → `Task { await highlighter.tokens(...) }`
-  → back on `@MainActor`, **discard if `version` is stale** (coalesces async races) →
-  `setTemporaryAttributes`.
+  → back on `@MainActor`, **discard if `version` is stale** (coalesces async races) → apply
+  `NSTextStorage` attributes (display-only; the string is never changed ⇒ INV-2).
 - **Debounce + viewport-first:** coalesce rapid edits; style the visible range + margin first,
   then the rest. Above a size threshold, cap/disable live highlighting.
 - Only invalidate/repaint changed ranges.

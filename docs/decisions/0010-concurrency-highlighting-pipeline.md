@@ -28,9 +28,12 @@ be async. We're on Swift 6 + AppKit, where views are `@MainActor` and cross-thre
 - **Coalesced pipeline:** `textDidChange` (main) → bump a monotonic `version` → `Task { await
   highlighter.tokens(for: snapshot, version:) }` → hop to `@MainActor` → **discard if `version`
   is stale** → apply.
-- **Apply as rendering-only attributes** via `NSLayoutManager.setTemporaryAttributes` — never
-  mutating `NSTextStorage` (protects INV-2: no file change, no undo pollution, no caret jump).
-  Applied from `textDidChange`, never inside `processEditing()`.
+- **Apply styling via `NSTextStorage` attributes** (font, color, …). This is *display* state:
+  it changes how text is drawn but **never the string** — which is what we save — so INV-2 holds
+  (no file change). (`NSLayoutManager` temporary attributes were considered but can't change
+  font/size, so they can't render headings or bold weight; storage attributes are required.)
+  Applied from `textDidChange` (never inside `processEditing()`) and batched in
+  `beginEditing()`/`endEditing()` to avoid caret jumps and coalesce notifications.
 - **Debounce + viewport-first:** coalesce rapid edits; style the visible range + margin first,
   the remainder after. Above a size threshold, cap or disable live highlighting.
 - **`NSViewRepresentable`:** the `Coordinator` holds the `Binding`; guard update loops with a
@@ -49,7 +52,8 @@ be async. We're on Swift 6 + AppKit, where views are `@MainActor` and cross-thre
 ## Alternatives considered
 
 - **Synchronous highlight on keystroke:** rejected — the classic jank source.
-- **Mutating `NSTextStorage` attributes:** rejected — caret jumps, undo pollution, and it risks
-  INV-2.
+- **`NSLayoutManager` temporary (rendering-only) attributes:** insufficient — they can't change
+  font/size (no headings or bold weight). Storage attributes are display-only for our purposes
+  (the string is never touched ⇒ INV-2), applied outside `processEditing()` to avoid caret jumps.
 - **TextKit 2 rendering attributes:** rejected upstream in [ADR-0008](0008-textkit1-nstextview-editor-engine.md)
   (documented-unreliable for dynamic ranges).

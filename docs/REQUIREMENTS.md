@@ -39,9 +39,9 @@ increment** during the discovery phase (the *Specify* step of [CLAUDE.md §3](..
 
 | ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
 |----|--------------------|-----|--------|----------------|-------------|
-| REQ-010 | The system shall provide plain-text editing of the document contents. | INC-01 | Done | `ContentView` (`TextEditor`) | inherent (framework-provided) |
-| REQ-011 | The system shall support unlimited undo and redo of edits. | INC-01 | Done | `TextEditor` | inherent (framework-provided) |
-| REQ-012 | The system shall integrate the macOS spell-checker. | INC-01 | Done | `TextEditor` | inherent (framework-provided) |
+| REQ-010 | The system shall provide plain-text editing of the document contents. | INC-01 | Done | `MarkdownTextView` (TextKit 1 `NSTextView`) | inherent (framework-provided) |
+| REQ-011 | The system shall support unlimited undo and redo of edits. | INC-01 | Done | `MarkdownTextView` (`allowsUndo`) | inherent (framework-provided) |
+| REQ-012 | The system shall integrate the macOS spell-checker. | INC-01 | Done | `MarkdownTextView` (`NSTextView`) | inherent (framework-provided) |
 
 ### C · Standard macOS behaviors
 
@@ -61,22 +61,22 @@ increment** during the discovery phase (the *Specify* step of [CLAUDE.md §3](..
 
 ---
 
-## INC-02 · Markdown engine + live-styled source — 🔵 Active (discovery)
+## INC-02 · Markdown engine + live-styled source — ✅ build (pending merge)
 
 ### E · Live-styled source
 
 | ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
 |----|--------------------|-----|--------|----------------|-------------|
-| REQ-040 | WHILE in the source editor, the system shall apply live syntax styling as the user types, using rendering-only attributes that never modify the file bytes (INV-2). | INC-02 | Planned | — | — |
-| REQ-041 | The system shall style GFM elements: headings, bold, italic, inline code, fenced code blocks, links, images, ordered/unordered lists, task lists, blockquotes, tables, strikethrough, thematic breaks. | INC-02 | Planned | — | — |
-| REQ-042 | The system shall style the light Tier-2 elements: footnotes, `==highlight==`, superscript, subscript. | INC-02 | Planned | — | — |
-| REQ-043 | The system shall visually distinguish fenced code blocks (monospace + subtle tint). | INC-02 | Planned | — | — |
-| REQ-044 | The system shall display a live word and character count for the document. | INC-02 | Planned | — | — |
-| REQ-045 | WHILE editing a large document, the system shall keep typing latency imperceptible (highlighting debounced and computed off the main thread). | INC-02 | Planned | — | — |
-| REQ-046 | The system shall support standard find and replace within the document. | INC-02 | Planned | — | — |
+| REQ-040 | WHILE in the source editor, the system shall apply live syntax styling as the user types, using display attributes that never modify the file bytes (INV-2). | INC-02 | Done | `MarkdownTextView.Coordinator.apply` | tests `attributeStylingLeavesStringUnchanged`, `rangesWithinBounds` |
+| REQ-041 | The system shall style GFM elements: headings, bold, italic, inline code, fenced code blocks, links, images, ordered/unordered lists, task lists, blockquotes, tables, strikethrough, thematic breaks. | INC-02 | Done | `MarkdownHighlighter` + `MarkdownTheme` | tests `stylesHeadingWithLevel`, `stylesInlineElements`, `returnsAttributesPerStyle` |
+| REQ-042 | The system shall style the light Tier-2 elements: footnotes, `==highlight==`, superscript, subscript. | INC-02 | Done | `MarkdownHighlighter` | test `stylesLightTier2` |
+| REQ-043 | The system shall visually distinguish fenced code blocks (monospace + subtle tint). | INC-02 | Done | `MarkdownHighlighter` + `MarkdownTheme` | test `stylesFencedCodeBlock` |
+| REQ-044 | The system shall display a live word and character count for the document. | INC-02 | Done | `TextStats` + `ContentView` | test `countsWordsAndCharacters` |
+| REQ-045 | WHILE editing a large document, the system shall keep typing latency imperceptible (highlighting debounced and computed off the main thread). | INC-02 | Done | `MarkdownTextView.Coordinator` (off-main compute, debounce, size threshold) | inherent (by construction: keystroke path does only native insertion) |
+| REQ-046 | The system shall support standard find and replace within the document. | INC-02 | Done | `MarkdownTextView` (`usesFindBar`) | inherent (framework-provided) |
 
-*Reconciled during the INC-02 build:* REQ-010/011/012 (plain-text editing, undo/redo,
-spell-check) re-point from `TextEditor` to the TextKit 1 `NSTextView` wrapper.
+*Reconciled:* REQ-010/011/012 (plain-text editing, undo/redo, spell-check) re-pointed from
+`TextEditor` to the TextKit 1 `NSTextView` wrapper (`MarkdownTextView`).
 
 ---
 
