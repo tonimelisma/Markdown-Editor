@@ -98,7 +98,7 @@ struct MarkdownTextView: NSViewRepresentable {
             }
         }
 
-        // REQ-040/041/042/043: style via NSTextStorage attributes — display only; the saved
+        // REQ-040/041/043/047–051: style via NSTextStorage attributes — display only; the saved
         // STRING is never modified, so INV-2 holds. Applied outside processEditing (from
         // textDidChange) to avoid caret jumps, and batched in begin/endEditing.
         private func apply(_ tokens: [Token], expectedVersion: Int, expectedText: String) {

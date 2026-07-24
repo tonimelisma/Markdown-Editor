@@ -28,8 +28,8 @@ The MVP source dialect is **CommonMark 0.31.2 plus formal GFM 0.29-gfm**.
   conformance.
 - Footnotes, highlight, superscript, subscript, smart typography, definition lists, emoji, and
   heading attributes move to post-MVP dialect-profile research.
-- Formal GFM’s single- or double-tilde strikethrough semantics take precedence. The existing
-  single-tilde subscript styling is corrected in COR-01 before INC-03.
+- Formal GFM’s single- or double-tilde strikethrough semantics take precedence. COR-01 removed
+  the conflicting single-tilde subscript styling before INC-03.
 - A structural parser for WYSIWYG must be evaluated against this exact contract.
 
 ## Consequences

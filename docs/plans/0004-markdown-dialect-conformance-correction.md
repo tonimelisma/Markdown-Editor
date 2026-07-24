@@ -2,7 +2,7 @@
 
 - **Increment:** COR-01
 - **Date:** 2026-07-22
-- **Status:** Approved for the next build
+- **Status:** Implemented
 - **Requirements:** REQ-047–REQ-051
 - **Depends on:** [ADR-0003](../decisions/0003-markdown-dialect-commonmark-and-formal-gfm.md),
   [ADR-0009](../decisions/0009-regex-live-highlighting-engine.md),

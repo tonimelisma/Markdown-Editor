@@ -38,22 +38,18 @@ research found that bundle was an undocumented house dialect and that its `~text
 meaning conflicts with formal GFM. The delivered behavior remains recorded truthfully in
 REQ-042 and is scheduled for correction next.
 
-## COR-01 · Markdown dialect conformance correction — `[build]` 🔵 Active
+## COR-01 · Markdown dialect conformance correction — `[build]` ✅ Done
 
-**Discovery and plan approved; build is next.**
-
-- Establish CommonMark 0.31.2 plus formal GFM 0.29-gfm as the only supported MVP dialect.
-- Remove claimed footnote, highlight, superscript, and subscript semantics from live styling.
-- Treat both valid one- and two-tilde forms as formal-GFM strikethrough, never subscript.
-- Preserve unfamiliar extension source without styling it as supported semantics.
-- Add focused spec-derived tilde and image-destination fixtures.
-- Keep the highlighter explicitly lexical; do not add a structural parser in this correction.
+Delivered CommonMark 0.31.2 plus formal GFM 0.29-gfm as the only supported MVP dialect labels.
+Removed footnote/highlight/superscript/subscript semantic styling; one- and two-tilde forms are
+formal-GFM strikethrough; unknown extensions remain unstyled; focused image-destination fixtures
+are styled lexically. The regex engine remains a presentation aid, not a parser.
 
 Approved design: [PLAN-0004](plans/0004-markdown-dialect-conformance-correction.md).
 
 ## INC-03 · Paste and drop images — `[build]` ⚪ Planned
 
-**Discovery and plan approved; blocked only on COR-01.**
+**Discovery and plan approved; unblocked by COR-01.**
 
 - Users add images by paste or drag-and-drop; there is no Import document command.
 - Copy supported file-backed PNG, JPEG, GIF, HEIC, and HEIF byte-for-byte into a visible shared
@@ -116,3 +112,5 @@ Uncommitted ideas. Each needs research, explicit requirements, and approval befo
   dialect and per-document managed-folder proposals. Approved outcomes are formal GFM, shared
   non-owned `assets/`, exact-copy PNG/JPEG/GIF/HEIC/HEIF, transactional placement, and no
   Import command. COR-01 must land before INC-03.
+- **COR-01 build:** PLAN-0004; formal-GFM tilde strikethrough, Tier-2 style removal, image
+  destination fixtures, REQ-047–REQ-051 Done; REQ-042 Deferred to dialect-profile research.

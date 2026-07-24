@@ -32,8 +32,8 @@ when semantic rendering is planned.
 - **Negative / costs:** regex is lexical, not grammatical — it can mis-handle deeply nested or
   pathological constructs. Tests prove bounded styling behavior, not Markdown parsing.
   In-fence language coloring is out of scope.
-- **Correction:** COR-01 removes the extension claims introduced in INC-02 and aligns tilde
-  styling with formal GFM.
+- **Correction:** COR-01 removed the extension claims introduced in INC-02 and aligned tilde
+  styling with formal GFM (REQ-047–REQ-051).
 - **Revisit trigger:** if precision/nesting becomes a problem, or for in-fence language coloring,
   evaluate tree-sitter-markdown (+ ChimeHQ Neon); update or supersede this ADR then.
 

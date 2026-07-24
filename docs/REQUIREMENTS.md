@@ -71,7 +71,7 @@ increment** during the discovery phase (the *Specify* step of [CLAUDE.md §3](..
 |----|--------------------|-----|--------|----------------|-------------|
 | REQ-040 | WHILE in the source editor, the system shall apply live syntax styling as the user types, using display attributes that never modify the file bytes (INV-2). | INC-02 | Done | `MarkdownTextView.Coordinator.apply` | tests `attributeStylingLeavesStringUnchanged`, `rangesWithinBounds` |
 | REQ-041 | The system shall lexically style common Markdown/GFM source constructs: headings, bold, italic, inline code, fenced code blocks, links, images, ordered/unordered lists, task lists, blockquotes, tables, strikethrough, and thematic breaks. | INC-02 | Done | `MarkdownHighlighter` + `MarkdownTheme` | tests `stylesHeadingWithLevel`, `stylesInlineElements`, `stylesFencedCodeBlock`, `returnsAttributesPerStyle` |
-| REQ-042 | The system shall style the previously selected light Tier-2 tokens: footnotes, `==highlight==`, superscript, and subscript. | INC-02 | Correction | `MarkdownHighlighter` (currently delivered; superseded by REQ-047–REQ-049 after COR-01) | existing test `stylesLightTier2`; replacement tests planned in COR-01 |
+| REQ-042 | The system shall style the previously selected light Tier-2 tokens: footnotes, `==highlight==`, superscript, and subscript. | INC-02 | Deferred | removed in COR-01 (`TokenStyle` no longer includes these cases); see REQ-047–REQ-049 | test `preservesUnknownExtensionsWithoutSemanticStyles` |
 | REQ-043 | The system shall visually distinguish fenced code blocks (monospace + subtle tint). | INC-02 | Done | `MarkdownHighlighter` + `MarkdownTheme` | test `stylesFencedCodeBlock` |
 | REQ-044 | The system shall display a live word and character count for the document. | INC-02 | Done | `TextStats`, `TextStatsComputer`, `ContentView` | tests `countsWordsAndCharacters`, `computesCountsOffMainActor` |
 | REQ-045 | WHILE editing a large document, the system shall keep typing latency imperceptible (highlighting debounced and computed off the main thread). | INC-02 | Done | `MarkdownTextView.Coordinator` (120 ms debounce, version gate, 100,000 UTF-16-unit styling cap) + `TextStatsComputer` (off-main, cancellation-aware scan) | test `computesCountsOffMainActor`; inherent (native insertion is the synchronous edit path; over-cap styling is suspended) |
@@ -82,18 +82,18 @@ increment** during the discovery phase (the *Specify* step of [CLAUDE.md §3](..
 
 ---
 
-## COR-01 · Markdown dialect conformance correction — 🔵 Active
+## COR-01 · Markdown dialect conformance correction — ✅ Done
 
-This correction removes the conflicting house-extension claims before new image syntax is added.
+This correction removed the conflicting house-extension claims before new image syntax is added.
 The regex engine remains a lexical styling aid, not a conforming parser.
 
 | ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
 |----|--------------------|-----|--------|----------------|-------------|
-| REQ-047 | The system shall present CommonMark 0.31.2 plus formal GFM 0.29-gfm as the only supported MVP source dialect. | COR-01 | Active | — | planned tests `supportedDialectContainsOnlyCommonMarkAndFormalGFMStyles`, documentation inspection |
-| REQ-048 | WHEN source contains a valid formal-GFM strikethrough delimiter using one or two tildes, the system shall apply the strikethrough source style without interpreting that syntax as subscript. | COR-01 | Active | — | planned table test `stylesFormalGFMTildeStrikethroughFixtures` |
-| REQ-049 | WHEN source contains an unsupported writing extension, the system shall preserve its text unchanged without presenting it as supported footnote, highlight, superscript, or subscript semantics. | COR-01 | Active | — | planned test `preservesUnknownExtensionsWithoutSemanticStyles` |
-| REQ-050 | WHEN source contains a focused valid CommonMark image destination fixture, the system shall style its source range without changing the source text. | COR-01 | Active | — | planned table test `stylesCommonMarkImageDestinationFixtures` |
-| REQ-051 | WHILE applying lexical styling, the system shall keep every attributed range within the source bounds and leave the source string unchanged. | COR-01 | Active | — | tests `attributeStylingLeavesStringUnchanged`, `rangesWithinBounds`; expanded COR-01 fixtures |
+| REQ-047 | The system shall present CommonMark 0.31.2 plus formal GFM 0.29-gfm as the only supported MVP source dialect. | COR-01 | Done | `TokenStyle`, `MarkdownHighlighter`, `MarkdownTheme` | test `supportedDialectContainsOnlyCommonMarkAndFormalGFMStyles` |
+| REQ-048 | WHEN source contains a valid formal-GFM strikethrough delimiter using one or two tildes, the system shall apply the strikethrough source style without interpreting that syntax as subscript. | COR-01 | Done | `MarkdownHighlighter` (single- and double-tilde strikethrough rules) | table test `stylesFormalGFMTildeStrikethroughFixtures` |
+| REQ-049 | WHEN source contains an unsupported writing extension, the system shall preserve its text unchanged without presenting it as supported footnote, highlight, superscript, or subscript semantics. | COR-01 | Done | `MarkdownHighlighter` + removed Tier-2 `TokenStyle` cases | test `preservesUnknownExtensionsWithoutSemanticStyles` |
+| REQ-050 | WHEN source contains a focused valid CommonMark image destination fixture, the system shall style its source range without changing the source text. | COR-01 | Done | `MarkdownHighlighter` (image destination pattern) | table test `stylesCommonMarkImageDestinationFixtures` |
+| REQ-051 | WHILE applying lexical styling, the system shall keep every attributed range within the source bounds and leave the source string unchanged. | COR-01 | Done | `MarkdownHighlighter.tokens(for:)`, `MarkdownTextView.Coordinator.apply` | tests `attributeStylingLeavesStringUnchanged`, `rangesWithinBounds` |
 
 ## INC-03 · Paste and drop images — ⚪ Planned
 
