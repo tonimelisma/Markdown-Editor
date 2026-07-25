@@ -118,6 +118,8 @@ traceability honest and still produce a DoD report.
 - **No manual tests, ever.** Verification is **automated** (`test`) or **inherent** (satisfied
   by construction — adopting a standard framework component that provides the behavior, or code
   inspection such as "makes no network calls"). Never mark a requirement verified by hand.
+- **No UI tests, ever.** Do not run, add, or rely on the UI-test target; automated verification
+  uses unit/integration tests that do not require macOS UI automation.
 - **Forward:** every requirement has ≥1 verification (a `test`, or a justified `inherent`).
   **Backward:** every `REQ-###` in code exists in REQUIREMENTS.md. A requirement with no
   verification, or a code anchor with no requirement, is a DoD failure.
