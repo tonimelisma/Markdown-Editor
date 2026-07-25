@@ -10,16 +10,16 @@ import AppKit
 struct MarkdownTextView: NSViewRepresentable {
     @Binding var text: String
     var documentURL: URL?
-    var placementCoordinator: ImagePlacementCoordinator
+    var placementController: ImagePlacementController
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, placementCoordinator: placementCoordinator)
+        Coordinator(text: $text, placementController: placementController)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
         let textView = MarkdownSourceTextView(usingTextLayoutManager: false)
         textView.delegate = context.coordinator
-        textView.placementCoordinator = placementCoordinator
+        textView.placementController = placementController
         textView.isRichText = false
         textView.allowsUndo = true                          // REQ-011
         textView.font = context.coordinator.theme.baseFont
@@ -35,11 +35,10 @@ struct MarkdownTextView: NSViewRepresentable {
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
         textView.string = text
-        textView.registerForDraggedTypes([
-            .fileURL, .png, .tiff,
-            NSPasteboard.PasteboardType(rawValue: "com.apple.pasteboard.promised-file-url"),
-            NSPasteboard.PasteboardType(rawValue: "com.apple.pasteboard.promised-file-content-type"),
-        ])
+        // REQ-060: register all file-promise drag types AppKit may deliver.
+        var dragTypes: [NSPasteboard.PasteboardType] = [.fileURL, .png, .tiff]
+        dragTypes.append(contentsOf: FilePromiseBridge.readableDraggedTypes)
+        textView.registerForDraggedTypes(dragTypes)
         textView.setAccessibilityLabel("Markdown source")
 
         let scroll = NSScrollView()
@@ -47,17 +46,17 @@ struct MarkdownTextView: NSViewRepresentable {
         scroll.documentView = textView
 
         context.coordinator.textView = textView
-        placementCoordinator.attach(textView: textView)
-        placementCoordinator.updateDocumentURL(documentURL)
+        placementController.attach(textView: textView)
+        placementController.updateDocumentURL(documentURL)
         context.coordinator.highlight()
         return scroll
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? MarkdownSourceTextView else { return }
-        textView.placementCoordinator = placementCoordinator
+        textView.placementController = placementController
         textView.documentURL = documentURL
-        placementCoordinator.updateDocumentURL(documentURL)
+        placementController.updateDocumentURL(documentURL)
         if textView.string != text {
             context.coordinator.isProgrammaticUpdate = true
             textView.string = text
@@ -70,7 +69,7 @@ struct MarkdownTextView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         let text: Binding<String>
         let theme = MarkdownTheme()
-        let placementCoordinator: ImagePlacementCoordinator
+        let placementController: ImagePlacementController
         private let highlighter = MarkdownHighlighter()
         weak var textView: MarkdownSourceTextView?
         var isProgrammaticUpdate = false
@@ -79,9 +78,9 @@ struct MarkdownTextView: NSViewRepresentable {
         private let maxHighlightLength = 100_000
         private var stylingSuspended = false
 
-        init(text: Binding<String>, placementCoordinator: ImagePlacementCoordinator) {
+        init(text: Binding<String>, placementController: ImagePlacementController) {
             self.text = text
-            self.placementCoordinator = placementCoordinator
+            self.placementController = placementController
         }
 
         func textDidChange(_ notification: Notification) {
@@ -158,12 +157,14 @@ struct MarkdownTextView: NSViewRepresentable {
 // REQ-060/064: narrow AppKit adapter — intercept image paste/drop; otherwise native.
 @MainActor
 final class MarkdownSourceTextView: NSTextView {
-    weak var placementCoordinator: ImagePlacementCoordinator?
+    weak var placementController: ImagePlacementController?
     var documentURL: URL?
 
     private var trackingGeneration = 0
     private var activeTracker: InsertionRangeTracker?
     private var activeGeneration: Int?
+
+    var activeTrackingGeneration: Int { activeGeneration ?? 0 }
 
     func beginTrackingPlacement(range: NSRange) -> Int {
         trackingGeneration &+= 1
@@ -194,18 +195,15 @@ final class MarkdownSourceTextView: NSTextView {
     func insertImageMarkdown(_ markdown: String, at range: NSRange, selectEmptyDescription: Bool) {
         guard let storage = textStorage else { return }
         let safe = NSIntersectionRange(range, NSRange(location: 0, length: storage.length))
-        // Prefer replaceCharacters which participates in undo when allowsUndo is true.
         undoManager?.beginUndoGrouping()
         replaceCharacters(in: safe, with: markdown)
         undoManager?.endUndoGrouping()
 
         if selectEmptyDescription {
-            // `![](assets/…)` — select the empty description between ![ and ]
             let insertLocation = safe.location
-            let descStart = insertLocation + 2  // after ![
-            let descEnd = insertLocation + 2    // empty
+            let descStart = insertLocation + 2
             if descStart <= (string as NSString).length {
-                setSelectedRange(NSRange(location: descStart, length: descEnd - descStart))
+                setSelectedRange(NSRange(location: descStart, length: 0))
             }
         } else {
             let end = safe.location + (markdown as NSString).length
@@ -215,14 +213,13 @@ final class MarkdownSourceTextView: NSTextView {
     }
 
     override func paste(_ sender: Any?) {
-        // REQ-060/064: classify before consuming.
         let classification = ImagePasteboardClassifier.classifyPasteboard(.general)
         switch classification {
-        case .images(let items):
-            placementCoordinator?.handleImageAction(items: items, documentURL: documentURL)
+        case .images(let claims):
+            placementController?.handleImageAction(claims: claims, documentURL: documentURL)
         case .fallthroughToNativeText, .unsupported:
             if case .unsupported = classification {
-                placementCoordinator?.alert = .error("Unsupported or corrupt image.")
+                placementController?.alert = .error("Unsupported or corrupt image.")
                 return
             }
             super.pasteAsPlainText(sender)
@@ -233,18 +230,17 @@ final class MarkdownSourceTextView: NSTextView {
         let pb = sender.draggingPasteboard
         if let receivers = pb.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver],
            !receivers.isEmpty {
-            // REQ-060: receive promises then place (off-main receive, main commit).
-            placementCoordinator?.handleFilePromises(receivers, documentURL: documentURL)
+            placementController?.handleFilePromises(receivers, documentURL: documentURL)
             return true
         }
         let classification = ImagePasteboardClassifier.classifyDragInfo(sender)
         switch classification {
-        case .images(let items):
-            placementCoordinator?.handleImageAction(items: items, documentURL: documentURL)
+        case .images(let claims):
+            placementController?.handleImageAction(claims: claims, documentURL: documentURL)
             return true
         case .fallthroughToNativeText, .unsupported:
             if case .unsupported = classification {
-                placementCoordinator?.alert = .error("Unsupported or corrupt image.")
+                placementController?.alert = .error("Unsupported or corrupt image.")
                 return true
             }
             return super.performDragOperation(sender)

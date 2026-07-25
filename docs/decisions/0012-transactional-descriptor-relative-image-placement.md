@@ -1,11 +1,12 @@
 # ADR-0012 — Transactional, descriptor-relative image placement
 
-- **Status:** Accepted
+- **Status:** Implemented
 - **Date:** 2026-07-24
 - **Deciders:** Toni Melisma
 - **Related:** COR-02; REQ-060–REQ-077;
   [ADR-0011](0011-image-placement-and-portability.md);
   [RESEARCH-0005](../research/0005-image-placement-correction-architecture.md);
+  [RESEARCH-0006](../research/0006-document-save-bridge-spike.md);
   [PLAN-0005](../plans/0005-cor02-image-placement-transaction-rewrite.md)
 
 ## Context
@@ -59,10 +60,12 @@ Keep ADR-0011's product and compatibility policy, but replace the implementation
 7. **Coordinated, descriptor-relative exclusive publication.** `NSFileCoordinator` coordinates
    with file presenters and the store opens the accessor-provided location. The correctness
    boundary remains a narrow Darwin/POSIX core using directory descriptors, no-follow/beneath
-   resolution, regular-file `fstat`, descriptor-relative same-volume staging, and fully written
-   exclusive publication. Prefer `renameatx_np(..., RENAME_EXCL)` and use `linkat` only when it
-   preserves the same guarantees. A path-based `copyfile` fallback is prohibited; if no safe
-   primitive is available, placement fails closed without source insertion.
+   resolution for relative children, regular-file `fstat`, descriptor-relative same-volume
+   staging, and fully written exclusive publication. Prefer `renameatx_np(..., RENAME_EXCL)` and
+   use `linkat` only when it preserves the same guarantees. A path-based `copyfile` fallback is
+   prohibited; if no safe primitive is available, placement fails closed without source insertion.
+   Absolute parent opens do not use `O_NOFOLLOW_ANY` because system path prefixes (e.g. `/var`)
+   are commonly symlinks; containment is enforced on relative `openat` children.
 8. **Identity-pinned cleanup.** For every created final entry, the transaction retains an open
    descriptor or private hard-link pin until commit or rollback. Rollback removes the final entry
    only when its current device/inode identity matches that pinned object. A newly created
