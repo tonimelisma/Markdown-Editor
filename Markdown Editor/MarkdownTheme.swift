@@ -5,7 +5,7 @@
 
 import AppKit
 
-// REQ-041/042/043: maps a TokenStyle to display attributes. Uses system colors so it adapts
+// REQ-041/043/047: maps a TokenStyle to display attributes. Uses system colors so it adapts
 // to Light/Dark automatically (REQ-022). Applied on the main actor (ADR-0010).
 @MainActor
 struct MarkdownTheme {
@@ -42,14 +42,6 @@ struct MarkdownTheme {
         case .strikethrough:
             return [.strikethroughStyle: NSUnderlineStyle.single.rawValue,
                     .foregroundColor: NSColor.secondaryLabelColor]
-        case .highlight:
-            return [.backgroundColor: NSColor.systemYellow.withAlphaComponent(0.3)]
-        case .footnote:
-            return [.foregroundColor: NSColor.systemTeal]
-        case .superscript:
-            return [.superscript: 1]
-        case .subscriptStyle:
-            return [.superscript: -1]
         }
     }
 }
