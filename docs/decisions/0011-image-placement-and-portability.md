@@ -5,7 +5,7 @@
 - **Deciders:** Toni Melisma
 - **Related:** REQ-060–REQ-077; INC-03; [VISION §5](../VISION.md);
   [RESEARCH-0004](../research/0004-inc03-image-assets-and-portability.md);
-  proposed correction [ADR-0012](0012-transactional-descriptor-relative-image-placement.md)
+  correction [ADR-0012](0012-transactional-descriptor-relative-image-placement.md)
 
 ## Context
 

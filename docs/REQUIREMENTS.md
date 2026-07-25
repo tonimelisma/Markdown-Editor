@@ -100,9 +100,11 @@ The regex engine remains a lexical styling aid, not a conforming parser.
 “Add image” means paste or drag-and-drop into the source editor. There is no Import document
 command. The user-visible policy was approved with
 [PLAN-0003](plans/0003-inc03-image-assets.md), but the merged implementation has known
-transaction, promise, lifecycle, and filesystem defects. A replacement is proposed in
-[PLAN-0005](plans/0005-cor02-image-placement-transaction-rewrite.md). `Correction` rows must not
-be treated as delivered until COR-02 supplies new code and real verification anchors.
+transaction, promise, lifecycle, and filesystem defects. The approved replacement is
+[PLAN-0005](plans/0005-cor02-image-placement-transaction-rewrite.md) /
+[ADR-0012](decisions/0012-transactional-descriptor-relative-image-placement.md).
+`Correction` rows must not be treated as delivered until COR-02 supplies new code and real
+verification anchors.
 
 ### F · Input and representations
 
@@ -134,7 +136,7 @@ be treated as delivered until COR-02 supplies new code and real verification anc
 | REQ-073 | WHEN inserting one image reference, the system shall use an empty image description and select it for immediate authoring without inventing alternative text from the filename. | INC-03 | Done | `MarkdownSourceTextView.insertImageMarkdown` | test `selectsEmptyDescriptionForSingleImage`; inherent (`setAccessibilityLabel` on source view) |
 | REQ-074 | WHEN image-reference insertion is undone or a reference is deleted, the system shall leave every asset file in place. | COR-02 | Correction | current test never asserts that source undo occurred; reverify replacement commit path per PLAN-0005 | missing: source-restoration plus asset-retention integration test |
 | REQ-075 | WHEN an untitled document receives an image action, the system shall complete the normal Save flow before creating `assets/`, canceling the action if Save is canceled. | COR-02 | Correction | current global sheet observer and delay race the actual document result; replace per PLAN-0005 | missing: operation-scoped Save success/cancel/failure ordering tests |
-| REQ-076 | WHEN Save As, rename, or move changes the document parent and a generated `assets/…` reference no longer resolves, the system shall warn without silently copying, moving, or deleting companion files. | COR-02 | Correction | current in-memory filename set is empty after reopening; replace per PLAN-0005 | missing: reopen + old-resolved/new-missing source-derived warning tests |
+| REQ-076 | WHEN Save As, rename, or move changes the document parent and a canonical local `assets/…` image reference (app-generated or manually authored) that resolved under the previous parent no longer resolves under the new parent, the system shall warn without silently copying, moving, or deleting companion files. | COR-02 | Correction | current in-memory filename set is empty after reopening; replace per PLAN-0005 / ADR-0012 | missing: reopen + old-resolved/new-missing source-derived warning tests |
 | REQ-077 | The system shall perform image inspection, hashing, promise receipt, and file I/O off the main actor while rejecting symlinks, aliases, packages, non-regular sources, symlinked destinations, and paths outside the resolved sibling `assets/` directory. | COR-02 | Correction | current adapter reads file bytes on main and current path checks are TOCTOU-prone; replace per PLAN-0005 | missing: queue-identity, non-regular, no-follow/beneath, and directory-swap tests |
 
 ---

@@ -60,18 +60,18 @@ Approved research and design:
 [ADR-0011](decisions/0011-image-placement-and-portability.md), and
 [PLAN-0003](plans/0003-inc03-image-assets.md).
 
-## COR-02 · Image placement transaction rewrite — `[build]` ⚪ Planned
+## COR-02 · Image placement transaction rewrite — `[build]` 🔵 Active
 
 Keep ADR-0011's user-visible policy while replacing the implementation with one explicit
 transaction state machine, correct one-to-many promise receipt, operation-scoped Save completion,
 a dedicated non-main I/O executor, descriptor-relative exclusive publication/retry,
-identity-proven cleanup, exhaustive insertion tracking, and source-derived move warnings.
+identity-pinned cleanup, exhaustive insertion tracking, and source-derived move warnings.
 
-Discovery is complete in
-[RESEARCH-0005](research/0005-image-placement-correction-architecture.md).
-[ADR-0012](decisions/0012-transactional-descriptor-relative-image-placement.md) and
-[PLAN-0005](plans/0005-cor02-image-placement-transaction-rewrite.md) are proposed and require
-user approval before the build starts.
+Approved design:
+[RESEARCH-0005](research/0005-image-placement-correction-architecture.md),
+[RESEARCH-0006](research/0006-document-save-bridge-spike.md),
+[ADR-0012](decisions/0012-transactional-descriptor-relative-image-placement.md), and
+[PLAN-0005](plans/0005-cor02-image-placement-transaction-rewrite.md).
 
 ## INC-04 · WYSIWYG mode — `[build]` ⚪ Planned
 
@@ -123,5 +123,6 @@ Uncommitted ideas. Each needs research, explicit requirements, and approval befo
   destination fixtures, REQ-047–REQ-051 Done; REQ-042 Deferred to dialect-profile research.
 - **INC-03 build:** PLAN-0003 / ADR-0011 merged, but post-merge review reopened the capability;
   affected REQ-060–REQ-077 rows are `Correction`, not Done.
-- **COR-02 discovery:** RESEARCH-0005 compared correction architectures; proposed ADR-0012 and
-  PLAN-0005 select a full transaction/storage rewrite and await approval.
+- **COR-02 discovery:** RESEARCH-0005 compared correction architectures; ADR-0012 and PLAN-0005
+  select a full transaction/storage rewrite. RESEARCH-0006 proved the DocumentGroup→NSDocument
+  Save bridge. REQ-076 conservative source-derived warnings approved. Build is Active.
