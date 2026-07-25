@@ -11,6 +11,8 @@
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
+			<key>NSDocumentClass</key>
+			<string>Markdown_Editor.MarkdownDocument</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>net.daringfireball.markdown</string>

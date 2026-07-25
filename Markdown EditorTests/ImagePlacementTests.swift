@@ -479,22 +479,28 @@ struct ImagePasteboardClassifierTests {
 struct ImageMarkdownCommitTests {
     // Verifies: REQ-069/073
     @Test @MainActor func commitsOrderedBatchAsOneUndoableReplacement() {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("Hello|")
+        doc.reportActiveSelection(NSRange(location: 5, length: 1))
         let tv = MarkdownSourceTextView(usingTextLayoutManager: false)
-        tv.string = "Hello|"
-        tv.setSelectedRange(NSRange(location: 5, length: 1))
+        tv.documentActions = doc
+        tv.string = doc.text
         let markdown = "![](assets/a.png)\n![](assets/b.png)"
         tv.insertImageMarkdown(markdown, at: NSRange(location: 5, length: 1), selectEmptyDescription: false)
-        #expect(tv.string == "Hello![](assets/a.png)\n![](assets/b.png)")
+        #expect(doc.text == "Hello![](assets/a.png)\n![](assets/b.png)")
+        #expect(doc.sourceVersion == 1)
     }
 
     // Verifies: REQ-073
     @Test @MainActor func selectsEmptyDescriptionForSingleImage() {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("")
         let tv = MarkdownSourceTextView(usingTextLayoutManager: false)
+        tv.documentActions = doc
         tv.string = ""
-        tv.setSelectedRange(NSRange(location: 0, length: 0))
         tv.insertImageMarkdown("![](assets/photo.heic)", at: NSRange(location: 0, length: 0), selectEmptyDescription: true)
-        #expect(tv.string == "![](assets/photo.heic)")
-        #expect(tv.selectedRange() == NSRange(location: 2, length: 0))
+        #expect(doc.text == "![](assets/photo.heic)")
+        #expect(doc.pendingSelection == NSRange(location: 2, length: 0))
     }
 
     // Verifies: REQ-074
@@ -503,8 +509,8 @@ struct ImageMarkdownCommitTests {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        let doc = dir.appendingPathComponent("note.md")
-        try Data().write(to: doc)
+        let docURL = dir.appendingPathComponent("note.md")
+        try Data().write(to: docURL)
         let staging = dir.appendingPathComponent("stage", isDirectory: true)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         let staged = staging.appendingPathComponent("x")
@@ -516,19 +522,16 @@ struct ImageMarkdownCommitTests {
             sha256Hex: ImageAssetPolicy.sha256Hex(png),
             byteCount: png.count
         )
-        let placed = try await AssetDirectoryStore.publish(artifacts: [artifact], documentURL: doc)
+        let placed = try await AssetDirectoryStore.publish(artifacts: [artifact], documentURL: docURL)
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("x")
         let tv = MarkdownSourceTextView(usingTextLayoutManager: false)
-        let undo = UndoManager()
-        tv.undoManager?.removeAllActions()
-        // NSTextView uses the window's undo manager when attached; for unit tests, drive undo via a local manager through replaceCharacters which records when allowsUndo is true inside a window. Assert the REQ-074 file retention invariant regardless:
+        tv.documentActions = doc
         tv.string = "x"
-        tv.allowsUndo = true
         tv.insertImageMarkdown(placed.published[0].markdown, at: NSRange(location: 0, length: 1), selectEmptyDescription: true)
-        // Simulate source undo by restoring prior text without touching files.
-        tv.string = "x"
-        _ = undo
+        doc.undoManager?.undo()
         #expect(FileManager.default.fileExists(atPath: placed.published[0].destinationURL.path))
-        #expect(tv.string == "x")
+        #expect(doc.text == "x")
     }
 }
 
@@ -542,19 +545,37 @@ struct ImagePlacementControllerLifecycleTests {
         #expect(controller.phaseForTesting == .awaitingSave)
     }
 
-    // Verifies: REQ-075 — first URL after untitled Save must not look like a concurrent move.
-    @Test @MainActor func untitledSaveURLDoesNotBumpGenerationForActiveTransaction() {
+    // Verifies: REQ-019/075 — first URL after untitled Save must not bump document location generation.
+    @Test @MainActor func untitledSaveURLDoesNotBumpGenerationForActiveTransaction() async {
+        let doc = MarkdownDocument()
         let controller = ImagePlacementController()
+        controller.attach(actions: doc)
         controller.prepareUntitledPlacementForTesting(claims: [
             .bitmapData(Data([0x89]), providerName: "x.png", declaredType: .png)
         ])
-        let genBefore = controller.documentLocationGenerationForTesting
+        let genBefore = doc.locationGeneration
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        let doc = dir.appendingPathComponent("note.md")
-        try? Data().write(to: doc)
-        controller.updateDocumentURL(doc)
+        let url = dir.appendingPathComponent("note.md")
+        try? Data().write(to: url)
+
+        final class AssigningSave: DocumentSaving {
+            let doc: MarkdownDocument
+            let url: URL
+            init(doc: MarkdownDocument, url: URL) {
+                self.doc = doc
+                self.url = url
+            }
+            func saveDocument() async -> Bool {
+                doc.fileURL = url
+                return true
+            }
+        }
+        doc.saveExecutorOverride = AssigningSave(doc: doc, url: url)
+        #expect(await doc.saveDocument() == true)
+        controller.updateDocumentURL(doc.fileURL)
+        #expect(doc.locationGeneration == genBefore)
         #expect(controller.documentLocationGenerationForTesting == genBefore)
     }
 }

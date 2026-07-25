@@ -5,9 +5,8 @@
 - **Deciders:** Toni Melisma
 - **Related:** [ADR-0002](0002-swiftui-first-appkit-where-needed.md), [ADR-0007](0007-editor-surface-interim-texteditor.md); [RESEARCH-0001](../research/0001-inc01-editor-foundation.md); INC-01
 
-> Living decision. `FileDocument` delivered INC-01/INC-02 and remains the current implementation.
-> SPIKE-02 selected `NSDocument` as the target architecture on 2026-07-25. COR-04 performs that
-> migration before INC-04.
+> Living decision. `FileDocument` delivered INC-01/INC-02 and has been replaced by `NSDocument`
+> in COR-04 (2026-07-25). The shipped owner is `MarkdownDocument`.
 
 ## Context
 

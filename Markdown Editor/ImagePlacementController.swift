@@ -8,6 +8,7 @@ import Combine
 import Foundation
 
 // REQ-060/069–076: main-actor owner of one paste/drop placement transaction.
+// REQ-017/019: uses DocumentActionInterface — no view-derived document lookup.
 
 @MainActor
 final class ImagePlacementController: ObservableObject {
@@ -20,28 +21,28 @@ final class ImagePlacementController: ObservableObject {
     @Published var alert: AlertKind?
 
     private var state = ImagePlacementState()
-    private weak var textView: MarkdownSourceTextView?
+    private weak var actions: DocumentActionInterface?
     private var lastDocumentParent: URL?
     private var lastDocumentURL: URL?
     private var documentLocationGeneration: UInt64 = 0
     private var activeTask: Task<Void, Never>?
     private var pendingSnapshot: ImageActionSnapshot?
     private let executor = ImageIOExecutor.shared
-    private var saveBridge: DocumentSaving?
+    private var activeTrackingGeneration: Int = 0
 
     /// Test seam: inject save adapter.
     var saveBridgeOverride: DocumentSaving?
 
-    func attach(textView: MarkdownSourceTextView) {
-        self.textView = textView
+    func attach(actions: DocumentActionInterface) {
+        self.actions = actions
     }
 
     func updateDocumentURL(_ url: URL?) {
         let newParent = url?.deletingLastPathComponent()
-        if let old = lastDocumentParent, let newParent, old != newParent, let textView {
+        if let old = lastDocumentParent, let newParent, old != newParent, let actions {
             // REQ-076: source-derived move warning.
             if CanonicalAssetReferenceScanner.hasBrokenReferences(
-                source: textView.string,
+                source: actions.sourceSnapshot().text,
                 oldParent: old,
                 newParent: newParent
             ) {
@@ -50,14 +51,9 @@ final class ImagePlacementController: ObservableObject {
                 )
             }
         }
-        // Untitled Save assigns the first URL for the active awaiting-save transaction — that is
-        // the expected outcome, not a concurrent move. Do not bump generation in that case.
-        let isExpectedUntitledSaveURL =
-            state.phase == .awaitingSave
-            && lastDocumentURL == nil
-            && url != nil
-        if lastDocumentURL != url, !isExpectedUntitledSaveURL {
-            documentLocationGeneration &+= 1
+        // REQ-019: location generation is owned by the document; sync the mirror used in snapshots.
+        if let actions {
+            documentLocationGeneration = actions.sourceSnapshot().locationGeneration
         }
         lastDocumentURL = url
         lastDocumentParent = newParent
@@ -81,17 +77,19 @@ final class ImagePlacementController: ObservableObject {
             return
         }
         state = next
-        guard let textView else {
+        guard let actions else {
             fail(id, .writeFailed)
             return
         }
-        let selection = textView.selectedRange()
-        _ = textView.beginTrackingPlacement(range: selection)
+        let live = actions.sourceSnapshot()
+        documentLocationGeneration = live.locationGeneration
+        let selection = actions.activeSelection
+        activeTrackingGeneration = actions.beginPlacementTracking(range: selection)
         let snapshot = ImageActionSnapshot(
             id: id,
             claims: claims,
             documentURL: documentURL,
-            documentLocationGeneration: documentLocationGeneration,
+            documentLocationGeneration: live.locationGeneration,
             selection: selection
         )
         pendingSnapshot = snapshot
@@ -117,18 +115,20 @@ final class ImagePlacementController: ObservableObject {
             return
         }
         state = next
-        guard let textView else {
+        guard let actions else {
             fail(id, .writeFailed)
             return
         }
-        let selection = textView.selectedRange()
-        _ = textView.beginTrackingPlacement(range: selection)
+        let live = actions.sourceSnapshot()
+        documentLocationGeneration = live.locationGeneration
+        let selection = actions.activeSelection
+        activeTrackingGeneration = actions.beginPlacementTracking(range: selection)
         let token = FilePromiseReceiptToken()
         let snapshot = ImageActionSnapshot(
             id: id,
             claims: [.promiseToken(token)],
             documentURL: documentURL,
-            documentLocationGeneration: documentLocationGeneration,
+            documentLocationGeneration: live.locationGeneration,
             selection: selection
         )
         pendingSnapshot = snapshot
@@ -139,26 +139,22 @@ final class ImagePlacementController: ObservableObject {
     // MARK: - Internals
 
     private func beginUntitledSave(snapshot: ImageActionSnapshot) async {
-        guard let textView else {
+        guard let actions else {
             fail(snapshot.id, .noDocumentURL)
             return
         }
-        guard let document = DocumentSaveBridge.document(for: textView) else {
-            fail(snapshot.id, .noDocumentURL)
-            return
-        }
-        let bridge: DocumentSaving = saveBridgeOverride ?? NSDocumentSavingAdapter(document: document)
+        let bridge: DocumentSaving = saveBridgeOverride ?? DocumentActionSavingAdapter(actions: actions)
         let ok = await bridge.saveDocument()
         if !ok {
             _ = apply(.saveCancelledOrFailed, id: snapshot.id)
-            textView.endTrackingPlacement(textView.activeTrackingGeneration)
+            actions.endPlacementTracking(activeTrackingGeneration)
             pendingSnapshot = nil
             state = ImagePlacementState()
             alert = .info("Image action cancelled — document was not saved.")
             return
         }
-        // Wait for DocumentGroup URL via updateDocumentURL; if already present, continue.
-        if let url = lastDocumentURL ?? textView.documentURL {
+        // Wait for URL via updateDocumentURL; if already present, continue.
+        if let url = lastDocumentURL ?? actions.sourceSnapshot().fileURL {
             await continueAfterSave(snapshot: snapshot, documentURL: url)
         }
         // Otherwise updateDocumentURL will resume.
@@ -221,7 +217,7 @@ final class ImagePlacementController: ObservableObject {
                 try? FileManager.default.removeItem(at: promiseStaging)
             }
         }
-        guard let textView else {
+        guard let actions else {
             fail(snapshot.id, .writeFailed)
             return
         }
@@ -244,7 +240,7 @@ final class ImagePlacementController: ObservableObject {
             )
 
             // REQ: prove live URL still under same parent before commit.
-            let liveURL = textView.documentURL ?? lastDocumentURL
+            let liveURL = actions.sourceSnapshot().fileURL ?? lastDocumentURL
             guard let liveURL else {
                 await AssetDirectoryStore.rollback(
                     pins: published.createdPins,
@@ -264,14 +260,15 @@ final class ImagePlacementController: ObservableObject {
                 return id.device == published.parentIdentity.device
                     && id.inode == published.parentIdentity.inode
             }
-            if !sameParent || snapshot.documentLocationGeneration != documentLocationGeneration {
+            let liveGeneration = actions.sourceSnapshot().locationGeneration
+            documentLocationGeneration = liveGeneration
+            if !sameParent || snapshot.documentLocationGeneration != liveGeneration {
                 await AssetDirectoryStore.rollback(
                     pins: published.createdPins,
                     assetsPath: published.assetsPath,
                     createdAssetsDirectory: published.createdAssetsDirectory,
                     executor: executor
                 )
-                // Leave files if parent changed after publish but identity check failed — actually we rolled back created pins.
                 fail(snapshot.id, .parentChanged)
                 return
             }
@@ -286,7 +283,7 @@ final class ImagePlacementController: ObservableObject {
                 return
             }
 
-            guard let tracker = textView.trackedPlacement(for: textView.activeTrackingGeneration),
+            guard let tracker = actions.trackedPlacement(for: activeTrackingGeneration),
                   !tracker.isCancelled else {
                 // REQ-072: files stay; no source insert. Release pins off the main actor.
                 let pins = published.createdPins
@@ -296,7 +293,7 @@ final class ImagePlacementController: ObservableObject {
                     }
                 }
                 _ = apply(.cancel, id: snapshot.id)
-                textView.endTrackingPlacement(textView.activeTrackingGeneration)
+                actions.endPlacementTracking(activeTrackingGeneration)
                 pendingSnapshot = nil
                 state = ImagePlacementState()
                 alert = .warning(
@@ -306,11 +303,36 @@ final class ImagePlacementController: ObservableObject {
             }
 
             let markdown = published.published.map(\.markdown).joined(separator: "\n")
-            textView.insertImageMarkdown(
-                markdown,
-                at: tracker.range,
-                selectEmptyDescription: published.published.count == 1
+            let snap = actions.sourceSnapshot()
+            let edit = SourceEdit(
+                expectedVersion: snap.sourceVersion,
+                range: tracker.range,
+                replacement: markdown,
+                actionName: "Insert Image"
             )
+            switch actions.commitSourceEdit(edit) {
+            case .committed:
+                if published.published.count == 1 {
+                    let descStart = tracker.range.location + 2
+                    let pending = NSRange(location: descStart, length: 0)
+                    actions.pendingSelection = pending
+                    actions.reportActiveSelection(pending)
+                } else {
+                    let end = tracker.range.location + (markdown as NSString).length
+                    let pending = NSRange(location: end, length: 0)
+                    actions.pendingSelection = pending
+                    actions.reportActiveSelection(pending)
+                }
+            case .refused:
+                await AssetDirectoryStore.rollback(
+                    pins: published.createdPins,
+                    assetsPath: published.assetsPath,
+                    createdAssetsDirectory: published.createdAssetsDirectory,
+                    executor: executor
+                )
+                fail(snapshot.id, .writeFailed)
+                return
+            }
             let pins = published.createdPins
             await executor.run {
                 for pin in pins {
@@ -318,15 +340,15 @@ final class ImagePlacementController: ObservableObject {
                 }
             }
             _ = apply(.succeed, id: snapshot.id)
-            textView.endTrackingPlacement(textView.activeTrackingGeneration)
+            actions.endPlacementTracking(activeTrackingGeneration)
             pendingSnapshot = nil
             state = ImagePlacementState()
         } catch let error as ImagePlacementError {
             fail(snapshot.id, error)
-            textView.endTrackingPlacement(textView.activeTrackingGeneration)
+            actions.endPlacementTracking(activeTrackingGeneration)
         } catch {
             fail(snapshot.id, .writeFailed)
-            textView.endTrackingPlacement(textView.activeTrackingGeneration)
+            actions.endPlacementTracking(activeTrackingGeneration)
         }
     }
 
@@ -341,7 +363,7 @@ final class ImagePlacementController: ObservableObject {
 
     private func fail(_ id: ImageActionID, _ error: ImagePlacementError) {
         _ = apply(.fail(error), id: id)
-        textView?.endTrackingPlacement(textView?.activeTrackingGeneration ?? 0)
+        actions?.endPlacementTracking(activeTrackingGeneration)
         pendingSnapshot = nil
         state = ImagePlacementState()
         alert = .error(error.userMessage)
@@ -362,5 +384,15 @@ final class ImagePlacementController: ObservableObject {
             documentLocationGeneration: documentLocationGeneration,
             selection: NSRange(location: 0, length: 0)
         )
+    }
+}
+
+/// Adapts DocumentActionInterface Save into DocumentSaving for the existing bridge seam.
+@MainActor
+final class DocumentActionSavingAdapter: DocumentSaving {
+    private let actions: DocumentActionInterface
+    init(actions: DocumentActionInterface) { self.actions = actions }
+    func saveDocument() async -> Bool {
+        await actions.saveDocument()
     }
 }

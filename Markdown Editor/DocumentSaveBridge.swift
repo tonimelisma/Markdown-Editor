@@ -5,7 +5,7 @@
 
 import AppKit
 
-// REQ-075: operation-scoped Save via owning NSDocument (RESEARCH-0006).
+// REQ-017/075: operation-scoped Save via owning NSDocument (no view-hierarchy discovery).
 
 @MainActor
 protocol DocumentSaving: AnyObject {
@@ -14,14 +14,6 @@ protocol DocumentSaving: AnyObject {
 
 @MainActor
 enum DocumentSaveBridge {
-    static func document(for view: NSView) -> NSDocument? {
-        guard let window = view.window else { return nil }
-        if let doc = NSDocumentController.shared.document(for: window) {
-            return doc
-        }
-        return window.windowController?.document as? NSDocument
-    }
-
     static func save(_ document: NSDocument) async -> Bool {
         await withCheckedContinuation { cont in
             let box = SaveResumeBox(cont)
