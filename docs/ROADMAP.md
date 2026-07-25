@@ -99,16 +99,14 @@ Source keeps highlighting at every document size (debounce + off-main + version 
 Correction requirements: REQ-048–REQ-049. Approved design:
 [PLAN-0007](plans/0007-cor03-formal-gfm-strikethrough-exactness.md).
 
-## COR-04 · NSDocument migration — `[build]` ⚪ Planned
+## COR-04 · NSDocument migration — `[build]` ✅ Done
 
-Replace the current `DocumentGroup`/`FileDocument` ownership path with one `NSDocument` that owns
-canonical source, version, URL/location generation, Save completion, transactions, and undo.
-Preserve current Source behavior and COR-02 storage unchanged while replacing their view-derived
-document/commit seams.
+Replaced `DocumentGroup`/`FileDocument` with one `NSDocument` that owns canonical source,
+version, URL/location generation, Save completion, transactions, and undo. Source behavior and
+COR-02 storage remain; view-derived document/commit seams are gone.
 
-Approved requirements: REQ-013–REQ-019. Proposed implementation:
-[PLAN-0008](plans/0008-cor04-nsdocument-migration.md). The plan requires explicit approval before
-implementation.
+Approved requirements: REQ-013–REQ-019. Implemented design:
+[PLAN-0008](plans/0008-cor04-nsdocument-migration.md).
 
 ## INC-04 · WYSIWYG mode — `[build]` ⚪ Planned
 
@@ -128,8 +126,9 @@ implementation.
 - Complete the MVP.
 
 Approved requirements: REQ-052–REQ-059 and REQ-078–REQ-087. Proposed implementation:
-[PLAN-0009](plans/0009-inc04-source-and-wysiwyg-editing.md). INC-04 is blocked until COR-03 and
-COR-04 are Done and PLAN-0009 is explicitly approved.
+[PLAN-0009](plans/0009-inc04-source-and-wysiwyg-editing.md). COR-03 and COR-04 are Done;
+PLAN-0009 still requires explicit approval before the INC-04 build (user directed implementation
+of all three plans on 2026-07-25).
 
 ---
 
@@ -187,3 +186,5 @@ Uncommitted ideas. Each needs research, explicit requirements, and approval befo
   PLAN-0007/0008/0009.
 - **COR-03 build:** PLAN-0007 — double-tilde-only Source strikethrough; REQ-048/049 Done; removed
   the Source live-styling document-size suspension (REQ-045 / ADR-0010).
+- **COR-04 build:** PLAN-0008 — `NSDocument` ownership, source transactions, editor-neutral
+  DocumentActionInterface; REQ-013–019 Done; FileDocument/DocumentGroup removed.

@@ -29,13 +29,13 @@ increment** during the discovery phase (the *Specify* step of [CLAUDE.md §3](..
 
 | ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
 |----|--------------------|-----|--------|----------------|-------------|
-| REQ-001 | The system shall read and write documents as UTF-8 plain-text Markdown files with a `.md` or `.markdown` extension (`net.daringfireball.markdown`). | INC-01 | Done | `Markdown_EditorDocument` (`UTType.markdown`, `readable`/`writableContentTypes`) + `Info.plist` | test `readableAndWritableTypesAreMarkdown` |
-| REQ-002 | WHEN the user chooses File ▸ New, the system shall create an empty untitled Markdown document. | INC-01 | Done | `Markdown_EditorDocument.init(text:)` | test `newDocumentIsEmpty` |
-| REQ-003 | WHEN the user opens a `.md`/`.markdown` file, the system shall load its UTF-8 contents into an editor window. | INC-01 | Done | `Markdown_EditorDocument.init(data:)` / `init(configuration:)` | tests `roundTripsUTF8ContentUnchanged`, `readsEmptyFile` |
-| REQ-004 | IF a file is not valid UTF-8, THEN the system shall report a read error and shall not open a corrupted document. | INC-01 | Done | `Markdown_EditorDocument.init(data:)` | test `invalidUTF8ThrowsReadError` |
-| REQ-005 | WHEN the user edits a document, the system shall autosave changes without an explicit Save. | INC-01 | Done | `DocumentGroup` / `FileDocument` autosave | inherent (framework-provided) |
-| REQ-006 | The system shall preserve macOS document Versions so the user can browse and revert. | INC-01 | Done | `FileDocument` Versions | inherent (framework-provided) |
-| REQ-007 | The system shall save without altering bytes the user did not edit, preserving the file's existing line endings and encoding (INV-2). | INC-01 | Done | `Markdown_EditorDocument.init(data:)` / `data()` | tests `roundTripsUTF8ContentUnchanged`, `preservesCRLFLineEndings`, `preservesUTF8BOM` |
+| REQ-001 | The system shall read and write documents as UTF-8 plain-text Markdown files with a `.md` or `.markdown` extension (`net.daringfireball.markdown`). | INC-01 | Done | `MarkdownContentType` + `MarkdownDocument` (`readableTypes`/`writableTypes`) + `Info.plist` | test `markdownUTTypeIdentifier`, `readableWritableTypesAreMarkdown` |
+| REQ-002 | WHEN the user chooses File ▸ New, the system shall create an empty untitled Markdown document. | INC-01 | Done | `MarkdownDocument.init` / `MarkdownDocumentData.init(text:)` | test `newDocumentIsEmpty` |
+| REQ-003 | WHEN the user opens a `.md`/`.markdown` file, the system shall load its UTF-8 contents into an editor window. | INC-01 | Done | `MarkdownDocument.read(from:ofType:)` / `MarkdownDocumentData.init(data:)` | tests `roundTripsUTF8ContentUnchanged`, `readsEmptyFile`, `readAndDataRoundTripByteFixtures` |
+| REQ-004 | IF a file is not valid UTF-8, THEN the system shall report a read error and shall not open a corrupted document. | INC-01 | Done | `MarkdownDocumentData.init(data:)` | test `invalidUTF8ThrowsReadError` |
+| REQ-005 | WHEN the user edits a document, the system shall autosave changes without an explicit Save. | INC-01 | Done | `MarkdownDocument.autosavesInPlace` | inherent (framework-provided); test `autosavesInPlace` |
+| REQ-006 | The system shall preserve macOS document Versions so the user can browse and revert. | INC-01 | Done | `NSDocument` Versions | inherent (framework-provided) |
+| REQ-007 | The system shall save without altering bytes the user did not edit, preserving the file's existing line endings and encoding (INV-2). | INC-01 | Done | `MarkdownDocumentData.init(data:)` / `data()` | tests `roundTripsUTF8ContentUnchanged`, `preservesCRLFLineEndings`, `preservesUTF8BOM` |
 
 ### B · Editing (plain text)
 
@@ -49,8 +49,8 @@ increment** during the discovery phase (the *Specify* step of [CLAUDE.md §3](..
 
 | ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
 |----|--------------------|-----|--------|----------------|-------------|
-| REQ-020 | The system shall support document tabs (multiple documents in one window). | INC-01 | Done | `DocumentGroup` | inherent (framework-provided) |
-| REQ-021 | The system shall list recently opened documents under File ▸ Open Recent. | INC-01 | Done | `DocumentGroup` | inherent (framework-provided) |
+| REQ-020 | The system shall support document tabs (multiple documents in one window). | INC-01 | Done | `NSDocument` / `NSDocumentController` | inherent (framework-provided) |
+| REQ-021 | The system shall list recently opened documents under File ▸ Open Recent. | INC-01 | Done | `NSDocumentController` | inherent (framework-provided) |
 | REQ-022 | The system shall adopt the system Light/Dark appearance automatically. | INC-01 | Done | system appearance (no overrides) | inherent (framework-provided) |
 
 ### D · Non-functional
@@ -148,13 +148,13 @@ Corrected implementation:
 
 | ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
 |----|--------------------|-----|--------|----------------|-------------|
-| REQ-013 | The system shall use one `NSDocument` instance as the owner of canonical Markdown source, file location, source version, and undo history for each open document. | COR-04 | Planned | — | planned component tests |
-| REQ-014 | The system shall retain standard macOS New, Open, Save, Save As, autosave-in-place, Versions, tabs, and Recents behavior after the document-model migration. | COR-04 | Planned | — | inherent framework behavior plus document-controller integration tests |
-| REQ-015 | WHEN reading or writing a document, the system shall preserve the existing UTF-8, empty-file, BOM, CRLF, Unicode, invalid-UTF-8, zero-edit byte-fidelity, and ordinary-file/no-metadata contract. | COR-04 | Planned | — | planned byte-fixture tests and serialization inspection |
-| REQ-016 | WHEN either editor adapter submits an expected source version and exact UTF-16 replacement, the document shall either advance its source version once and register document-owned undo/redo or return a typed stale/invalid/conflict refusal without mutation. | COR-04 | Planned | — | planned transaction and cross-adapter undo tables |
-| REQ-017 | WHEN a dependent operation requires an untitled document to be saved, the document shall expose operation-scoped Save success, cancellation, or failure without discovering document ownership through a view. | COR-04 | Planned | — | planned injected Save-result tests |
-| REQ-018 | The system shall keep mutable document/AppKit state on the main actor and send only immutable `Sendable` source and byte snapshots to background work. | COR-04 | Planned | — | planned strict-concurrency build and executor-identity tests |
-| REQ-019 | WHEN Save As, rename, or move changes the document URL, the document shall advance its location generation and notify COR-02 through an editor-neutral selection/Save/URL/source-commit interface without replacing COR-02 storage, exact-copy, or failure semantics. | COR-04 | Planned | — | planned URL-generation/adapter tests plus existing COR-02 suite |
+| REQ-013 | The system shall use one `NSDocument` instance as the owner of canonical Markdown source, file location, source version, and undo history for each open document. | COR-04 | Done | `MarkdownDocument` | tests `documentOwnsUndoManager`, `exactUTF16ReplaceAdvancesVersion` |
+| REQ-014 | The system shall retain standard macOS New, Open, Save, Save As, autosave-in-place, Versions, tabs, and Recents behavior after the document-model migration. | COR-04 | Done | `MarkdownDocumentController`, `Markdown_EditorApp`, `MarkdownDocument.makeWindowControllers` | inherent framework behavior; test `autosavesInPlace` |
+| REQ-015 | WHEN reading or writing a document, the system shall preserve the existing UTF-8, empty-file, BOM, CRLF, Unicode, invalid-UTF-8, zero-edit byte-fidelity, and ordinary-file/no-metadata contract. | COR-04 | Done | `MarkdownDocumentData`, `MarkdownDocument.read`/`data(ofType:)` | tests in `MarkdownDocumentDataTests`, `readAndDataRoundTripByteFixtures` |
+| REQ-016 | WHEN either editor adapter submits an expected source version and exact UTF-16 replacement, the document shall either advance its source version once and register document-owned undo/redo or return a typed stale/invalid/conflict refusal without mutation. | COR-04 | Done | `MarkdownDocument.commitSourceEdit` | tests in `SourceTransactionTests` |
+| REQ-017 | WHEN a dependent operation requires an untitled document to be saved, the document shall expose operation-scoped Save success, cancellation, or failure without discovering document ownership through a view. | COR-04 | Done | `MarkdownDocument.saveDocument`, `DocumentActionInterface` | tests `injectedSaveSuccessCancelFailure`, `saveGoesThroughInterfaceNotViewLookup` |
+| REQ-018 | The system shall keep mutable document/AppKit state on the main actor and send only immutable `Sendable` source and byte snapshots to background work. | COR-04 | Done | `SourceSnapshot`, `ioText` lock, `data(ofType:)` | tests `snapshotIsImmutableCopy`, `backgroundDataUsesSendableSnapshot` |
+| REQ-019 | WHEN Save As, rename, or move changes the document URL, the document shall advance its location generation and notify COR-02 through an editor-neutral selection/Save/URL/source-commit interface without replacing COR-02 storage, exact-copy, or failure semantics. | COR-04 | Done | `MarkdownDocument.fileURL`, `DocumentActionInterface`, `ImagePlacementController` | tests `locationGenerationAdvancesOnURLChangeButNotUntitledSave`, `untitledSaveURLDoesNotBumpGenerationForActiveTransaction`, existing COR-02 suite |
 
 ## INC-04 · Source and WYSIWYG editing — ⚪ Planned
 

@@ -2,14 +2,11 @@
 //  ContentView.swift
 //  Markdown Editor
 //
-//  Created by Toni Melisma on 7/21/26.
-//
 
 import SwiftUI
 
 struct ContentView: View {
-    @Binding var document: Markdown_EditorDocument
-    var documentURL: URL?
+    @ObservedObject var document: MarkdownDocument
     @State private var counts = TextStats.Counts(words: 0, characters: 0)
     @State private var statsComputer = TextStatsComputer()
     @StateObject private var placementController = ImagePlacementController()
@@ -17,8 +14,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             MarkdownTextView(
-                text: $document.text,
-                documentURL: documentURL,
+                document: document,
                 placementController: placementController
             )
             Divider()
@@ -37,8 +33,15 @@ struct ContentView: View {
             guard let next = await statsComputer.counts(for: snapshot), !Task.isCancelled else { return }
             counts = next
         }
-        .onChange(of: documentURL) { _, newURL in
+        .onAppear {
+            placementController.attach(actions: document)
+            placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
+        }
+        .onChange(of: document.publishedFileURL) { _, newURL in
             placementController.updateDocumentURL(newURL)
+        }
+        .onChange(of: document.locationGeneration) { _, _ in
+            placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
         }
         .alert(alertTitle, isPresented: alertPresented) {
             Button("OK", role: .cancel) { placementController.alert = nil }
@@ -72,8 +75,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView(
-        document: .constant(Markdown_EditorDocument(text: "# Hello\n\nSome **bold** and *italic* text, plus `code`.")),
-        documentURL: nil
-    )
+    ContentView(document: MarkdownDocument())
 }

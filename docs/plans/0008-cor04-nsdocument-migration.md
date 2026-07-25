@@ -1,8 +1,8 @@
 # PLAN-0008 — COR-04 NSDocument migration
 
+- **Status:** Approved and implemented 2026-07-25
 - **Increment:** COR-04
 - **Date:** 2026-07-25
-- **Status:** Proposed — requires explicit approval before code
 - **Requirements:** REQ-013–REQ-019
 - **Depends on:** [RESEARCH-0007](../research/0007-document-model-and-wysiwyg-architecture.md),
   [ADR-0006](../decisions/0006-document-model-filedocument.md),
