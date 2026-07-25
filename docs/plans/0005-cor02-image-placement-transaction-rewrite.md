@@ -2,7 +2,7 @@
 
 - **Increment:** COR-02
 - **Date:** 2026-07-24
-- **Status:** Approved
+- **Status:** Implemented
 - **Requirements:** REQ-060–REQ-077
 - **Depends on:** [RESEARCH-0005](../research/0005-image-placement-correction-architecture.md),
   [RESEARCH-0006](../research/0006-document-save-bridge-spike.md),
