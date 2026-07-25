@@ -2,7 +2,7 @@
 
 - **Increment:** SPIKE-02
 - **Date:** 2026-07-24
-- **Status:** Proposed
+- **Status:** Approved — decision-enabling evidence complete; awaiting decision gates
 - **Requirements:** Not applicable — standalone discovery/spike; no production behavior
 - **Depends on:** COR-02 merged and reconciled;
   [RESEARCH-0007](../research/0007-document-model-and-wysiwyg-architecture.md);
@@ -17,6 +17,11 @@
 > This plan authorizes no production implementation. It is a standalone discovery unit:
 > automated probes and POC code are throwaway and must not be merged. Its durable outputs are
 > completed research, measurements, options, user decisions, and proposed ADRs/plans.
+
+The user approved execution on 2026-07-25. All throwaway probes ran outside the repository.
+RESEARCH-0007 records the decision-enabling evidence and the decision-dependent probes that
+cannot be specified honestly yet. SPIKE-02 remains Active until its architecture and product
+decision gates receive explicit approval and those bounded follow-up probes pass.
 
 ## Goal
 

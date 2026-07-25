@@ -71,20 +71,23 @@ Approved design:
 [ADR-0012](decisions/0012-transactional-descriptor-relative-image-placement.md), and
 [PLAN-0005](plans/0005-cor02-image-placement-transaction-rewrite.md).
 
-## SPIKE-02 · Document and WYSIWYG architecture — `[discovery/spike]` ⚪ Planned
+## SPIKE-02 · Document and WYSIWYG architecture — `[discovery/spike]` 🔵 Active
 
 Before INC-04, use throwaway automated probes to decide whether the current value-type
-`FileDocument` remains adequate or should migrate to macOS 27's SwiftUI `Document` protocol (with
-`NSDocument` as the stable fallback); select a structural parser against the exact
+`FileDocument` remains adequate or should migrate; select a structural parser against the exact
 CommonMark/formal-GFM contract; prove TextKit 1 rich projection, source-range mapping, targeted
 source edits, cross-mode undo, and an editor-neutral COR-02 commit boundary; and measure
-performance/failure behavior without UI or manual tests.
+performance/failure behavior without UI or manual tests. The completed probes recommend
+`NSDocument`, found no conforming off-the-shelf parser for the currently named hybrid dialect,
+and leave both decisions with the user.
 
-Proposed discovery plan:
+Approved discovery plan:
 [RESEARCH-0007](research/0007-document-model-and-wysiwyg-architecture.md) and
-[PLAN-0006](plans/0006-spike02-document-and-wysiwyg-architecture.md). PLAN-0006 requires user
-approval before the spike starts. Any document-model migration selected by the spike is a
-separate planned build, not part of the spike or INC-04.
+[PLAN-0006](plans/0006-spike02-document-and-wysiwyg-architecture.md). The decision-enabling
+throwaway probes are complete. SPIKE-02 is awaiting explicit architecture/dialect and product
+decisions before its decision-dependent probes, ADRs, requirements, prerequisite builds, and
+INC-04 plan can proceed. Any selected document-model migration is a separate build, not part of
+the spike or INC-04.
 
 ## INC-04 · WYSIWYG mode — `[build]` ⚪ Planned
 
@@ -93,8 +96,9 @@ separate planned build, not part of the spike or INC-04.
   - WYSIWYG omits parsed Markdown control characters, shows formatted content, and supports direct
     editing through native selection and a formatting toolbar.
 - Make WYSIWYG the default and provide a visible Source/WYSIWYG toggle that never rewrites source.
-- Render the complete approved CommonMark/formal-GFM dialect using the structural parser selected
-  by SPIKE-02; leave unsupported semantics visible, unformatted, editable, and preserved.
+- Render the complete approved dialect using the structural parser selected by SPIKE-02; leave
+  unsupported semantics visible, unformatted, editable, and preserved. The exact dialect wording
+  is blocked on SPIKE-02's parser decision gate.
 - Make task checkboxes interactive and links directly clickable.
 - Render local PNG/JPEG/GIF/HEIC/HEIF references without changing source syntax or asset bytes.
 - Reuse COR-02's image transaction in either mode rather than creating a second placement path.
@@ -152,3 +156,7 @@ Uncommitted ideas. Each needs research, explicit requirements, and approval befo
 - **SPIKE-02 planning:** RESEARCH-0007 records the repository/online findings and PLAN-0006
   proposes automated document-model, parser, TextKit 1 WYSIWYG, semantic-edit, undo, image, and
   performance probes before INC-04 requirements or a build plan are written.
+- **SPIKE-02 execution:** approved 2026-07-25. Decision-enabling strict-concurrency, conformance,
+  source-index, TextKit 1, document, image, edit-seam, and performance probes completed. Evidence
+  and the precise decision-dependent remainder are recorded in RESEARCH-0007; decision gates
+  remain open.

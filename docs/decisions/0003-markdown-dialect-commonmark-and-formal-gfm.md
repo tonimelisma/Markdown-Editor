@@ -5,6 +5,12 @@
 - **Deciders:** Toni Melisma
 - **Related:** [VISION §5](../VISION.md); COR-01; INC-02; INC-04
 
+> Living decision under reassessment. SPIKE-02 proved that cmark-gfm 0.29.0.gfm.13 passes its
+> bundled core and selected formal-GFM extension fixtures but fails 11 of 652 CommonMark 0.31.2
+> cases. No evaluated off-the-shelf parser implements this exact hybrid contract. This ADR remains
+> the accepted source-presentation contract until the user explicitly chooses a replacement;
+> structural-parser selection and INC-04 are blocked meanwhile.
+
 ## Context
 
 “Markdown” names a family of dialects. CommonMark defines the core grammar; the formal GFM
@@ -39,7 +45,9 @@ The MVP source dialect is **CommonMark 0.31.2 plus formal GFM 0.29-gfm**.
 - **Negative:** useful extensions are not styled or semantically rendered in the MVP. Files using
   them remain editable, but the app makes no promise about their meaning.
 - **Follow-ups:** COR-01 reconciles the existing lexical highlighter and requirements. INC-04
-  selects and verifies a structural parser before semantic rendering.
+  selects and verifies a structural parser before semantic rendering. SPIKE-02 found that doing
+  so requires either adopting coherent formal GFM 0.29 as the dialect or owning a substantial
+  hybrid parser fork; the choice remains open.
 
 ## Alternatives considered
 

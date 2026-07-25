@@ -86,6 +86,9 @@ increment** during the discovery phase (the *Specify* step of [CLAUDE.md §3](..
 
 This correction removed the conflicting house-extension claims before new image syntax is added.
 The regex engine remains a lexical styling aid, not a conforming parser.
+SPIKE-02 subsequently found no evaluated structural parser conforming to the exact cross-version
+label in REQ-047. REQ-047 remains the accepted source-presentation requirement until the user
+approves a dialect revision; INC-04 parser selection is blocked meanwhile.
 
 | ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
 |----|--------------------|-----|--------|----------------|-------------|

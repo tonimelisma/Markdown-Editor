@@ -21,9 +21,10 @@ Use **compiled `NSRegularExpression` patterns** for live source highlighting. Th
 presentation aid, not the product's Markdown parser and not evidence of formal conformance.
 Patterns should approximate the supported CommonMark/GFM constructs without rewriting source.
 
-No structural parser has yet been selected for WYSIWYG. `swift-markdown`, `cmark-gfm`, and other
-options must be evaluated against [ADR-0003](0003-markdown-dialect-commonmark-and-formal-gfm.md)
-when semantic rendering is planned.
+No structural parser has yet been selected for WYSIWYG. SPIKE-02 evaluated `swift-markdown` and
+direct cmark-gfm. Direct cmark-gfm supplies usable source positions and implements coherent formal
+GFM 0.29, but it fails 11 CommonMark 0.31.2 cases and therefore does not implement ADR-0003's
+hybrid label. Parser selection is blocked on the user's dialect decision.
 
 ## Consequences
 
@@ -37,12 +38,13 @@ when semantic rendering is planned.
 - **Revisit trigger:** if precision/nesting becomes a problem in Source mode, investigate an
   incremental highlighting engine without treating it as the semantic parser. The
   tree-sitter-markdown maintainers explicitly warn against correctness-sensitive use, so it is
-  not a WYSIWYG semantic-authority candidate. SPIKE-02 selects the WYSIWYG parser separately
-  against ADR-0003.
+  not a WYSIWYG semantic-authority candidate. SPIKE-02 found direct cmark-gfm technically suitable
+  if the accepted dialect becomes coherent formal GFM 0.29.
 
 ## Alternatives considered
 
 - **swift-markdown AST-driven highlighting:** rejected for live editing in INC-02 because of
-  UTF-8→NSRange friction and full-document reparsing; it is not preselected for WYSIWYG.
+  UTF-8→NSRange friction and full-document reparsing. SPIKE-02 also found its default extension
+  configuration is not the complete formal-GFM set; it is not the WYSIWYG semantic authority.
 - **Hybrid (AST blocks + regex inline):** rejected as premature complexity (two mechanisms to
   keep in sync).

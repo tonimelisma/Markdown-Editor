@@ -72,6 +72,11 @@ The MVP dialect is:
 - the **formal GitHub Flavored Markdown 0.29-gfm specification** for tables, task-list items,
   strikethrough, and autolinks.
 
+SPIKE-02 found no evaluated off-the-shelf parser that implements this exact cross-version
+combination: cmark-gfm 0.29 implements coherent formal GFM but fails 11 CommonMark 0.31.2 cases.
+The accepted compatibility contract remains unchanged pending the user's explicit dialect
+decision; structural WYSIWYG work is blocked meanwhile.
+
 “GFM” means the published specification, not every additional feature rendered on github.com.
 The app does not claim parser conformance merely because its source highlighter recognizes a
 token. Generated Markdown must pass focused conformance fixtures derived from those named specs.
@@ -132,7 +137,8 @@ Users add images by pasting or dragging them into a saved document. There is no 
 - Added-image placement follows
   [ADR-0011](decisions/0011-image-placement-and-portability.md).
 - Third-party dependencies remain unadopted. A structural parser may be selected when WYSIWYG
-  work requires one; that decision must name the exact dialect it implements.
+  work requires one; that decision must name the exact dialect it implements. SPIKE-02 recommends
+  direct, pinned cmark-gfm only if the user approves coherent formal GFM 0.29.
 
 ## 8. Invariants
 

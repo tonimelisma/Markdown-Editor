@@ -5,9 +5,9 @@
 - **Deciders:** Toni Melisma
 - **Related:** [ADR-0002](0002-swiftui-first-appkit-where-needed.md), [ADR-0007](0007-editor-surface-interim-texteditor.md); [RESEARCH-0001](../research/0001-inc01-editor-foundation.md); INC-01
 
-> Living decision — reassessed during INC-02; `FileDocument` remains adequate for the current
-> single-surface, local-first editor (see "Revisit trigger"). SPIKE-02 will reassess it before
-> INC-04; no replacement has yet been selected.
+> Living decision — reassessed during INC-02 and SPIKE-02. `FileDocument` remains the accepted
+> implementation until the user explicitly approves a replacement. SPIKE-02's executable evidence
+> recommends `NSDocument` before INC-04; no migration has been accepted or started.
 
 ## Context
 
@@ -51,16 +51,20 @@ Those are concrete revisit signals under this ADR.
 
 macOS 27 also introduces a reference-based SwiftUI `Document` protocol with direct coordinated
 URL access, async reading/writing, Observation integration, and explicit undo registration.
-Apple deprecates `ReferenceFileDocument` for new macOS 27 document types. SPIKE-02 will compare
-the new `Document` API, stable `NSDocument`, and retaining `FileDocument` on the real toolchain.
-The spike does not itself change this decision; any migration requires a revised ADR, approved
-requirements, and a separate build plan.
+Apple deprecates `ReferenceFileDocument` for new macOS 27 document types. SPIKE-02 compared the
+new `Document` API, stable `NSDocument`, and retaining `FileDocument` on the real toolchain. Both
+reference models compiled under strict Swift 6. The new SwiftUI API did not expose an
+operation-scoped Save result and did not remove COR-02's hardest bridge; `NSDocument` directly
+provided file URL, Save completion, document-owned undo, autosave, and Versions. The spike
+therefore recommends `NSDocument`. The spike does not itself change this decision; any migration
+requires a revised ADR, approved requirements, and a separate build plan.
 
 ## Alternatives considered
 
 - **`ReferenceFileDocument`** — originally deferred as unnecessary complexity; now deprecated by
   Apple for new macOS 27 document types and not a migration candidate.
-- **`NSDocument`** — most control and real large-file support; rejected for now as heavy and
-  least SwiftUI-idiomatic; retained as the stable fallback in SPIKE-02.
-- **macOS 27 SwiftUI `Document`** — unavailable when this ADR was accepted; now the leading
-  reassessment candidate, subject to beta-API and real-toolchain probes in SPIKE-02.
+- **`NSDocument`** — most control and real large-file support; originally rejected as heavy and
+  least SwiftUI-idiomatic. SPIKE-02 now recommends it, subject to explicit approval.
+- **macOS 27 SwiftUI `Document`** — unavailable when this ADR was accepted. SPIKE-02 proved the
+  API but does not recommend migration while it remains beta and lacks an operation-scoped Save
+  result.

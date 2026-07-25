@@ -8,8 +8,9 @@
   at INC-02); [RESEARCH-0002](../research/0002-textkit-engine-spike.md); SPIKE-01 → INC-02
 
 > Living decision. Revisit if TextKit 2's editing/rendering reliability materially improves.
-> INC-04 does not itself trigger that revisit: TextKit 1 is the baseline for both Source and
-> WYSIWYG probes in SPIKE-02.
+> SPIKE-02 reinforced this decision: TextKit 1 passed automated rich-storage, attachment, table,
+> selection, native-edit, marked-text, and undo/redo probes. No failed requirement justifies
+> reopening TextKit 2 for INC-04.
 
 ## Context
 
@@ -44,9 +45,9 @@ string, which attribute application never changes. The wrapper replaces the inte
 - **Revisit trigger:** re-evaluate TextKit 2 if its dynamic rendering-attributes and viewport
   behavior become reliable; update or supersede this ADR then.
 - **INC-04 application:** WYSIWYG requires a separate rich projection, not a different text
-  engine by default. SPIKE-02 must first prove TextKit 1 rich text, attachments, selection,
-  interaction, and cross-mode undo. Only a concrete failed requirement plus new TextKit 2
-  reliability evidence may reopen this ADR, with explicit approval.
+  engine. SPIKE-02 proved TextKit 1 rich text, attachments, tables, selection, interaction, and
+  cross-mode undo. Only a concrete failed requirement plus new TextKit 2 reliability evidence
+  may reopen this ADR, with explicit approval.
 
 ## Alternatives considered
 

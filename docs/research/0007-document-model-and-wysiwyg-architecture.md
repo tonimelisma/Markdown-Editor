@@ -1,11 +1,13 @@
 # RESEARCH-0007 — Document model and WYSIWYG architecture
 
-- **Date:** 2026-07-24
+- **Date:** 2026-07-24; executed 2026-07-25
 - **For:** SPIKE-02 → possible document-model migration → INC-04
 - **Type:** repository analysis + online research + planned native-API/POC investigation
-- **Status:** In progress
-- **Outcome:** Preliminary recommendation: retain one canonical Markdown source and TextKit 1,
-  but test macOS 27's reference-based SwiftUI `Document` protocol before building WYSIWYG.
+- **Status:** Decision-enabling evidence complete — awaiting explicit decisions and bounded
+  follow-up probes
+- **Outcome:** The source-backed TextKit 1 design is viable. The evidence recommends an
+  `NSDocument`-owned canonical source and a coherent formal-GFM dialect rather than the current
+  hybrid dialect label. Neither recommendation is accepted until the user approves it.
 
 > Research docs capture *investigation*, not decisions. A decision that comes out of research
 > is recorded separately as an [ADR](../decisions/). Spike/POC code is throwaway (per
@@ -128,9 +130,10 @@ prototype; they do not solve Markdown source mapping or source-preserving edit t
 
 ### Structural parser candidates
 
-`cmark-gfm` is GitHub's C reference implementation for CommonMark plus formal GFM. It exposes an
-AST and node source positions, passes the CommonMark conformance suite, and is fuzz-tested. A
-direct, pinned Swift package wrapper is the leading candidate, subject to source-range probes.
+`cmark-gfm` is GitHub's C reference implementation for its bundled CommonMark core plus formal
+GFM. It exposes an AST and node source positions and is fuzz-tested. The executed probe established
+that it passes its bundled suite but not the newer CommonMark 0.31.2 suite, so its conformance
+claim must be version-specific.
 
 `swift-markdown` wraps cmark-gfm and provides Swift value-tree APIs, but its current parser
 configuration attaches table, strikethrough, and task-list extensions—not the complete formal-GFM
@@ -142,15 +145,319 @@ those gaps.
 recommended where correctness matters. It may be useful for editor highlighting but is not a
 candidate for the semantic authority required by ADR-0003.
 
+## Executed spike evidence
+
+### Reproducibility
+
+All POCs and downloaded fixtures lived under one temporary directory outside the repository. No
+probe code or dependency entered an app/test target. The environment was:
+
+- repository baseline `bd501a5`, with COR-02 at `1e4be12`;
+- Xcode 27.0 beta build `27A5228h`;
+- Swift 6.4 (`swiftlang-6.4.0.27.1`);
+- macOS 27 SDK; and
+- arm64 Apple silicon.
+
+The repository's full non-UI `xcodebuild test` suite passed before the probes. No XCUITest target,
+screen automation, or manual verification was used.
+
+Pinned external revisions:
+
+| Dependency or fixture | Revision |
+|---|---|
+| `github/cmark-gfm` 0.29.0.gfm.13 | `587a12bb54d95ac37241377e6ddc93ea0e45439b` |
+| `swiftlang/swift-cmark` 0.7.1 | `5d9bdaa4228b381639fff09403e39a04926e2dbe` |
+| `swiftlang/swift-markdown` 0.7.3 | `7d9a5ce307528578dfa777d505496bd5f544ad94` |
+| CommonMark 0.31.2 specification | `9103e341a973013013bb1a80e13567007c5cef6f` |
+| `commonmark/cmark` 0.31.2 | `eec0eeba6d31189fd828314576494566d539b1e3` |
+| Public libheif image fixtures | `1a3583bcce77de6d3f8701c0758e3954863681ba` |
+
+### A — document model
+
+#### macOS 27 SwiftUI `Document`
+
+A strict Swift 6 POC compiled a reference-type `@Observable` document conforming to the new
+`Document`, `DocumentReader`, and `DocumentWriter` protocols. It proved:
+
+- stable reference identity;
+- direct observation of `URLDocumentConfiguration.fileURL`;
+- a canonical string with byte-preserving `Data(text.utf8)` snapshots;
+- invalid-UTF-8 refusal;
+- `@concurrent`, `sending`, URL-based readers/writers;
+- explicit source-edit and undo registration; and
+- a new-style `DocumentGroup` scene.
+
+The SDK surface also exposed an important limitation: it provides New/Open actions but no
+operation-scoped Save action or Save result. An untitled dependent operation still cannot ask
+SwiftUI to Save and learn success versus cancellation. The current Xcode 27 macOS document-app
+template also still generates `FileDocument`, not the new protocol. The API works, but is new,
+concurrency-annotation-heavy, and does not remove COR-02's hardest bridge.
+
+#### `NSDocument`
+
+A strict Swift 6 POC compiled an `NSDocument` subclass with:
+
+- standard autosave-in-place;
+- direct `fileURL`;
+- document-owned `UndoManager`;
+- completion-bearing dependent Save;
+- synchronized read/write state; and
+- byte-preserving Markdown data methods.
+
+An executable component probe passed empty, LF, CRLF, BOM, and Unicode fixtures byte-for-byte,
+rejected invalid UTF-8, and passed edit → undo → redo. No window or UI automation was needed.
+
+#### Document-model recommendation
+
+For this macOS-only app, the evidence ranks:
+
+1. **Migrate to `NSDocument` before INC-04.** It is the only candidate that owns canonical source,
+   file location, Save completion, autosave/Versions, and undo without retaining a second hidden
+   document authority or discovering the owner through an editor view.
+2. Retain `FileDocument` if migration cost is rejected. It works, but the value binding, Save
+   bridge, and view-owned undo become permanent cross-mode infrastructure.
+3. Do not migrate to the macOS 27 SwiftUI `Document` yet. Re-evaluate after the API is non-beta or
+   exposes operation-scoped Save; its present benefits do not remove enough complexity.
+4. Do not adopt deprecated `ReferenceFileDocument`.
+
+This is a proposed revision to ADR-0006, not an accepted decision.
+
+#### Migration impact
+
+If approved, the separate migration would replace `Markdown_EditorDocument` and the SwiftUI
+`DocumentGroup` ownership path with an `NSDocument` subclass, AppKit document controller/window
+plumbing, and a narrow SwiftUI editor host. `ContentView`, `MarkdownTextView`, and
+`ImagePlacementController` would receive a document edit interface rather than a value binding or
+text-view-derived owner. COR-02's storage state machine and file operations would not change.
+
+The actor boundary would be document-owned: mutable source and undo on the main actor; immutable
+read/write, parse, and projection snapshots sent to background work. Rollback is straightforward
+only before INC-04 depends on the new interface, which is why the migration must be its own build.
+Retaining `FileDocument` has zero migration cost but makes the Save bridge, view-owned undo, and
+value rebinding permanent infrastructure.
+
+### B — parser conformance and source mapping
+
+#### The approved dialect label has no conforming candidate
+
+Direct `cmark-gfm`/`swift-cmark` was built with smart punctuation disabled and only these formal
+extensions enabled:
+
+- table;
+- strikethrough;
+- autolink;
+- task list; and
+- tag filter.
+
+Results:
+
+| Suite | Result |
+|---|---|
+| cmark-gfm bundled core suite | 670 passed, 0 failed |
+| Selected formal-GFM extension sections | 15 passed, 0 failed, 15 unrelated cases skipped |
+| Official CommonMark 0.31.2 suite | **641 passed, 11 failed** |
+
+The CommonMark 0.31.2 failures are example 28 (numeric character reference) and examples 354,
+389, 417, 425–427, 464–466, and 468 (newer emphasis/strong-emphasis behavior).
+
+This is not a wrapper bug: formal GFM 0.29 is based on an older CommonMark core.
+`swift-markdown` embeds `swift-cmark`/cmark-gfm 0.29.0.gfm.13, so it inherits the same mismatch.
+It also attaches table, strikethrough, and task-list extensions but omits formal GFM autolink and
+tag-filter attachment, enables smart punctuation unless explicitly disabled, and enables table
+spans. It is not the approved dialect authority.
+
+Combining upstream cmark 0.31.2 with cmark-gfm's extension framework is not a narrow wrapper. A
+source-tree comparison spans 59 core files and about 20,000 inserted/8,800 removed lines. Owning
+that private parser fork would violate the minimum-fuss, maximum-compatibility objective.
+
+#### Source positions
+
+The direct cmark-gfm AST reports one-based UTF-8 byte columns. A value-only `SourceIndex` POC
+mapped those positions to:
+
+- absolute UTF-8 ranges;
+- Swift `String.Index` boundaries; and
+- UTF-16 `NSRange` values used by TextKit.
+
+Representative nodes for headings, emphasis, strong, links, images, task items, and tables mapped
+to exact original source slices. Bounds/round-trip fixtures passed for ASCII, multibyte text,
+emoji, regional indicators, composed/decomposed marks, BOM, LF/CRLF, tabs, multiline links,
+variable code delimiters, and malformed delimiters.
+
+Known limitation: the table delimiter/alignment row is structural parser input but has no AST
+node or source span. Cell content can be patched locally; changing columns/alignment requires a
+table-level source transaction.
+
+#### Parser decision options
+
+1. **Formal GFM 0.29 as one coherent dialect — recommended.** Pin direct cmark-gfm through the
+   maintained Swift C package, enable exactly the five formal extensions, disable smart/extra
+   options, wrap only value AST/source-position data, and gate every update with both suites.
+   This maximizes real GitHub compatibility and avoids a house dialect.
+2. **Keep the hybrid label and own a cmark fork — reject.** It can theoretically combine the
+   standards, but creates a large security/correctness maintenance obligation.
+3. **CommonMark 0.31.2 without GFM — reject for this product.** It loses approved tables, tasks,
+   strikethrough, extended autolinks, and tag filtering.
+4. **Continue calling cmark-gfm 0.29 “CommonMark 0.31.2 + formal GFM” — reject.** The executable
+   conformance result proves that label false.
+
+Choosing option 1 revises ADR-0003 and the affected requirements. It needs explicit approval.
+The cmark-gfm core is BSD-2-Clause, with separately identified permissive MIT-derived files.
+Production adoption would pin the exact Swift package revision and rerun both the bundled
+formal-GFM suite and the chosen core-dialect suite on every update.
+
+### C — TextKit 1 rich projection
+
+A strict Swift 6 component POC built a separate attributed storage containing rendered content
+only. Automated inspection proved:
+
+- headings, emphasis, strong, strikethrough, inline code, and links use attributes;
+- parsed Markdown delimiters are absent from `NSTextStorage.string`;
+- task controls and images occupy attachment characters rather than hidden source syntax;
+- link destinations are `.link` attributes;
+- unsupported `==mark==` and malformed `*open` remain literal and unformatted;
+- native replacement, selection, undo/redo, and marked-text composition work;
+- task/image attachment cells are supported by TextKit 1; and
+- a 2×2 native `NSTextTable`/`NSTextTableBlock` projection works.
+
+There was no TextKit 1 failure that justifies reopening ADR-0008 or adopting TextKit 2.
+
+The correct boundary remains:
+
+- an off-main, `Sendable` projection model of strings, semantic runs, source mappings, and
+  attachment descriptors; then
+- main-actor construction/application of `NSAttributedString`, fonts, colors, table blocks,
+  attachment cells, and image objects.
+
+### D — semantic edits, versioning, and undo
+
+A value-source transaction POC proved:
+
+- exact UTF-16 range replacement;
+- untouched-source preservation;
+- source-version advancement exactly once;
+- typed stale-version and invalid-range refusal; and
+- local delimiter insertion without document serialization.
+
+An editor-neutral document-session POC then proved:
+
+- Source and WYSIWYG capture source insertion intents through the same interface;
+- non-overlapping earlier edits translate a tracked insertion range;
+- overlapping edits cancel rather than guess;
+- image Markdown commits as one source transaction;
+- the document-owned undo manager undoes/redoes the reference in either mode; and
+- dependent Save success/cancellation is injected independently of an editor view.
+
+The production design should therefore have a document-owned `SourceTransactionEngine` and one
+undo manager. Neither text view writes the other view or owns canonical source.
+
+Formatting locality is not uniform:
+
+- inline text/format/link/task/image-description edits can usually patch exact source spans;
+- heading/list/quote/code conversions can patch one block;
+- table structure/alignment changes require regenerating one table; and
+- ambiguous delimiter content must choose a safe delimiter or return a typed refusal.
+
+No whole-document reserialization is justified.
+
+### E — COR-02 and images
+
+The editor-neutral seam can replace COR-02's view dependency without replacing its validated
+storage transaction. It supplies document URL/generation, a captured source intent, current
+source for move warnings, dependent Save, one source commit/undo group, and post-commit selection.
+
+Image rendering probes used generated PNG/JPEG/GIF/HEIC plus public libheif HEIC/HEIF fixtures:
+
+| Fixture | Decode | Byte identity |
+|---|---|---|
+| generated PNG/JPEG/GIF | passed | unchanged |
+| generated `public.heic` | passed | unchanged |
+| public `example.heic` (1280×854) | passed | unchanged |
+| public HEVC `hevc32.heif` | passed | unchanged |
+| public JPEG-in-HEIF `jpeg32.heif` | passed | unchanged |
+
+ImageIO could not synthesize a `public.heif` fixture on this machine, but it decoded both public
+HEIF variants. Rendering used read-only `CGImageSource`; no image destination, transcoding,
+metadata rewrite, or HEIC/HEIF-to-JPEG path exists.
+
+### F — mode host and commands
+
+No toolbar UI was built. The architecture probe established the command boundary:
+
+- keep persistent Source and WYSIWYG TextKit 1 views;
+- preserve per-mode logical selection/scroll state;
+- route toolbar/menu actions to typed source-edit intents;
+- expose command enabled/state from the semantic selection; and
+- update the inactive view only from accepted canonical-source versions.
+
+The toolbar product choices remain at the decision gate below.
+
+### G — performance, concurrency, and failure behavior
+
+Release-build measurements on generated list/link/formatting-heavy input:
+
+| Input | Parse + AST/source-map median | p95 | Source-index median | p95 |
+|---:|---:|---:|---:|---:|
+| 954 bytes | 0.070 ms | 0.094 ms | 0.005 ms | 0.006 ms |
+| 9,964 bytes | 0.686 ms | 0.763 ms | 0.045 ms | 0.046 ms |
+| 99,958 bytes | 4.809 ms | 6.471 ms | 0.347 ms | 0.394 ms |
+| 999,951 bytes | 53.273 ms | 58.486 ms | 3.388 ms | 3.392 ms |
+
+TextKit 1 attributed-storage replacement medians were 0.124 ms at 990 UTF-16 units, 0.982 ms at
+9,990, and 0.561 ms at 99,990. These measure storage replacement, not glyph layout; no UI/layout
+claim is inferred from them.
+
+Eight parallel parser/source-map runs completed off-main with identical results. cmark parsing is
+synchronous and does not cooperatively cancel mid-parse; cancellation is checked before/after and
+stale versions are discarded. A full reparse is therefore reasonable initially—approximately
+5 ms at the existing 100,000-unit boundary—without introducing a piece table or incremental
+parser. The 1 MB result confirms that parsing must remain off-main and version-gated.
+
+The repeated harness, including 1 MB cases, peaked at about 86.6 MB process footprint. That is a
+whole-process upper observation, not per-document retained memory.
+
+Deterministic failure outcomes proven or fixed by construction:
+
+| Failure | Outcome |
+|---|---|
+| Unsupported/malformed syntax | literal, unformatted projection; source unchanged |
+| Invalid source mapping/selection | typed refusal |
+| Stale parse/edit version | discard/refuse |
+| Overlapping insertion intent | cancel source commit |
+| Missing/corrupt image | placeholder/error; source and bytes unchanged |
+| Missing document URL or cancelled Save | dependent operation stops |
+| Mode switch during async work | intent remains source-based; stale result rejected |
+| Parser task cancellation | pre/post check; synchronous parse itself is not interruptible |
+
+### Evidence boundary before the decision gates
+
+The first execution deliberately stops at the earliest decisions that change the meaning of later
+tests. Calling the entire spike complete here would be false:
+
+| PLAN-0006 remainder | Why it is decision-dependent |
+|---|---|
+| Full-dialect projection fixtures | There is no accepted structural dialect/parser to define a passing semantic tree. |
+| Complete formatting-intent/locality matrix | Generated-source validity and delimiter behavior depend on the dialect and approved normalization boundary. |
+| Rich paste, raw HTML, table-structure, Add Image, and Source-toolbar probes | Each option changes the command surface and source transactions being tested. |
+| Full link/task accessibility and interaction adapters | The storage/attachment substrate passed, but final roles/actions depend on the chosen projection and command model. |
+| Complete cross-mode typing/format/task/link sequences | The common source transaction and undo seam passed; semantic operations must follow the accepted edit policies. |
+| Image fit/cache/missing/oversize/move/stale-decode matrix | Exact-copy decode and editor-neutral placement passed; cache bounds and presentation behavior belong to the INC-04 requirements produced after decisions. |
+| Persistent two-mode host and full selection/scroll restoration | The command/state boundary is known, but the host is downstream implementation architecture, not needed to choose the document model/parser. |
+| Full operation-level latency distributions | Parse/index/storage baselines are measured; edit/projection/image distributions require the selected parser and semantic operations. |
+
+These are bounded follow-up probes within SPIKE-02, not production implementation. After the user
+answers the gates below, they can be built against one coherent contract and the spike can reach
+its exit gates without testing discarded designs.
+
 ## Architecture options
 
 ### Document model
 
 | Option | Fit | Main risks | Preliminary assessment |
 |---|---|---|---|
-| Keep `FileDocument` | Lowest migration cost; existing byte-fidelity tests | Value rebinding, view-owned mutations, bespoke Save bridge, awkward cross-mode undo and URL lifecycle | Keep only if the new API probe fails or shows little concrete benefit |
-| Adopt macOS 27 SwiftUI `Document` | Stable reference identity, `@Observable`, direct coordinated URL access, async I/O, explicit undo | Beta API and possible SDK churn; requires a migration | **Leading option; must be proven on the real toolchain** |
-| Adopt `NSDocument` | Mature Save/URL/undo/autosave/Versions control | More AppKit document/window boilerplate; larger departure from SwiftUI-first | Stable fallback if the new SwiftUI API is unreliable |
+| Keep `FileDocument` | Lowest migration cost; existing byte-fidelity tests | Value rebinding, view-owned mutations, bespoke Save bridge, awkward cross-mode undo and URL lifecycle | Viable fallback, but preserves the current architectural seams |
+| Adopt macOS 27 SwiftUI `Document` | Stable reference identity, `@Observable`, direct coordinated URL access, async I/O, explicit undo | Beta API; no dependent-Save action/result; migration without removing the hardest bridge | Reassess after API maturity; do not migrate now |
+| Adopt `NSDocument` | Mature Save/URL/undo/autosave/Versions control | More AppKit document/window boilerplate; explicit SwiftUI hosting | **Recommended for the macOS-only blank-slate architecture** |
 | Adopt `ReferenceFileDocument` | Reference identity within older SwiftUI model | Deprecated for new macOS 27 document types; synchronous `FileWrapper` model | Reject |
 
 ### WYSIWYG representation
@@ -177,35 +484,58 @@ A blank-slate design should separate:
 
 Mode, selection, parse trees, and image caches must not become hidden document metadata.
 
-## Preliminary recommendation
+## Recommendation after execution
 
-1. Use the merged COR-02 implementation as the code/test baseline.
-2. Run SPIKE-02 as a standalone, throwaway POC and automated probe suite.
-3. Keep TextKit 1 and the source-backed rich projection unless empirical evidence disproves them.
-4. Prefer the macOS 27 SwiftUI `Document` protocol if it proves Save, URL, byte fidelity, undo,
-   and two-editor integration on the real SDK.
-5. Use `NSDocument` only as the evaluated fallback; do not migrate to deprecated
-   `ReferenceFileDocument`.
-6. Select a parser only after formal-dialect fixtures and source-range probes pass.
-7. If the document-model probe selects a migration, perform it as its own approved build before
-   INC-04. Do not combine infrastructure migration and WYSIWYG construction.
-8. Write INC-04 requirements and its build plan only after the spike findings and remaining
-   product decisions receive explicit approval.
+Subject to explicit approval:
 
-## Remaining product decisions
+1. Migrate from `FileDocument` to an `NSDocument`-owned canonical source as a separate
+   prerequisite build.
+2. Use formal GFM 0.29 as one coherent dialect and pin direct cmark-gfm through `swift-cmark`;
+   do not own a hybrid parser fork or use `swift-markdown` as semantic authority.
+3. Keep TextKit 1 with separate editable Source and genuinely rich WYSIWYG storages.
+4. Put parsing, source indexing, and projection-model computation off-main; initially use full
+   reparses plus local mapping deltas and source-version rejection.
+5. Centralize edits, mode-independent insertion intents, and undo in a document-owned source
+   transaction engine.
+6. Adapt only COR-02's selection/Save/commit boundary; retain its storage transaction unchanged.
+7. Perform the document migration before specifying/building INC-04. Do not combine them.
 
-SPIKE-02 must supply concrete examples and trade-offs before asking for final approval of:
+## Decision gates
 
-1. **Normalization boundary:** preserve the existing spelling where a safe patch exists; when
-   regeneration is unavoidable, choose the smallest permissible affected unit.
-2. **Raw HTML:** display literal source versus render HTML semantics. The preliminary
-   recommendation is literal, non-executing display.
-3. **Rich paste:** translate the supported semantic subset of RTF/HTML versus paste plain text.
-4. **Tables:** edit existing GFM tables only versus also provide an Insert Table workflow.
-5. **Image command surface:** retain paste/drag-only placement versus add an “Add Image” file
-   picker. There remains no Import document command.
-6. **Source-mode toolbar:** keep semantic formatting commands active in both modes versus scope
-   them to WYSIWYG.
+### Architecture
+
+1. **Document model:** approve the recommended `NSDocument` migration, retain `FileDocument`, or
+   wait for the new SwiftUI `Document`. Recommendation: `NSDocument`.
+2. **Dialect:** approve coherent formal GFM 0.29, or authorize ownership of a large hybrid parser
+   fork. Recommendation: formal GFM 0.29.
+
+The document choice is independent of syntax. The dialect choice is not cosmetic: formal GFM
+0.29 gives one executable standard and GitHub's parser; the hybrid requires maintaining a large
+private parser indefinitely.
+
+### Product policies
+
+1. **Normalization boundary.** Recommendation: preserve exact spelling when a safe patch exists;
+   otherwise regenerate only the smallest semantic unit—inline node, block, or table—and never
+   the whole document. Example: editing a table cell patches that cell; changing columns rewrites
+   that table only. `_word_` stays underscore emphasis when its text changes; converting a Setext
+   heading to Heading 3 rewrites that heading block as `### ...`; changing table alignment rewrites
+   only that table's delimiter row.
+2. **Raw HTML.** Recommendation: display the literal HTML source as unformatted, non-executing,
+   editable text in WYSIWYG. Rendering it would require an HTML engine/security policy and could
+   hide source that cannot be round-tripped safely.
+3. **Rich paste.** Options: convert a tested RTF/HTML semantic subset to Markdown, or paste plain
+   text. Recommendation: plain text for MVP; add rich conversion only as a later independently
+   specified feature. Pasting visually bold “Hello” therefore inserts `Hello`, not guessed
+   `**Hello**`; a later converter can define exactly which styles and links are accepted.
+4. **Tables.** Recommendation: render and edit existing GFM tables in MVP, including cell-content
+   edits, but defer an Insert Table workflow and structural row/column controls.
+5. **Image command surface.** Options: paste/drag only, or also “Add Image…”. Recommendation: add
+   “Add Image…” using the same COR-02 transaction and a file picker; it is placement, not document
+   Import, and HEIC/HEIF remains exact-copy with no JPEG generation.
+6. **Source-mode toolbar.** Recommendation: expose the same semantic formatting commands in both
+   modes. In Source, commands modify the literal selection through the same transaction engine;
+   unsafe/ambiguous commands are disabled or return a typed refusal.
 
 ## Sources
 
@@ -215,8 +545,11 @@ SPIKE-02 must supply concrete examples and trade-offs before asking for final ap
 - [Apple — `NSDocument`](https://developer.apple.com/documentation/appkit/nsdocument)
 - [Apple — `NSTextView`](https://developer.apple.com/documentation/appkit/nstextview)
 - [GitHub — cmark-gfm](https://github.com/github/cmark-gfm)
+- [Pinned cmark-gfm 0.29.0.gfm.13 source](https://github.com/github/cmark-gfm/tree/587a12bb54d95ac37241377e6ddc93ea0e45439b)
+- [Pinned swift-cmark 0.7.1 source](https://github.com/swiftlang/swift-cmark/tree/5d9bdaa4228b381639fff09403e39a04926e2dbe)
 - [Swift — swift-markdown](https://github.com/swiftlang/swift-markdown)
-- [swift-markdown parser configuration](https://github.com/swiftlang/swift-markdown/blob/main/Sources/Markdown/Parser/CommonMarkConverter.swift)
+- [Pinned swift-markdown parser configuration](https://github.com/swiftlang/swift-markdown/blob/7d9a5ce307528578dfa777d505496bd5f544ad94/Sources/Markdown/Parser/CommonMarkConverter.swift)
 - [tree-sitter-markdown goals and accuracy warning](https://github.com/tree-sitter-grammars/tree-sitter-markdown/blob/split_parser/README.md)
 - [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)
 - [GitHub Flavored Markdown 0.29-gfm](https://github.github.com/gfm/)
+- [Pinned libheif image fixtures](https://github.com/strukturag/libheif/tree/1a3583bcce77de6d3f8701c0758e3954863681ba/examples)
