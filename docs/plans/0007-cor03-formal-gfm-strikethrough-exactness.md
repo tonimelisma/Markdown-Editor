@@ -1,8 +1,8 @@
 # PLAN-0007 — COR-03 formal-GFM strikethrough exactness
 
+- **Status:** Approved and implemented 2026-07-25
 - **Increment:** COR-03
 - **Date:** 2026-07-25
-- **Status:** Proposed — requires explicit approval before code
 - **Requirements:** REQ-048–REQ-049
 - **Depends on:** [RESEARCH-0007](../research/0007-document-model-and-wysiwyg-architecture.md),
   [ADR-0003](../decisions/0003-markdown-dialect-commonmark-and-formal-gfm.md),
@@ -11,8 +11,8 @@
 ## Goal
 
 Correct Source mode's remaining dialect mismatch before document migration or WYSIWYG work:
-formal GFM 0.29 recognizes double-tilde strikethrough, while the current lexical highlighter also
-styles single-tilde spans. After COR-03, `~~text~~` is styled as strikethrough and `~text~`
+formal GFM 0.29 recognizes double-tilde strikethrough, while the previous lexical highlighter also
+styled single-tilde spans. After COR-03, `~~text~~` is styled as strikethrough and `~text~`
 remains literal, unformatted, preserved text.
 
 ## Approach

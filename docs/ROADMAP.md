@@ -30,8 +30,8 @@ throwaway POC was not merged.
 ## INC-02 · Live-styled source — `[build]` ✅ Done
 
 Delivered lexical styling with visible markup, fenced-code treatment, live word/character
-counts, native Find and Replace, off-main computation, cancellation, and a large-document cap.
-The regex highlighter is a presentation aid, not a Markdown parser.
+counts, native Find and Replace, off-main computation, and cancellation. The regex highlighter is
+a presentation aid, not a Markdown parser.
 
 INC-02 also delivered styling for a proposed “Tier-2” extension bundle. Subsequent standards
 research found that bundle was an undocumented house dialect and that its `~text~` subscript
@@ -89,15 +89,15 @@ Approved discovery plan:
 recommendations on 2026-07-25 and the selected-design follow-up probes passed. No spike code or
 dependency was retained.
 
-## COR-03 · Formal-GFM strikethrough exactness — `[build]` 🟠 Correction required
+## COR-03 · Formal-GFM strikethrough exactness — `[build]` ✅ Done
 
-Correct COR-01's remaining standards mistake: formal GFM 0.29 requires double-tilde
-strikethrough, while the current Source highlighter also styles single-tilde spans. Preserve
-single tilde literally and style only conforming double-tilde source.
+Corrected COR-01's remaining standards mistake: formal GFM 0.29 requires double-tilde
+strikethrough. Source highlighting now styles only conforming `~~…~~` spans; single-tilde text
+stays literal and unstyled. Also removed the former 100,000 UTF-16-unit live-styling suspension so
+Source keeps highlighting at every document size (debounce + off-main + version gate remain).
 
-Correction requirements: REQ-048–REQ-049. Proposed implementation:
-[PLAN-0007](plans/0007-cor03-formal-gfm-strikethrough-exactness.md). The plan requires explicit
-approval before implementation.
+Correction requirements: REQ-048–REQ-049. Approved design:
+[PLAN-0007](plans/0007-cor03-formal-gfm-strikethrough-exactness.md).
 
 ## COR-04 · NSDocument migration — `[build]` ⚪ Planned
 
@@ -185,3 +185,5 @@ Uncommitted ideas. Each needs research, explicit requirements, and approval befo
   eight recommendations were approved, selected-design conformance, edit, interaction, undo,
   image-failure/cache, and performance probes passed. RESEARCH-0007; ADR-0003/0006/0013;
   PLAN-0007/0008/0009.
+- **COR-03 build:** PLAN-0007 — double-tilde-only Source strikethrough; REQ-048/049 Done; removed
+  the Source live-styling document-size suspension (REQ-045 / ADR-0010).

@@ -75,8 +75,6 @@ struct MarkdownTextView: NSViewRepresentable {
         var isProgrammaticUpdate = false
         private var version = 0
         private var task: Task<Void, Never>?
-        private let maxHighlightLength = 100_000
-        private var stylingSuspended = false
 
         init(text: Binding<String>, placementController: ImagePlacementController) {
             self.text = text
@@ -98,6 +96,7 @@ struct MarkdownTextView: NSViewRepresentable {
             return true
         }
 
+        // REQ-045: debounce + off-main highlight; no document-size styling suspension.
         func highlight(debounced: Bool = false) {
             guard let textView else { return }
             version &+= 1
@@ -105,14 +104,6 @@ struct MarkdownTextView: NSViewRepresentable {
             let snapshot = textView.string
             task?.cancel()
 
-            if snapshot.utf16.count > maxHighlightLength {
-                if !stylingSuspended {
-                    stylingSuspended = true
-                    applyBaseAttributesOnly()
-                }
-                return
-            }
-            stylingSuspended = false
             task = Task { [weak self] in
                 if debounced {
                     try? await Task.sleep(for: .milliseconds(120))
@@ -128,14 +119,6 @@ struct MarkdownTextView: NSViewRepresentable {
                 if Task.isCancelled { return }
                 self.apply(tokens, expectedVersion: expectedVersion, expectedText: snapshot)
             }
-        }
-
-        private func applyBaseAttributesOnly() {
-            guard let textView, let storage = textView.textStorage else { return }
-            let full = NSRange(location: 0, length: storage.length)
-            storage.beginEditing()
-            storage.setAttributes(theme.baseAttributes, range: full)
-            storage.endEditing()
         }
 
         // REQ-040/041/043/047–051: style via NSTextStorage attributes — display only.

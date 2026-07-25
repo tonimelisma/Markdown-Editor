@@ -89,8 +89,8 @@ language coloring.
   → back on `@MainActor`, **discard if `version` is stale or the text snapshot differs**
   (coalesces async races) → apply `NSTextStorage` attributes (display-only; the string is never
   changed ⇒ INV-2).
-- **Debounce + cap:** INC-02 uses a 120 ms debounce. Above 100,000 UTF-16 code units it cancels
-  pending work and suspends styling rather than doing a full synchronous attribute reset.
+- **Debounce:** INC-02 uses a 120 ms debounce. Live styling is not suspended by document length;
+  superseded work is cancelled via the version gate rather than a size cutoff.
 - **Counts:** `TextStatsComputer` is a cancellation-aware actor, so a new edit coalesces stale
   whole-document count scans instead of leaving detached work queued behind it.
 

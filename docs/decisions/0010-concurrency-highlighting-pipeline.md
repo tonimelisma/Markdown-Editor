@@ -35,10 +35,9 @@ be async. We're on Swift 6 + AppKit, where views are `@MainActor` and cross-thre
   font/size, so they can't render headings or bold weight; storage attributes are required.)
   Applied from `textDidChange` (never inside `processEditing()`) and batched in
   `beginEditing()`/`endEditing()` to avoid caret jumps and coalesce notifications.
-- **Debounce + cap:** coalesce rapid edits with a 120 ms debounce. Above 100,000 UTF-16 code
-  units, cancel pending work and suspend live styling; do not synchronously walk the whole text
-  storage to reset attributes. Viewport-first incremental styling remains a future optimization,
-  not current behavior.
+- **Debounce:** coalesce rapid edits with a 120 ms debounce. Live styling runs for every document
+  size; there is no document-length suspension or degraded editing mode. Viewport-first
+  incremental styling remains a future optimization, not current behavior.
 - **Counts are secondary work too:** `TextStatsComputer` is an actor. It scans a text snapshot
   off-main, checks cancellation while scanning, and publishes only the latest completed result.
 - **`NSViewRepresentable`:** the `Coordinator` holds the `Binding`; guard update loops with a
@@ -49,10 +48,17 @@ be async. We're on Swift 6 + AppKit, where views are `@MainActor` and cross-thre
 - **Positive:** IntelliJ-style "keystroke first, everything async"; INV-2 safe by construction;
   Swift-6-clean isolation (pure `Sendable` compute, `@MainActor` apply); stale results can't
   clobber fresh ones.
-- **Negative / costs:** actor hops and version bookkeeping; live styling deliberately stops above
-  the cap; the threshold must be tuned against real documents.
+- **Negative / costs:** actor hops and version bookkeeping; large documents still schedule full
+  highlight passes (cancelled/version-gated when superseded).
 - **Revisit trigger:** if the regex compute itself becomes the bottleneck, move to incremental
-  (tree-sitter) rather than changing the threading contract.
+  (tree-sitter) rather than changing the threading contract. Do not reintroduce a document-size
+  styling suspension without explicit product approval.
+
+### Correction (2026-07-25)
+
+The earlier 100,000 UTF-16-unit live-styling suspension was an engineering threshold, not an
+approved product “degraded mode.” The user directed its removal: Source keeps highlighting at
+every size. WYSIWYG must not introduce a similar size-based suspension.
 
 ## Alternatives considered
 

@@ -58,7 +58,7 @@ struct MarkdownHighlighterTests {
 
     // Verifies: REQ-040/051 — token ranges stay within the text bounds.
     @Test func rangesWithinBounds() async throws {
-        let text = "# H\n**b** `c`\n- item\n> quote\n~strike~\n![x](<a b>)\n"
+        let text = "# H\n**b** `c`\n- item\n> quote\n~~strike~~\n![x](<a b>)\n"
         let tokens = try await MarkdownHighlighter().tokens(for: text)
         let length = (text as NSString).length
         #expect(tokens.allSatisfy { $0.range.location >= 0 && NSMaxRange($0.range) <= length })
@@ -86,17 +86,16 @@ struct MarkdownHighlighterTests {
         }
     }
 
-    // Verifies: REQ-048 — formal GFM one- and two-tilde strikethrough; never subscript.
-    // Fixtures derived from GFM 0.29-gfm §strikethrough (Examples 491–493) plus soft-break /
-    // escape-parity cases required for Done status.
+    // Verifies: REQ-048/049 — formal GFM double-tilde strikethrough only; single tilde is literal.
+    // Fixtures derived from GFM 0.29-gfm §strikethrough with CMARK_OPT_STRIKETHROUGH_DOUBLE_TILDE.
     @Test(arguments: [
-        // GFM Example 491
-        Fixture(source: "~~Hi~~ Hello, ~there~ world!", expectStrikeSources: ["~~Hi~~", "~there~"]),
-        Fixture(source: "~one~", expectStrikeSources: ["~one~"]),
+        // Double tilde styles; single tilde does not (formal GFM exactness).
+        Fixture(source: "~~Hi~~ Hello, ~there~ world!", expectStrikeSources: ["~~Hi~~"]),
+        Fixture(source: "~one~", expectStrikeSources: []),
         Fixture(source: "~~two~~", expectStrikeSources: ["~~two~~"]),
         // Intraword-ish / adjacent text
         Fixture(source: "a~~b~~c", expectStrikeSources: ["~~b~~"]),
-        Fixture(source: "x~y~z", expectStrikeSources: ["~y~"]),
+        Fixture(source: "x~y~z", expectStrikeSources: []),
         // Whitespace after open / before close — not strikethrough
         Fixture(source: "~ not~", expectStrikeSources: []),
         Fixture(source: "~not ~", expectStrikeSources: []),
@@ -104,6 +103,7 @@ struct MarkdownHighlighterTests {
         Fixture(source: "~~not ~~", expectStrikeSources: []),
         // GFM Example 493 — three or more tildes do not create strikethrough
         Fixture(source: "This will ~~~not~~~ strike.", expectStrikeSources: []),
+        Fixture(source: "~~~~long~~~~", expectStrikeSources: []),
         // Soft line break permitted; blank line (new paragraph) terminates (GFM Ex. 492).
         Fixture(source: "~~soft\nline~~", expectStrikeSources: ["~~soft\nline~~"]),
         Fixture(source: "This ~~has a\n\nnew paragraph~~.", expectStrikeSources: []),
@@ -113,10 +113,15 @@ struct MarkdownHighlighterTests {
         Fixture(source: #"\~~Hi~~"#, expectStrikeSources: []),
         Fixture(source: #"~~not\~~"#, expectStrikeSources: []),
         // Code span / fence exclusivity
-        Fixture(source: "`~code~` and ~ok~", expectStrikeSources: ["~ok~"]),
+        Fixture(source: "`~code~` and ~~ok~~", expectStrikeSources: ["~~ok~~"]),
+        Fixture(source: "`~~code~~` and ~literal~", expectStrikeSources: []),
         Fixture(source: "``~~x~~``", expectStrikeSources: []),
         Fixture(source: "~~~\n~~inside~~\n~~~\n", expectStrikeSources: []),
         Fixture(source: "```\n~~inside~~\n```\n", expectStrikeSources: []),
+        // Mismatched / interleaved
+        Fixture(source: "~~open~", expectStrikeSources: []),
+        Fixture(source: "~open~~", expectStrikeSources: []),
+        Fixture(source: "~~a~b~~", expectStrikeSources: ["~~a~b~~"]),
     ])
     func stylesFormalGFMTildeStrikethroughFixtures(_ fixture: Fixture) async throws {
         let tokens = try await MarkdownHighlighter().tokens(for: fixture.source)
@@ -126,20 +131,21 @@ struct MarkdownHighlighterTests {
         #expect(actual == fixture.expectStrikeSources.sorted())
     }
 
-    // Verifies: REQ-049 — unsupported writing extensions are preserved without semantic styles.
+    // Verifies: REQ-049 — unsupported writing extensions and single-tilde spans stay unstyled.
     @Test func preservesUnknownExtensionsWithoutSemanticStyles() async throws {
-        let source = "==highlight== [^footnote] x^super^ H~2~O stays strike-only for tildes"
+        let source = "==highlight== [^footnote] x^super^ H~2~O and ~single~ stay literal"
         let tokens = try await MarkdownHighlighter().tokens(for: source)
         let styles = Set(tokens.map(\.style))
         for style in styles {
             #expect(Self.isCommonMarkOrFormalGFM(style))
         }
+        #expect(!tokens.contains { $0.style == .strikethrough })
         let ns = source as NSString
-        let strikeTexts = tokens.filter { $0.style == .strikethrough }.map { ns.substring(with: $0.range) }
-        #expect(strikeTexts.allSatisfy { $0.hasPrefix("~") && $0.hasSuffix("~") })
         #expect(!tokens.contains { ns.substring(with: $0.range) == "==highlight==" })
         #expect(!tokens.contains { ns.substring(with: $0.range) == "[^footnote]" })
         #expect(!tokens.contains { ns.substring(with: $0.range) == "^super^" })
+        #expect(!tokens.contains { ns.substring(with: $0.range) == "~2~" })
+        #expect(!tokens.contains { ns.substring(with: $0.range) == "~single~" })
     }
 
     // Verifies: REQ-050 — focused valid CommonMark image destination fixtures (+ negatives).
@@ -252,5 +258,9 @@ struct StylingFidelityTests {
         storage.endEditing()
         #expect(storage.string == text)
         #expect(tokens.allSatisfy { $0.range.location >= 0 && NSMaxRange($0.range) <= storage.length })
+        let ns = text as NSString
+        let strikeTexts = tokens.filter { $0.style == .strikethrough }.map { ns.substring(with: $0.range) }
+        #expect(strikeTexts == ["~~two~~"])
+        #expect(!strikeTexts.contains("~one~"))
     }
 }
