@@ -130,8 +130,8 @@ surfaces use the same placement transaction. There is no separate “Import” d
 ## 7. Engineering decisions
 
 - Pure Swift and SwiftUI-first; use AppKit behind narrow adapters where required.
-- `NSDocument` is the target document owner; COR-04 replaces the currently shipped
-  `DocumentGroup`/`FileDocument` implementation before WYSIWYG
+- `NSDocument` is the document owner; COR-04 replaced the former
+  `DocumentGroup`/`FileDocument` implementation
   ([ADR-0006](decisions/0006-document-model-filedocument.md)).
 - The editor uses TextKit 1 `NSTextView`
   ([ADR-0008](decisions/0008-textkit1-nstextview-editor-engine.md)).
@@ -141,6 +141,13 @@ surfaces use the same placement transaction. There is no separate “Import” d
   [ADR-0011](decisions/0011-image-placement-and-portability.md).
 - WYSIWYG semantic parsing uses direct, pinned cmark-gfm 0.29.0.gfm.13 through `swift-cmark`;
   Source highlighting remains the independent lexical presentation path.
+- WYSIWYG uses a lossless concrete-source projection over cmark semantics. Every rich boundary
+  maps to exact source, an explicit synthetic policy, or a typed refusal; coordinates are never
+  clamped, distributed, or guessed
+  ([ADR-0013](decisions/0013-source-backed-rich-projection-and-semantic-edits.md)).
+- Both TextKit 1 editors persist for the document-window lifetime. The window-scoped editor
+  session owns derived projection, selection, scroll, composition, and command state; it owns no
+  serialized source.
 
 ## 8. Invariants
 
@@ -170,7 +177,8 @@ Breaking an invariant is a bug. Changing one requires explicit approval and an A
 
 Designs are rejected if they fail source preservation, standards validity, non-destructive file
 handling, containment, accessibility, deterministic collision behavior, failure safety, or
-automated verification.
+automated verification. A risky architectural claim must be falsifiable through a focused test,
+typed invariant oracle, privacy-safe trace, construction proof, or reproducible measurement.
 
 Designs that pass those gates are compared by:
 
@@ -182,6 +190,10 @@ Designs that pass those gates are compared by:
 6. privacy and metadata consequences;
 7. performance and concurrency safety; and
 8. ability to add explicit dialect or asset workflows later without migration.
+
+Instrumentation used for evaluation never records document text, selected text, image
+descriptions, URL strings, or complete local paths. Performance claims include the machine,
+software/build configuration, corpus, sample count, median, and p95.
 
 ## 10. Distribution
 

@@ -1,6 +1,7 @@
 # PLAN-0008 — COR-04 NSDocument migration
 
-- **Status:** Approved and implemented 2026-07-25
+- **Status:** Implemented with corrections required — REQ-016/018 correction work is superseded
+  by [PLAN-0010](0010-inc04-correction-program.md)
 - **Increment:** COR-04
 - **Date:** 2026-07-25
 - **Requirements:** REQ-013–REQ-019
@@ -11,6 +12,10 @@
 
 > This is a prerequisite infrastructure build, not INC-04. It migrates document ownership without
 > adding WYSIWYG, a parser dependency, toolbar controls, or new image storage behavior.
+>
+> **Post-merge review:** `NSDocument` remains the accepted owner, but the first transaction undo
+> implementation captures a stale expected version and the production target does not pass Swift
+> 6 complete concurrency. RESEARCH-0008 and PLAN-0010 are authoritative for COR-05.
 
 ## Goal
 

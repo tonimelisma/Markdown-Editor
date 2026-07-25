@@ -2,7 +2,8 @@
 
 - **Increment:** INC-04
 - **Date:** 2026-07-25
-- **Status:** Approved / implemented — INC-04 build on branch `inc-04-wysiwyg`
+- **Status:** Implemented with corrections required — superseded for correction work by
+  [PLAN-0010](0010-inc04-correction-program.md)
 - **Requirements:** REQ-052–REQ-059, REQ-078–REQ-087
 - **Depends on:** COR-03; COR-04 / [PLAN-0008](0008-cor04-nsdocument-migration.md);
   [RESEARCH-0007](../research/0007-document-model-and-wysiwyg-architecture.md);
@@ -15,6 +16,11 @@
 > This plan implements the approved two-mode product. WYSIWYG is actual rich content with parsed
 > Markdown control characters absent. Source remains literal Markdown. TextKit 2 is not reopened,
 > HEIC/HEIF is never converted to JPEG, and no UI test is added or run.
+>
+> **Post-merge review:** the outer decision remains accepted, but the first implementation did
+> not satisfy several invariants or verification gates. RESEARCH-0008 and PLAN-0010 are
+> authoritative for COR-05/06/07. Statements below describe the approved INC-04 intent, not proof
+> that every item is currently delivered.
 
 ## Goal
 
@@ -204,8 +210,8 @@ Formatting hotkeys may be added where they are standard, but no custom shortcut 
 
 Task attachments expose checkbox role, checked value, meaningful label, keyboard action, and one
 semantic task-toggle command. Links carry native `.link` attributes, open directly through an
-injected URL-opening action, and remain editable through the explicit link command. Dangerous or
-unsupported destinations do not execute.
+injected `NSWorkspace` URL-opening action with no scheme allowlist, and remain editable through
+the explicit link command. Raw HTML remains non-executing.
 
 The WYSIWYG view and attachments expose meaningful roles/labels/values. Images use authored
 description text; an empty description is represented honestly and remains easy to edit. The
@@ -314,8 +320,9 @@ manual verification is permitted.
 
 ## Performance policy
 
-Do not turn spike measurements into premature user-facing thresholds. Preserve these structural
-rules:
+This was the INC-04 performance policy. The user subsequently approved explicit correction
+budgets in RESEARCH-0008 and PLAN-0010; those budgets supersede the no-threshold portion below.
+The structural rules remain:
 
 - native text insertion is the synchronous path;
 - parsing/projection/image work is off-main and version-gated;

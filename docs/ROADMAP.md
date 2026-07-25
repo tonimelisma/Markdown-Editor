@@ -99,7 +99,7 @@ Source keeps highlighting at every document size (debounce + off-main + version 
 Correction requirements: REQ-048–REQ-049. Approved design:
 [PLAN-0007](plans/0007-cor03-formal-gfm-strikethrough-exactness.md).
 
-## COR-04 · NSDocument migration — `[build]` ✅ Done
+## COR-04 · NSDocument migration — `[build]` 🟠 Correction required
 
 Replaced `DocumentGroup`/`FileDocument` with one `NSDocument` that owns canonical source,
 version, URL/location generation, Save completion, transactions, and undo. Source behavior and
@@ -108,7 +108,11 @@ COR-02 storage remain; view-derived document/commit seams are gone.
 Approved requirements: REQ-013–REQ-019. Implemented design:
 [PLAN-0008](plans/0008-cor04-nsdocument-migration.md).
 
-## INC-04 · WYSIWYG mode — `[build]` ✅ Done
+Post-merge review found that REQ-016's undo closure captures a historical expected version and
+REQ-018 does not compile under Swift 6 complete concurrency. COR-05 retains `NSDocument` and
+replaces these internals.
+
+## INC-04 · WYSIWYG mode — `[build]` 🟠 Correction required
 
 - Provide two editable modes over the same canonical Markdown source:
   - Source shows literal Markdown with live lexical styling.
@@ -129,6 +133,40 @@ Approved requirements: REQ-013–REQ-019. Implemented design:
 
 Approved requirements: REQ-052–REQ-059 and REQ-078–REQ-087. Implemented design:
 [PLAN-0009](plans/0009-inc04-source-and-wysiwyg-editing.md).
+
+The initial build established the parser, toolbar, and two visible modes, but post-merge review
+found heuristic source mapping, incomplete semantic rendering/editing, non-persistent mode views,
+undefined IME composition ownership, global image-command routing, incomplete accessibility, and
+incomplete HEIF/cache proof. A passing shallow suite did not establish the affected requirements.
+
+Approved correction research and program:
+[RESEARCH-0008](research/0008-inc04-correction-architecture-review.md),
+[ADR-0013](decisions/0013-source-backed-rich-projection-and-semantic-edits.md), and
+[PLAN-0010](plans/0010-inc04-correction-program.md).
+
+## COR-05 · Source integrity and Swift 6 — `[build]` ⚪ Planned
+
+Replace stale-version undo with content-validated dynamic history patches, establish one canonical
+mutation path and explicit grouping, replace unsafe byte-snapshot isolation, and enable Swift 6
+complete concurrency without warnings.
+
+Requirements: REQ-011, REQ-016, REQ-018, REQ-083, REQ-088–REQ-089.
+
+## COR-06 · Exact projection and semantic edits — `[build]` ⚪ Planned
+
+Replace proportional/clamped coordinates with a lossless typed source projection; render complete
+formal GFM semantics including visible list markers; split exact syntax-family edit planners; and
+prove mappings and edits with oracles, goldens, seeded cases, and measured budgets.
+
+Requirements: REQ-054–REQ-058, REQ-080, REQ-087, REQ-089–REQ-090.
+
+## COR-07 · Persistent native editing and interaction completion — `[build]` ⚪ Planned
+
+Host both TextKit 1 editors persistently; complete selection/scroll/IME behavior, window-scoped
+Add Image routing, task accessibility/keyboard operation, exact table-cell editing, and bounded
+direct `CGImage` display for distinct PNG/JPEG/GIF/HEIC/HEIF fixtures.
+
+Requirements: REQ-032, REQ-052, REQ-078–REQ-087, REQ-089–REQ-090.
 
 ---
 
@@ -188,3 +226,8 @@ Uncommitted ideas. Each needs research, explicit requirements, and approval befo
   the Source live-styling document-size suspension (REQ-045 / ADR-0010).
 - **COR-04 build:** PLAN-0008 — `NSDocument` ownership, source transactions, editor-neutral
   DocumentActionInterface; REQ-013–019 Done; FileDocument/DocumentGroup removed.
+- **INC-04 post-merge correction discovery:** RESEARCH-0008 reproduced the strict-concurrency
+  failure and identified transaction, mapping, persistent-host, interaction, image, test, and
+  documentation defects. The approved decision retains `NSDocument`, cmark-gfm, TextKit 1, and
+  canonical source while replacing the defective core. PLAN-0010 defines COR-05/06/07 with
+  falsifiable trace/oracle/performance gates; affected requirements are `Correction`.
