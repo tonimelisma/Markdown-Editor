@@ -4,7 +4,8 @@
 - **Date:** 2026-07-22
 - **Deciders:** Toni Melisma
 - **Related:** REQ-060–REQ-077; INC-03; [VISION §5](../VISION.md);
-  [RESEARCH-0004](../research/0004-inc03-image-assets-and-portability.md)
+  [RESEARCH-0004](../research/0004-inc03-image-assets-and-portability.md);
+  proposed correction [ADR-0012](0012-transactional-descriptor-relative-image-placement.md)
 
 ## Context
 
@@ -55,6 +56,9 @@ There is no “Import” document command. “Add image” is the user concept; 
   Markdown file can break relative references. Undo can leave an unreferenced asset.
 - **Follow-ups:** a future explicit “Save a Copy with Assets” or cleanup command requires its own
   lifecycle design. Image sizing and remote downloads remain out of scope.
+- **Implementation correction:** INC-03 did not satisfy the transaction, promise, lifecycle, and
+  containment mechanics required by this decision. ADR-0012 and PLAN-0005 propose replacing that
+  implementation without changing this user-visible policy.
 
 ## Alternatives considered
 

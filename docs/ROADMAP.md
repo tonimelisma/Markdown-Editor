@@ -7,7 +7,7 @@ Increments in logical order, built through the lifecycle in
 Discovery and build remain separate units. Approved research, requirements, and a plan authorize
 a later build; they do not mean the app already behaves that way.
 
-**Status:** ✅ Done · 🔵 Active · ⚪ Planned · 🅿️ Parked
+**Status:** ✅ Done · 🔵 Active · ⚪ Planned · 🟠 Correction required · 🅿️ Parked
 **Unit type:** `[docs]` · `[discovery/spike]` · `[build]`
 
 ---
@@ -47,17 +47,31 @@ are styled lexically. The regex engine remains a presentation aid, not a parser.
 
 Approved design: [PLAN-0004](plans/0004-markdown-dialect-conformance-correction.md).
 
-## INC-03 · Paste and drop images — `[build]` ✅ Done
+## INC-03 · Paste and drop images — `[build]` 🟠 Correction required
 
-Delivered paste/drop image placement into a shared sibling `assets/` directory with exact-copy
-PNG/JPEG/GIF/HEIC/HEIF, PNG encoding for bitmap-only paste, portable naming, transactional
-source insertion, untitled Save continuation, and non-destructive move warnings. Source mode
-still shows Markdown; inline image rendering is INC-04.
+The merged build established the intended paste/drop surface and exact-copy policy, but review
+found correctness failures in action serialization, zero-length edit tracking, multi-file
+promises, main-thread I/O, exclusive race handling, Save completion, restart-independent move
+warnings, and automated verification. It is not a completed capability until COR-02 replaces
+the pipeline. Source mode still shows Markdown; inline image rendering remains INC-04.
 
 Approved research and design:
 [RESEARCH-0004](research/0004-inc03-image-assets-and-portability.md),
 [ADR-0011](decisions/0011-image-placement-and-portability.md), and
 [PLAN-0003](plans/0003-inc03-image-assets.md).
+
+## COR-02 · Image placement transaction rewrite — `[build]` ⚪ Planned
+
+Keep ADR-0011's user-visible policy while replacing the implementation with one explicit
+transaction state machine, correct one-to-many promise receipt, operation-scoped Save completion,
+a dedicated non-main I/O executor, descriptor-relative exclusive publication/retry,
+identity-proven cleanup, exhaustive insertion tracking, and source-derived move warnings.
+
+Discovery is complete in
+[RESEARCH-0005](research/0005-image-placement-correction-architecture.md).
+[ADR-0012](decisions/0012-transactional-descriptor-relative-image-placement.md) and
+[PLAN-0005](plans/0005-cor02-image-placement-transaction-rewrite.md) are proposed and require
+user approval before the build starts.
 
 ## INC-04 · WYSIWYG mode — `[build]` ⚪ Planned
 
@@ -66,6 +80,8 @@ Approved research and design:
 - Make WYSIWYG the default and provide a display-only mode toggle.
 - Render referenced images without changing source syntax.
 - Complete the MVP.
+
+INC-04 is blocked until COR-02 is Done.
 
 ---
 
@@ -105,4 +121,7 @@ Uncommitted ideas. Each needs research, explicit requirements, and approval befo
   Import command. COR-01 must land before INC-03.
 - **COR-01 build:** PLAN-0004; formal-GFM tilde strikethrough, Tier-2 style removal, image
   destination fixtures, REQ-047–REQ-051 Done; REQ-042 Deferred to dialect-profile research.
-- **INC-03 build:** PLAN-0003 / ADR-0011; paste/drop → sibling `assets/`, REQ-060–REQ-077 Done.
+- **INC-03 build:** PLAN-0003 / ADR-0011 merged, but post-merge review reopened the capability;
+  affected REQ-060–REQ-077 rows are `Correction`, not Done.
+- **COR-02 discovery:** RESEARCH-0005 compared correction architectures; proposed ADR-0012 and
+  PLAN-0005 select a full transaction/storage rewrite and await approval.

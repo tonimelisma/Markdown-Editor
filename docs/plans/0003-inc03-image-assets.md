@@ -2,12 +2,17 @@
 
 - **Increment:** INC-03
 - **Date:** 2026-07-22
-- **Status:** Implemented
+- **Status:** Implemented with known defects; superseded for correction by
+  [PLAN-0005](0005-cor02-image-placement-transaction-rewrite.md)
 - **Requirements:** REQ-060–REQ-077
 - **Depends on:** [PLAN-0004](0004-markdown-dialect-conformance-correction.md),
   [RESEARCH-0004](../research/0004-inc03-image-assets-and-portability.md),
   [ADR-0011](../decisions/0011-image-placement-and-portability.md),
   [ADR-0008](../decisions/0008-textkit1-nstextview-editor-engine.md)
+
+> Historical record: this was the approved INC-03 build plan, but the merged implementation did
+> not satisfy several of its transaction, concurrency, lifecycle, filesystem, and verification
+> commitments. Do not use it as the next implementation plan. PLAN-0005 proposes a replacement.
 
 ## Goal
 
@@ -135,9 +140,9 @@ during Save As.
    one undo group, description selection, tracked-range cancellation, and no file deletion.
 5. **Paste and drag adapters** — implement REQ-060–REQ-064; test classification with
    pasteboard-value fixtures and adapter seams, including native fallthrough.
-6. **Move warning and accessibility** — complete REQ-073 and REQ-075–REQ-077; test warning decisions and
-   verify keyboard/VoiceOver labels through UI-accessibility tests where framework behavior is
-   not inherent.
+6. **Move warning and accessibility** — complete REQ-073 and REQ-075–REQ-077; test warning
+   decisions with unit/integration seams and treat stock TextKit keyboard/VoiceOver behavior as
+   inherent where no custom accessibility behavior replaces it.
 7. **Reconcile before PR** — change statuses and exact anchors in REQUIREMENTS, update ROADMAP,
    and record deviations in the living ADRs before review.
 

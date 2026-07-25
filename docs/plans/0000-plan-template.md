@@ -26,7 +26,8 @@ Each step names the `REQ-###` it advances and the test that will verify it.
 
 ## Testing
 
-How each requirement is verified (unit / UI). Test files carry `// Verifies: REQ-###`.
+How each requirement is verified with unit/integration tests that require no UI automation.
+Test files carry `// Verifies: REQ-###`.
 
 ## Risks / open questions
 
