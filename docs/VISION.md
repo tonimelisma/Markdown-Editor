@@ -52,10 +52,14 @@ standards-based source outranks renderer-specific decoration.
 
 - The target is two views over the same source: **WYSIWYG** (eventual default) and
   **live-styled source**, toggleable without rewriting the document.
+- Both modes are editors. Source mode shows and edits the literal Markdown. WYSIWYG is a genuine
+  rich editing surface: parsed Markdown control characters are absent, the actual content is
+  formatted, and selections can be formatted through native commands and a visible toolbar.
 - Source mode displays the actual Markdown. An image remains `![]()` source; rendering it inline
   belongs to WYSIWYG.
 - Live styling is presentation, not parsing or normalization. It never changes saved text.
-- Unknown and unsupported syntax remains editable and round-trips unchanged.
+- Unknown and unsupported syntax remains visible, unformatted, editable, and round-trips
+  unchanged. WYSIWYG never invents semantics for syntax outside the supported dialect.
 - The delivery sequence is plain text → live-styled source → WYSIWYG default.
 
 ## 5. Markdown compatibility contract

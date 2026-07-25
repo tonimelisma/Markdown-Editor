@@ -34,8 +34,11 @@ when semantic rendering is planned.
   In-fence language coloring is out of scope.
 - **Correction:** COR-01 removed the extension claims introduced in INC-02 and aligned tilde
   styling with formal GFM (REQ-047–REQ-051).
-- **Revisit trigger:** if precision/nesting becomes a problem, or for in-fence language coloring,
-  evaluate tree-sitter-markdown (+ ChimeHQ Neon); update or supersede this ADR then.
+- **Revisit trigger:** if precision/nesting becomes a problem in Source mode, investigate an
+  incremental highlighting engine without treating it as the semantic parser. The
+  tree-sitter-markdown maintainers explicitly warn against correctness-sensitive use, so it is
+  not a WYSIWYG semantic-authority candidate. SPIKE-02 selects the WYSIWYG parser separately
+  against ADR-0003.
 
 ## Alternatives considered
 

@@ -6,21 +6,25 @@
 - **Related:** [ADR-0002](0002-swiftui-first-appkit-where-needed.md), [ADR-0007](0007-editor-surface-interim-texteditor.md); [RESEARCH-0001](../research/0001-inc01-editor-foundation.md); INC-01
 
 > Living decision — reassessed during INC-02; `FileDocument` remains adequate for the current
-> single-document, local-first editor (see "Revisit trigger").
+> single-surface, local-first editor (see "Revisit trigger"). SPIKE-02 will reassess it before
+> INC-04; no replacement has yet been selected.
 
 ## Context
 
-A SwiftUI document-based app can back its documents with one of three models. For a plain-text
+A document-based app can back its documents with one of the following models. For a plain-text
 Markdown editor the differences that matter are undo fidelity, autosave control, large-file
-handling, and how much boilerplate we take on. (Full comparison: RESEARCH-0001.)
+handling, SDK stability, and how much boilerplate we take on. (Original comparison:
+RESEARCH-0001; current investigation: RESEARCH-0007.)
 
 | Option | Type | Undo / autosave | Large files | Cost |
 |---|---|---|---|---|
 | **`FileDocument`** | value (struct) | autosave + Versions free; undo tracking awkward; no autosave-timing control | whole file in memory | lowest |
-| **`ReferenceFileDocument`** | class | background autosave tied to `UndoManager` | `FileWrapper`-based | medium |
+| **macOS 27 SwiftUI `Document`** | reference (`@Observable`) | explicit undo; coordinated async URL I/O | direct URL access | medium; beta API |
+| **`ReferenceFileDocument`** | class | background autosave tied to `UndoManager` | `FileWrapper`-based | deprecated for new types |
 | **`NSDocument`** | class (AppKit) | full control | URL access, streamable | highest |
 
-Autosave in all three is the standard macOS **Auto Save + Versions** (the TextEdit experience).
+The framework-backed options are evaluated against standard macOS **Auto Save + Versions**
+(the TextEdit experience).
 
 ## Decision
 
@@ -36,11 +40,27 @@ and gives autosave + Versions for free.
 - **Revisit outcome / trigger:** INC-02 retained `FileDocument`; the TextKit 1 wrapper binds the
   same string-backed document model and did not require a model change. Re-evaluate if undo
   fidelity (INV-1 no data loss), large files, or external-change handling prove inadequate —
-  likely moving to `ReferenceFileDocument` or `NSDocument`.
+  the current candidates are macOS 27 SwiftUI `Document` and `NSDocument`.
+
+### Scheduled reassessment for SPIKE-02
+
+COR-02 needed an operation-scoped Save bridge because the value-type SwiftUI document surface
+does not directly expose the owning Save operation. INC-04 adds two editable surfaces, semantic
+source transactions, cross-mode undo, parser snapshots, and editor-neutral image selection/commit.
+Those are concrete revisit signals under this ADR.
+
+macOS 27 also introduces a reference-based SwiftUI `Document` protocol with direct coordinated
+URL access, async reading/writing, Observation integration, and explicit undo registration.
+Apple deprecates `ReferenceFileDocument` for new macOS 27 document types. SPIKE-02 will compare
+the new `Document` API, stable `NSDocument`, and retaining `FileDocument` on the real toolchain.
+The spike does not itself change this decision; any migration requires a revised ADR, approved
+requirements, and a separate build plan.
 
 ## Alternatives considered
 
-- **`ReferenceFileDocument`** — better undo/autosave story; deferred as unnecessary complexity
-  while the editor is a plain `TextEditor`.
+- **`ReferenceFileDocument`** — originally deferred as unnecessary complexity; now deprecated by
+  Apple for new macOS 27 document types and not a migration candidate.
 - **`NSDocument`** — most control and real large-file support; rejected for now as heavy and
-  least SwiftUI-idiomatic.
+  least SwiftUI-idiomatic; retained as the stable fallback in SPIKE-02.
+- **macOS 27 SwiftUI `Document`** — unavailable when this ADR was accepted; now the leading
+  reassessment candidate, subject to beta-API and real-toolchain probes in SPIKE-02.
