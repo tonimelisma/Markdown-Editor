@@ -2,7 +2,7 @@
 
 - **Increment:** INC-03
 - **Date:** 2026-07-22
-- **Status:** Approved for a future build after COR-01
+- **Status:** Implemented
 - **Requirements:** REQ-060–REQ-077
 - **Depends on:** [PLAN-0004](0004-markdown-dialect-conformance-correction.md),
   [RESEARCH-0004](../research/0004-inc03-image-assets-and-portability.md),

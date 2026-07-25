@@ -47,21 +47,12 @@ are styled lexically. The regex engine remains a presentation aid, not a parser.
 
 Approved design: [PLAN-0004](plans/0004-markdown-dialect-conformance-correction.md).
 
-## INC-03 · Paste and drop images — `[build]` ⚪ Planned
+## INC-03 · Paste and drop images — `[build]` ✅ Done
 
-**Discovery and plan approved; unblocked by COR-01.**
-
-- Users add images by paste or drag-and-drop; there is no Import document command.
-- Copy supported file-backed PNG, JPEG, GIF, HEIC, and HEIF byte-for-byte into a visible shared
-  sibling `assets/` directory. Never transcode HEIC/HEIF.
-- Encode bitmap-only clipboard data as PNG.
-- Insert ordinary relative `![](assets/name.ext)` source only after all destinations exist.
-- Use portable deterministic names, byte-identical reuse, hash-on-collision, exclusive writes,
-  resolved containment, and non-destructive failure handling.
-- Keep empty image descriptions visible and easy to author; never use a filename as fake alt text.
-- Source undo and reference deletion never delete assets.
-- Untitled documents save first. Save As/move never silently relocates a shared assets directory.
-- Source mode continues to show Markdown; inline rendering is INC-04.
+Delivered paste/drop image placement into a shared sibling `assets/` directory with exact-copy
+PNG/JPEG/GIF/HEIC/HEIF, PNG encoding for bitmap-only paste, portable naming, transactional
+source insertion, untitled Save continuation, and non-destructive move warnings. Source mode
+still shows Markdown; inline image rendering is INC-04.
 
 Approved research and design:
 [RESEARCH-0004](research/0004-inc03-image-assets-and-portability.md),
@@ -114,3 +105,4 @@ Uncommitted ideas. Each needs research, explicit requirements, and approval befo
   Import command. COR-01 must land before INC-03.
 - **COR-01 build:** PLAN-0004; formal-GFM tilde strikethrough, Tier-2 style removal, image
   destination fixtures, REQ-047–REQ-051 Done; REQ-042 Deferred to dialect-profile research.
+- **INC-03 build:** PLAN-0003 / ADR-0011; paste/drop → sibling `assets/`, REQ-060–REQ-077 Done.
