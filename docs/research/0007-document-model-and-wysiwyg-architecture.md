@@ -3,11 +3,11 @@
 - **Date:** 2026-07-24; executed 2026-07-25
 - **For:** SPIKE-02 → possible document-model migration → INC-04
 - **Type:** repository analysis + online research + planned native-API/POC investigation
-- **Status:** Decision-enabling evidence complete — awaiting explicit decisions and bounded
-  follow-up probes
-- **Outcome:** The source-backed TextKit 1 design is viable. The evidence recommends an
-  `NSDocument`-owned canonical source and a coherent formal-GFM dialect rather than the current
-  hybrid dialect label. Neither recommendation is accepted until the user approves it.
+- **Status:** Complete; recommendations approved 2026-07-25
+- **Outcome:** The source-backed TextKit 1 design is viable. The user selected an
+  `NSDocument`-owned canonical source, coherent formal GFM 0.29 through direct pinned cmark-gfm,
+  minimum-unit normalization, literal raw HTML, plain-text MVP paste, existing-table editing,
+  “Add Image…”, and the same formatting toolbar in both modes.
 
 > Research docs capture *investigation*, not decisions. A decision that comes out of research
 > is recorded separately as an [ADR](../decisions/). Spike/POC code is throwaway (per
@@ -15,15 +15,15 @@
 
 ## Questions
 
-INC-04 cannot be planned responsibly until the project answers:
+SPIKE-02 answered:
 
 1. Should the value-type `FileDocument` remain the document model once two editable surfaces,
    explicit semantic source edits, cross-mode undo, parser snapshots, direct file-location
    awareness, and image transactions all need stable shared state?
 2. Can a genuine no-markup WYSIWYG editor be implemented on the already-selected TextKit 1
    `NSTextView` while keeping the Markdown string authoritative?
-3. Which structural parser implements the approved CommonMark 0.31.2 plus formal GFM 0.29-gfm
-   contract and supplies source positions precise enough for targeted edits?
+3. Which coherent structural parser/dialect supplies source positions precise enough for
+   targeted edits?
 4. What source representation may change after a WYSIWYG edit, and how narrowly can that change
    be bounded?
 5. How should the landed COR-02 image transaction obtain an active source selection and commit
@@ -390,7 +390,8 @@ No toolbar UI was built. The architecture probe established the command boundary
 - expose command enabled/state from the semantic selection; and
 - update the inactive view only from accepted canonical-source versions.
 
-The toolbar product choices remain at the decision gate below.
+The toolbar product choices were resolved after the decision-enabling probes; accepted outcomes
+are recorded below.
 
 ### G — performance, concurrency, and failure behavior
 
@@ -429,25 +430,42 @@ Deterministic failure outcomes proven or fixed by construction:
 | Mode switch during async work | intent remains source-based; stale result rejected |
 | Parser task cancellation | pre/post check; synchronous parse itself is not interruptible |
 
-### Evidence boundary before the decision gates
+### Selected-design follow-up evidence
 
-The first execution deliberately stops at the earliest decisions that change the meaning of later
-tests. Calling the entire spike complete here would be false:
+After the user approved all eight recommendations, bounded throwaway probes completed the
+decision-dependent matrix:
 
-| PLAN-0006 remainder | Why it is decision-dependent |
-|---|---|
-| Full-dialect projection fixtures | There is no accepted structural dialect/parser to define a passing semantic tree. |
-| Complete formatting-intent/locality matrix | Generated-source validity and delimiter behavior depend on the dialect and approved normalization boundary. |
-| Rich paste, raw HTML, table-structure, Add Image, and Source-toolbar probes | Each option changes the command surface and source transactions being tested. |
-| Full link/task accessibility and interaction adapters | The storage/attachment substrate passed, but final roles/actions depend on the chosen projection and command model. |
-| Complete cross-mode typing/format/task/link sequences | The common source transaction and undo seam passed; semantic operations must follow the accepted edit policies. |
-| Image fit/cache/missing/oversize/move/stale-decode matrix | Exact-copy decode and editor-neutral placement passed; cache bounds and presentation behavior belong to the INC-04 requirements produced after decisions. |
-| Persistent two-mode host and full selection/scroll restoration | The command/state boundary is known, but the host is downstream implementation architecture, not needed to choose the document model/parser. |
-| Full operation-level latency distributions | Parse/index/storage baselines are measured; edit/projection/image distributions require the selected parser and semantic operations. |
+- the complete formal-GFM specification with
+  `CMARK_OPT_STRIKETHROUGH_DOUBLE_TILDE`: **670 passed, 0 failed**;
+- a focused strict-strikethrough check rendered `~single~` literally and `~~double~~` as
+  strikethrough, correcting the earlier research's mistaken single-tilde interpretation;
+- cmark-gfm's pathological suite: **21 passed, 0 errored, 0 ignored**;
+- 17 local/structural edit fixtures covering alternate inline spellings, links, headings, lists,
+  quotes, code, tasks, table cell/table scope, and image fields;
+- typed stale, invalid-range, ambiguous-delimiter, and overlap refusal;
+- complete-dialect TextKit 1 rich substrate with parsed delimiters absent and raw
+  HTML/unsupported/malformed source literal;
+- persistent Source/WYSIWYG views, WYSIWYG default state, mode selection preservation, IME,
+  spelling, Find, plain-text rich paste, and undo;
+- direct link action, task action, image selection, checkbox role/label/value, and 2×2 native
+  table blocks;
+- Source typing, WYSIWYG formatting, task, link, and image undo/redo across mode switches,
+  including retained asset and post-undo stale-snapshot rejection;
+- HEIC plus HEVC-in-HEIF and JPEG-in-HEIF bounded off-main thumbnail decode with byte hashes
+  unchanged and no encode/transcode path; and
+- corrupt, oversize, remote, stale, moved-document-resolution, and bounded-cache-eviction
+  outcomes.
 
-These are bounded follow-up probes within SPIKE-02, not production implementation. After the user
-answers the gates below, they can be built against one coherent contract and the spike can reach
-its exit gates without testing discarded designs.
+Additional selected-design release measurements:
+
+| Operation | Median | p95 |
+|---|---:|---:|
+| local edit translation | 0.000708 ms | 0.000750 ms |
+| complete representative projection application | 0.097 ms | 0.123 ms |
+| 1280×854 HEIC bounded thumbnail decode | 10.900 ms | 12.211 ms |
+
+The projection application is attributed-storage work, not a glyph/layout benchmark. The image
+measurement includes detached scheduling and decode. No threshold is inferred.
 
 ## Architecture options
 
@@ -457,7 +475,7 @@ its exit gates without testing discarded designs.
 |---|---|---|---|
 | Keep `FileDocument` | Lowest migration cost; existing byte-fidelity tests | Value rebinding, view-owned mutations, bespoke Save bridge, awkward cross-mode undo and URL lifecycle | Viable fallback, but preserves the current architectural seams |
 | Adopt macOS 27 SwiftUI `Document` | Stable reference identity, `@Observable`, direct coordinated URL access, async I/O, explicit undo | Beta API; no dependent-Save action/result; migration without removing the hardest bridge | Reassess after API maturity; do not migrate now |
-| Adopt `NSDocument` | Mature Save/URL/undo/autosave/Versions control | More AppKit document/window boilerplate; explicit SwiftUI hosting | **Recommended for the macOS-only blank-slate architecture** |
+| Adopt `NSDocument` | Mature Save/URL/undo/autosave/Versions control | More AppKit document/window boilerplate; explicit SwiftUI hosting | **Selected for the macOS-only blank-slate architecture** |
 | Adopt `ReferenceFileDocument` | Reference identity within older SwiftUI model | Deprecated for new macOS 27 document types; synchronous `FileWrapper` model | Reject |
 
 ### WYSIWYG representation
@@ -484,9 +502,9 @@ A blank-slate design should separate:
 
 Mode, selection, parse trees, and image caches must not become hidden document metadata.
 
-## Recommendation after execution
+## Accepted architecture
 
-Subject to explicit approval:
+Approved 2026-07-25:
 
 1. Migrate from `FileDocument` to an `NSDocument`-owned canonical source as a separate
    prerequisite build.
@@ -500,14 +518,12 @@ Subject to explicit approval:
 6. Adapt only COR-02's selection/Save/commit boundary; retain its storage transaction unchanged.
 7. Perform the document migration before specifying/building INC-04. Do not combine them.
 
-## Decision gates
+## Approved product decisions
 
 ### Architecture
 
-1. **Document model:** approve the recommended `NSDocument` migration, retain `FileDocument`, or
-   wait for the new SwiftUI `Document`. Recommendation: `NSDocument`.
-2. **Dialect:** approve coherent formal GFM 0.29, or authorize ownership of a large hybrid parser
-   fork. Recommendation: formal GFM 0.29.
+1. **Document model:** migrate to `NSDocument` in a separate COR-04 before INC-04.
+2. **Dialect:** coherent formal GFM 0.29 through direct pinned cmark-gfm; no hybrid fork.
 
 The document choice is independent of syntax. The dialect choice is not cosmetic: formal GFM
 0.29 gives one executable standard and GitHub's parser; the hybrid requires maintaining a large
@@ -515,25 +531,24 @@ private parser indefinitely.
 
 ### Product policies
 
-1. **Normalization boundary.** Recommendation: preserve exact spelling when a safe patch exists;
+1. **Normalization boundary.** Preserve exact spelling when a safe patch exists;
    otherwise regenerate only the smallest semantic unit—inline node, block, or table—and never
    the whole document. Example: editing a table cell patches that cell; changing columns rewrites
    that table only. `_word_` stays underscore emphasis when its text changes; converting a Setext
    heading to Heading 3 rewrites that heading block as `### ...`; changing table alignment rewrites
    only that table's delimiter row.
-2. **Raw HTML.** Recommendation: display the literal HTML source as unformatted, non-executing,
+2. **Raw HTML.** Display literal HTML source as unformatted, non-executing,
    editable text in WYSIWYG. Rendering it would require an HTML engine/security policy and could
    hide source that cannot be round-tripped safely.
-3. **Rich paste.** Options: convert a tested RTF/HTML semantic subset to Markdown, or paste plain
-   text. Recommendation: plain text for MVP; add rich conversion only as a later independently
+3. **Rich paste.** Paste plain text for MVP; add rich conversion only as a later independently
    specified feature. Pasting visually bold “Hello” therefore inserts `Hello`, not guessed
    `**Hello**`; a later converter can define exactly which styles and links are accepted.
-4. **Tables.** Recommendation: render and edit existing GFM tables in MVP, including cell-content
+4. **Tables.** Render and edit existing GFM tables in MVP, including cell-content
    edits, but defer an Insert Table workflow and structural row/column controls.
-5. **Image command surface.** Options: paste/drag only, or also “Add Image…”. Recommendation: add
-   “Add Image…” using the same COR-02 transaction and a file picker; it is placement, not document
-   Import, and HEIC/HEIF remains exact-copy with no JPEG generation.
-6. **Source-mode toolbar.** Recommendation: expose the same semantic formatting commands in both
+5. **Image command surface.** Add “Add Image…” using the same COR-02 transaction and a file
+   picker; it is placement, not document Import, and HEIC/HEIF remains exact-copy with no JPEG
+   generation.
+6. **Source-mode toolbar.** Expose the same semantic formatting commands in both
    modes. In Source, commands modify the literal selection through the same transaction engine;
    unsafe/ambiguous commands are disabled or return a typed refusal.
 

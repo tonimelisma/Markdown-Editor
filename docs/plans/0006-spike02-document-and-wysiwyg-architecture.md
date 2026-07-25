@@ -2,7 +2,7 @@
 
 - **Increment:** SPIKE-02
 - **Date:** 2026-07-24
-- **Status:** Approved — decision-enabling evidence complete; awaiting decision gates
+- **Status:** Done
 - **Requirements:** Not applicable — standalone discovery/spike; no production behavior
 - **Depends on:** COR-02 merged and reconciled;
   [RESEARCH-0007](../research/0007-document-model-and-wysiwyg-architecture.md);
@@ -17,11 +17,14 @@
 > This plan authorizes no production implementation. It is a standalone discovery unit:
 > automated probes and POC code are throwaway and must not be merged. Its durable outputs are
 > completed research, measurements, options, user decisions, and proposed ADRs/plans.
+>
+> Historical execution contract: the plan began from the then-approved cross-version dialect.
+> Its conformance probe disproved that premise; the user approved coherent formal GFM 0.29 as the
+> replacement. RESEARCH-0007 and ADR-0003 hold the final result.
 
-The user approved execution on 2026-07-25. All throwaway probes ran outside the repository.
-RESEARCH-0007 records the decision-enabling evidence and the decision-dependent probes that
-cannot be specified honestly yet. SPIKE-02 remains Active until its architecture and product
-decision gates receive explicit approval and those bounded follow-up probes pass.
+The user approved execution and all eight recommendations on 2026-07-25. All throwaway probes ran
+outside the repository and were removed after their results were recorded. RESEARCH-0007 records
+the complete evidence, selected decisions, and measurements.
 
 ## Goal
 
@@ -70,8 +73,8 @@ The spike evaluates how to build the approved product; it does not reduce it:
    source byte.
 3. **Local edits:** a WYSIWYG action changes only its explicitly authorized source unit.
 4. **Unknown preservation:** unfamiliar or malformed source is never dropped.
-5. **Valid generation:** every generated edit is valid under CommonMark 0.31.2 plus formal GFM
-   0.29-gfm.
+5. **Valid generation:** every generated edit is valid under formal GFM 0.29-gfm. This replaces
+   the plan's original cross-version premise after the conformance probe disproved it.
 6. **Cross-mode undo:** an edit made in either mode can be undone and redone after switching modes.
 7. **Native input:** marked text, Unicode, spelling, selection, copy/paste, keyboard navigation,
    and undo remain native unless a documented semantic adapter is necessary.
@@ -344,7 +347,7 @@ For each operation, test alternative valid spellings:
 
 - `*` versus `_`;
 - `**` versus `__`;
-- single/double tilde;
+- conforming double-tilde strikethrough and literal single-tilde spans;
 - inline/reference links;
 - `-`, `+`, and `*` bullets;
 - ordered-list delimiters and starting numbers;

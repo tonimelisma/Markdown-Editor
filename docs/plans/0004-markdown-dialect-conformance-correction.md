@@ -1,5 +1,10 @@
 # PLAN-0004 — COR-01 Markdown dialect conformance correction
 
+> Historical build plan. SPIKE-02 later replaced the cross-version dialect label with coherent
+> formal GFM 0.29 and found that this plan incorrectly treated single tildes as formal
+> strikethrough. COR-03 corrects that remaining source-style mismatch; see ADR-0003 and
+> RESEARCH-0007.
+
 - **Increment:** COR-01
 - **Date:** 2026-07-22
 - **Status:** Implemented
@@ -12,8 +17,9 @@
 
 Correct the delivered source highlighter and its claims so the product has one honest MVP
 dialect: CommonMark 0.31.2 plus formal GFM 0.29-gfm. Remove custom Tier-2 semantic styling,
-implement formal GFM single- and double-tilde strikethrough behavior, improve image-destination
-fixtures, and clearly keep the regex engine lexical rather than calling it a parser.
+improve image-destination fixtures, and clearly keep the regex engine lexical rather than
+calling it a parser. This completed plan styled both single- and double-tilde spans, but that
+part was based on a mistaken reading of the standard and is superseded by COR-03.
 
 ## Approach
 
@@ -21,7 +27,8 @@ Keep the current TextKit and concurrency architecture. Change only highlighter p
 labels/tests, and synchronized documentation:
 
 - remove footnote, highlight, superscript, and subscript recognition from supported semantics;
-- style one- and two-tilde GFM strikethrough without treating `~x~` as subscript;
+- retain the completed single- and double-tilde source-styling change as historical scope;
+  COR-03 removes single-tilde styling to match formal GFM;
 - preserve all source bytes and leave unknown extension syntax unstyled;
 - improve the lexical image pattern enough to recognize focused valid CommonMark destination
   fixtures without claiming complete nested grammar support; and
@@ -45,8 +52,8 @@ Do not add a parser dependency in this correction. Parser selection belongs to I
 ## Testing
 
 - Table-driven unit tests derived from cited CommonMark 0.31.2 and GFM 0.29-gfm examples.
-- Regression tests for `~one~`, `~~two~~`, intraword/whitespace edge cases, escaped tildes, and
-  code spans.
+- Historical regression tests for `~one~` and `~~two~~`, plus intraword/whitespace edge cases,
+  escaped tildes, and code spans; COR-03 replaces the incorrect single-tilde expectation.
 - Image-reference fixtures for simple portable paths and selected valid destination/title forms.
 - Unknown-extension fixtures proving source preservation and absence of claimed semantic styles.
 - Existing concurrency, range-boundary, and large-document tests remain green.

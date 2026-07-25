@@ -37,7 +37,8 @@ the user think." Full product & engineering vision: **[docs/VISION.md](docs/VISI
 ## 2. Documentation model — spec-driven, conservative authority
 
 **Code + tests are canonical. The docs are the synchronized intent layer.** (We did *not*
-adopt the "spec is the sole source of truth" model — see [ADR-0001](docs/decisions/0001-adopt-spec-driven-documentation-system.md).)
+adopt the "spec is the sole source of truth" model — see
+[ADR-0001](docs/decisions/0001-spec-driven-documentation-conservative-authority.md).)
 
 Doc map (MECE — every doc has one job, no overlap):
 

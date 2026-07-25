@@ -1,5 +1,9 @@
 # ADR-0012 — Transactional, descriptor-relative image placement
 
+> COR-04 will replace only this implementation's view-derived document/selection/Save/commit
+> boundary with the `NSDocument` interface selected by SPIKE-02. The storage transaction,
+> exact-copy HEIC/HEIF policy, containment, and rollback decision remain unchanged.
+
 - **Status:** Implemented
 - **Date:** 2026-07-24
 - **Deciders:** Toni Melisma

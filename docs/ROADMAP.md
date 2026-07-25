@@ -40,10 +40,12 @@ post-MVP dialect-profile research.
 
 ## COR-01 · Markdown dialect conformance correction — `[build]` ✅ Done
 
-Delivered CommonMark 0.31.2 plus formal GFM 0.29-gfm as the only supported MVP dialect labels.
-Removed footnote/highlight/superscript/subscript semantic styling; one- and two-tilde forms are
-formal-GFM strikethrough; unknown extensions remain unstyled; focused image-destination fixtures
-are styled lexically. The regex engine remains a presentation aid, not a parser.
+Delivered the then-approved CommonMark 0.31.2 plus formal GFM 0.29-gfm source labels. SPIKE-02
+later replaced that cross-version label with coherent formal GFM 0.29 while retaining COR-01's
+token correction. Footnote/highlight/superscript/subscript remain unsupported. COR-03 corrects
+the remaining single-tilde mistake so only formal-GFM double tildes receive strikethrough.
+Unknown extensions remain unstyled; focused image destinations are styled lexically. The regex
+engine remains a presentation aid, not a parser.
 
 Approved design: [PLAN-0004](plans/0004-markdown-dialect-conformance-correction.md).
 
@@ -71,23 +73,42 @@ Approved design:
 [ADR-0012](decisions/0012-transactional-descriptor-relative-image-placement.md), and
 [PLAN-0005](plans/0005-cor02-image-placement-transaction-rewrite.md).
 
-## SPIKE-02 · Document and WYSIWYG architecture — `[discovery/spike]` 🔵 Active
+## SPIKE-02 · Document and WYSIWYG architecture — `[discovery/spike]` ✅ Done
 
 Before INC-04, use throwaway automated probes to decide whether the current value-type
 `FileDocument` remains adequate or should migrate; select a structural parser against the exact
 CommonMark/formal-GFM contract; prove TextKit 1 rich projection, source-range mapping, targeted
 source edits, cross-mode undo, and an editor-neutral COR-02 commit boundary; and measure
-performance/failure behavior without UI or manual tests. The completed probes recommend
-`NSDocument`, found no conforming off-the-shelf parser for the currently named hybrid dialect,
-and leave both decisions with the user.
+performance/failure behavior without UI or manual tests. The completed probes selected
+`NSDocument`, coherent formal GFM 0.29 through pinned direct cmark-gfm, and the source-backed
+TextKit 1 projection/transaction architecture.
 
 Approved discovery plan:
 [RESEARCH-0007](research/0007-document-model-and-wysiwyg-architecture.md) and
-[PLAN-0006](plans/0006-spike02-document-and-wysiwyg-architecture.md). The decision-enabling
-throwaway probes are complete. SPIKE-02 is awaiting explicit architecture/dialect and product
-decisions before its decision-dependent probes, ADRs, requirements, prerequisite builds, and
-INC-04 plan can proceed. Any selected document-model migration is a separate build, not part of
-the spike or INC-04.
+[PLAN-0006](plans/0006-spike02-document-and-wysiwyg-architecture.md). The user approved all eight
+recommendations on 2026-07-25 and the selected-design follow-up probes passed. No spike code or
+dependency was retained.
+
+## COR-03 · Formal-GFM strikethrough exactness — `[build]` 🟠 Correction required
+
+Correct COR-01's remaining standards mistake: formal GFM 0.29 requires double-tilde
+strikethrough, while the current Source highlighter also styles single-tilde spans. Preserve
+single tilde literally and style only conforming double-tilde source.
+
+Correction requirements: REQ-048–REQ-049. Proposed implementation:
+[PLAN-0007](plans/0007-cor03-formal-gfm-strikethrough-exactness.md). The plan requires explicit
+approval before implementation.
+
+## COR-04 · NSDocument migration — `[build]` ⚪ Planned
+
+Replace the current `DocumentGroup`/`FileDocument` ownership path with one `NSDocument` that owns
+canonical source, version, URL/location generation, Save completion, transactions, and undo.
+Preserve current Source behavior and COR-02 storage unchanged while replacing their view-derived
+document/commit seams.
+
+Approved requirements: REQ-013–REQ-019. Proposed implementation:
+[PLAN-0008](plans/0008-cor04-nsdocument-migration.md). The plan requires explicit approval before
+implementation.
 
 ## INC-04 · WYSIWYG mode — `[build]` ⚪ Planned
 
@@ -96,16 +117,19 @@ the spike or INC-04.
   - WYSIWYG omits parsed Markdown control characters, shows formatted content, and supports direct
     editing through native selection and a formatting toolbar.
 - Make WYSIWYG the default and provide a visible Source/WYSIWYG toggle that never rewrites source.
-- Render the complete approved dialect using the structural parser selected by SPIKE-02; leave
-  unsupported semantics visible, unformatted, editable, and preserved. The exact dialect wording
-  is blocked on SPIKE-02's parser decision gate.
+- Render complete formal GFM 0.29 using pinned direct cmark-gfm; leave unsupported semantics and
+  raw HTML visible, unformatted, editable, non-executing, and preserved.
 - Make task checkboxes interactive and links directly clickable.
 - Render local PNG/JPEG/GIF/HEIC/HEIF references without changing source syntax or asset bytes.
 - Reuse COR-02's image transaction in either mode rather than creating a second placement path.
+- Provide “Add Image…” through that same transaction; there is no Import command.
+- Paste rich clipboard content as plain text for MVP.
+- Render/edit existing tables but defer table insertion and structural controls.
 - Complete the MVP.
 
-INC-04 is blocked until SPIKE-02 is Done, every resulting prerequisite migration is Done, and
-INC-04 requirements and a separate build plan are explicitly approved.
+Approved requirements: REQ-052–REQ-059 and REQ-078–REQ-087. Proposed implementation:
+[PLAN-0009](plans/0009-inc04-source-and-wysiwyg-editing.md). INC-04 is blocked until COR-03 and
+COR-04 are Done and PLAN-0009 is explicitly approved.
 
 ---
 
@@ -157,6 +181,7 @@ Uncommitted ideas. Each needs research, explicit requirements, and approval befo
   proposes automated document-model, parser, TextKit 1 WYSIWYG, semantic-edit, undo, image, and
   performance probes before INC-04 requirements or a build plan are written.
 - **SPIKE-02 execution:** approved 2026-07-25. Decision-enabling strict-concurrency, conformance,
-  source-index, TextKit 1, document, image, edit-seam, and performance probes completed. Evidence
-  and the precise decision-dependent remainder are recorded in RESEARCH-0007; decision gates
-  remain open.
+  source-index, TextKit 1, document, image, edit-seam, and performance probes completed. After all
+  eight recommendations were approved, selected-design conformance, edit, interaction, undo,
+  image-failure/cache, and performance probes passed. RESEARCH-0007; ADR-0003/0006/0013;
+  PLAN-0007/0008/0009.

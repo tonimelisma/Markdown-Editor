@@ -1,7 +1,7 @@
 # ADR-0002 — SwiftUI-first; AppKit only where SwiftUI can't reach
 
 - **Status:** Accepted
-- **Date:** 2026-07-21
+- **Date:** 2026-07-21; revised 2026-07-25
 - **Deciders:** Toni Melisma
 - **Related:** [VISION §6](../VISION.md); SPIKE-01 (text engine) will refine the AppKit boundary
 
@@ -16,9 +16,9 @@ are not reachable from pure SwiftUI today and require `NSTextView`/TextKit via
 ## Decision
 
 **SwiftUI-first.** Build UI in SwiftUI wherever it can deliver. Drop to AppKit only where
-SwiftUI genuinely can't reach, and wrap those pieces behind clean, testable seams. The primary
-expected AppKit surface is the text editor; the specific engine (TextKit 1 vs 2 vs a
-third-party view) is **not decided here** — it is the subject of SPIKE-01.
+SwiftUI genuinely can't reach, and wrap those pieces behind clean, testable seams. SPIKE-01
+selected TextKit 1 for Source/WYSIWYG editing. SPIKE-02 selected `NSDocument` for document,
+window, Save, URL, and undo ownership while retaining SwiftUI-hosted editor content.
 
 ## Consequences
 
@@ -26,7 +26,7 @@ third-party view) is **not decided here** — it is the subject of SPIKE-01.
   largely for free; AppKit complexity is contained.
 - **Negative / costs:** the SwiftUI⇄AppKit bridge is a known source of friction (focus, undo,
   first-responder, layout) that we must engineer carefully.
-- **Follow-ups:** SPIKE-01 decides the text engine and the exact bridge; record it as an ADR.
+- **Follow-ups:** ADR-0008 records TextKit 1. ADR-0006 and COR-04 record the `NSDocument` boundary.
 
 ## Alternatives considered
 

@@ -86,15 +86,15 @@ increment** during the discovery phase (the *Specify* step of [CLAUDE.md §3](..
 
 This correction removed the conflicting house-extension claims before new image syntax is added.
 The regex engine remains a lexical styling aid, not a conforming parser.
-SPIKE-02 subsequently found no evaluated structural parser conforming to the exact cross-version
-label in REQ-047. REQ-047 remains the accepted source-presentation requirement until the user
-approves a dialect revision; INC-04 parser selection is blocked meanwhile.
+SPIKE-02 subsequently proved that the cross-version label was not one executable dialect. The
+user approved coherent formal GFM 0.29 on 2026-07-25; REQ-047 is revised accordingly. COR-01's
+existing lexical token set remains compatible and does not claim parser conformance.
 
 | ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
 |----|--------------------|-----|--------|----------------|-------------|
-| REQ-047 | The system shall present CommonMark 0.31.2 plus formal GFM 0.29-gfm as the only supported MVP source dialect. | COR-01 | Done | `TokenStyle`, `MarkdownHighlighter`, `MarkdownTheme` | test `supportedDialectContainsOnlyCommonMarkAndFormalGFMStyles` |
-| REQ-048 | WHEN source contains a valid formal-GFM strikethrough delimiter using one or two tildes, the system shall apply the strikethrough source style without interpreting that syntax as subscript. | COR-01 | Done | `MarkdownHighlighter` (single- and double-tilde strikethrough rules) | table test `stylesFormalGFMTildeStrikethroughFixtures` |
-| REQ-049 | WHEN source contains an unsupported writing extension, the system shall preserve its text unchanged without presenting it as supported footnote, highlight, superscript, or subscript semantics. | COR-01 | Done | `MarkdownHighlighter` + removed Tier-2 `TokenStyle` cases | test `preservesUnknownExtensionsWithoutSemanticStyles` |
+| REQ-047 | The system shall present formal GFM 0.29-gfm, including its bundled CommonMark core and five formal extensions, as the only supported MVP source dialect. | COR-01 | Done | `TokenStyle`, `MarkdownHighlighter`, `MarkdownTheme` | test `supportedDialectContainsOnlyCommonMarkAndFormalGFMStyles`; full parser conformance belongs to REQ-054 |
+| REQ-048 | WHEN source contains valid formal-GFM double-tilde strikethrough, the system shall apply the strikethrough source style without interpreting that syntax as subscript. | COR-03 | Correction | current `MarkdownHighlighter` also accepts non-conforming single tilde; COR-03 replaces the rule | planned double-tilde conformance table |
+| REQ-049 | WHEN source contains an unsupported writing extension or single-tilde span, the system shall preserve its text unchanged without presenting it as supported footnote, highlight, superscript, subscript, or strikethrough semantics. | COR-03 | Correction | removed Tier-2 `TokenStyle` cases; single-tilde style remains to remove | planned unsupported/single-tilde preservation table |
 | REQ-050 | WHEN source contains a focused valid CommonMark image destination fixture, the system shall style its source range without changing the source text. | COR-01 | Done | `MarkdownHighlighter` (image destination pattern) | table test `stylesCommonMarkImageDestinationFixtures` |
 | REQ-051 | WHILE applying lexical styling, the system shall keep every attributed range within the source bounds and leave the source string unchanged. | COR-01 | Done | `MarkdownHighlighter.tokens(for:)`, `MarkdownTextView.Coordinator.apply` | tests `attributeStylingLeavesStringUnchanged`, `rangesWithinBounds` |
 
@@ -142,7 +142,54 @@ Corrected implementation:
 
 ---
 
-*Deferred:* WYSIWYG (INC-04), in-fence language syntax coloring, dialect profiles, image sizing,
-transcoding, metadata stripping, remote images, automatic asset cleanup, and asset-aware Save Copy.
+## COR-04 · NSDocument migration — ⚪ Planned
 
-*Next free IDs: REQ-008 (A), REQ-013 (B), REQ-023 (C), REQ-033 (D), REQ-052 (E), REQ-078 (F–H).*
+### B · Document ownership and lifecycle
+
+| ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
+|----|--------------------|-----|--------|----------------|-------------|
+| REQ-013 | The system shall use one `NSDocument` instance as the owner of canonical Markdown source, file location, source version, and undo history for each open document. | COR-04 | Planned | — | planned component tests |
+| REQ-014 | The system shall retain standard macOS New, Open, Save, Save As, autosave-in-place, Versions, tabs, and Recents behavior after the document-model migration. | COR-04 | Planned | — | inherent framework behavior plus document-controller integration tests |
+| REQ-015 | WHEN reading or writing a document, the system shall preserve the existing UTF-8, empty-file, BOM, CRLF, Unicode, invalid-UTF-8, zero-edit byte-fidelity, and ordinary-file/no-metadata contract. | COR-04 | Planned | — | planned byte-fixture tests and serialization inspection |
+| REQ-016 | WHEN either editor adapter submits an expected source version and exact UTF-16 replacement, the document shall either advance its source version once and register document-owned undo/redo or return a typed stale/invalid/conflict refusal without mutation. | COR-04 | Planned | — | planned transaction and cross-adapter undo tables |
+| REQ-017 | WHEN a dependent operation requires an untitled document to be saved, the document shall expose operation-scoped Save success, cancellation, or failure without discovering document ownership through a view. | COR-04 | Planned | — | planned injected Save-result tests |
+| REQ-018 | The system shall keep mutable document/AppKit state on the main actor and send only immutable `Sendable` source and byte snapshots to background work. | COR-04 | Planned | — | planned strict-concurrency build and executor-identity tests |
+| REQ-019 | WHEN Save As, rename, or move changes the document URL, the document shall advance its location generation and notify COR-02 through an editor-neutral selection/Save/URL/source-commit interface without replacing COR-02 storage, exact-copy, or failure semantics. | COR-04 | Planned | — | planned URL-generation/adapter tests plus existing COR-02 suite |
+
+## INC-04 · Source and WYSIWYG editing — ⚪ Planned
+
+### E · Dialect, projection, and commands
+
+| ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
+|----|--------------------|-----|--------|----------------|-------------|
+| REQ-052 | The system shall provide persistent editable Source and WYSIWYG modes over the same canonical source, make WYSIWYG the default, and expose a visible mode toggle that never changes source by itself. | INC-04 | Planned | — | planned mode-session component tests |
+| REQ-053 | WHILE Source mode is active, the system shall show and edit literal Markdown characters using the existing lexical styling path. | INC-04 | Planned | — | existing Source tests plus planned host tests |
+| REQ-054 | WHILE WYSIWYG is active, the system shall parse the complete formal GFM 0.29 dialect through the pinned direct cmark-gfm configuration and render every supported semantic construct. | INC-04 | Planned | — | complete 670-example formal-GFM suite, 21 pathological cases, projection fixtures |
+| REQ-055 | WHEN source is unsupported, malformed, or raw HTML, WYSIWYG shall show it literally as unformatted, non-executing, editable text and preserve it unchanged unless the user edits that text. | INC-04 | Planned | — | planned unsupported/raw-HTML round-trip tests |
+| REQ-056 | WYSIWYG attributed storage shall omit parsed Markdown control characters rather than hiding or making them transparent, while retaining literal punctuation that is content. | INC-04 | Planned | — | planned storage-string inspection tests |
+| REQ-057 | WHEN a WYSIWYG or toolbar action changes Markdown, the system shall preserve existing source spelling where safely patchable and otherwise regenerate only the smallest semantic unit—inline node, block, or table—never the whole document. | INC-04 | Planned | — | planned before/after changed-range tables and parser validation |
+| REQ-058 | The system shall provide the same formatting toolbar in both modes for paragraph/Heading 1–6, bold, italic, strikethrough, inline code, link, ordered/unordered/task list, block quote, and code block; unsafe or ambiguous commands shall be disabled or refused without changing source. | INC-04 | Planned | — | planned command-state and transaction tests |
+| REQ-059 | WHEN clipboard content offers rich and plain representations, the MVP shall paste its plain-text representation rather than infer Markdown formatting. | INC-04 | Planned | — | planned pasteboard component tests |
+
+### F · Rich interaction, images, and tables
+
+| ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
+|----|--------------------|-----|--------|----------------|-------------|
+| REQ-078 | WHEN a supported task-list item is shown in WYSIWYG, its checkbox shall be directly operable and commit one task-marker source transaction. | INC-04 | Planned | — | planned task attachment/action/accessibility tests |
+| REQ-079 | WHEN a supported link is shown in WYSIWYG, it shall be directly clickable while its label remains editable through an explicit edit action. | INC-04 | Planned | — | planned link-attribute/action tests |
+| REQ-080 | WYSIWYG shall render and permit cell-content edits in existing GFM tables without offering table insertion or structural row/column controls in the MVP. | INC-04 | Planned | — | planned native-table and local-cell transaction tests |
+| REQ-081 | WHEN a local PNG, JPEG, GIF, HEIC, or HEIF reference resolves, WYSIWYG shall decode a bounded display representation off-main without changing source, original bytes, metadata, or format and without fetching remote images. | INC-04 | Planned | — | planned real-fixture hash/decode/cache/failure tests |
+| REQ-082 | The system shall provide “Add Image…” in both modes through the existing COR-02 placement transaction and shall not introduce an Import command or a second image pipeline. | INC-04 | Planned | — | planned command routing and editor-neutral insertion tests |
+| REQ-083 | WHEN an edit, toolbar action, task toggle, link change, or image insertion is undone/redone after switching modes, the document-owned undo manager shall restore the canonical source while leaving asset files intact. | INC-04 | Planned | — | planned cross-mode undo sequence tests |
+| REQ-084 | WYSIWYG shall preserve native TextKit selection, marked text/IME, spelling, Find, keyboard editing, plain-text paste, and meaningful accessibility roles, labels, values, and image descriptions. | INC-04 | Planned | — | planned non-UI TextKit component tests |
+| REQ-085 | The system shall compute parser, source-index, projection-model, and image-decode work off-main and apply results only when their source/location version still matches. | INC-04 | Planned | — | planned executor, cancellation, and stale-result tests |
+| REQ-086 | WHEN the user switches modes, each persistent editor shall restore its own logical selection and scroll state without changing source. | INC-04 | Planned | — | planned mode-session state tests |
+| REQ-087 | IF parsing, mapping, semantic translation, local-image resolution, or asynchronous work fails, THEN the system shall keep Source mode available, leave canonical source unchanged, and expose a deterministic literal fallback or typed refusal rather than guessing. | INC-04 | Planned | — | planned failure-matrix tests |
+
+---
+
+*Deferred:* in-fence language syntax coloring, dialect profiles, rich-to-Markdown paste conversion,
+table creation/structural controls, image sizing syntax, transcoding, metadata stripping, remote
+images, automatic asset cleanup, and asset-aware Save Copy.
+
+*Next free IDs: REQ-008 (A), REQ-023 (C), REQ-033 (D), REQ-088 (F–H).*

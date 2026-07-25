@@ -1,13 +1,13 @@
-# ADR-0006 — Document model: FileDocument (for now)
+# ADR-0006 — Document model: NSDocument
 
 - **Status:** Accepted
-- **Date:** 2026-07-22
+- **Date:** 2026-07-22; revised 2026-07-25
 - **Deciders:** Toni Melisma
 - **Related:** [ADR-0002](0002-swiftui-first-appkit-where-needed.md), [ADR-0007](0007-editor-surface-interim-texteditor.md); [RESEARCH-0001](../research/0001-inc01-editor-foundation.md); INC-01
 
-> Living decision — reassessed during INC-02 and SPIKE-02. `FileDocument` remains the accepted
-> implementation until the user explicitly approves a replacement. SPIKE-02's executable evidence
-> recommends `NSDocument` before INC-04; no migration has been accepted or started.
+> Living decision. `FileDocument` delivered INC-01/INC-02 and remains the current implementation.
+> SPIKE-02 selected `NSDocument` as the target architecture on 2026-07-25. COR-04 performs that
+> migration before INC-04.
 
 ## Context
 
@@ -28,21 +28,29 @@ The framework-backed options are evaluated against standard macOS **Auto Save + 
 
 ## Decision
 
-Use **`FileDocument`** for INC-01. It is the simplest, most idiomatic SwiftUI choice, pairs
-naturally with the interim `TextEditor` surface ([ADR-0007](0007-editor-surface-interim-texteditor.md)),
-and gives autosave + Versions for free.
+Use **`NSDocument`** as the document owner before WYSIWYG:
+
+- one reference-owned canonical Markdown source;
+- one document-owned `UndoManager`;
+- direct `fileURL` and location-change observation;
+- completion-bearing Save for dependent image actions;
+- standard autosave in place, Versions, tabs, Recents, Open, New, Save, and Save As;
+- immutable byte/parse/projection snapshots crossing background boundaries; and
+- SwiftUI editor content hosted behind a narrow AppKit document/window adapter.
+
+`FileDocument` was the correct low-cost INC-01 choice, but COR-04 replaces it rather than
+retaining a second value/document authority or view-derived ownership.
 
 ## Consequences
 
-- **Positive:** minimal code; standard document lifecycle, tabs, Recents, and Versions inherited.
-- **Negative / costs (accepted for now):** awkward undo tracking, no control over autosave
-  timing, and the whole file lives in memory (fine for typical Markdown, not for huge files).
-- **Revisit outcome / trigger:** INC-02 retained `FileDocument`; the TextKit 1 wrapper binds the
-  same string-backed document model and did not require a model change. Re-evaluate if undo
-  fidelity (INV-1 no data loss), large files, or external-change handling prove inadequate —
-  the current candidates are macOS 27 SwiftUI `Document` and `NSDocument`.
+- **Positive:** document identity, source, URL, Save completion, undo, and Versions have one
+  native owner shared by both editor modes and COR-02.
+- **Negative / costs:** explicit `NSDocumentController`/window-controller plumbing and SwiftUI
+  hosting replace the smaller `DocumentGroup` scene.
+- **Migration:** COR-04 is a separate reversible build before INC-04. It preserves the existing
+  byte contract and adapts COR-02's document seam without rewriting storage.
 
-### Scheduled reassessment for SPIKE-02
+### SPIKE-02 reassessment
 
 COR-02 needed an operation-scoped Save bridge because the value-type SwiftUI document surface
 does not directly expose the owning Save operation. INC-04 adds two editable surfaces, semantic
@@ -56,15 +64,16 @@ new `Document` API, stable `NSDocument`, and retaining `FileDocument` on the rea
 reference models compiled under strict Swift 6. The new SwiftUI API did not expose an
 operation-scoped Save result and did not remove COR-02's hardest bridge; `NSDocument` directly
 provided file URL, Save completion, document-owned undo, autosave, and Versions. The spike
-therefore recommends `NSDocument`. The spike does not itself change this decision; any migration
-requires a revised ADR, approved requirements, and a separate build plan.
+therefore recommended `NSDocument`. The user accepted that recommendation on 2026-07-25.
+COR-04 requirements and PLAN-0008 define the separate migration; no WYSIWYG code is part of it.
 
 ## Alternatives considered
 
 - **`ReferenceFileDocument`** — originally deferred as unnecessary complexity; now deprecated by
   Apple for new macOS 27 document types and not a migration candidate.
-- **`NSDocument`** — most control and real large-file support; originally rejected as heavy and
-  least SwiftUI-idiomatic. SPIKE-02 now recommends it, subject to explicit approval.
+- **Retain `FileDocument`** — rejected for the two-editor architecture because value rebinding,
+  view-owned undo, and the dependent-Save bridge would become permanent infrastructure.
+- **`NSDocument`** — selected after strict Swift 6 and byte/undo probes.
 - **macOS 27 SwiftUI `Document`** — unavailable when this ADR was accepted. SPIKE-02 proved the
   API but does not recommend migration while it remains beta and lacks an operation-scoped Save
   result.

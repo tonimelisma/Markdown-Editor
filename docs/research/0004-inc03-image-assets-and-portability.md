@@ -1,5 +1,9 @@
 # RESEARCH-0004 — Markdown compatibility and local image placement
 
+> Historical compatibility context. SPIKE-02 later replaced the cross-version dialect label with
+> coherent formal GFM 0.29 and corrected this document's mistaken single-tilde interpretation;
+> image-reference portability conclusions remain unchanged.
+
 - **Date:** 2026-07-22
 - **For:** COR-01 and INC-03
 - **Type:** standards, ecosystem, native API, filesystem, security, and accessibility research
@@ -17,9 +21,10 @@
 
 The previous design mixed formal GFM with a product-specific group of writing extensions and
 called the result a dialect without a single conformance target. Its `~text~` subscript rule
-directly conflicts with formal GFM, where one or two tildes delimit strikethrough. The most
-compatible MVP contract is CommonMark 0.31.2 plus formal GFM 0.29-gfm, with unfamiliar syntax
-preserved and later extensions introduced only as named profiles.
+conflicts with formal GFM: formal GFM uses paired double tildes for strikethrough, while a
+single-tilde span remains literal text. The most compatible MVP contract is CommonMark 0.31.2
+plus formal GFM 0.29-gfm, with unfamiliar syntax preserved and later extensions introduced only
+as named profiles.
 
 For images, no standard assigns an attachment folder to a loose Markdown file. The lowest-fuss
 interoperable design is a visible shared `assets/` sibling directory and ordinary relative
@@ -50,8 +55,8 @@ capability.
 ### Formal GFM versus github.com
 
 The published GFM spec adds autolinks, tables, task-list items, and strikethrough to CommonMark.
-Its strikethrough extension recognizes one or two tildes. Footnotes and emoji rendering available
-on github.com are not thereby part of formal GFM.
+Its strikethrough extension uses paired double tildes. Footnotes and emoji rendering available on
+github.com are not thereby part of formal GFM.
 
 Consequently, a source highlighter cannot use `~text~` for subscript while also claiming formal
 GFM. Regex styling is lexical and approximate; conformance belongs to generated source and a

@@ -50,7 +50,7 @@ standards-based source outranks renderer-specific decoration.
 
 ## 4. Editing model
 
-- The target is two views over the same source: **WYSIWYG** (eventual default) and
+- The target is two views over the same source: **WYSIWYG** (the default) and
   **live-styled source**, toggleable without rewriting the document.
 - Both modes are editors. Source mode shows and edits the literal Markdown. WYSIWYG is a genuine
   rich editing surface: parsed Markdown control characters are absent, the actual content is
@@ -60,22 +60,23 @@ standards-based source outranks renderer-specific decoration.
 - Live styling is presentation, not parsing or normalization. It never changes saved text.
 - Unknown and unsupported syntax remains visible, unformatted, editable, and round-trips
   unchanged. WYSIWYG never invents semantics for syntax outside the supported dialect.
+- Raw HTML remains literal, unformatted, editable, and non-executing in WYSIWYG.
+- Rich clipboard content pastes as plain text in the MVP; it is not guessed into Markdown.
+- Existing GFM tables render and allow cell-content edits. Table creation and structural
+  row/column controls are deferred.
+- The same semantic formatting toolbar is available in both modes. Unsafe or ambiguous commands
+  are disabled or refused without changing source.
+- Rich edits preserve existing spelling when safely patchable and otherwise regenerate only the
+  smallest semantic inline, block, or table unit—never the whole document.
 - The delivery sequence is plain text → live-styled source → WYSIWYG default.
 
 ## 5. Markdown compatibility contract
 
 ### Supported source dialect
 
-The MVP dialect is:
-
-- **CommonMark 0.31.2** for core Markdown; and
-- the **formal GitHub Flavored Markdown 0.29-gfm specification** for tables, task-list items,
-  strikethrough, and autolinks.
-
-SPIKE-02 found no evaluated off-the-shelf parser that implements this exact cross-version
-combination: cmark-gfm 0.29 implements coherent formal GFM but fails 11 CommonMark 0.31.2 cases.
-The accepted compatibility contract remains unchanged pending the user's explicit dialect
-decision; structural WYSIWYG work is blocked meanwhile.
+The MVP dialect is the complete **GitHub Flavored Markdown 0.29-gfm specification**: its bundled
+CommonMark core plus tables, task-list items, strikethrough, extended autolinks, and tag filtering.
+This is one versioned, executable dialect—not a cross-version combination or house profile.
 
 “GFM” means the published specification, not every additional feature rendered on github.com.
 The app does not claim parser conformance merely because its source highlighter recognizes a
@@ -85,16 +86,17 @@ Footnotes, `==highlight==`, superscript, subscript, definition lists, emoji shor
 attributes, and smart-typography transformations are not part of the MVP dialect. They may be
 considered later as explicit, named **dialect profiles** with compatibility documentation.
 Until then, such text is preserved but is not presented as supported semantics. This is
-especially important for `~text~`: formal GFM treats one or two tildes as strikethrough, so it
-cannot simultaneously mean subscript.
+especially important for `~text~`: formal GFM requires double tildes for strikethrough. A
+single-tilde span is preserved as ordinary unsupported text, not styled as subscript or
+strikethrough.
 
 Fenced code blocks receive a source-level monospace treatment. Language-aware coloring inside
 fences remains deferred until a code-highlighting engine is selected.
 
 ### Images and companion assets
 
-Users add images by pasting or dragging them into a saved document. There is no separate
-“Import” document command.
+Users add images by pasting, dragging, or choosing “Add Image…” in a saved document. All three
+surfaces use the same placement transaction. There is no separate “Import” document command.
 
 - The app copies added image files into a visible `assets/` directory beside the Markdown file
   and inserts a standard relative image reference such as `![](assets/diagram.png)`.
@@ -128,7 +130,8 @@ Users add images by pasting or dragging them into a saved document. There is no 
 ## 7. Engineering decisions
 
 - Pure Swift and SwiftUI-first; use AppKit behind narrow adapters where required.
-- `DocumentGroup` and `FileDocument` remain the document model
+- `NSDocument` is the target document owner; COR-04 replaces the currently shipped
+  `DocumentGroup`/`FileDocument` implementation before WYSIWYG
   ([ADR-0006](decisions/0006-document-model-filedocument.md)).
 - The editor uses TextKit 1 `NSTextView`
   ([ADR-0008](decisions/0008-textkit1-nstextview-editor-engine.md)).
@@ -136,9 +139,8 @@ Users add images by pasting or dragging them into a saved document. There is no 
   ([ADR-0009](decisions/0009-regex-live-highlighting-engine.md)).
 - Added-image placement follows
   [ADR-0011](decisions/0011-image-placement-and-portability.md).
-- Third-party dependencies remain unadopted. A structural parser may be selected when WYSIWYG
-  work requires one; that decision must name the exact dialect it implements. SPIKE-02 recommends
-  direct, pinned cmark-gfm only if the user approves coherent formal GFM 0.29.
+- WYSIWYG semantic parsing uses direct, pinned cmark-gfm 0.29.0.gfm.13 through `swift-cmark`;
+  Source highlighting remains the independent lexical presentation path.
 
 ## 8. Invariants
 
@@ -155,8 +157,8 @@ Breaking an invariant is a bug. Changing one requires explicit approval and an A
   and document lifecycle remain available unless an approved requirement says otherwise.
 - **INV-6 — Accessibility.** The app is usable with VoiceOver and full keyboard control; it never
   invents misleading image alternative text.
-- **INV-7 — Defined dialect.** Markdown generated by the app is valid CommonMark 0.31.2 plus
-  formal GFM 0.29-gfm; unknown source syntax is preserved.
+- **INV-7 — Defined dialect.** Markdown generated by the app is valid formal GFM 0.29-gfm;
+  unknown source syntax is preserved.
 - **INV-8 — Non-destructive assets.** Image placement never overwrites, moves, edits, or deletes
   a source image or a pre-existing destination file.
 - **INV-9 — Commit after storage.** The app inserts an image reference only after every file for

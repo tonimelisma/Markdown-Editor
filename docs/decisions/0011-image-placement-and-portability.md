@@ -44,7 +44,8 @@ When a user pastes or drops a supported image into a **saved** Markdown document
     generated path that fails a resolved-containment check.
 
 There is no “Import” document command. “Add image” is the user concept; copying a file into
-`assets/` is an internal consequence of paste or drag-and-drop.
+`assets/` is an internal consequence of paste, drag-and-drop, or the approved INC-04
+“Add Image…” file picker. All three use one placement transaction.
 
 ## Consequences
 

@@ -21,10 +21,10 @@ Use **compiled `NSRegularExpression` patterns** for live source highlighting. Th
 presentation aid, not the product's Markdown parser and not evidence of formal conformance.
 Patterns should approximate the supported CommonMark/GFM constructs without rewriting source.
 
-No structural parser has yet been selected for WYSIWYG. SPIKE-02 evaluated `swift-markdown` and
-direct cmark-gfm. Direct cmark-gfm supplies usable source positions and implements coherent formal
-GFM 0.29, but it fails 11 CommonMark 0.31.2 cases and therefore does not implement ADR-0003's
-hybrid label. Parser selection is blocked on the user's dialect decision.
+Source highlighting remains regex-based. SPIKE-02 separately selected direct cmark-gfm
+0.29.0.gfm.13 as WYSIWYG semantic authority after the user adopted coherent formal GFM 0.29.
+The structural parser does not replace or silently change Source mode's synchronous lexical
+presentation path.
 
 ## Consequences
 
@@ -38,8 +38,7 @@ hybrid label. Parser selection is blocked on the user's dialect decision.
 - **Revisit trigger:** if precision/nesting becomes a problem in Source mode, investigate an
   incremental highlighting engine without treating it as the semantic parser. The
   tree-sitter-markdown maintainers explicitly warn against correctness-sensitive use, so it is
-  not a WYSIWYG semantic-authority candidate. SPIKE-02 found direct cmark-gfm technically suitable
-  if the accepted dialect becomes coherent formal GFM 0.29.
+  not a WYSIWYG semantic-authority candidate. Direct cmark-gfm is the selected WYSIWYG authority.
 
 ## Alternatives considered
 
