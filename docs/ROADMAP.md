@@ -108,7 +108,7 @@ COR-02 storage remain; view-derived document/commit seams are gone.
 Approved requirements: REQ-013–REQ-019. Implemented design:
 [PLAN-0008](plans/0008-cor04-nsdocument-migration.md).
 
-## INC-04 · WYSIWYG mode — `[build]` ⚪ Planned
+## INC-04 · WYSIWYG mode — `[build]` ✅ Done
 
 - Provide two editable modes over the same canonical Markdown source:
   - Source shows literal Markdown with live lexical styling.
@@ -117,18 +117,18 @@ Approved requirements: REQ-013–REQ-019. Implemented design:
 - Make WYSIWYG the default and provide a visible Source/WYSIWYG toggle that never rewrites source.
 - Render complete formal GFM 0.29 using pinned direct cmark-gfm; leave unsupported semantics and
   raw HTML visible, unformatted, editable, non-executing, and preserved.
-- Make task checkboxes interactive and links directly clickable.
+- Make task checkboxes interactive and links directly clickable (all URL schemes via NSWorkspace /
+  injected opener — no http/https/mailto allowlist).
 - Render local PNG/JPEG/GIF/HEIC/HEIF references without changing source syntax or asset bytes.
 - Reuse COR-02's image transaction in either mode rather than creating a second placement path.
 - Provide “Add Image…” through that same transaction; there is no Import command.
 - Paste rich clipboard content as plain text for MVP.
 - Render/edit existing tables but defer table insertion and structural controls.
+- No document-size degraded mode / styling suspension for Source or WYSIWYG.
 - Complete the MVP.
 
-Approved requirements: REQ-052–REQ-059 and REQ-078–REQ-087. Proposed implementation:
-[PLAN-0009](plans/0009-inc04-source-and-wysiwyg-editing.md). COR-03 and COR-04 are Done;
-PLAN-0009 still requires explicit approval before the INC-04 build (user directed implementation
-of all three plans on 2026-07-25).
+Approved requirements: REQ-052–REQ-059 and REQ-078–REQ-087. Implemented design:
+[PLAN-0009](plans/0009-inc04-source-and-wysiwyg-editing.md).
 
 ---
 

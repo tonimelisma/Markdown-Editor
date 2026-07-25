@@ -10,13 +10,27 @@ struct ContentView: View {
     @State private var counts = TextStats.Counts(words: 0, characters: 0)
     @State private var statsComputer = TextStatsComputer()
     @StateObject private var placementController = ImagePlacementController()
+    @StateObject private var session = EditorSession()
 
     var body: some View {
         VStack(spacing: 0) {
-            MarkdownTextView(
-                document: document,
-                placementController: placementController
-            )
+            EditorToolbar(document: document, session: session)
+            Divider()
+            Group {
+                if session.mode == .wysiwyg {
+                    WYSIWYGTextView(
+                        document: document,
+                        session: session,
+                        placementController: placementController
+                    )
+                } else {
+                    MarkdownTextView(
+                        document: document,
+                        placementController: placementController,
+                        session: session
+                    )
+                }
+            }
             Divider()
             HStack {
                 Spacer()
@@ -36,12 +50,20 @@ struct ContentView: View {
         .onAppear {
             placementController.attach(actions: document)
             placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
+            session.attach(document: document)
         }
         .onChange(of: document.publishedFileURL) { _, newURL in
             placementController.updateDocumentURL(newURL)
         }
         .onChange(of: document.locationGeneration) { _, _ in
             placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .editorAddImageClaims)) { note in
+            guard let claims = note.userInfo?["claims"] as? [ImageClaim] else { return }
+            placementController.handleImageAction(
+                claims: claims,
+                documentURL: document.publishedFileURL ?? document.fileURL
+            )
         }
         .alert(alertTitle, isPresented: alertPresented) {
             Button("OK", role: .cancel) { placementController.alert = nil }

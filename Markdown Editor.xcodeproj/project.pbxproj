@@ -6,6 +6,11 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A1B2C3D43010892B00668304 /* cmark-gfm in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D43010892B00668302 /* cmark-gfm */; };
+		A1B2C3D43010892B00668305 /* cmark-gfm-extensions in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D43010892B00668303 /* cmark-gfm-extensions */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		3B35309A3010892A00668387 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -51,6 +56,8 @@
 		3B3530863010892800668387 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				A1B2C3D43010892B00668304 /* cmark-gfm in Frameworks */,
+				A1B2C3D43010892B00668305 /* cmark-gfm-extensions in Frameworks */,
 			);
 		};
 		3B3530963010892A00668387 /* Frameworks */ = {
@@ -96,6 +103,10 @@
 				3B35308B3010892900668387 /* Markdown Editor */,
 			);
 			name = "Markdown Editor";
+			packageProductDependencies = (
+				A1B2C3D43010892B00668302 /* cmark-gfm */,
+				A1B2C3D43010892B00668303 /* cmark-gfm-extensions */,
+			);
 			productName = "Markdown Editor";
 			productReference = 3B3530893010892900668387 /* Markdown Editor.app */;
 			productType = "com.apple.product-type.application";
@@ -149,6 +160,9 @@
 			);
 			mainGroup = 3B3530803010892800668387;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A1B2C3D43010892B00668301 /* XCRemoteSwiftPackageReference "swift-cmark" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3B35308A3010892900668387 /* Products */;
 			projectDirPath = "";
@@ -451,6 +465,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A1B2C3D43010892B00668301 /* XCRemoteSwiftPackageReference "swift-cmark" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swiftlang/swift-cmark.git";
+			requirement = {
+				kind = revision;
+				revision = 5d9bdaa4228b381639fff09403e39a04926e2dbe;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A1B2C3D43010892B00668302 /* cmark-gfm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D43010892B00668301 /* XCRemoteSwiftPackageReference "swift-cmark" */;
+			productName = "cmark-gfm";
+		};
+		A1B2C3D43010892B00668303 /* cmark-gfm-extensions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D43010892B00668301 /* XCRemoteSwiftPackageReference "swift-cmark" */;
+			productName = "cmark-gfm-extensions";
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3B3530813010892800668387 /* Project object */;
 	validationLevel = 1;
