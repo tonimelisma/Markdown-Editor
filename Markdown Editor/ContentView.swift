@@ -12,14 +12,14 @@ struct ContentView: View {
     var documentURL: URL?
     @State private var counts = TextStats.Counts(words: 0, characters: 0)
     @State private var statsComputer = TextStatsComputer()
-    @StateObject private var placementCoordinator = ImagePlacementCoordinator()
+    @StateObject private var placementController = ImagePlacementController()
 
     var body: some View {
         VStack(spacing: 0) {
             MarkdownTextView(
                 text: $document.text,
                 documentURL: documentURL,
-                placementCoordinator: placementCoordinator
+                placementController: placementController
             )
             Divider()
             HStack {
@@ -38,10 +38,10 @@ struct ContentView: View {
             counts = next
         }
         .onChange(of: documentURL) { _, newURL in
-            placementCoordinator.updateDocumentURL(newURL)
+            placementController.updateDocumentURL(newURL)
         }
         .alert(alertTitle, isPresented: alertPresented) {
-            Button("OK", role: .cancel) { placementCoordinator.alert = nil }
+            Button("OK", role: .cancel) { placementController.alert = nil }
         } message: {
             Text(alertMessage)
         }
@@ -49,13 +49,13 @@ struct ContentView: View {
 
     private var alertPresented: Binding<Bool> {
         Binding(
-            get: { placementCoordinator.alert != nil },
-            set: { if !$0 { placementCoordinator.alert = nil } }
+            get: { placementController.alert != nil },
+            set: { if !$0 { placementController.alert = nil } }
         )
     }
 
     private var alertTitle: String {
-        switch placementCoordinator.alert {
+        switch placementController.alert {
         case .error: return "Couldn’t Add Image"
         case .warning: return "Assets Warning"
         case .info: return "Image Action"
@@ -64,7 +64,7 @@ struct ContentView: View {
     }
 
     private var alertMessage: String {
-        switch placementCoordinator.alert {
+        switch placementController.alert {
         case .error(let m), .warning(let m), .info(let m): return m
         case nil: return ""
         }

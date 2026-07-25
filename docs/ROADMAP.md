@@ -47,25 +47,23 @@ are styled lexically. The regex engine remains a presentation aid, not a parser.
 
 Approved design: [PLAN-0004](plans/0004-markdown-dialect-conformance-correction.md).
 
-## INC-03 · Paste and drop images — `[build]` 🟠 Correction required
+## INC-03 · Paste and drop images — `[build]` ✅ Done (corrected by COR-02)
 
-The merged build established the intended paste/drop surface and exact-copy policy, but review
-found correctness failures in action serialization, zero-length edit tracking, multi-file
-promises, main-thread I/O, exclusive race handling, Save completion, restart-independent move
-warnings, and automated verification. It is not a completed capability until COR-02 replaces
-the pipeline. Source mode still shows Markdown; inline image rendering remains INC-04.
+Delivered paste/drop image placement into a shared sibling `assets/` directory with exact-copy
+PNG/JPEG/GIF/HEIC/HEIF policy. The first merge required COR-02 to replace defective transaction,
+promise, Save, and filesystem mechanics.
 
 Approved research and design:
 [RESEARCH-0004](research/0004-inc03-image-assets-and-portability.md),
 [ADR-0011](decisions/0011-image-placement-and-portability.md), and
 [PLAN-0003](plans/0003-inc03-image-assets.md).
 
-## COR-02 · Image placement transaction rewrite — `[build]` 🔵 Active
+## COR-02 · Image placement transaction rewrite — `[build]` ✅ Done
 
-Keep ADR-0011's user-visible policy while replacing the implementation with one explicit
-transaction state machine, correct one-to-many promise receipt, operation-scoped Save completion,
-a dedicated non-main I/O executor, descriptor-relative exclusive publication/retry,
-identity-pinned cleanup, exhaustive insertion tracking, and source-derived move warnings.
+Replaced the INC-03 placement pipeline with an explicit transaction state machine, operation-scoped
+Save bridge, one-to-many promise receipt, dedicated non-main I/O executor, non-reentrant keyed
+storage lease, descriptor-relative exclusive publication, identity-pinned cleanup, exhaustive
+insertion tracking, and source-derived move warnings.
 
 Approved design:
 [RESEARCH-0005](research/0005-image-placement-correction-architecture.md),
@@ -125,4 +123,7 @@ Uncommitted ideas. Each needs research, explicit requirements, and approval befo
   affected REQ-060–REQ-077 rows are `Correction`, not Done.
 - **COR-02 discovery:** RESEARCH-0005 compared correction architectures; ADR-0012 and PLAN-0005
   select a full transaction/storage rewrite. RESEARCH-0006 proved the DocumentGroup→NSDocument
-  Save bridge. REQ-076 conservative source-derived warnings approved. Build is Active.
+  Save bridge. REQ-076 conservative source-derived warnings approved.
+- **COR-02 build:** PLAN-0005 / ADR-0012 implemented — transactional controller, promise/Save
+  bridges, ImageIOExecutor, descriptor-relative store, identity-pinned rollback, scanner;
+  REQ-060–REQ-077 Done; old coordinator/service removed.
