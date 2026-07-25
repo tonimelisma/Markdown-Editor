@@ -2,7 +2,7 @@
 
 - **Increment:** INC-04
 - **Date:** 2026-07-25
-- **Status:** Proposed — requires COR-03/COR-04 completion and explicit approval before code
+- **Status:** Approved / implemented — INC-04 build on branch `inc-04-wysiwyg`
 - **Requirements:** REQ-052–REQ-059, REQ-078–REQ-087
 - **Depends on:** COR-03; COR-04 / [PLAN-0008](0008-cor04-nsdocument-migration.md);
   [RESEARCH-0007](../research/0007-document-model-and-wysiwyg-architecture.md);

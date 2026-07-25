@@ -16,7 +16,8 @@ DerivedData/
 # Swift Package Manager
 .build/
 .swiftpm/
-Package.resolved
+# Keep Package.resolved committed so the pinned cmark revision is reproducible.
+# Package.resolved
 
 # Obj-C / legacy user files
 *.pbxuser

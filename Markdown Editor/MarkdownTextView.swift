@@ -11,9 +11,10 @@ import AppKit
 struct MarkdownTextView: NSViewRepresentable {
     @ObservedObject var document: MarkdownDocument
     var placementController: ImagePlacementController
+    var session: EditorSession?
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(document: document, placementController: placementController)
+        Coordinator(document: document, placementController: placementController, session: session)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -47,6 +48,7 @@ struct MarkdownTextView: NSViewRepresentable {
         scroll.hasVerticalScroller = true
         scroll.documentView = textView
 
+        context.coordinator.session = session
         context.coordinator.textView = textView
         placementController.attach(actions: document)
         placementController.updateDocumentURL(document.fileURL)
@@ -57,6 +59,7 @@ struct MarkdownTextView: NSViewRepresentable {
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? MarkdownSourceTextView else { return }
         context.coordinator.document = document
+        context.coordinator.session = session
         textView.placementController = placementController
         textView.documentActions = document
         textView.documentURL = document.fileURL
@@ -100,6 +103,7 @@ struct MarkdownTextView: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var document: MarkdownDocument
+        var session: EditorSession?
         let theme = MarkdownTheme()
         let placementController: ImagePlacementController
         private let highlighter = MarkdownHighlighter()
@@ -110,9 +114,10 @@ struct MarkdownTextView: NSViewRepresentable {
         private var version = 0
         private var task: Task<Void, Never>?
 
-        init(document: MarkdownDocument, placementController: ImagePlacementController) {
+        init(document: MarkdownDocument, placementController: ImagePlacementController, session: EditorSession?) {
             self.document = document
             self.placementController = placementController
+            self.session = session
         }
 
         func textView(
@@ -151,7 +156,13 @@ struct MarkdownTextView: NSViewRepresentable {
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView else { return }
-            document.reportActiveSelection(textView.selectedRange())
+            let range = textView.selectedRange()
+            document.reportActiveSelection(range)
+            if var session {
+                var state = session.sourceViewState
+                state.selection = range
+                session.sourceViewState = state
+            }
         }
 
         // REQ-045: debounce + off-main highlight; no document-size styling suspension.
@@ -244,12 +255,18 @@ final class MarkdownSourceTextView: NSTextView {
                 claims: claims,
                 documentURL: documentActions?.sourceSnapshot().fileURL ?? documentURL
             )
-        case .fallthroughToNativeText, .unsupported:
+            case .fallthroughToNativeText, .unsupported:
             if case .unsupported = classification {
                 placementController?.alert = .error("Unsupported or corrupt image.")
                 return
             }
-            super.pasteAsPlainText(sender)
+            // REQ-059: prefer plain-text representation even when RTF/HTML is present.
+            if let plain = PastePolicy.plainText(from: .general) {
+                let range = selectedRange()
+                insertText(plain, replacementRange: range)
+            } else {
+                super.pasteAsPlainText(sender)
+            }
         }
     }
 
