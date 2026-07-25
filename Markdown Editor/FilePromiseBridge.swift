@@ -17,16 +17,16 @@ nonisolated enum FilePromiseCollectorError: Error, Equatable, Sendable {
     case mismatch
     case providerError
     case timedOut
-    case alreadyCompleted
 }
 
 /// Separately unit-tested accumulator for one-to-many promise reader callbacks.
 nonisolated final class FilePromiseCallbackCollector: @unchecked Sendable {
     private let lock = NSLock()
-    private let expectedCount: Int
+    let expectedCount: Int
     private var received: [(URL?, Error?)] = []
     private var continuation: CheckedContinuation<[URL], Error>?
     private var completed = false
+    private var storedResult: Result<[URL], Error>?
 
     init(expectedCount: Int) {
         self.expectedCount = expectedCount
@@ -45,9 +45,15 @@ nonisolated final class FilePromiseCallbackCollector: @unchecked Sendable {
     func wait() async throws -> [URL] {
         try await withCheckedThrowingContinuation { cont in
             lock.lock()
-            if completed {
+            if let stored = storedResult {
                 lock.unlock()
-                cont.resume(throwing: FilePromiseCollectorError.alreadyCompleted)
+                cont.resume(with: stored)
+                return
+            }
+            if completed {
+                // Timed out / failed without a stored success result.
+                lock.unlock()
+                cont.resume(throwing: FilePromiseCollectorError.timedOut)
                 return
             }
             if received.count >= expectedCount {
@@ -66,6 +72,7 @@ nonisolated final class FilePromiseCallbackCollector: @unchecked Sendable {
         defer { lock.unlock() }
         guard !completed else { return }
         completed = true
+        storedResult = .failure(FilePromiseCollectorError.timedOut)
         let c = continuation
         continuation = nil
         c?.resume(throwing: FilePromiseCollectorError.timedOut)
@@ -94,15 +101,21 @@ nonisolated final class FilePromiseCallbackCollector: @unchecked Sendable {
         let c = continuation
         continuation = nil
         if received.contains(where: { $0.1 != nil }) {
-            c?.resume(throwing: FilePromiseCollectorError.providerError)
+            let result: Result<[URL], Error> = .failure(FilePromiseCollectorError.providerError)
+            storedResult = result
+            c?.resume(with: result)
             return
         }
         let urls = received.compactMap { $0.0 }
         if urls.count != expectedCount {
-            c?.resume(throwing: FilePromiseCollectorError.mismatch)
+            let result: Result<[URL], Error> = .failure(FilePromiseCollectorError.mismatch)
+            storedResult = result
+            c?.resume(with: result)
             return
         }
-        c?.resume(returning: urls)
+        let result: Result<[URL], Error> = .success(urls)
+        storedResult = result
+        c?.resume(with: result)
     }
 }
 
@@ -112,31 +125,35 @@ enum FilePromiseBridge {
         NSFilePromiseReceiver.readableDraggedTypes.map { NSPasteboard.PasteboardType($0) }
     }
 
-    /// Receipt deadline for expected callbacks; grace timeout after failure before staging delete.
     nonisolated static let receiptDeadline: Duration = .seconds(60)
     nonisolated static let graceTimeout: Duration = .seconds(30)
 
+    /// Receive promised files. Staging create/cleanup runs on `operationQueue` (non-main).
     @MainActor
     static func receive(
         _ receivers: [NSFilePromiseReceiver],
         operationQueue: OperationQueue,
         receiptDeadline: Duration = FilePromiseBridge.receiptDeadline,
-        graceTimeout: Duration = FilePromiseBridge.graceTimeout
+        graceTimeout: Duration = FilePromiseBridge.graceTimeout,
+        executor: ImageIOExecutor = .shared
     ) async throws -> FilePromiseReceiptResult {
-        let staging = FileManager.default.temporaryDirectory
-            .appendingPathComponent("md-editor-promise-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: staging,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
+        let staging = try await executor.run { () -> URL in
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("md-editor-promise-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: url,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            return url
+        }
 
         var orderedURLs: [URL] = []
         var collectors: [FilePromiseCallbackCollector] = []
+        var expectedTotal = 0
 
         do {
             for receiver in receivers {
-                // Invoke once; fileNames is populated after this call.
                 let collectorBox = CollectorBox()
                 receiver.receivePromisedFiles(
                     atDestination: staging,
@@ -146,6 +163,7 @@ enum FilePromiseBridge {
                     collectorBox.forward(url: url, error: error)
                 }
                 let expected = max(receiver.fileNames.count, 1)
+                expectedTotal += expected
                 let collector = FilePromiseCallbackCollector(expectedCount: expected)
                 collectorBox.attach(collector)
                 collectors.append(collector)
@@ -156,14 +174,17 @@ enum FilePromiseBridge {
                         try await collector.wait()
                     }
                 } catch {
-                    // Fail once; keep draining until expected or grace, then clean staging.
                     for c in collectors where !c.isComplete {
                         c.failForTimeout()
                     }
-                    await drainGrace(collectors: collectors, expectedTotal: collectors.reduce(0) { _, c in
-                        max(c.receivedCount, 0)
-                    }, grace: graceTimeout)
-                    try? FileManager.default.removeItem(at: staging)
+                    await drainGrace(
+                        collectors: collectors,
+                        expectedTotal: expectedTotal,
+                        grace: graceTimeout
+                    )
+                    await executor.run {
+                        try? FileManager.default.removeItem(at: staging)
+                    }
                     if error is CancellationError || error as? FilePromiseCollectorError == .timedOut {
                         throw ImagePlacementError.promiseTimedOut
                     }
@@ -173,7 +194,9 @@ enum FilePromiseBridge {
             }
             return FilePromiseReceiptResult(urls: orderedURLs, stagingDirectory: staging)
         } catch {
-            try? FileManager.default.removeItem(at: staging)
+            await executor.run {
+                try? FileManager.default.removeItem(at: staging)
+            }
             throw error
         }
     }
@@ -208,7 +231,6 @@ enum FilePromiseBridge {
     }
 }
 
-/// Thread-safe late binding of collector so the reader block can fire before we finish setup.
 private final class CollectorBox: @unchecked Sendable {
     private let lock = NSLock()
     private var collector: FilePromiseCallbackCollector?

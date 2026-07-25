@@ -152,6 +152,14 @@ struct FilePromiseCollectorTests {
         #expect(urls.count == 2)
     }
 
+    // Verifies: REQ-060 — callbacks may finish before wait() registers.
+    @Test func returnsStoredResultWhenCompletedBeforeWait() async throws {
+        let collector = FilePromiseCallbackCollector(expectedCount: 1)
+        collector.note(url: URL(fileURLWithPath: "/tmp/a.png"), error: nil)
+        let urls = try await collector.wait()
+        #expect(urls.count == 1)
+    }
+
     // Verifies: REQ-063
     @Test func rejectsProviderError() async {
         let collector = FilePromiseCallbackCollector(expectedCount: 1)
@@ -289,6 +297,47 @@ struct AssetDirectoryStoreTests {
         )
         await #expect(throws: ImagePlacementError.unsafeDestination) {
             _ = try await AssetDirectoryStore.publish(artifacts: [artifact], documentURL: doc)
+        }
+    }
+
+    // Verifies: REQ-071 — later item failure rolls back earlier exclusive creates.
+    @Test func rollsBackEarlierPublishesWhenLaterItemFails() async throws {
+        let png = try makePNGData()
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let doc = dir.appendingPathComponent("note.md")
+        try Data().write(to: doc)
+        let staging = dir.appendingPathComponent("stage", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        let good = staging.appendingPathComponent("good")
+        try png.write(to: good)
+        let missing = staging.appendingPathComponent("missing-source")
+        // Second artifact points at a non-existent staging file → copy fails after first publish.
+        let artifacts = [
+            StagedImageArtifact(
+                stagingURL: good,
+                providerName: "ok.png",
+                representation: .png,
+                sha256Hex: ImageAssetPolicy.sha256Hex(png),
+                byteCount: png.count
+            ),
+            StagedImageArtifact(
+                stagingURL: missing,
+                providerName: "bad.png",
+                representation: .png,
+                sha256Hex: "deadbeef",
+                byteCount: 1
+            ),
+        ]
+        await #expect(throws: (any Error).self) {
+            _ = try await AssetDirectoryStore.publish(artifacts: artifacts, documentURL: doc)
+        }
+        let assets = dir.appendingPathComponent("assets")
+        if FileManager.default.fileExists(atPath: assets.path) {
+            let names = try FileManager.default.contentsOfDirectory(atPath: assets.path)
+                .filter { !$0.hasPrefix(".") }
+            #expect(names.isEmpty)
         }
     }
 
@@ -491,6 +540,22 @@ struct ImagePlacementControllerLifecycleTests {
             .bitmapData(Data([0x89]), providerName: "x.png", declaredType: .png)
         ])
         #expect(controller.phaseForTesting == .awaitingSave)
+    }
+
+    // Verifies: REQ-075 — first URL after untitled Save must not look like a concurrent move.
+    @Test @MainActor func untitledSaveURLDoesNotBumpGenerationForActiveTransaction() {
+        let controller = ImagePlacementController()
+        controller.prepareUntitledPlacementForTesting(claims: [
+            .bitmapData(Data([0x89]), providerName: "x.png", declaredType: .png)
+        ])
+        let genBefore = controller.documentLocationGenerationForTesting
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let doc = dir.appendingPathComponent("note.md")
+        try? Data().write(to: doc)
+        controller.updateDocumentURL(doc)
+        #expect(controller.documentLocationGenerationForTesting == genBefore)
     }
 }
 

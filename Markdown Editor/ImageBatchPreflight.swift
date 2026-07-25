@@ -127,7 +127,18 @@ nonisolated enum ImageBatchPreflight {
         if !supported.contains(normalized) {
             throw ImagePlacementError.typeMismatch
         }
-        _ = detected
+        // REQ-063: reject when claimed extension disagrees with detected content family.
+        let matches: Bool
+        switch detected {
+        case .png: matches = normalized == "png"
+        case .jpeg: matches = normalized == "jpg" || normalized == "jpeg"
+        case .gif: matches = normalized == "gif"
+        case .heic: matches = normalized == "heic"
+        case .heif: matches = normalized == "heif"
+        }
+        if !matches {
+            throw ImagePlacementError.typeMismatch
+        }
     }
 
     private static func encodeBitmapPNG(_ data: Data) throws -> Data {

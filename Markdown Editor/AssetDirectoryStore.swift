@@ -162,6 +162,35 @@ nonisolated enum AssetDirectoryStore {
         parentPath: String,
         parentIdentity: DocumentParentIdentity
     ) throws -> AssetPublishResult {
+        let parentURL = URL(fileURLWithPath: parentPath)
+        let assetsURL = parentURL.appendingPathComponent("assets", isDirectory: true)
+        var coordinatorError: NSError?
+        var publishError: Error?
+        var publishResult: AssetPublishResult?
+        let coordinator = NSFileCoordinator()
+        // ADR-0012: coordinate with file presenters; POSIX exclusive publish remains the boundary.
+        coordinator.coordinate(writingItemAt: assetsURL, options: [], error: &coordinatorError) { _ in
+            do {
+                publishResult = try publishLockedUncoordinated(
+                    artifacts: artifacts,
+                    parentPath: parentPath,
+                    parentIdentity: parentIdentity
+                )
+            } catch {
+                publishError = error
+            }
+        }
+        if let coordinatorError { throw coordinatorError }
+        if let publishError { throw publishError }
+        guard let publishResult else { throw ImagePlacementError.writeFailed }
+        return publishResult
+    }
+
+    private static func publishLockedUncoordinated(
+        artifacts: [StagedImageArtifact],
+        parentPath: String,
+        parentIdentity: DocumentParentIdentity
+    ) throws -> AssetPublishResult {
         let parentFD = try POSIXFileOps.openDirectory(parentPath)
         defer { close(parentFD) }
         let parentID = try POSIXFileOps.fstatIdentity(parentFD)
@@ -171,7 +200,6 @@ nonisolated enum AssetDirectoryStore {
 
         var createdAssetsIdentity: FileIdentity?
         let assetsFD: Int32
-        // Try open existing assets/
         let existing = openat(
             parentFD, "assets",
             O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW_ANY | O_RESOLVE_BENEATH
@@ -187,7 +215,6 @@ nonisolated enum AssetDirectoryStore {
 
         let assetsPath = try POSIXFileOps.path(for: assetsFD)
 
-        // Private staging directory inside assets for same-volume exclusive rename.
         let stagingName = ".md-editor-staging-\(UUID().uuidString)"
         try POSIXFileOps.mkdiratChild(parentFD: assetsFD, name: stagingName, mode: 0o700)
         let stagingFD = try POSIXFileOps.openChildDirectory(parentFD: assetsFD, name: stagingName)
@@ -199,7 +226,6 @@ nonisolated enum AssetDirectoryStore {
         var published: [PublishedImage] = []
         var pins: [CreatedAssetPin] = []
 
-        // Case-folded map of actual names.
         func entryMap() throws -> [String: String] {
             let names = try POSIXFileOps.enumerateNames(directoryFD: assetsFD)
             var map: [String: String] = [:]
@@ -209,42 +235,65 @@ nonisolated enum AssetDirectoryStore {
             return map
         }
 
-        for artifact in artifacts {
-            var map = try entryMap()
-            let stem = ImageAssetPolicy.slug(from: artifact.providerName.map {
-                URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent
-            })
+        do {
+            for artifact in artifacts {
+                var map = try entryMap()
+                let stem = ImageAssetPolicy.slug(from: artifact.providerName.map {
+                    URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent
+                })
 
-            // Materialize staged bytes into assets staging dir under a temp name.
-            let tempName = "tmp-\(UUID().uuidString)"
-            let stagingPath = (try POSIXFileOps.path(for: stagingFD) as NSString)
-                .appendingPathComponent(tempName)
-            try FileManager.default.copyItem(at: artifact.stagingURL, to: URL(fileURLWithPath: stagingPath))
+                let tempName = "tmp-\(UUID().uuidString)"
+                let stagingPath = (try POSIXFileOps.path(for: stagingFD) as NSString)
+                    .appendingPathComponent(tempName)
+                try FileManager.default.copyItem(at: artifact.stagingURL, to: URL(fileURLWithPath: stagingPath))
 
-            let filename = try chooseAndPublish(
-                stem: stem,
-                representation: artifact.representation,
-                sha: artifact.sha256Hex,
-                stagingFD: stagingFD,
-                tempName: tempName,
-                assetsFD: assetsFD,
-                assetsPath: assetsPath,
-                entryMap: &map,
-                pins: &pins
-            )
-
-            let dest = URL(fileURLWithPath: assetsPath).appendingPathComponent(filename)
-            let created = pins.contains(where: { $0.filename == filename })
-            published.append(
-                PublishedImage(
-                    filename: filename,
-                    markdown: ImageAssetPolicy.markdownReference(filename: filename),
-                    destinationURL: dest,
-                    wasReused: !created,
-                    wasCreatedByThisTransaction: created,
-                    identity: pins.first(where: { $0.filename == filename })?.identity
+                let filename = try chooseAndPublish(
+                    stem: stem,
+                    representation: artifact.representation,
+                    sha: artifact.sha256Hex,
+                    stagingFD: stagingFD,
+                    tempName: tempName,
+                    assetsFD: assetsFD,
+                    assetsPath: assetsPath,
+                    entryMap: &map,
+                    pins: &pins
                 )
-            )
+
+                let dest = URL(fileURLWithPath: assetsPath).appendingPathComponent(filename)
+                let created = pins.contains(where: { $0.filename == filename })
+                published.append(
+                    PublishedImage(
+                        filename: filename,
+                        markdown: ImageAssetPolicy.markdownReference(filename: filename),
+                        destinationURL: dest,
+                        wasReused: !created,
+                        wasCreatedByThisTransaction: created,
+                        identity: pins.first(where: { $0.filename == filename })?.identity
+                    )
+                )
+            }
+        } catch {
+            // REQ-071: roll back only identity-pinned creations from this batch.
+            for pin in pins {
+                _ = try? POSIXFileOps.unlinkChildIfIdentityMatches(
+                    dirFD: assetsFD,
+                    name: pin.filename,
+                    expected: pin.identity
+                )
+                if let pinPath = pin.pinPath { unlink(pinPath) }
+            }
+            if let created = createdAssetsIdentity,
+               let current = try? POSIXFileOps.fstatIdentity(assetsFD),
+               current == created {
+                let names = (try? POSIXFileOps.enumerateNames(directoryFD: assetsFD)) ?? []
+                let visible = names.filter {
+                    $0 != "." && $0 != ".." && !$0.hasPrefix(".md-editor-") && !$0.hasPrefix(".pin-")
+                }
+                if visible.isEmpty {
+                    _ = unlinkat(parentFD, "assets", AT_REMOVEDIR)
+                }
+            }
+            throw error
         }
 
         return AssetPublishResult(

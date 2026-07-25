@@ -50,7 +50,13 @@ final class ImagePlacementController: ObservableObject {
                 )
             }
         }
-        if lastDocumentURL != url {
+        // Untitled Save assigns the first URL for the active awaiting-save transaction — that is
+        // the expected outcome, not a concurrent move. Do not bump generation in that case.
+        let isExpectedUntitledSaveURL =
+            state.phase == .awaitingSave
+            && lastDocumentURL == nil
+            && url != nil
+        if lastDocumentURL != url, !isExpectedUntitledSaveURL {
             documentLocationGeneration &+= 1
         }
         lastDocumentURL = url
@@ -282,9 +288,12 @@ final class ImagePlacementController: ObservableObject {
 
             guard let tracker = textView.trackedPlacement(for: textView.activeTrackingGeneration),
                   !tracker.isCancelled else {
-                // REQ-072: files stay; no source insert. Release pins without deleting (commit path).
-                for pin in published.createdPins {
-                    if let pinPath = pin.pinPath { unlink(pinPath) }
+                // REQ-072: files stay; no source insert. Release pins off the main actor.
+                let pins = published.createdPins
+                await executor.run {
+                    for pin in pins {
+                        if let pinPath = pin.pinPath { unlink(pinPath) }
+                    }
                 }
                 _ = apply(.cancel, id: snapshot.id)
                 textView.endTrackingPlacement(textView.activeTrackingGeneration)
@@ -302,8 +311,11 @@ final class ImagePlacementController: ObservableObject {
                 at: tracker.range,
                 selectEmptyDescription: published.published.count == 1
             )
-            for pin in published.createdPins {
-                if let pinPath = pin.pinPath { unlink(pinPath) }
+            let pins = published.createdPins
+            await executor.run {
+                for pin in pins {
+                    if let pinPath = pin.pinPath { unlink(pinPath) }
+                }
             }
             _ = apply(.succeed, id: snapshot.id)
             textView.endTrackingPlacement(textView.activeTrackingGeneration)
@@ -337,6 +349,7 @@ final class ImagePlacementController: ObservableObject {
 
     // Test helpers
     var phaseForTesting: ImagePlacementPhase { state.phase }
+    var documentLocationGenerationForTesting: UInt64 { documentLocationGeneration }
 
     func prepareUntitledPlacementForTesting(claims: [ImageClaim]) {
         let id = ImageActionID()
