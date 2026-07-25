@@ -71,6 +71,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     nonisolated override class var autosavesInPlace: Bool { true }
 
     override func makeWindowControllers() {
+        // Ensure editor state matches the I/O snapshot before hosting (read may have
+        // applied bytes off-main and only scheduled the published-state hop).
+        let loaded = copyIOText()
+        if text != loaded {
+            applyLoadedText(loaded)
+        }
         let contentView = ContentView(document: self)
         let hosting = NSHostingController(rootView: contentView)
         let window = NSWindow(contentViewController: hosting)
@@ -83,11 +89,11 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         addWindowController(controller)
     }
 
-    // REQ-015: background read uses byte snapshot only.
+    // REQ-015: background read uses byte snapshot only — never main.sync (deadlock risk).
     nonisolated override func read(from data: Data, ofType typeName: String) throws {
         let decoded = try MarkdownDocumentData(data: data)
         applyIOText(decoded.text)
-        applyLoadedTextOnMain(decoded.text)
+        scheduleApplyLoadedText(decoded.text)
     }
 
     // REQ-015: background write uses byte snapshot only.
@@ -102,22 +108,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         set {
             let previous = super.fileURL
             super.fileURL = newValue
-            let bumpGeneration: Bool = {
-                // Access expecting flag via lock-free snapshot on calling thread; the flag is
-                // only written from the main actor Save path.
-                if Thread.isMainThread {
-                    return MainActor.assumeIsolated {
-                        self.applyFileURLChange(from: previous, to: newValue)
-                    }
-                } else {
-                    return DispatchQueue.main.sync {
-                        MainActor.assumeIsolated {
-                            self.applyFileURLChange(from: previous, to: newValue)
-                        }
-                    }
-                }
-            }()
-            _ = bumpGeneration
+            scheduleApplyFileURLChange(from: previous, to: newValue)
         }
     }
 
@@ -137,6 +128,34 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         locationGeneration &+= 1
         objectWillChange.send()
         return true
+    }
+
+    nonisolated private func scheduleApplyFileURLChange(from previous: URL?, to newValue: URL?) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                _ = self.applyFileURLChange(from: previous, to: newValue)
+            }
+        } else {
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    _ = self.applyFileURLChange(from: previous, to: newValue)
+                }
+            }
+        }
+    }
+
+    nonisolated private func scheduleApplyLoadedText(_ value: String) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                self.applyLoadedText(value)
+            }
+        } else {
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self.applyLoadedText(value)
+                }
+            }
+        }
     }
 
     // MARK: - DocumentActionInterface
@@ -210,7 +229,8 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         text = newText
         sourceVersion &+= 1
         syncIOText(newText)
-        updateChangeCount(.changeDone)
+        // Dirty state is driven by UndoManager registration — do not also call
+        // updateChangeCount(.changeDone) or undo/redo will double-count.
 
         let inverse = SourceEdit(
             expectedVersion: sourceVersion,
@@ -270,20 +290,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     nonisolated private func syncIOText(_ value: String) {
         applyIOText(value)
-    }
-
-    nonisolated private func applyLoadedTextOnMain(_ value: String) {
-        if Thread.isMainThread {
-            MainActor.assumeIsolated {
-                self.applyLoadedText(value)
-            }
-        } else {
-            DispatchQueue.main.sync {
-                MainActor.assumeIsolated {
-                    self.applyLoadedText(value)
-                }
-            }
-        }
     }
 
     private func applyLoadedText(_ value: String) {

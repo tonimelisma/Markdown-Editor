@@ -63,6 +63,16 @@ struct MarkdownTextView: NSViewRepresentable {
         placementController.attach(actions: document)
         placementController.updateDocumentURL(document.fileURL)
 
+        if context.coordinator.isNativeEditInFlight {
+            // Native keystroke owns storage application until textDidChange clears the gate.
+            if let pending = document.pendingSelection {
+                textView.setSelectedRange(pending)
+                document.pendingSelection = nil
+                document.reportActiveSelection(pending)
+            }
+            return
+        }
+
         if textView.string != document.text {
             context.coordinator.isProgrammaticUpdate = true
             let selected = textView.selectedRange()
@@ -95,6 +105,8 @@ struct MarkdownTextView: NSViewRepresentable {
         private let highlighter = MarkdownHighlighter()
         weak var textView: MarkdownSourceTextView?
         var isProgrammaticUpdate = false
+        /// Gates SwiftUI string sync while a native keystroke commit is in flight (REQ-016).
+        var isNativeEditInFlight = false
         private var version = 0
         private var task: Task<Void, Never>?
 
@@ -120,8 +132,9 @@ struct MarkdownTextView: NSViewRepresentable {
             switch document.commitSourceEdit(edit) {
             case .committed(let selection):
                 document.reportActiveSelection(selection.range)
-                // Allow the text view to apply the same replacement without its own undo.
-                // Tracker already advanced inside commitSourceEdit.
+                // Prevent updateNSView from rewriting storage before the text view applies
+                // the same replacement (PLAN-0008 recursive-writeback risk).
+                isNativeEditInFlight = true
                 return true
             case .refused:
                 return false
@@ -130,8 +143,8 @@ struct MarkdownTextView: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard !isProgrammaticUpdate, let textView else { return }
+            isNativeEditInFlight = false
             // Canonical source already updated in shouldChangeTextIn via transaction.
-            // Keep selection reported for COR-02.
             document.reportActiveSelection(textView.selectedRange())
             highlight(debounced: true)
         }

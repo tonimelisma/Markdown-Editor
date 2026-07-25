@@ -116,6 +116,17 @@ struct MarkdownDocumentTests {
         }.value
         #expect(data == Data("snapshot-me".utf8))
     }
+
+    // Verifies: REQ-014 — standard document File selectors remain wired for First Responder.
+    @Test func requiredDocumentFileSelectorsAreDeclared() {
+        for name in MarkdownAppDelegate.requiredDocumentSelectors {
+            #expect(NSSelectorFromString(name) != nil)
+            #expect(name.hasSuffix(":"))
+        }
+        #expect(MarkdownAppDelegate.requiredDocumentSelectors.contains("saveDocument:"))
+        #expect(MarkdownAppDelegate.requiredDocumentSelectors.contains("saveDocumentAs:"))
+        #expect(MarkdownAppDelegate.requiredDocumentSelectors.contains("revertDocumentToSaved:"))
+    }
 }
 
 @MainActor
