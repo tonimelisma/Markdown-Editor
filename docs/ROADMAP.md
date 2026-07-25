@@ -35,8 +35,8 @@ The regex highlighter is a presentation aid, not a Markdown parser.
 
 INC-02 also delivered styling for a proposed “Tier-2” extension bundle. Subsequent standards
 research found that bundle was an undocumented house dialect and that its `~text~` subscript
-meaning conflicts with formal GFM. The delivered behavior remains recorded truthfully in
-REQ-042 and is scheduled for correction next.
+meaning conflicts with formal GFM. COR-01 removed that styling; REQ-042 is Deferred to
+post-MVP dialect-profile research.
 
 ## COR-01 · Markdown dialect conformance correction — `[build]` ✅ Done
 

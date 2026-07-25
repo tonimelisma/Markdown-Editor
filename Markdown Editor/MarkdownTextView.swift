@@ -64,6 +64,8 @@ struct MarkdownTextView: NSViewRepresentable {
         private var version = 0
         private var task: Task<Void, Never>?
         private let maxHighlightLength = 100_000   // size-threshold escape hatch (ADR-0010)
+        /// True after we have suspended styling above the size cap; used to clear frozen attrs once.
+        private var stylingSuspended = false
 
         init(text: Binding<String>) { self.text = text }
 
@@ -81,21 +83,39 @@ struct MarkdownTextView: NSViewRepresentable {
             let snapshot = textView.string
             task?.cancel()
 
-            // Above the threshold, suspend styling entirely. Resetting attributes here would
-            // synchronously traverse the full storage on every keystroke, defeating REQ-045.
+            // Above the threshold, suspend styling. Clear prior attributes once on the transition
+            // so frozen highlighting does not linger; do not re-walk storage every keystroke.
             if snapshot.utf16.count > maxHighlightLength {
+                if !stylingSuspended {
+                    stylingSuspended = true
+                    applyBaseAttributesOnly()
+                }
                 return
             }
+            stylingSuspended = false
             task = Task { [weak self] in
                 if debounced {
                     try? await Task.sleep(for: .milliseconds(120))
                     if Task.isCancelled { return }
                 }
                 guard let self else { return }
-                let tokens = await self.highlighter.tokens(for: snapshot)
+                let tokens: [Token]
+                do {
+                    tokens = try await self.highlighter.tokens(for: snapshot)
+                } catch {
+                    return  // cancelled or failed pass — discard
+                }
                 if Task.isCancelled { return }
                 self.apply(tokens, expectedVersion: expectedVersion, expectedText: snapshot)
             }
+        }
+
+        private func applyBaseAttributesOnly() {
+            guard let textView, let storage = textView.textStorage else { return }
+            let full = NSRange(location: 0, length: storage.length)
+            storage.beginEditing()
+            storage.setAttributes(theme.baseAttributes, range: full)
+            storage.endEditing()
         }
 
         // REQ-040/041/043/047–051: style via NSTextStorage attributes — display only; the saved
