@@ -35,7 +35,11 @@ struct MarkdownTextView: NSViewRepresentable {
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
         textView.string = text
-        textView.registerForDraggedTypes([.fileURL, .png, .tiff])
+        textView.registerForDraggedTypes([
+            .fileURL, .png, .tiff,
+            NSPasteboard.PasteboardType(rawValue: "com.apple.pasteboard.promised-file-url"),
+            NSPasteboard.PasteboardType(rawValue: "com.apple.pasteboard.promised-file-content-type"),
+        ])
         textView.setAccessibilityLabel("Markdown source")
 
         let scroll = NSScrollView()
@@ -226,17 +230,33 @@ final class MarkdownSourceTextView: NSTextView {
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let pb = sender.draggingPasteboard
+        if let receivers = pb.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver],
+           !receivers.isEmpty {
+            // REQ-060: receive promises then place (off-main receive, main commit).
+            placementCoordinator?.handleFilePromises(receivers, documentURL: documentURL)
+            return true
+        }
         let classification = ImagePasteboardClassifier.classifyDragInfo(sender)
         switch classification {
         case .images(let items):
             placementCoordinator?.handleImageAction(items: items, documentURL: documentURL)
             return true
         case .fallthroughToNativeText, .unsupported:
+            if case .unsupported = classification {
+                placementCoordinator?.alert = .error("Unsupported or corrupt image.")
+                return true
+            }
             return super.performDragOperation(sender)
         }
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let pb = sender.draggingPasteboard
+        if let receivers = pb.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver],
+           !receivers.isEmpty {
+            return .copy
+        }
         let classification = ImagePasteboardClassifier.classifyDragInfo(sender)
         if case .images = classification {
             return .copy

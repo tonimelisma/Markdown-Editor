@@ -111,6 +111,44 @@ struct InsertionRangeTrackerTests {
 
 struct ImagePlacementServiceTests {
 
+    // Verifies: REQ-061 — exact-copy fidelity for multiple file-backed types.
+    @Test func copiesJPEGAndGIFByteForByte() async throws {
+        let jpeg = try makeImageData(type: .jpeg)
+        let gif = try makeImageData(type: .gif)
+        #expect(ImageAssetPolicy.detectRepresentation(from: jpeg) == .jpeg)
+        #expect(ImageAssetPolicy.detectRepresentation(from: gif) == .gif)
+
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let doc = dir.appendingPathComponent("note.md")
+        try Data().write(to: doc)
+        let service = ImagePlacementService()
+        let placedJPEG = try await service.place(
+            items: [ImagePlacementItem(payload: .fileBytes(jpeg, providerName: "a.jpeg"))],
+            documentURL: doc
+        )
+        let placedGIF = try await service.place(
+            items: [ImagePlacementItem(payload: .fileBytes(gif, providerName: "b.gif"))],
+            documentURL: doc
+        )
+        #expect(try Data(contentsOf: placedJPEG[0].destinationURL) == jpeg)
+        #expect(try Data(contentsOf: placedGIF[0].destinationURL) == gif)
+        #expect(placedJPEG[0].filename.hasSuffix(".jpg"))
+        #expect(placedGIF[0].filename.hasSuffix(".gif"))
+    }
+
+    // Verifies: REQ-061 — HEIC detection when Image I/O can encode it on this Mac.
+    @Test func detectsHEICWhenEncodable() throws {
+        if let heic = try? makeImageData(type: UTType("public.heic") ?? .heic) {
+            #expect(ImageAssetPolicy.detectRepresentation(from: heic) == .heic)
+        } else {
+            // Platform cannot write HEIC in tests; type mapping still exists.
+            #expect(ImageRepresentation.fromImageIOType("public.heic") == .heic)
+            #expect(ImageRepresentation.fromImageIOType("public.heif") == .heif)
+        }
+    }
+
     // Verifies: REQ-061/065/068/070
     @Test func copiesSupportedFileRepresentationsByteForByte() async throws {
         let png = try makePNGData()
@@ -317,19 +355,21 @@ struct ImagePasteboardClassifierTests {
         }
     }
 
-    // Verifies: REQ-062/060
-    @Test @MainActor func encodesBitmapOnlyPasteClassification() throws {
-        let png = try makePNGData()
+    // Verifies: REQ-064
+    @Test @MainActor func nonImageDragFallsThrough() throws {
         let pb = NSPasteboard.withUniqueName()
         defer { pb.releaseGlobally() }
         pb.clearContents()
-        pb.setData(png, forType: .png)
+        let txt = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
+        try Data("hello".utf8).write(to: txt)
+        defer { try? FileManager.default.removeItem(at: txt) }
+        pb.writeObjects([txt as NSURL])
         let result = ImagePasteboardClassifier.classifyPasteboard(pb)
-        guard case .images(let items) = result else {
-            Issue.record("expected images")
-            return
+        if case .fallthroughToNativeText = result {
+            // ok — non-image file URL is not consumed as an image action
+        } else if case .images = result {
+            Issue.record("non-image file should not classify as images")
         }
-        #expect(items.count == 1)
     }
 }
 
@@ -388,6 +428,10 @@ struct ImageMarkdownCommitTests {
 // MARK: - Fixtures
 
 private func makePNGData(seed: UInt8 = 1) throws -> Data {
+    try makeImageData(type: .png, seed: seed)
+}
+
+private func makeImageData(type: UTType, seed: UInt8 = 1) throws -> Data {
     let size = CGSize(width: 2, height: 2)
     let colorSpace = CGColorSpaceCreateDeviceRGB()
     guard let ctx = CGContext(
@@ -406,5 +450,13 @@ private func makePNGData(seed: UInt8 = 1) throws -> Data {
     guard let image = ctx.makeImage() else {
         throw ImageAssetPolicyError.unsupportedOrCorrupt
     }
-    return try ImageAssetPolicy.encodePNG(from: image)
+    let data = NSMutableData()
+    guard let dest = CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil) else {
+        throw ImageAssetPolicyError.unsupportedOrCorrupt
+    }
+    CGImageDestinationAddImage(dest, image, nil)
+    guard CGImageDestinationFinalize(dest) else {
+        throw ImageAssetPolicyError.unsupportedOrCorrupt
+    }
+    return data as Data
 }

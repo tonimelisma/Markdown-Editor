@@ -26,6 +26,11 @@ final class ImagePlacementCoordinator: ObservableObject {
     private weak var textView: MarkdownSourceTextView?
     private var lastDocumentParent: URL?
     private var knownGeneratedFilenames: Set<String> = []
+    private static let generatedAssetPattern = try! NSRegularExpression(
+        pattern: #"!\[([^\]]*)\]\(assets/([^)\s]+)\)"#
+    )
+
+    private var saveSheetObserver: NSObjectProtocol?
 
     func attach(textView: MarkdownSourceTextView) {
         self.textView = textView
@@ -40,6 +45,7 @@ final class ImagePlacementCoordinator: ObservableObject {
 
         if awaitingSave, let url {
             awaitingSave = false
+            clearSaveSheetObserver()
             if let items = pendingItems {
                 pendingItems = nil
                 Task { await runPlacement(items: items, documentURL: url) }
@@ -61,23 +67,89 @@ final class ImagePlacementCoordinator: ObservableObject {
         // REQ-075: untitled → Save first; cancel Save cancels placement.
         pendingItems = items
         awaitingSave = true
+        watchForSavePanelDismissal()
         let saved = NSApp.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil)
         if !saved {
+            clearSaveSheetObserver()
             awaitingSave = false
             pendingItems = nil
             alert = .error("Save the document before adding images.")
         }
-        // If Save is presented and cancelled, fileURL stays nil — clear on next focus check.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self, self.awaitingSave else { return }
-            // Still awaiting and still no URL after a beat of the save panel starting —
-            // observe via updateDocumentURL; if user cancelled, clear when editor resigns.
+    }
+
+    /// REQ-060: receive file promises into staging, then place as ordinary file bytes.
+    func handleFilePromises(_ receivers: [NSFilePromiseReceiver], documentURL: URL?) {
+        guard !receivers.isEmpty else { return }
+        if busy {
+            alert = .error("Wait for the current image action to finish.")
+            return
+        }
+        Task { @MainActor in
+            do {
+                let items = try await Self.receivePromiseItems(receivers)
+                self.handleImageAction(items: items, documentURL: documentURL)
+            } catch {
+                self.alert = .error("Could not receive promised image files.")
+            }
         }
     }
 
-    func cancelPendingSaveIfNeeded(documentURL: URL?) {
-        if awaitingSave, documentURL == nil {
-            // Heuristic: if still awaiting and user cancelled, pending stays until URL or explicit cancel.
+    private static func receivePromiseItems(_ receivers: [NSFilePromiseReceiver]) async throws -> [ImagePlacementItem] {
+        let staging = FileManager.default.temporaryDirectory
+            .appendingPathComponent("md-editor-promise-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: staging) }
+
+        var items: [ImagePlacementItem] = []
+        for receiver in receivers {
+            let urls: [URL] = try await withCheckedThrowingContinuation { cont in
+                receiver.receivePromisedFiles(
+                    atDestination: staging,
+                    options: [:],
+                    operationQueue: OperationQueue()
+                ) { url, error in
+                    if let error {
+                        cont.resume(throwing: error)
+                    } else {
+                        cont.resume(returning: [url])
+                    }
+                }
+            }
+            for url in urls {
+                guard let item = ImagePasteboardClassifier.itemFromFileURL(url) else {
+                    throw ImagePlacementError.unsupportedOrCorrupt
+                }
+                items.append(item)
+            }
+        }
+        guard !items.isEmpty else { throw ImagePlacementError.unsupportedOrCorrupt }
+        return items
+    }
+
+    private func watchForSavePanelDismissal() {
+        clearSaveSheetObserver()
+        saveSheetObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didEndSheetNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                self?.finishAwaitingSaveIfStillUntitled()
+            }
+        }
+    }
+
+    private func finishAwaitingSaveIfStillUntitled() {
+        guard awaitingSave else { return }
+        if textView?.documentURL == nil {
+            noteSaveCancelled()
+        }
+    }
+
+    private func clearSaveSheetObserver() {
+        if let saveSheetObserver {
+            NotificationCenter.default.removeObserver(saveSheetObserver)
+            self.saveSheetObserver = nil
         }
     }
 
@@ -85,6 +157,7 @@ final class ImagePlacementCoordinator: ObservableObject {
         guard awaitingSave else { return }
         awaitingSave = false
         pendingItems = nil
+        clearSaveSheetObserver()
         alert = .info("Image action cancelled — document was not saved.")
     }
 
@@ -136,10 +209,9 @@ final class ImagePlacementCoordinator: ObservableObject {
     private func checkBrokenAssetReferences(documentURL: URL?) {
         guard let textView, let documentURL else { return }
         let text = textView.string as NSString
-        let pattern = try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\(assets/([^)\s]+)\)"#)
         let full = NSRange(location: 0, length: text.length)
         var broken = false
-        pattern.enumerateMatches(in: text as String, options: [], range: full) { match, _, _ in
+        Self.generatedAssetPattern.enumerateMatches(in: text as String, options: [], range: full) { match, _, _ in
             guard let match, match.numberOfRanges >= 3 else { return }
             let filename = text.substring(with: match.range(at: 2))
             guard knownGeneratedFilenames.contains(filename) else { return }
