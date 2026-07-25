@@ -76,7 +76,8 @@ ADR-0010 is the app-wide editing/concurrency contract:
 - Secondary computation uses immutable snapshots and `Sendable` values off-main.
 - Results carry a monotonically increasing version and are discarded when stale.
 - Native insertion remains the synchronous keystroke path.
-- Source highlighting is debounced and suspended above 100,000 UTF-16 units.
+- Source highlighting is debounced and computed off-main for every document size (no
+  length-based suspension).
 
 SPIKE-02 must use TextKit 1 as its baseline. It does not reopen ADR-0008 merely because INC-04
 needs rich text.

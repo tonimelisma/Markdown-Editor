@@ -324,8 +324,9 @@ rules:
 - stale work never blocks or overwrites newer source; and
 - Source remains usable during degraded rich rendering.
 
-Record production-corpus distributions during implementation. Any size cap or degraded-mode
-threshold discovered then requires explicit product approval before becoming a requirement.
+Record production-corpus distributions during implementation. Do **not** introduce a
+document-size degraded mode, parse/projection suspension, or styling cap for Source or WYSIWYG.
+Any such threshold requires explicit product approval before becoming a requirement.
 
 ## Risks
 

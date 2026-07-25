@@ -205,8 +205,10 @@ actor MarkdownHighlighter {
 
     // MARK: - Strikethrough (formal GFM 0.29-gfm)
 
-    /// Matching runs of exactly one or two tildes. Soft line breaks allowed; a blank line
+    // REQ-048/049: formal GFM double-tilde only. Single tilde is literal unsupported text.
+    /// Matching runs of exactly two tildes. Soft line breaks allowed; a blank line
     /// terminates. Delimiters respect backslash escape parity (odd = escaped).
+    /// Triple-or-longer runs never create strikethrough (GFM Ex. 493).
     nonisolated static func strikethroughRanges(in nsText: NSString) -> [NSRange] {
         let length = nsText.length
         guard length > 0 else { return [] }
@@ -223,8 +225,8 @@ actor MarkdownHighlighter {
                 i += 1
                 continue
             }
-            // Formal GFM: only runs of length 1 or 2 create strikethrough (Ex. 493).
-            guard open.length == 1 || open.length == 2 else {
+            // Formal GFM with CMARK_OPT_STRIKETHROUGH_DOUBLE_TILDE: exactly length 2.
+            guard open.length == 2 else {
                 i = open.end
                 continue
             }
@@ -260,7 +262,7 @@ actor MarkdownHighlighter {
                 }
 
                 if let close = tildeRun(in: nsText, at: j), !close.escaped {
-                    if close.length == open.length {
+                    if close.length == 2 {
                         // Right-flanking: not preceded by whitespace.
                         if j > 0, isWhitespace(nsText.character(at: j - 1)) {
                             j = close.end
@@ -269,7 +271,7 @@ actor MarkdownHighlighter {
                         found = (j, close.end)
                         break
                     }
-                    // Runs are atomic — never split a longer run to satisfy a shorter closer.
+                    // Runs are atomic — never split a longer run to satisfy a double closer.
                     j = close.end
                     continue
                 }
