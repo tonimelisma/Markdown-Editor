@@ -323,6 +323,43 @@ struct AcceptedEditTransactionTests {
         #expect(textView.string == session.presentation?.renderedString)
     }
 
+    // Verifies: REQ-016/059/091; ARC-005 — paste advances source, session, and
+    // TextKit storage in one discrete transaction before the adapter returns.
+    @Test func plainTextPasteAppliesAcceptedTransitionSynchronously() {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("hi\n")
+        let session = EditorSession()
+        session.attach(document: doc)
+        let tree = MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get()!
+        let model = MarkdownProjectionModel.build(
+            tree: tree,
+            index: MarkdownSourceIndex(source: doc.text, sourceVersion: doc.sourceVersion)
+        )
+        session.installProjectionForTesting(model, tree: tree)
+
+        let coordinator = WYSIWYGTextView.Coordinator(
+            document: doc,
+            session: session,
+            placementController: ImagePlacementController()
+        )
+        let textView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
+        textView.delegate = coordinator
+        textView.session = session
+        textView.documentActions = doc
+        textView.adapterCoordinator = coordinator
+        coordinator.textView = textView
+        coordinator.applyProjectionIfNeeded(force: true)
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+
+        let applied = textView.pastePlainText("*")
+
+        #expect(applied)
+        #expect(doc.text == "\\*hi\n")
+        #expect(session.presentation?.renderedString == "*hi\n")
+        #expect(textView.string == "*hi\n")
+        #expect(textView.selectedRange() == NSRange(location: 1, length: 0))
+    }
+
     // Verifies: REQ-091; ARC-005 — refused edit changes neither source nor presentation.
     @Test func refusedEditChangesNeither() {
         let doc = MarkdownDocument()

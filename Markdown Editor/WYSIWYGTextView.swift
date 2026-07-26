@@ -235,15 +235,20 @@ struct WYSIWYGTextView: NSViewRepresentable {
             case .accepted(let edit):
                 // REQ-091; ARC-005: apply the accepted presentation transition programmatically
                 // and refuse TextKit's optimistic second mutation.
-                if let transition = edit.presentationTransition {
-                    session.updateOrigin.with(.programmaticPresentation) {
-                        applyAcceptedTransition(transition, in: textView)
-                        appliedSnapshotID = transition.nextSnapshot.id
-                    }
-                }
+                applyAcceptedEdit(edit, in: textView)
                 return false
             case .refused:
                 return false
+            }
+        }
+
+        func applyAcceptedEdit(_ edit: AcceptedEdit, in textView: NSTextView) {
+            guard let transition = edit.presentationTransition else {
+                preconditionFailure("Accepted WYSIWYG edit must carry a presentation transition")
+            }
+            session.updateOrigin.with(.programmaticPresentation) {
+                applyAcceptedTransition(transition, in: textView)
+                appliedSnapshotID = transition.nextSnapshot.id
             }
         }
 
@@ -656,23 +661,39 @@ final class MarkdownWYSIWYGTextView: NSTextView {
                 return
             }
             // REQ-059: always paste plain text even when RTF/HTML are available.
-            if let plain = PastePolicy.plainText(from: .general),
-               let session,
-               let presentation = session.presentation {
-                let range = selectedRange()
-                let selection = ProjectionSelection(
-                    utf16: range,
-                    revision: presentation.projectionRevision
-                )
-                // Paste must not coalesce into an open typing undo group (REQ-016).
-                _ = session.perform(
-                    .insertText(plain),
-                    selection: .projection(selection),
-                    expectedSourceRevision: SourceRevision(value: documentActions?.sourceSnapshot().sourceVersion ?? 0),
-                    grouping: .discrete
-                )
+            if let plain = PastePolicy.plainText(from: .general) {
+                _ = pastePlainText(plain)
             }
         }
+    }
+
+    /// Apply plain-text paste as the same atomic source/presentation transaction as typing.
+    ///
+    /// Exposed to integration tests so paste behavior is verified without UI automation.
+    @discardableResult
+    func pastePlainText(_ plain: String) -> Bool {
+        guard let session,
+              let presentation = session.presentation,
+              let adapterCoordinator,
+              let snapshot = documentActions?.sourceSnapshot(),
+              presentation.sourceRevision.value == snapshot.sourceVersion else {
+            return false
+        }
+        let selection = ProjectionSelection(
+            utf16: selectedRange(),
+            revision: presentation.projectionRevision,
+            affinity: selectionAffinity == .upstream ? .upstream : .downstream
+        )
+        // Paste must not coalesce into an open typing undo group (REQ-016).
+        let outcome = session.perform(
+            .insertText(plain),
+            selection: .projection(selection),
+            expectedSourceRevision: SourceRevision(value: snapshot.sourceVersion),
+            grouping: .discrete
+        )
+        guard case .accepted(let edit) = outcome else { return false }
+        adapterCoordinator.applyAcceptedEdit(edit, in: self)
+        return true
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
