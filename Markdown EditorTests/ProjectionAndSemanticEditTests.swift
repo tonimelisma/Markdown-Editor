@@ -38,7 +38,7 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
     // Verifies: REQ-057/058
     func testBoldTogglePreservesSpellingWhenSafe() {
         let snapshot = SourceSnapshot(text: "hello world", sourceVersion: 3, locationGeneration: 0, fileURL: nil)
-        let selection = SemanticSelection(mode: .source, utf16Range: NSRange(location: 0, length: 5), sourceVersion: 3)
+        let selection = TestSelection(mode: .source, utf16Range: NSRange(location: 0, length: 5), sourceVersion: 3)
         let result = SemanticEditEngine.apply(
             command: .toggleBold,
             selection: selection,
@@ -51,7 +51,7 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
         }
         XCTAssertEqual(mutation.replacement, "**hello**")
         let wrapped = SourceSnapshot(text: "**hello** world", sourceVersion: 4, locationGeneration: 0, fileURL: nil)
-        let sel2 = SemanticSelection(mode: .source, utf16Range: NSRange(location: 0, length: 9), sourceVersion: 4)
+        let sel2 = TestSelection(mode: .source, utf16Range: NSRange(location: 0, length: 9), sourceVersion: 4)
         let result2 = SemanticEditEngine.apply(command: .toggleBold, selection: sel2, snapshot: wrapped, projection: nil, tree: nil)
         guard case .mutation(let mutation2) = result2 else {
             return XCTFail("expected unwrap")
@@ -62,7 +62,7 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
     // Verifies: REQ-057
     func testStrikethroughUsesDoubleTildeOnly() {
         let snapshot = SourceSnapshot(text: "strike", sourceVersion: 1, locationGeneration: 0, fileURL: nil)
-        let selection = SemanticSelection(mode: .source, utf16Range: NSRange(location: 0, length: 6), sourceVersion: 1)
+        let selection = TestSelection(mode: .source, utf16Range: NSRange(location: 0, length: 6), sourceVersion: 1)
         let result = SemanticEditEngine.apply(command: .toggleStrikethrough, selection: selection, snapshot: snapshot, projection: nil, tree: nil)
         guard case .mutation(let mutation) = result else {
             return XCTFail("expected mutation")
@@ -81,7 +81,11 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
         let model = MarkdownProjectionModel.build(tree: tree, index: index)
         let task = try XCTUnwrap(model.attachments.first { if case .task = $0.kind { return true }; return false })
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
-        let selection = SemanticSelection(mode: .wysiwyg, utf16Range: NSRange(location: 0, length: 1), sourceVersion: 1)
+        let selection = TestSelection(
+            mode: .wysiwyg,
+            utf16Range: NSRange(location: task.utf16Location, length: 1),
+            sourceVersion: 1
+        )
         let result = SemanticEditEngine.apply(
             command: .toggleTask(nodeID: task.nodeID),
             selection: selection,
@@ -98,7 +102,7 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
     // Verifies: REQ-087
     func testStaleVersionRefused() {
         let snapshot = SourceSnapshot(text: "abc", sourceVersion: 2, locationGeneration: 0, fileURL: nil)
-        let selection = SemanticSelection(mode: .source, utf16Range: NSRange(location: 0, length: 1), sourceVersion: 1)
+        let selection = TestSelection(mode: .source, utf16Range: NSRange(location: 0, length: 1), sourceVersion: 1)
         let result = SemanticEditEngine.apply(command: .toggleBold, selection: selection, snapshot: snapshot, projection: nil, tree: nil)
         guard case .refused(.staleVersion) = result else {
             return XCTFail("expected staleVersion")
@@ -128,7 +132,7 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
         document.installTextForTesting("hello")
         let session = EditorSession()
         session.attach(document: document)
-        let selection = SemanticSelection(mode: .source, utf16Range: NSRange(location: 0, length: 5), sourceVersion: document.sourceVersion)
+        let selection = TestSelection(mode: .source, utf16Range: NSRange(location: 0, length: 5), sourceVersion: document.sourceVersion)
         _ = session.perform(.toggleBold, selection: selection)
         XCTAssertEqual(document.text, "**hello**")
         session.setMode(.wysiwyg)

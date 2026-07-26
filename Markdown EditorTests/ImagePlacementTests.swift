@@ -6,6 +6,7 @@
 import Testing
 import Foundation
 import AppKit
+import Combine
 import ImageIO
 import UniformTypeIdentifiers
 @testable import Markdown_Editor
@@ -481,10 +482,10 @@ struct ImageMarkdownCommitTests {
     @Test @MainActor func commitsOrderedBatchAsOneUndoableReplacement() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("Hello|")
-        doc.reportSourceSelection(SourceSelection(utf16: NSRange(location: 5, length: 1)))
         let tv = MarkdownSourceTextView(usingTextLayoutManager: false)
         tv.documentActions = doc
         tv.string = doc.text
+        tv.setSelectedRange(NSRange(location: 5, length: 1))
         let markdown = "![](assets/a.png)\n![](assets/b.png)"
         tv.insertImageMarkdown(markdown, at: NSRange(location: 5, length: 1), selectEmptyDescription: false)
         #expect(doc.text == "Hello![](assets/a.png)\n![](assets/b.png)")
@@ -495,12 +496,15 @@ struct ImageMarkdownCommitTests {
     @Test @MainActor func selectsEmptyDescriptionForSingleImage() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("")
+        var restorations: [SourceSelection] = []
+        let cancellable = doc.selectionRestorations.sink { restorations.append($0) }
+        defer { cancellable.cancel() }
         let tv = MarkdownSourceTextView(usingTextLayoutManager: false)
         tv.documentActions = doc
         tv.string = ""
         tv.insertImageMarkdown("![](assets/photo.heic)", at: NSRange(location: 0, length: 0), selectEmptyDescription: true)
         #expect(doc.text == "![](assets/photo.heic)")
-        #expect(doc.pendingSelection?.nsRange == NSRange(location: 2, length: 0))
+        #expect(restorations.last?.range.utf16 == NSRange(location: 2, length: 0))
     }
 
     // Verifies: REQ-074

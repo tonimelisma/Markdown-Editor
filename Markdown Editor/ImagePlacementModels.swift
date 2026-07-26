@@ -13,6 +13,22 @@ nonisolated struct ImageActionID: Hashable, Sendable {
     init(_ uuid: UUID = UUID()) { self.uuid = uuid }
 }
 
+/// Immutable source-domain target captured before picker or promise work starts.
+///
+/// // REQ-060; ARC-012: never consult later live editor state for the insertion point.
+nonisolated struct ImagePlacementTarget: Sendable, Equatable {
+    let sourceSelection: SourceSelection
+    let sourceRevision: SourceRevision
+    let locationGeneration: UInt64
+    let operationID: UUID
+}
+
+/// Complete immutable input consumed by one placement transaction.
+nonisolated struct ImagePlacementIntent: Sendable {
+    let target: ImagePlacementTarget
+    let claims: [ImageClaim]
+}
+
 nonisolated enum ImagePlacementPhase: Equatable, Sendable {
     case idle
     case accepted
@@ -49,7 +65,9 @@ nonisolated struct ImageActionSnapshot: Sendable {
     let claims: [ImageClaim]
     let documentURL: URL?
     let documentLocationGeneration: UInt64
-    let selection: NSRange
+    let sourceRevision: SourceRevision
+    let selection: SourceSelection
+    let operationID: UUID
 }
 
 nonisolated struct DocumentParentIdentity: Sendable, Hashable {

@@ -2,12 +2,13 @@
 //  SourceIntegrityCharacterizationTests.swift
 //  Markdown EditorTests
 //
-//  COR-05 characterization tests (PLAN-0010 §5).
+//  Source mutation, history, trace, and dirty-state tests.
 //
 
 import Testing
 import Foundation
 import AppKit
+import Combine
 @testable import Markdown_Editor
 
 @MainActor
@@ -196,7 +197,9 @@ struct SourceIntegrityCharacterizationTests {
         doc.installTextForTesting("hello")
         let before = SourceSelection(utf16: NSRange(location: 0, length: 5))
         let after = SourceSelection(utf16: NSRange(location: 5, length: 0))
-        doc.reportSourceSelection(before)
+        var restorations: [SourceSelection] = []
+        let cancellable = doc.selectionRestorations.sink { restorations.append($0) }
+        defer { cancellable.cancel() }
 
         expectCommitted(
             doc.commitSourceMutation(
@@ -212,22 +215,15 @@ struct SourceIntegrityCharacterizationTests {
                 )
             )
         )
-        #expect(doc.sourceSelection.nsRange == after.nsRange)
-        #expect(doc.pendingSelection?.nsRange == after.nsRange)
-
-        // Simulate mode switch without touching source.
-        doc.pendingSelection = SourceSelection(utf16: NSRange(location: 2, length: 0))
-        doc.reportSourceSelection(SourceSelection(utf16: NSRange(location: 2, length: 0)))
+        #expect(restorations.isEmpty)
 
         doc.undoManager?.undo()
         #expect(doc.text == "hello")
-        #expect(doc.sourceSelection.nsRange == before.nsRange)
-        #expect(doc.pendingSelection?.nsRange == before.nsRange)
+        #expect(restorations.last?.range.utf16 == before.range.utf16)
 
         doc.undoManager?.redo()
         #expect(doc.text == "HELLO")
-        #expect(doc.sourceSelection.nsRange == after.nsRange)
-        #expect(doc.pendingSelection?.nsRange == after.nsRange)
+        #expect(restorations.last?.range.utf16 == after.range.utf16)
     }
 
     // Verifies: REQ-011 — dirty clears at saved history point; dirty again on redo.
@@ -257,31 +253,16 @@ struct SourceIntegrityCharacterizationTests {
         #expect(doc.isDocumentEdited == true)
     }
 
-    // Verifies: REQ-018 — background data(ofType:) reads a complete immutable snapshot.
-    @Test func concurrentBackgroundDataReadsCompleteImmutableSnapshot() async throws {
+    // Verifies: REQ-018 — serialized data(ofType:) reads the current canonical text.
+    @Test func serializedDataReadsCanonicalText() throws {
         let doc = MarkdownDocument()
         let payload = String(repeating: "snapshot-", count: 200)
         doc.installTextForTesting(payload)
 
         let expected = try doc.data(ofType: MarkdownContentType.identifier)
-        // Sendable I/O box — child tasks must not touch the MainActor document.
-        let io = doc.ioTextForTesting
-
-        let results = await withTaskGroup(of: Data.self, returning: [Data].self) { group in
-            for _ in 0..<8 {
-                group.addTask { io.data() }
-            }
-            var collected: [Data] = []
-            for await item in group {
-                collected.append(item)
-            }
-            return collected
-        }
-
-        #expect(results.count == 8)
-        for data in results {
-            #expect(data == expected)
-        }
+        #expect(expected == Data(payload.utf8))
+        let again = try doc.data(ofType: MarkdownContentType.identifier)
+        #expect(again == expected)
     }
 
     // Verifies: REQ-089 — traces never carry document content or paths.
@@ -327,7 +308,7 @@ struct SourceIntegrityCharacterizationTests {
             range: range,
             expectedText: expected,
             replacement: replacement,
-            selectionBefore: SourceSelection(utf16: doc.sourceSelection.nsRange),
+            selectionBefore: SourceSelection(utf16: range),
             selectionAfter: SourceSelection(utf16: NSRange(location: afterLoc, length: 0)),
             actionName: name,
             grouping: grouping

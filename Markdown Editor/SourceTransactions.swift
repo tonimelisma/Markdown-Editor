@@ -38,9 +38,3 @@ nonisolated enum SourceEditResult: Sendable, Equatable {
     case committed(SourceSelection)
     case refused(SourceEditRefusal)
 }
-
-/// Result of applying a generation-bound background load on the main actor.
-nonisolated enum LoadedTextApplicationResult: Sendable, Equatable {
-    case applied
-    case staleLoad
-}

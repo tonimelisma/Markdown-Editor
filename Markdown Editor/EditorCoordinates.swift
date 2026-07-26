@@ -16,16 +16,22 @@ nonisolated struct SourceRevision: Sendable, Equatable, Hashable, Comparable {
     }
 }
 
-/// Accepted projection revision (matches the source revision that produced it).
+/// Identity of one presented WYSIWYG snapshot — not a source revision.
+///
+/// // REQ-091; ARC-003: interchangeable only with `PresentationSnapshot.ID`.
 nonisolated struct ProjectionRevision: Sendable, Equatable, Hashable {
     let value: UInt64
 
-    init(source: SourceRevision) {
-        value = source.value
+    init(snapshotID: PresentationSnapshot.ID) {
+        value = snapshotID.value
     }
 
     init(value: UInt64) {
         self.value = value
+    }
+
+    var snapshotID: PresentationSnapshot.ID {
+        PresentationSnapshot.ID(value: value)
     }
 }
 
@@ -72,8 +78,6 @@ nonisolated struct SourceSelection: Sendable, Equatable {
         self.affinity = affinity
     }
 
-    /// Compatibility: callers that historically treated selection as a bare NSRange.
-    var nsRange: NSRange { range.utf16 }
 }
 
 /// Projection-domain selection with affinity and revision.
@@ -91,7 +95,6 @@ nonisolated struct ProjectionSelection: Sendable, Equatable {
         self.affinity = affinity
     }
 
-    var nsRange: NSRange { range.utf16 }
 }
 
 /// Selection domain for a single edit request.
@@ -108,16 +111,4 @@ nonisolated struct EditorEditRequest: Sendable, Equatable {
     let selection: EditorSelection
     let expectedSourceRevision: SourceRevision
     let grouping: MutationGrouping
-}
-
-/// Semantic context intersecting a WYSIWYG edit.
-nonisolated enum SemanticEditContext: Sendable, Equatable {
-    case plainText
-    case inlineSemantics
-    case linkLabel
-    case tableCell(nodeID: MarkdownNodeID)
-    case codeContent
-    case taskMarker(nodeID: MarkdownNodeID)
-    case uneditable
-    case ambiguous
 }

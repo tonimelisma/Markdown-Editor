@@ -1,5 +1,5 @@
 //
-//  COR08IntegrationCharacterizationTests.swift
+//  EditorIntegrationTests.swift
 //  Markdown EditorTests
 //
 
@@ -8,12 +8,10 @@ import Foundation
 import AppKit
 @testable import Markdown_Editor
 
-/// COR-08 D1–D10 regression and adapter-path proof.
-///
 /// // Verifies: REQ-015, REQ-057, REQ-058, REQ-060, REQ-069, REQ-078, REQ-080,
 /// // REQ-083, REQ-084, REQ-087, REQ-089
 @MainActor
-struct COR08IntegrationCharacterizationTests {
+struct EditorIntegrationTests {
 
     private func parseBuild(_ source: String, version: UInt64 = 1) throws -> (MarkdownTree, MarkdownProjectionModel) {
         let tree = try #require(MarkdownParser.parse(source, sourceVersion: version).get())
@@ -62,7 +60,7 @@ struct COR08IntegrationCharacterizationTests {
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let result = SemanticEditEngine.apply(
             command: .toggleTask(nodeID: task.nodeID),
-            selection: SemanticSelection(mode: .wysiwyg, utf16Range: NSRange(location: task.utf16Location, length: 1), sourceVersion: 1),
+            selection: TestSelection(mode: .wysiwyg, utf16Range: NSRange(location: task.utf16Location, length: 1), sourceVersion: 1),
             snapshot: snapshot,
             projection: model,
             tree: tree
@@ -111,7 +109,7 @@ struct COR08IntegrationCharacterizationTests {
         let (tree, model) = try parseBuild(source)
         let cell = try #require(model.tables.first?.cells.first)
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
-        let selection = SemanticSelection(
+        let selection = TestSelection(
             mode: .wysiwyg,
             utf16Range: NSRange(location: cell.utf16Range.location, length: cell.utf16Range.length),
             sourceVersion: 1
@@ -130,17 +128,18 @@ struct COR08IntegrationCharacterizationTests {
         #expect(mutation.actionName == "Edit Cell")
         #expect(mutation.replacement == "z")
 
-        let refused = SemanticEditEngine.apply(
+        let literalPipe = SemanticEditEngine.apply(
             command: .insertText("x|y"),
             selection: selection,
             snapshot: snapshot,
             projection: model,
             tree: tree
         )
-        guard case .refused = refused else {
-            Issue.record("expected refusal for unescaped pipe")
+        guard case .mutation(let pipeMutation) = literalPipe else {
+            Issue.record("expected literal pipe encoding, got \(literalPipe)")
             return
         }
+        #expect(pipeMutation.replacement == "x\\|y")
         #expect(snapshot.text == source)
     }
 
@@ -159,14 +158,14 @@ struct COR08IntegrationCharacterizationTests {
         let model = MarkdownProjectionModel.build(tree: tree, index: index)
         session.installProjectionForTesting(model, tree: tree)
 
-        let sel = SemanticSelection(
+        let sel = TestSelection(
             mode: .wysiwyg,
             utf16Range: NSRange(location: 0, length: 0),
             sourceVersion: doc.sourceVersion
         )
         _ = session.perform(.insertText("a"), selection: sel)
         let v1 = doc.sourceVersion
-        let sel2 = SemanticSelection(
+        let sel2 = TestSelection(
             mode: .wysiwyg,
             utf16Range: NSRange(location: 1, length: 0),
             sourceVersion: v1
@@ -185,7 +184,7 @@ struct COR08IntegrationCharacterizationTests {
             return nil
         }
         #expect(typingEvents.contains(true))
-        #expect(doc.text.hasPrefix("ab") || doc.text.contains("ab") || doc.text.hasPrefix("a"))
+        #expect(doc.text == "abhi\n")
     }
 
     // MARK: - D7 toolbar offset zero
@@ -194,16 +193,16 @@ struct COR08IntegrationCharacterizationTests {
     @Test func toolbarUsesModeLocalOffsetZero() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hello")
-        doc.reportSourceSelection(SourceSelection(utf16: NSRange(location: 3, length: 0)))
         let session = EditorSession()
         session.attach(document: doc)
         session.setMode(.source)
-        session.sourceViewState.selection = NSRange(location: 0, length: 0)
+        session.updateSourceModeState {
+            $0.selection = SourceSelection(utf16: NSRange(location: 0, length: 0))
+        }
         // Simulate toolbar selection resolution without the old sentinel fallback.
-        let range = session.sourceViewState.selection
+        let range = session.sourceModeState.selection.range.utf16
         #expect(range.location == 0)
-        #expect(range != doc.sourceSelection.nsRange || doc.sourceSelection.nsRange.location == 0 || true)
-        let selection = SemanticSelection(
+        let selection = TestSelection(
             mode: .source,
             utf16Range: range,
             sourceVersion: doc.sourceVersion
@@ -246,30 +245,54 @@ struct COR08IntegrationCharacterizationTests {
         #expect(found == "alt text")
     }
 
-    // MARK: - D9 generation-bound load
+    // MARK: - Serialized I/O
 
-    // Verifies: REQ-015 — delayed load cannot overwrite a newer mutation.
-    @Test func delayedLoadCannotOverwriteNewerMutation() {
+    // Verifies: REQ-015 — serialized main-thread read installs canonical text without a mirror/gate.
+    @Test func serializedReadInstallsCanonicalTextOnMain() throws {
         let doc = MarkdownDocument()
         doc.installTextForTesting("original")
-        let (token, began) = doc.beginLoadForTesting()
-        #expect(began == 0)
-        // Commit a newer mutation.
-        let mutation = SourceMutation(
-            expectedRevision: 0,
-            range: NSRange(location: 0, length: 8),
-            expectedText: "original",
-            replacement: "mutated",
-            selectionBefore: SourceSelection(utf16: NSRange(location: 0, length: 8)),
-            selectionAfter: SourceSelection(utf16: NSRange(location: 7, length: 0)),
-            actionName: "Edit",
-            grouping: .discrete
+        let data = MarkdownDocumentData(text: "from-disk").data()
+        try doc.read(from: data, ofType: "net.daringfireball.markdown")
+        #expect(doc.text == "from-disk")
+        #expect(doc.sourceVersion == 1)
+    }
+
+    // Verifies: REQ-018/091/093; ARC-003/004 — load identities are monotonic
+    // and synchronously make any prior presentation unavailable.
+    @Test func repeatedLoadsNeverReuseRevisionOrOldPresentation() throws {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("original")
+        let session = EditorSession()
+        session.attach(document: doc)
+        let tree = try #require(
+            MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get()
         )
-        _ = doc.commitSourceMutation(mutation)
-        #expect(doc.text == "mutated")
-        let result = doc.applyLoadedText("from-disk", loadToken: token, beganAtRevision: began)
-        #expect(result == .staleLoad)
-        #expect(doc.text == "mutated")
+        session.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: tree,
+                index: MarkdownSourceIndex(
+                    source: doc.text,
+                    sourceVersion: doc.sourceVersion
+                )
+            ),
+            tree: tree
+        )
+        #expect(session.presentation != nil)
+
+        try doc.read(
+            from: MarkdownDocumentData(text: "first").data(),
+            ofType: "net.daringfireball.markdown"
+        )
+        let firstRevision = doc.sourceVersion
+        #expect(firstRevision == 1)
+        #expect(session.presentation == nil)
+
+        try doc.read(
+            from: MarkdownDocumentData(text: "second").data(),
+            ofType: "net.daringfireball.markdown"
+        )
+        #expect(doc.sourceVersion == firstRevision + 1)
+        #expect(session.presentation == nil)
     }
 
     // MARK: - D10 observer teardown
@@ -310,31 +333,29 @@ struct COR08IntegrationCharacterizationTests {
         doc.detachUndoCheckpointObserver()
         // Idempotent second call.
         doc.detachUndoCheckpointObserver()
-        #expect(doc.text.hasPrefix("a") || doc.text == "ax" || doc.text.contains("a"))
+        #expect(doc.text == "ax")
         _ = mutation
         _ = center
     }
 
     // MARK: - D2 image intent resolves before placement
 
-    // Verifies: REQ-060 — projection intent maps to source before placement tracking.
+    // Verifies: REQ-060 — projection selection maps to source before placement tracking.
     @Test func imageIntentResolvesProjectionBeforePlacement() throws {
         let source = "**bold** here\n"
         let (_, model) = try parseBuild(source)
         let rendered = model.renderedString as NSString
         let here = rendered.range(of: "here")
         #expect(here.location != NSNotFound)
-        let intent = EditorSelectionIntent(
-            domain: .wysiwyg,
-            sourceVersion: 1,
-            range: NSRange(location: here.location, length: 0),
-            affinity: .downstream
-        )
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
-        guard case .exact(let sourceRange) = intent.resolvedSourceRange(snapshot: snapshot, projection: model) else {
+        guard case .exact(let sourceRange) = model.coordinateMap.sourceRange(
+            forProjection: NSRange(location: here.location, length: 0),
+            affinity: .downstream
+        ) else {
             Issue.record("expected exact source intent")
             return
         }
+        _ = snapshot
         // After "**bold** " (7 chars) + hidden delimiters make projection shorter than source.
         #expect(sourceRange.location > here.location || sourceRange.location == 8)
         #expect((source as NSString).substring(with: NSRange(location: sourceRange.location, length: 4)) == "here"
@@ -374,33 +395,60 @@ struct COR08IntegrationCharacterizationTests {
             return false
         }
         let rendered = model.renderedString
-        if rendered.contains("line") && hasUneditableCode {
-            #expect(true)
-            return
-        }
-        // LF-only identity case remains editable — skip soft assert when parser collapses CRLF away.
-        #expect(rendered.contains("line") || hasUneditableCode)
+        #expect(rendered.contains("line"))
+        #expect(hasUneditableCode)
     }
 
     // Verifies: REQ-080 — caret at start of column 2 owns cell 2, not cell 1's trailing tab.
     @Test func tableCellHalfOpenBoundaryPrefersLaterColumn() throws {
         let source = "| a | b |\n| - | - |\n| c | d |\n"
-        let (tree, model) = try parseBuild(source)
+        let (_, model) = try parseBuild(source)
         let cells = try #require(model.tables.first?.cells)
         #expect(cells.count >= 2)
         let second = cells[1]
         let caret = NSRange(location: second.utf16Range.location, length: 0)
-        let context = SemanticEditEngine.classifyContext(
-            projectionSelection: caret,
-            projection: model,
-            tree: tree,
-            affinity: .downstream
+        let snapshot = PresentationSnapshot.from(
+            model: model,
+            id: PresentationSnapshot.ID(value: 1),
+            locationGeneration: 0,
+            sourceText: source
         )
-        guard case .tableCell(let id) = context else {
-            Issue.record("expected table cell at column-2 start, got \(context)")
+        let classification = ProjectionSelectionClassifier.classify(
+            selection: caret,
+            affinity: .downstream,
+            snapshot: snapshot
+        )
+        guard case .tableCell(let id, _, _) = classification else {
+            Issue.record("expected table cell at column-2 start, got \(classification)")
             return
         }
         #expect(id == second.nodeID)
+    }
+
+    // Verifies: REQ-080/087; ARC-009 — cell ownership requires complete
+    // containment; a selection extending into prose is mixed and uneditable.
+    @Test func tableSelectionExtendingIntoParagraphIsMixed() throws {
+        let source = "| a |\n| --- |\n| b |\n\nafter\n"
+        let snapshot = try #require(
+            AuthoritativePresentationBuilder.build(
+                source: source,
+                sourceRevision: 1,
+                snapshotID: PresentationSnapshot.ID(value: 1),
+                locationGeneration: 0
+            )
+        )
+        let finalCell = try #require(snapshot.tables.first?.cells.last)
+        let selection = NSRange(
+            location: finalCell.utf16Range.location,
+            length: (snapshot.renderedString as NSString).length - finalCell.utf16Range.location
+        )
+
+        let classification = ProjectionSelectionClassifier.classify(
+            selection: selection,
+            affinity: .downstream,
+            snapshot: snapshot
+        )
+        #expect(classification == .mixed)
     }
 
     // Verifies: REQ-080 — typing in a cell with `\|` edits source escapes, not rendered rebuild.
@@ -413,7 +461,7 @@ struct COR08IntegrationCharacterizationTests {
         let caret = NSRange(location: cell.utf16Range.location + 1, length: 0)
         let result = SemanticEditEngine.apply(
             command: .insertText("x"),
-            selection: SemanticSelection(mode: .wysiwyg, utf16Range: caret, sourceVersion: 1, affinity: .downstream),
+            selection: TestSelection(mode: .wysiwyg, utf16Range: caret, sourceVersion: 1, affinity: .downstream),
             snapshot: snapshot,
             projection: model,
             tree: tree
@@ -444,7 +492,7 @@ struct COR08IntegrationCharacterizationTests {
             index: MarkdownSourceIndex(source: doc.text, sourceVersion: doc.sourceVersion)
         )
         session.installProjectionForTesting(model, tree: tree)
-        let sel = SemanticSelection(
+        let sel = TestSelection(
             mode: .wysiwyg,
             utf16Range: NSRange(location: 0, length: 0),
             sourceVersion: doc.sourceVersion
@@ -506,7 +554,7 @@ struct COR08IntegrationCharacterizationTests {
             Issue.record("expected heading mutation")
             return
         }
-        #expect(mutation.selectionBefore.nsRange == caret.nsRange)
+        #expect(mutation.selectionBefore.range.utf16 == caret.range.utf16)
     }
 
     // Verifies: REQ-078 — task toggle history selection is the source marker, not projection.
@@ -517,7 +565,7 @@ struct COR08IntegrationCharacterizationTests {
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let result = SemanticEditEngine.apply(
             command: .toggleTask(nodeID: task.nodeID),
-            selection: SemanticSelection(
+            selection: TestSelection(
                 mode: .wysiwyg,
                 utf16Range: NSRange(location: task.utf16Location, length: 1),
                 sourceVersion: 1
@@ -530,15 +578,14 @@ struct COR08IntegrationCharacterizationTests {
             Issue.record("expected task mutation")
             return
         }
-        #expect(mutation.selectionBefore.nsRange.length == 3)
-        #expect((source as NSString).substring(with: mutation.selectionBefore.nsRange) == "[ ]")
+        #expect(mutation.selectionBefore.range.length == 3)
+        #expect((source as NSString).substring(with: mutation.selectionBefore.range.utf16) == "[ ]")
     }
 
-    // Verifies: REQ-015 — beginLoad precedes applyIOText; stale restores ioText.
-    @Test func staleLoadRestoresIOTextToCanonical() {
+    // Verifies: REQ-015 — data(ofType:) snapshots canonical main-actor text.
+    @Test func dataOfTypeSnapshotsCanonicalText() throws {
         let doc = MarkdownDocument()
         doc.installTextForTesting("canonical")
-        let (token, began) = doc.beginLoadForTesting()
         let mutation = SourceMutation(
             expectedRevision: 0,
             range: NSRange(location: 0, length: 9),
@@ -551,9 +598,7 @@ struct COR08IntegrationCharacterizationTests {
         )
         _ = doc.commitSourceMutation(mutation)
         #expect(doc.text == "edited")
-        let result = doc.applyLoadedText("from-disk", loadToken: token, beganAtRevision: began)
-        #expect(result == .staleLoad)
-        #expect(doc.text == "edited")
-        #expect(doc.ioTextForTesting.load() == "edited")
+        let data = try doc.data(ofType: "net.daringfireball.markdown")
+        #expect(String(data: data, encoding: .utf8) == "edited")
     }
 }

@@ -7,7 +7,7 @@ import AppKit
 
 /// Ordinary text paste prefers plain-text representation — never infers Markdown from RTF/HTML.
 ///
-/// // REQ-059/084: plain-text paste policy; COR-02 image classification unchanged.
+/// // REQ-059/084: plain-text paste policy; image paste is classified separately.
 enum PastePolicy {
     static func plainText(from pasteboard: NSPasteboard) -> String? {
         if let plain = pasteboard.string(forType: .string) {

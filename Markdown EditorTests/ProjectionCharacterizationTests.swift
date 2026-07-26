@@ -2,7 +2,7 @@
 //  ProjectionCharacterizationTests.swift
 //  Markdown EditorTests
 //
-//  COR-06 characterization (PLAN-0010 §6).
+//  Projection behavior characterization.
 //
 
 import Testing
@@ -10,6 +10,55 @@ import Foundation
 @testable import Markdown_Editor
 
 struct ProjectionCharacterizationTests {
+
+    // Verifies: REQ-087; ARC-009 — uneditable/refuse boundaries never invent source offset zero.
+    @Test func uneditableBoundariesRefuseInsteadOfMappingToZero() {
+        let uneditable = ProjectionCoordinateMap(
+            segments: [
+                .source(
+                    projection: NSRange(location: 0, length: 1),
+                    source: NSRange(location: 0, length: 1),
+                    insertionBefore: 0,
+                    insertionAfter: 1
+                ),
+                .uneditable(
+                    projection: NSRange(location: 1, length: 1),
+                    reason: .unsupported
+                )
+            ],
+            projectionUTF16Count: 2,
+            sourceUTF16Count: 2
+        )
+        if case .refused = uneditable.sourceRange(
+            forProjection: NSRange(location: 2, length: 0),
+            affinity: .downstream
+        ) {
+            // expected
+        } else {
+            Issue.record("trailing uneditable boundary must refuse")
+        }
+
+        let synthetic = ProjectionCoordinateMap(
+            segments: [
+                .synthetic(
+                    projection: NSRange(location: 0, length: 1),
+                    kind: .paragraphBreak,
+                    insertion: .refuse
+                )
+            ],
+            projectionUTF16Count: 1,
+            sourceUTF16Count: 0
+        )
+        for location in 0...1 {
+            if case .refused = synthetic.sourceRange(
+                forProjection: NSRange(location: location, length: 0),
+                affinity: .downstream
+            ) {
+                continue
+            }
+            Issue.record("refuse-policy boundary \(location) must refuse")
+        }
+    }
 
     // Verifies: REQ-054 — one-character cmark node maps to one source character.
     @Test func oneCharacterNodeMapsToOneSourceCharacter() throws {
@@ -92,7 +141,7 @@ struct ProjectionCharacterizationTests {
             locationGeneration: 0,
             fileURL: nil
         )
-        let selection = SemanticSelection(
+        let selection = TestSelection(
             mode: .source,
             utf16Range: NSRange(location: 2, length: 5),
             sourceVersion: 1
@@ -108,15 +157,13 @@ struct ProjectionCharacterizationTests {
             Issue.record("expected transaction")
             return
         }
-        #expect(mutation.replacement.contains(">"))
-        #expect(mutation.replacement.contains("- "))
-        #expect(mutation.replacement.hasPrefix("> -") || mutation.replacement.contains("> - "))
+        #expect(mutation.replacement == "> - hello\n")
     }
 
     // Verifies: REQ-057 — underscore bold alternate spelling.
     @Test func boldToggleAcceptsUnderscoreAlternateSpelling() {
         let snapshot = SourceSnapshot(text: "__hello__", sourceVersion: 1, locationGeneration: 0, fileURL: nil)
-        let selection = SemanticSelection(mode: .source, utf16Range: NSRange(location: 0, length: 9), sourceVersion: 1)
+        let selection = TestSelection(mode: .source, utf16Range: NSRange(location: 0, length: 9), sourceVersion: 1)
         let result = SemanticEditEngine.apply(
             command: .toggleBold,
             selection: selection,
@@ -141,7 +188,7 @@ struct ProjectionCharacterizationTests {
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let result = SemanticEditEngine.apply(
             command: .replaceTableCell(nodeID: cell.nodeID, text: "Z"),
-            selection: SemanticSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
+            selection: TestSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
             snapshot: snapshot,
             projection: model,
             tree: tree
@@ -172,7 +219,7 @@ struct ProjectionCharacterizationTests {
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let result = SemanticEditEngine.apply(
             command: .replaceTableCell(nodeID: cell.nodeID, text: ""),
-            selection: SemanticSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
+            selection: TestSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
             snapshot: snapshot,
             projection: model,
             tree: tree
@@ -200,7 +247,7 @@ struct ProjectionCharacterizationTests {
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let pipe = SemanticEditEngine.apply(
             command: .replaceTableCell(nodeID: cell.nodeID, text: "x|y"),
-            selection: SemanticSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
+            selection: TestSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
             snapshot: snapshot,
             projection: model,
             tree: tree
@@ -227,7 +274,7 @@ struct ProjectionCharacterizationTests {
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let result = SemanticEditEngine.apply(
             command: .replaceTableCell(nodeID: cell.nodeID, text: "x\\|y"),
-            selection: SemanticSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
+            selection: TestSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
             snapshot: snapshot,
             projection: model,
             tree: tree
@@ -262,7 +309,7 @@ struct ProjectionCharacterizationTests {
         }
     }
 
-    // Verifies: REQ-057/084
+    // Verifies: REQ-084
     @Test func orderedMarkersIncrementAndTrailingCaretMapsAfterMarker() throws {
         let source = "1. a\n2. b\n"
         let tree = try parse(source)
@@ -286,7 +333,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: REQ-057/087
+    // Verifies: REQ-084
     @Test func inlineCodeContentSourceExcludesBackticks() throws {
         let source = "a `xy` b\n"
         let tree = try parse(source)
@@ -303,7 +350,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: REQ-084/087
+    // Verifies: REQ-084
     @Test func selectionAcrossParagraphBreakMapsContiguousSource() throws {
         let source = "one\n\ntwo\n"
         let tree = try parse(source)
@@ -320,7 +367,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: COR-08 D1 — selection from list marker through item text maps to source.
+    // Verifies: REQ-084 — selection from list marker through item text maps to source.
     @Test func selectionStartingOnListMarkerMapsToSource() throws {
         let source = "1. a\n"
         let tree = try parse(source)
@@ -347,7 +394,7 @@ struct ProjectionCharacterizationTests {
     }
 
     // Verifies: REQ-090 — parse+index+projection p95 < 100ms at 100k UTF-16 off-main.
-    // PLAN-0010 requires optimized builds for this gate; Debug is skipped.
+    // The performance requirement applies to optimized builds; Debug is skipped.
     @Test func parseIndexProjectionP95Under100msAt100k() async throws {
         #if DEBUG
         // Characterization still compiles; timing gate is asserted under Release.
@@ -385,6 +432,12 @@ struct ProjectionCharacterizationTests {
         samples.sort()
         let p95Index = min(samples.count - 1, Int(ceil(0.95 * Double(samples.count))) - 1)
         let p95 = samples[max(p95Index, 0)]
+        recordPerformanceEvidence(
+            name: "parse-index-projection",
+            corpus: source,
+            warmups: 5,
+            samples: samples
+        )
         #expect(p95 < 100.0, "p95=\(p95)ms samples=\(samples)")
         #endif
     }

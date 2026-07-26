@@ -6,7 +6,7 @@
 import Foundation
 
 // REQ-072: track a planned insertion range across intervening edits; cancel on overlap.
-// Explicit boundary policy per ADR-0012 / PLAN-0005.
+// Explicit source-range boundary policy for asynchronous image placement.
 nonisolated struct InsertionRangeTracker: Sendable {
     private(set) var range: NSRange
     private(set) var isCancelled = false

@@ -65,8 +65,8 @@ final class ImagePlacementController: ObservableObject {
     }
 
     // REQ-060/064: begin from already-classified immutable claims (no main-thread file I/O).
-    func handleImageAction(claims: [ImageClaim], documentURL: URL?) {
-        guard !claims.isEmpty else { return }
+    func handleImageAction(intent: ImagePlacementIntent, documentURL: URL?) {
+        guard !intent.claims.isEmpty else { return }
         let id = ImageActionID()
         guard let next = ImagePlacementReducer.reduce(
             state: state,
@@ -82,15 +82,21 @@ final class ImagePlacementController: ObservableObject {
             return
         }
         let live = actions.sourceSnapshot()
+        guard live.sourceVersion == intent.target.sourceRevision.value,
+              live.locationGeneration == intent.target.locationGeneration else {
+            fail(id, .parentChanged)
+            return
+        }
         documentLocationGeneration = live.locationGeneration
-        let selection = actions.sourceSelection
-        activeTrackingGeneration = actions.beginPlacementTracking(range: selection.range)
+        activeTrackingGeneration = actions.beginPlacementTracking(range: intent.target.sourceSelection.range)
         let snapshot = ImageActionSnapshot(
             id: id,
-            claims: claims,
+            claims: intent.claims,
             documentURL: documentURL,
             documentLocationGeneration: live.locationGeneration,
-            selection: selection.nsRange
+            sourceRevision: intent.target.sourceRevision,
+            selection: intent.target.sourceSelection,
+            operationID: intent.target.operationID
         )
         pendingSnapshot = snapshot
 
@@ -103,7 +109,11 @@ final class ImagePlacementController: ObservableObject {
         }
     }
 
-    func handleFilePromises(_ receivers: [NSFilePromiseReceiver], documentURL: URL?) {
+    func handleFilePromises(
+        _ receivers: [NSFilePromiseReceiver],
+        target: ImagePlacementTarget,
+        documentURL: URL?
+    ) {
         guard !receivers.isEmpty else { return }
         let id = ImageActionID()
         guard let next = ImagePlacementReducer.reduce(
@@ -120,16 +130,22 @@ final class ImagePlacementController: ObservableObject {
             return
         }
         let live = actions.sourceSnapshot()
+        guard live.sourceVersion == target.sourceRevision.value,
+              live.locationGeneration == target.locationGeneration else {
+            fail(id, .parentChanged)
+            return
+        }
         documentLocationGeneration = live.locationGeneration
-        let selection = actions.sourceSelection
-        activeTrackingGeneration = actions.beginPlacementTracking(range: selection.range)
+        activeTrackingGeneration = actions.beginPlacementTracking(range: target.sourceSelection.range)
         let token = FilePromiseReceiptToken()
         let snapshot = ImageActionSnapshot(
             id: id,
             claims: [.promiseToken(token)],
             documentURL: documentURL,
             documentLocationGeneration: live.locationGeneration,
-            selection: selection.nsRange
+            sourceRevision: target.sourceRevision,
+            selection: target.sourceSelection,
+            operationID: target.operationID
         )
         pendingSnapshot = snapshot
         guard apply(.startReceivingPromises, id: id) else { return }
@@ -186,7 +202,9 @@ final class ImagePlacementController: ObservableObject {
                 claims: claims,
                 documentURL: documentURL,
                 documentLocationGeneration: snapshot.documentLocationGeneration,
-                selection: snapshot.selection
+                sourceRevision: snapshot.sourceRevision,
+                selection: snapshot.selection,
+                operationID: snapshot.operationID
             )
             pendingSnapshot = updated
             if let documentURL {
@@ -304,7 +322,7 @@ final class ImagePlacementController: ObservableObject {
 
             let markdown = published.published.map(\.markdown).joined(separator: "\n")
             let snap = actions.sourceSnapshot()
-            let selectionBefore = actions.sourceSelection
+            let selectionBefore = snapshot.selection
             guard let mutation = SourceMutation.exact(
                 snapshot: snap,
                 range: tracker.range,
@@ -327,13 +345,11 @@ final class ImagePlacementController: ObservableObject {
                 if published.published.count == 1 {
                     let descStart = tracker.range.location + 2
                     let pending = SourceSelection(utf16: NSRange(location: descStart, length: 0))
-                    actions.pendingSelection = pending
-                    actions.reportSourceSelection(pending)
+                    actions.requestSelectionRestoration(pending)
                 } else {
                     let end = tracker.range.location + (markdown as NSString).length
                     let pending = SourceSelection(utf16: NSRange(location: end, length: 0))
-                    actions.pendingSelection = pending
-                    actions.reportSourceSelection(pending)
+                    actions.requestSelectionRestoration(pending)
                 }
             case .refused:
                 await AssetDirectoryStore.rollback(
@@ -394,7 +410,9 @@ final class ImagePlacementController: ObservableObject {
             claims: claims,
             documentURL: nil,
             documentLocationGeneration: documentLocationGeneration,
-            selection: NSRange(location: 0, length: 0)
+            sourceRevision: SourceRevision(value: 0),
+            selection: SourceSelection(utf16: NSRange(location: 0, length: 0)),
+            operationID: UUID()
         )
     }
 }

@@ -16,21 +16,23 @@ nonisolated enum SemanticPlannerGate {
         action: String,
         grouping: MutationGrouping = .discrete,
         selectionBefore: SourceSelection? = nil,
-        postcondition: (MarkdownTree, String) -> Bool
+        postcondition: @escaping @Sendable (MarkdownTree, String) -> Bool
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
         guard range.location >= 0, NSMaxRange(range) <= ns.length else {
             return .refused(.invalidRange)
         }
         let newText = ns.replacingCharacters(in: range, with: replacement)
-        switch MarkdownParser.parse(newText, sourceVersion: snapshot.sourceVersion &+ 1) {
-        case .failure:
-            return .refused(.ambiguousSelection)
-        case .success(let tree):
-            guard postcondition(tree, newText) else {
-                return .refused(.ambiguousSelection)
+        let isValid = EditorSemanticWorker.sync {
+            guard case .success(let tree) = MarkdownParser.parse(
+                newText,
+                sourceVersion: snapshot.sourceVersion &+ 1
+            ) else {
+                return false
             }
+            return postcondition(tree, newText)
         }
+        guard isValid else { return .refused(.ambiguousSelection) }
         let before = selectionBefore ?? SourceSelection(utf16: range)
         guard let mutation = SourceMutation.exact(
             snapshot: snapshot,
@@ -54,7 +56,7 @@ nonisolated enum InlineEditPlanner {
         action: String,
         grouping: MutationGrouping = .discrete,
         selectionBefore: SourceSelection? = nil,
-        expectsKind: @escaping (MarkdownNodeKind) -> Bool
+        expectsKind: @escaping @Sendable (MarkdownNodeKind) -> Bool
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
         let selected = ns.substring(with: range)
@@ -214,7 +216,7 @@ nonisolated enum BlockEditPlanner {
         grouping: MutationGrouping = .discrete,
         selectionBefore: SourceSelection? = nil,
         transform: (String, Bool) -> String,
-        postcondition: @escaping (MarkdownTree, String) -> Bool
+        postcondition: @escaping @Sendable (MarkdownTree, String) -> Bool
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
         let line = ns.lineRange(for: range)
@@ -339,6 +341,28 @@ nonisolated enum LinkEditPlanner {
 }
 
 nonisolated enum TableCellEditPlanner {
+    static func replaceExactCell(
+        snapshot: SourceSnapshot,
+        tree: MarkdownTree?,
+        sourceRange: NSRange,
+        text: String,
+        grouping: MutationGrouping,
+        selectionBefore: SourceSelection
+    ) -> SemanticEditResult {
+        guard sourceRange.location >= 0,
+              NSMaxRange(sourceRange) <= (snapshot.text as NSString).length else {
+            return .refused(.mappingFailure)
+        }
+        return replaceValidated(
+            snapshot: snapshot,
+            tree: tree,
+            sourceRange: sourceRange,
+            text: text,
+            grouping: grouping,
+            selectionBefore: selectionBefore
+        )
+    }
+
     static func replace(
         snapshot: SourceSnapshot,
         tree: MarkdownTree?,
@@ -347,22 +371,49 @@ nonisolated enum TableCellEditPlanner {
         grouping: MutationGrouping = .discrete,
         selectionBefore: SourceSelection? = nil
     ) -> SemanticEditResult {
-        // Unescaped pipes / newlines change GFM table structure — refuse rather than accept
-        // a vacuous postcondition (node IDs are unstable across reparse). Escaped pipes (`\|`)
-        // are literal cell content and must be allowed.
-        if containsUnescapedPipe(text) || text.contains("\n") || text.contains("\r") {
-            return .refused(.ambiguousSelection)
-        }
         guard let tree, let node = findNode(id: nodeID, in: tree.root) else {
             return .refused(.mappingFailure)
         }
         guard case .tableCell = node.kind else {
             return .refused(.unsupportedCommand)
         }
-        let index = MarkdownSourceIndex(source: snapshot.text, sourceVersion: snapshot.sourceVersion)
-        guard case .success(let sourceRange) = index.utf16Range(for: node.position) else {
+        let sourceRange: NSRange? = EditorSemanticWorker.sync {
+            let index = MarkdownSourceIndex(
+                source: snapshot.text,
+                sourceVersion: snapshot.sourceVersion
+            )
+            guard case .success(let range) = index.utf16Range(for: node.position) else {
+                return nil
+            }
+            return range
+        }
+        guard let sourceRange else {
             return .refused(.mappingFailure)
         }
+        return replaceValidated(
+            snapshot: snapshot,
+            tree: tree,
+            sourceRange: sourceRange,
+            text: text,
+            grouping: grouping,
+            selectionBefore: selectionBefore
+        )
+    }
+
+    private static func replaceValidated(
+        snapshot: SourceSnapshot,
+        tree: MarkdownTree?,
+        sourceRange: NSRange,
+        text: String,
+        grouping: MutationGrouping,
+        selectionBefore: SourceSelection?
+    ) -> SemanticEditResult {
+        // Unescaped pipes / newlines change GFM table structure — refuse rather than accept
+        // a vacuous postcondition. Escaped pipes (`\|`) are literal cell content.
+        if containsUnescapedPipe(text) || text.contains("\n") || text.contains("\r") {
+            return .refused(.ambiguousSelection)
+        }
+        guard let tree else { return .refused(.mappingFailure) }
         let beforeTables = countTables(in: tree.root)
         let beforeCells = countTableCells(in: tree.root)
         return SemanticPlannerGate.commitIfValid(
@@ -450,7 +501,7 @@ private func containsKind(
     _ tree: MarkdownTree,
     source: String,
     covering range: NSRange,
-    where expectsKind: (MarkdownNodeKind) -> Bool
+    where expectsKind: @Sendable (MarkdownNodeKind) -> Bool
 ) -> Bool {
     let index = MarkdownSourceIndex(source: source, sourceVersion: tree.sourceVersion)
     func walk(_ node: MarkdownNode) -> Bool {

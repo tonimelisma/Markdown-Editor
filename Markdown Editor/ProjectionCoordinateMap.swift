@@ -8,8 +8,8 @@ import Foundation
 /// Maps between WYSIWYG projection selections and canonical source selections.
 ///
 /// // REQ-056/087: affinity at boundaries; typed refusal — never clamp or proportion.
-/// // REQ-084: synthetic endpoints follow `SyntheticInsertionPolicy` (COR-08).
-nonisolated struct ProjectionCoordinateMap: Sendable {
+/// // REQ-084: synthetic endpoints follow `SyntheticInsertionPolicy`.
+nonisolated struct ProjectionCoordinateMap: Sendable, Equatable {
     let segments: [ProjectionSegment]
     let projectionUTF16Count: Int
     let sourceUTF16Count: Int
@@ -34,7 +34,7 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
     func sourceRange(
         forProjection selection: ProjectionSelection
     ) -> CoordinateMappingResult {
-        sourceRange(forProjection: selection.nsRange, affinity: selection.affinity)
+        sourceRange(forProjection: selection.range.utf16, affinity: selection.affinity)
     }
 
     func projectionRange(
@@ -82,7 +82,7 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
         return .exact(NSRange(location: start, length: end - start))
     }
 
-    // MARK: - Non-empty selection (COR-08 synthetic endpoint policy)
+    // MARK: - Non-empty selection
 
     /// Union source-backed overlaps with allowed synthetic endpoint anchors / interior bridges.
     private func mapNonEmptySelection(
@@ -158,7 +158,7 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
             }
         }
 
-        // Synthetic-only selections must not invent a source span (COR-08 / REQ-087).
+        // Synthetic-only selections must not invent a source span (REQ-087).
         guard overlappedSourceBacked else {
             return .refused(.uneditableSynthetic)
         }
@@ -179,21 +179,15 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
         guard location >= 0, location <= projectionUTF16Count else {
             return .refused(.outOfBounds)
         }
-        if location == projectionUTF16Count {
-            if let last = segments.last {
-                return .exact(NSRange(location: last.insertionAfter, length: 0))
-            }
-            return .exact(NSRange(location: 0, length: 0))
+        guard !segments.isEmpty else {
+            return location == 0
+                ? .exact(NSRange(location: 0, length: 0))
+                : .refused(.outOfBounds)
         }
 
+        // Interior points are owned by the containing segment.
         for segment in segments {
             let range = segment.projectionRange
-            if location == range.location {
-                if affinity == .upstream, let before = segmentBefore(segment) {
-                    return .exact(NSRange(location: before.insertionAfter, length: 0))
-                }
-                return .exact(NSRange(location: segment.insertionBefore, length: 0))
-            }
             if location > range.location && location < NSMaxRange(range) {
                 switch segment {
                 case .source(_, let source, _, _):
@@ -222,11 +216,55 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
                     return .refused(.unsupported)
                 }
             }
-            if location == NSMaxRange(range) {
-                return .exact(NSRange(location: segment.insertionAfter, length: 0))
-            }
+        }
+
+        // Boundary ownership follows affinity and the chosen segment's explicit policy.
+        if affinity == .downstream,
+           let after = segments.first(where: { $0.projectionRange.location == location }) {
+            return sourceBoundary(of: after, edge: .before)
+        }
+        if affinity == .upstream,
+           let before = segments.last(where: { NSMaxRange($0.projectionRange) == location }) {
+            return sourceBoundary(of: before, edge: .after)
+        }
+        if let before = segments.last(where: { NSMaxRange($0.projectionRange) == location }) {
+            return sourceBoundary(of: before, edge: .after)
+        }
+        if let after = segments.first(where: { $0.projectionRange.location == location }) {
+            return sourceBoundary(of: after, edge: .before)
         }
         return .refused(.ambiguous)
+    }
+
+    private enum BoundaryEdge {
+        case before
+        case after
+    }
+
+    private func sourceBoundary(
+        of segment: ProjectionSegment,
+        edge: BoundaryEdge
+    ) -> CoordinateMappingResult {
+        switch segment {
+        case .source(_, _, let before, let after):
+            return .exact(NSRange(location: edge == .before ? before : after, length: 0))
+        case .literalFallback(_, let source):
+            let location = edge == .before ? source.location : NSMaxRange(source)
+            return .exact(NSRange(location: location, length: 0))
+        case .synthetic(_, _, let insertion):
+            switch insertion {
+            case .atSourceLocation(let location):
+                return .exact(NSRange(location: location, length: 0))
+            case .atSourceBoundaries(let before, let after):
+                return .exact(
+                    NSRange(location: edge == .before ? before : after, length: 0)
+                )
+            case .refuse:
+                return .refused(.uneditableSynthetic)
+            }
+        case .uneditable:
+            return .refused(.unsupported)
+        }
     }
 
     private func projectionInsertionPoint(forSource location: Int, affinity: SelectionAffinity) -> CoordinateMappingResult {
@@ -278,11 +316,6 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
         return .refused(.ambiguous)
     }
 
-    private func segmentBefore(_ segment: ProjectionSegment) -> ProjectionSegment? {
-        let loc = segment.projectionRange.location
-        return segments.last { NSMaxRange($0.projectionRange) == loc }
-    }
-
     private func intersection(_ a: NSRange, _ b: NSRange) -> NSRange {
         let start = max(a.location, b.location)
         let end = min(NSMaxRange(a), NSMaxRange(b))
@@ -302,31 +335,4 @@ extension ProjectionSegment {
         }
     }
 
-    var insertionBefore: Int {
-        switch self {
-        case .source(_, _, let before, _): return before
-        case .literalFallback(_, let source): return source.location
-        case .synthetic(_, _, let insertion):
-            switch insertion {
-            case .atSourceLocation(let loc): return loc
-            case .atSourceBoundaries(let before, _): return before
-            case .refuse: return 0
-            }
-        case .uneditable: return 0
-        }
-    }
-
-    var insertionAfter: Int {
-        switch self {
-        case .source(_, _, _, let after): return after
-        case .literalFallback(_, let source): return NSMaxRange(source)
-        case .synthetic(_, _, let insertion):
-            switch insertion {
-            case .atSourceLocation(let loc): return loc
-            case .atSourceBoundaries(_, let after): return after
-            case .refuse: return 0
-            }
-        case .uneditable: return 0
-        }
-    }
 }

@@ -28,6 +28,14 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case loadApplicationStale(token: UInt64, currentRevision: UInt64)
     case editRouted(context: String, groupingTyping: Bool, planner: String)
     case mappingResult(accepted: Bool, domain: String)
+    case presentationInstalled(snapshotID: UInt64, sourceRevision: UInt64, provisional: Bool)
+    case presentationTransition(from: UInt64, to: UInt64, sourceRevision: UInt64, durationNanos: UInt64)
+    case reconciliationScheduled(sourceRevision: UInt64, generation: UInt64)
+    case reconciliationDiscarded(sourceRevision: UInt64, reason: String)
+    case reconciliationApplied(snapshotID: UInt64, sourceRevision: UInt64, generation: UInt64, durationNanos: UInt64)
+    case editRefused(category: String)
+    case availabilityChanged(editable: Bool, sourceRevision: UInt64)
+    case updateOrigin(EditorUpdateOrigin)
 }
 
 nonisolated enum HistoryDirection: String, Sendable, Equatable {
@@ -102,6 +110,22 @@ final class OSLogEditorTrace: EditorTraceSink {
             logger.debug("editRouted context=\(context, privacy: .public) typing=\(groupingTyping) planner=\(planner, privacy: .public)")
         case .mappingResult(let accepted, let domain):
             logger.debug("mappingResult accepted=\(accepted) domain=\(domain, privacy: .public)")
+        case .presentationInstalled(let snapshotID, let sourceRevision, let provisional):
+            logger.debug("presentationInstalled id=\(snapshotID) rev=\(sourceRevision) provisional=\(provisional)")
+        case .presentationTransition(let from, let to, let sourceRevision, let durationNanos):
+            logger.debug("presentationTransition from=\(from) to=\(to) rev=\(sourceRevision) ns=\(durationNanos)")
+        case .reconciliationScheduled(let sourceRevision, let generation):
+            logger.debug("reconciliationScheduled rev=\(sourceRevision) gen=\(generation)")
+        case .reconciliationDiscarded(let sourceRevision, let reason):
+            logger.debug("reconciliationDiscarded rev=\(sourceRevision) reason=\(reason, privacy: .public)")
+        case .reconciliationApplied(let snapshotID, let sourceRevision, let generation, let durationNanos):
+            logger.debug("reconciliationApplied id=\(snapshotID) rev=\(sourceRevision) gen=\(generation) ns=\(durationNanos)")
+        case .editRefused(let category):
+            logger.debug("editRefused category=\(category, privacy: .public)")
+        case .availabilityChanged(let editable, let sourceRevision):
+            logger.debug("availabilityChanged editable=\(editable) rev=\(sourceRevision)")
+        case .updateOrigin(let origin):
+            logger.debug("updateOrigin \(String(describing: origin), privacy: .public)")
         }
     }
 }
