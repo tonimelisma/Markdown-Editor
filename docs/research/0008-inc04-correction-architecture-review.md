@@ -1,11 +1,16 @@
 # RESEARCH-0008 — INC-04 correction architecture review
 
 - **Date:** 2026-07-25
-- **For:** COR-05, COR-06, COR-07
+- **For:** COR-05, COR-06, COR-07, COR-08
 - **Status:** Approved
 - **Scope:** Repository evidence, architecture alternatives, platform constraints, proof strategy
 - **Decision:** Retain the product and outer native architecture; replace the defective
   transaction, source-coordinate, projection/edit, editor-host, and image-display internals.
+
+> **Follow-up evidence:** Post-COR-07 review confirmed that the retained outer architecture is
+> still appropriate but found remaining integration bypasses between its new components.
+> [PLAN-0011](../plans/0011-cor08-editor-integration-integrity.md) converts those counterexamples
+> into COR-08 implementation and proof gates.
 
 ## Question
 

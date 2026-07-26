@@ -112,7 +112,11 @@ Post-merge review found that REQ-016's undo closure captured a historical expect
 REQ-018 did not compile under Swift 6 complete concurrency. Those defects are corrected by
 [COR-05](#cor-05--source-integrity-and-swift-6--build--done).
 
-## INC-04 · WYSIWYG mode — `[build]` ✅ Done
+A later integration review found that a delayed background read can apply without a load
+generation/revision guard and overwrite newer source state. COR-08 corrects that remaining
+document-lifecycle boundary.
+
+## INC-04 · WYSIWYG mode — `[build]` 🟠 Correction required
 
 - Provide two editable modes over the same canonical Markdown source:
   - Source shows literal Markdown with live lexical styling.
@@ -154,7 +158,7 @@ byte-snapshot isolation with `DocumentIOText` (`Synchronization.Mutex`), added p
 Requirements: REQ-011, REQ-016, REQ-018, REQ-083, REQ-088–REQ-089.
 Approved design: [PLAN-0010](plans/0010-inc04-correction-program.md) §5.
 
-## COR-06 · Exact projection and semantic edits — `[build]` ✅ Done
+## COR-06 · Exact projection and semantic edits — `[build]` 🟠 Correction required
 
 Replaced proportional/clamped coordinates with typed `ProjectionSegment` / `ProjectionCoordinateMap`,
 `ProjectionCompiler` (visible list markers), split semantic planners with reparse gates, and
@@ -163,7 +167,12 @@ Replaced proportional/clamped coordinates with typed `ProjectionSegment` / `Proj
 Requirements: REQ-054–REQ-058, REQ-080, REQ-087, REQ-089–REQ-090.
 Approved design: [PLAN-0010](plans/0010-inc04-correction-program.md) §6.
 
-## COR-07 · Persistent native editing and interaction completion — `[build]` ✅ Done
+Post-merge review found that natural selections at declared synthetic boundaries can be refused,
+fenced-code body ranges can be selected by repeated rendered text, task toggles can rewrite
+unrelated marker-like content, and native table typing can bypass the table planner. COR-08
+reopens the affected integration claims without replacing the projection architecture.
+
+## COR-07 · Persistent native editing and interaction completion — `[build]` 🟠 Correction required
 
 Hosts both TextKit 1 editors persistently (`EditorHostView`); mode-local selection/scroll/affinity;
 IME `CompositionState`/`WYSIWYGInputCoordinator`; window-scoped `EditorActionRouter`; task
@@ -172,6 +181,26 @@ PNG/JPEG/GIF/HEIC/HEIF fixtures + SHA-256 manifest; Release keystroke/toggle gat
 
 Requirements: REQ-032, REQ-052, REQ-078–REQ-087, REQ-089–REQ-090.
 Approved design: [PLAN-0010](plans/0010-inc04-correction-program.md) §7.
+
+Post-merge review found that WYSIWYG image placement can pass projection offsets as source
+offsets, WYSIWYG typing is committed as discrete undo, a real source caret at offset zero can
+fall back to stale projection state, and resolved images lose authored accessibility descriptions.
+COR-08 reopens those integration claims.
+
+## COR-08 · Editor integration integrity — `[build]` ⚪ Planned
+
+Make source and projection coordinate domains unmixable, route every real editor action through
+one context-aware semantic mutation pipeline, derive fenced-code/task ranges structurally,
+honor synthetic endpoint policies, restore correct typing undo groups, capture image intent in
+source coordinates before asynchronous placement, preserve image accessibility descriptions,
+and generation-gate background document loads.
+
+This correction retains the approved `NSDocument` + pinned cmark-gfm + concrete-source TextKit 1
+projection architecture. It removes integration bypasses and requires adapter-path, adversarial,
+property, trace, strict-concurrency, and Release-performance proof. No UI or manual tests.
+
+Proposed corrective implementation plan:
+[PLAN-0011](plans/0011-cor08-editor-integration-integrity.md).
 
 ---
 
@@ -236,3 +265,7 @@ Uncommitted ideas. Each needs research, explicit requirements, and approval befo
   documentation defects. The approved decision retains `NSDocument`, cmark-gfm, TextKit 1, and
   canonical source while replacing the defective core. PLAN-0010 defines COR-05/06/07 with
   falsifiable trace/oracle/performance gates; affected requirements are `Correction`.
+- **COR-08 planning:** post-COR-07 review found ten remaining editor-integration and lifecycle
+  defects. PLAN-0011 retains the selected architecture, makes coordinate domains unmixable,
+  unifies the real edit path, requires structural source spans and generation-bound loads, and
+  defines adapter/property/trace/performance proof without UI or manual tests.

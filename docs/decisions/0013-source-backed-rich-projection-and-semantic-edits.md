@@ -1,12 +1,13 @@
 # ADR-0013 — Source-backed rich projection and semantic edits
 
-- **Status:** Accepted; implementation correction approved
+- **Status:** Accepted; COR-08 integration correction planned
 - **Date:** 2026-07-25
 - **Deciders:** Toni Melisma
-- **Related:** INC-04; COR-05/06/07; REQ-052–REQ-059, REQ-078–REQ-090;
+- **Related:** INC-04; COR-05/06/07/08; REQ-052–REQ-059, REQ-078–REQ-090;
   [RESEARCH-0007](../research/0007-document-model-and-wysiwyg-architecture.md);
   [RESEARCH-0008](../research/0008-inc04-correction-architecture-review.md);
   [PLAN-0010](../plans/0010-inc04-correction-program.md);
+  [PLAN-0011](../plans/0011-cor08-editor-integration-integrity.md);
   [ADR-0003](0003-markdown-dialect-commonmark-and-formal-gfm.md);
   [ADR-0008](0008-textkit1-nstextview-editor-engine.md);
   [ADR-0012](0012-transactional-descriptor-relative-image-placement.md)

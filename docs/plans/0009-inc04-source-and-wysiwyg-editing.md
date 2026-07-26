@@ -3,7 +3,8 @@
 - **Increment:** INC-04
 - **Date:** 2026-07-25
 - **Status:** Implemented with corrections required — superseded for correction work by
-  [PLAN-0010](0010-inc04-correction-program.md)
+  [PLAN-0010](0010-inc04-correction-program.md) and
+  [PLAN-0011](0011-cor08-editor-integration-integrity.md)
 - **Requirements:** REQ-052–REQ-059, REQ-078–REQ-087
 - **Depends on:** COR-03; COR-04 / [PLAN-0008](0008-cor04-nsdocument-migration.md);
   [RESEARCH-0007](../research/0007-document-model-and-wysiwyg-architecture.md);
@@ -19,8 +20,9 @@
 >
 > **Post-merge review:** the outer decision remains accepted, but the first implementation did
 > not satisfy several invariants or verification gates. RESEARCH-0008 and PLAN-0010 are
-> authoritative for COR-05/06/07. Statements below describe the approved INC-04 intent, not proof
-> that every item is currently delivered.
+> authoritative for COR-05/06/07; PLAN-0011 is authoritative for the remaining COR-08 integration
+> correction. Statements below describe approved INC-04 intent, not proof that every item is
+> currently delivered.
 
 ## Goal
 

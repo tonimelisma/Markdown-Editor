@@ -2,7 +2,7 @@
 
 - **Program:** COR-05, COR-06, COR-07
 - **Date:** 2026-07-25
-- **Status:** COR-05/06/07 implemented (program complete pending merge of COR-07)
+- **Status:** COR-05 implemented; COR-06/07 require COR-08 integration correction
 - **Research:** [RESEARCH-0008](../research/0008-inc04-correction-architecture-review.md)
 - **Decision:** [ADR-0013](../decisions/0013-source-backed-rich-projection-and-semantic-edits.md)
 - **Requirements:** REQ-011, REQ-016, REQ-018, REQ-032, REQ-052, REQ-054–REQ-058,
@@ -13,6 +13,12 @@
 > local patches. WYSIWYG remains delimiter-free and editable; Source remains literal Markdown;
 > TextKit 1 and `NSDocument` remain; all link schemes remain directly openable; HEIC/HEIF is
 > preserved exactly and never converted to JPEG; no UI or manual test is permitted.
+>
+> **Post-merge review:** COR-05 established the intended document/mutation foundation, and
+> COR-06/07 established the intended projection and persistent-host components. Their integration
+> still bypasses typed coordinate, planner, grouping, and placement boundaries in real editor
+> paths. [PLAN-0011](0011-cor08-editor-integration-integrity.md) is authoritative for COR-08.
+> The outcomes below remain the approved target, not proof that every claim is currently met.
 
 ## 1. Outcome
 
