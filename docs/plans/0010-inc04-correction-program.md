@@ -372,21 +372,21 @@ compiler and exact semantic planners.
 
 ### Implementation checklist
 
-- [ ] Correct and exhaustively test inclusive cmark source positions.
-- [ ] Implement `SourceCoordinateMap`.
-- [ ] Implement typed `ProjectionSegment` and `ProjectionCoordinateMap`.
-- [ ] Implement concrete-source delimiter/content resolution.
-- [ ] Implement `ProjectionCompiler` for every formal-GFM node and fallback.
-- [ ] Add ordered/unordered marker and nesting descriptors.
-- [ ] Delete `sourceAnchors` and `sourceUTF16ForProjectionUnit`.
-- [ ] Delete proportional distribution and all mapping clamps.
-- [ ] Split `SemanticEditEngine` into the five approved planners.
-- [ ] Define command state and refusal reasons from semantic selection.
-- [ ] Reparse and validate every candidate mutation before commit.
-- [ ] Add reviewed golden cases and deterministic seeded cases.
-- [ ] Add `ProjectionOracle`.
-- [ ] Run temporary shadow comparison and adjudicate every difference.
-- [ ] Delete the old projection/edit engine and the shadow harness before merge.
+- [x] Correct and exhaustively test inclusive cmark source positions.
+- [x] Implement `SourceCoordinateMap`.
+- [x] Implement typed `ProjectionSegment` and `ProjectionCoordinateMap`.
+- [x] Implement concrete-source delimiter/content resolution.
+- [x] Implement `ProjectionCompiler` for every formal-GFM node and fallback.
+- [x] Add ordered/unordered marker and nesting descriptors.
+- [x] Delete `sourceAnchors` and `sourceUTF16ForProjectionUnit`.
+- [x] Delete proportional distribution and all mapping clamps.
+- [x] Split `SemanticEditEngine` into the five approved planners.
+- [x] Define command state and refusal reasons from semantic selection.
+- [x] Reparse and validate every candidate mutation before commit.
+- [x] Add reviewed golden cases and deterministic seeded cases.
+- [x] Add `ProjectionOracle`.
+- [x] Run temporary shadow comparison and adjudicate every difference.
+- [x] Delete the old projection/edit engine and the shadow harness before merge.
 
 ### Command matrix
 

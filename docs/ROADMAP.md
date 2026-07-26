@@ -154,13 +154,14 @@ byte-snapshot isolation with `DocumentIOText` (`Synchronization.Mutex`), added p
 Requirements: REQ-011, REQ-016, REQ-018, REQ-083, REQ-088–REQ-089.
 Approved design: [PLAN-0010](plans/0010-inc04-correction-program.md) §5.
 
-## COR-06 · Exact projection and semantic edits — `[build]` ⚪ Planned
+## COR-06 · Exact projection and semantic edits — `[build]` ✅ Done
 
-Replace proportional/clamped coordinates with a lossless typed source projection; render complete
-formal GFM semantics including visible list markers; split exact syntax-family edit planners; and
-prove mappings and edits with oracles, goldens, seeded cases, and measured budgets.
+Replaced proportional/clamped coordinates with typed `ProjectionSegment` / `ProjectionCoordinateMap`,
+`ProjectionCompiler` (visible list markers), split semantic planners with reparse gates, and
+`ProjectionOracle` plus characterization/performance evidence.
 
 Requirements: REQ-054–REQ-058, REQ-080, REQ-087, REQ-089–REQ-090.
+Approved design: [PLAN-0010](plans/0010-inc04-correction-program.md) §6.
 
 ## COR-07 · Persistent native editing and interaction completion — `[build]` ⚪ Planned
 

@@ -110,33 +110,20 @@ nonisolated struct MarkdownSourceIndex: Sendable {
         let end = utf8Offset(line: position.endLine, column: position.endColumn)
         switch (start, end) {
         case (.success(let s), .success(let e)):
-            // cmark end columns are inclusive of the last byte; convert to exclusive end
-            // by advancing one UTF-8 code unit when end == start of last character…
-            // Actually cmark docs: end_column is the last byte column of the node (inclusive).
-            // So exclusive end = inclusiveEnd + 1, unless empty.
-            let exclusiveEnd: Int
-            if e < utf8Count && (s < e || (s == e && position.startLine == position.endLine && position.startColumn == position.endColumn)) {
-                // Inclusive end column → exclusive: e is the inclusive last byte index when
-                // column points at that byte; offset = lineStart + (col-1) IS that byte.
-                exclusiveEnd = min(e + 1, utf8Count)
-                // Empty nodes can have start==end column meaning empty at that point.
-                if position.startLine == position.endLine && position.startColumn == position.endColumn {
-                    return .success(UTF8Range(start: s, end: s))
+            // cmark end columns are inclusive of the last byte.
+            // Equal start/end column means a one-column (one UTF-8 byte) span when
+            // that byte exists — not an empty range. Truly empty nodes usually lack
+            // known positions (handled above) or sit at EOF.
+            if position.startLine == position.endLine && position.startColumn == position.endColumn {
+                if s < utf8Count {
+                    return .success(UTF8Range(start: s, end: min(s + 1, utf8Count)))
                 }
-            } else if e == utf8Count {
-                exclusiveEnd = utf8Count
-            } else {
-                exclusiveEnd = min(e + 1, utf8Count)
+                return .success(UTF8Range(start: s, end: s))
             }
+            guard s <= e else { return .failure(.invalidUTF8Boundary) }
+            let exclusiveEnd = min(e + 1, utf8Count)
             guard s <= exclusiveEnd else { return .failure(.invalidUTF8Boundary) }
-            // Prefer inclusive→exclusive when start < inclusive end
-            if s <= e {
-                let excl = (position.startLine == position.endLine && position.startColumn == position.endColumn)
-                    ? s
-                    : min(e + 1, utf8Count)
-                return .success(UTF8Range(start: s, end: excl))
-            }
-            return .failure(.invalidUTF8Boundary)
+            return .success(UTF8Range(start: s, end: exclusiveEnd))
         case (.failure(let err), _):
             return .failure(err)
         case (_, .failure(let err)):
