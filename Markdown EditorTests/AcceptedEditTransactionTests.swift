@@ -177,6 +177,78 @@ struct AcceptedEditTransactionTests {
         #expect(doc.text == "\\*&amp;entity;&lt;hi\n")
     }
 
+    // Verifies: REQ-080/091/092; ARC-005/008 — table typing encodes only the
+    // inserted fragment while the atomic transaction preserves the complete cell.
+    @Test func tableLiteralInsertionPreservesCellAndAdvancesPresentation() throws {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("| abc |\n| --- |\n| def |\n")
+        let session = EditorSession()
+        session.attach(document: doc)
+        let tree = try #require(MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get())
+        let model = MarkdownProjectionModel.build(
+            tree: tree,
+            index: MarkdownSourceIndex(source: doc.text, sourceVersion: doc.sourceVersion)
+        )
+        session.installProjectionForTesting(model, tree: tree)
+        let cell = try #require(session.presentation?.tables.first?.cells.first)
+        let caret = cell.utf16Range.location + 1
+
+        let outcome = session.perform(
+            .insertText("*"),
+            selection: .projection(
+                ProjectionSelection(
+                    utf16: NSRange(location: caret, length: 0),
+                    revision: try #require(session.presentation?.projectionRevision)
+                )
+            ),
+            expectedSourceRevision: SourceRevision(value: doc.sourceVersion)
+        )
+
+        guard case .accepted(let edit) = outcome else {
+            Issue.record("table insertion refused: \(outcome)")
+            return
+        }
+        #expect(edit.presentationTransition != nil)
+        #expect(doc.text == "| a\\*bc |\n| --- |\n| def |\n")
+        #expect(session.presentation?.renderedString.contains("a*bc") == true)
+        #expect(session.presentation?.sourceRevision.value == doc.sourceVersion)
+    }
+
+    // Verifies: REQ-080/091 — deleting in a table is a real backward deletion,
+    // not an empty insertion, and keeps source/presentation synchronized.
+    @Test func tableDeleteBackwardRemovesPreviousVisibleCharacter() throws {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("| abc |\n| --- |\n| def |\n")
+        let session = EditorSession()
+        session.attach(document: doc)
+        let tree = try #require(MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get())
+        let model = MarkdownProjectionModel.build(
+            tree: tree,
+            index: MarkdownSourceIndex(source: doc.text, sourceVersion: doc.sourceVersion)
+        )
+        session.installProjectionForTesting(model, tree: tree)
+        let cell = try #require(session.presentation?.tables.first?.cells.first)
+        let caret = cell.utf16Range.location + 2
+
+        let outcome = session.perform(
+            .deleteBackward,
+            selection: .projection(
+                ProjectionSelection(
+                    utf16: NSRange(location: caret, length: 0),
+                    revision: try #require(session.presentation?.projectionRevision)
+                )
+            ),
+            expectedSourceRevision: SourceRevision(value: doc.sourceVersion)
+        )
+
+        guard case .accepted = outcome else {
+            Issue.record("table deletion refused: \(outcome)")
+            return
+        }
+        #expect(doc.text == "| ac |\n| --- |\n| def |\n")
+        #expect(session.presentation?.renderedString.contains("ac") == true)
+    }
+
     // Verifies: REQ-084/091; ARC-005 — the real TextKit delegate applies once before return.
     @Test func adapterStorageMatchesCommittedPresentationBeforeCallbackReturns() {
         let doc = MarkdownDocument()

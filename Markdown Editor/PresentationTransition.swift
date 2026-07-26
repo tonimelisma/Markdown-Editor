@@ -189,6 +189,26 @@ nonisolated enum PresentationTransitionPlanner {
         }
 
         // Overlaps the edit — only identity atoms with exact coverage may be rewritten locally.
+        if editedProjection.location <= range.location,
+           NSMaxRange(editedProjection) >= NSMaxRange(range) {
+            switch atom {
+            case .identity(let identity):
+                guard editedSource.location <= identity.source.location,
+                      NSMaxRange(editedSource) >= NSMaxRange(identity.source) else {
+                    return nil
+                }
+                return []
+            case .atomic(let atomic):
+                guard editedSource.location <= atomic.source.location,
+                      NSMaxRange(editedSource) >= NSMaxRange(atomic.source) else {
+                    return nil
+                }
+                return []
+            case .synthetic, .uneditable:
+                return nil
+            }
+        }
+
         switch atom {
         case .identity(let identity):
             return rewriteIdentity(

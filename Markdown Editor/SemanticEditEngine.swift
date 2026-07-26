@@ -86,6 +86,12 @@ nonisolated enum SemanticEditEngine {
                     return .refused(.stalePresentation)
                 }
 
+                let classification = ProjectionSelectionClassifier.classify(
+                    selection: projSel.range.utf16,
+                    affinity: projSel.affinity,
+                    snapshot: presentation
+                )
+                var transitionRange = projSel.range.utf16
                 let replacement: String
                 switch request.command {
                 case .insertText(let text):
@@ -111,20 +117,29 @@ nonisolated enum SemanticEditEngine {
                     )
                 }
 
-                if case .insertText(let text) = request.command, !text.isEmpty {
-                    let classif = ProjectionSelectionClassifier.classify(
+                var visibleReplacement = replacement
+                if case .tableCell(_, _, let projectionBody) = classification {
+                    guard let tableEdit = tablePresentationEdit(
+                        command: request.command,
                         selection: projSel.range.utf16,
-                        affinity: projSel.affinity,
-                        snapshot: presentation
-                    )
-                    switch classif {
-                    case .identityText, .atomicText, .syntheticInsertion, .tableCell:
+                        body: projectionBody,
+                        rendered: presentation.renderedString
+                    ) else {
+                        return .refused(.unprovable)
+                    }
+                    transitionRange = projectionBody
+                    visibleReplacement = tableEdit
+                }
+
+                if case .insertText(let text) = request.command, !text.isEmpty {
+                    switch classification {
+                    case .identityText, .atomicText, .syntheticInsertion:
                         let encodeCtx = LiteralEncodeContext(
                             intendedVisibleText: text,
                             precedingSourceCharacter: precedingCharacter(snapshot: snapshot, range: mutation.range),
                             followingSourceCharacter: followingCharacter(snapshot: snapshot, range: mutation.range),
                             atLineStart: isAtLineStart(snapshot: snapshot, location: mutation.range.location),
-                            container: container(for: classif),
+                            container: container(for: classification),
                             dialect: .formalGFM
                         )
                         switch MarkdownLiteralEncoder.encode(encodeCtx) {
@@ -146,7 +161,7 @@ nonisolated enum SemanticEditEngine {
                                 return finishIdentityTransition(
                                     mutation: remade,
                                     presentation: presentation,
-                                    projectionRange: projSel.range.utf16,
+                                    projectionRange: transitionRange,
                                     visibleReplacement: text,
                                     nextSnapshotID: nextSnapshotID,
                                     affinity: projSel.affinity
@@ -155,6 +170,10 @@ nonisolated enum SemanticEditEngine {
                         case .refused:
                             return .refused(.unprovable)
                         }
+                    case .tableCell:
+                        // Cell-local planning already encoded the inserted fragment before
+                        // rebuilding the complete source cell.
+                        break
                     case .taskMarker:
                         return .refused(.unsupportedCommand)
                     case .uneditable:
@@ -171,8 +190,8 @@ nonisolated enum SemanticEditEngine {
                 return finishIdentityTransition(
                     mutation: mutation,
                     presentation: presentation,
-                    projectionRange: projSel.range.utf16,
-                    visibleReplacement: replacement,
+                    projectionRange: transitionRange,
+                    visibleReplacement: visibleReplacement,
                     nextSnapshotID: nextSnapshotID,
                     affinity: projSel.affinity
                 )
@@ -587,7 +606,8 @@ nonisolated enum SemanticEditEngine {
                     snapshot: snapshot,
                     projection: projection,
                     tree: tree,
-                    grouping: grouping
+                    grouping: grouping,
+                    deletingBackward: false
                 )
             case .uneditable:
                 return .refused(.unsupportedCommand)
@@ -633,7 +653,8 @@ nonisolated enum SemanticEditEngine {
                     snapshot: snapshot,
                     projection: projection,
                     tree: tree,
-                    grouping: grouping
+                    grouping: grouping,
+                    deletingBackward: true
                 )
             }
             guard let sourceRange = sourceRange(for: classification, affinity: selection.affinity)
@@ -684,7 +705,8 @@ nonisolated enum SemanticEditEngine {
         snapshot: SourceSnapshot,
         projection: MarkdownProjectionModel,
         tree: MarkdownTree?,
-        grouping: MutationGrouping
+        grouping: MutationGrouping,
+        deletingBackward: Bool
     ) -> SemanticEditResult {
         guard let cell = projection.tables.flatMap(\.cells).first(where: { $0.nodeID == nodeID }),
               let cellSource = cell.sourceUTF16Range else {
@@ -693,7 +715,7 @@ nonisolated enum SemanticEditEngine {
         let ns = snapshot.text as NSString
         let cellText = ns.substring(with: cellSource) as NSString
 
-        // Clip selection to the projected cell body (exclude trailing separator tab).
+        // Require the selection to be wholly within the projected cell body.
         let cellProj = cell.utf16Range
         var bodyLength = cellProj.length
         let rendered = projection.renderedString as NSString
@@ -703,18 +725,48 @@ nonisolated enum SemanticEditEngine {
             bodyLength -= 1
         }
         let bodyProj = NSRange(location: cellProj.location, length: bodyLength)
-        let clippedLocation = max(selection.range.utf16.location, bodyProj.location)
-        let clippedEnd = min(NSMaxRange(selection.range.utf16), NSMaxRange(bodyProj))
-        guard clippedEnd >= clippedLocation else { return .refused(.mappingFailure) }
-        let clipped = NSRange(location: clippedLocation, length: clippedEnd - clippedLocation)
+        var editedProjection = selection.range.utf16
+        guard editedProjection.location >= bodyProj.location,
+              NSMaxRange(editedProjection) <= NSMaxRange(bodyProj) else {
+            return .refused(.mappingFailure)
+        }
+        if deletingBackward, editedProjection.length == 0 {
+            guard editedProjection.location > bodyProj.location else {
+                return .refused(.unsupportedCommand)
+            }
+            editedProjection = rendered.rangeOfComposedCharacterSequence(
+                at: editedProjection.location - 1
+            )
+        }
+
+        let encodedText: String
+        if text.isEmpty {
+            encodedText = ""
+        } else {
+            switch MarkdownLiteralEncoder.encode(
+                LiteralEncodeContext(
+                    intendedVisibleText: text,
+                    precedingSourceCharacter: nil,
+                    followingSourceCharacter: nil,
+                    atLineStart: false,
+                    container: .tableCell,
+                    dialect: .formalGFM
+                )
+            ) {
+            case .encoded(let spelling):
+                encodedText = spelling
+            case .refused:
+                return .refused(.ambiguousSelection)
+            }
+        }
 
         // Full projected-body selection → replace the entire source cell (matches select-all-in-cell).
-        if clipped.length == bodyProj.length, clipped.location == bodyProj.location {
+        if editedProjection == bodyProj {
             return TableCellEditPlanner.replace(
                 snapshot: snapshot,
                 tree: tree,
                 nodeID: nodeID,
-                text: text,
+                text: encodedText,
                 grouping: grouping,
                 selectionBefore: SourceSelection(utf16: cellSource, affinity: selection.affinity)
             )
@@ -722,7 +774,7 @@ nonisolated enum SemanticEditEngine {
 
         // Preferred path: exact coordinate-map into the cell source span.
         if let mapped = mapProjectionSelectionToSource(
-            clipped,
+            editedProjection,
             affinity: selection.affinity,
             projection: projection
         ),
@@ -735,7 +787,7 @@ nonisolated enum SemanticEditEngine {
             guard local.location >= 0, NSMaxRange(local) <= cellText.length else {
                 return .refused(.mappingFailure)
             }
-            let newCellText = cellText.replacingCharacters(in: local, with: text)
+            let newCellText = cellText.replacingCharacters(in: local, with: encodedText)
             return TableCellEditPlanner.replace(
                 snapshot: snapshot,
                 tree: tree,
@@ -748,8 +800,8 @@ nonisolated enum SemanticEditEngine {
 
         // Escape-aware fallback: projection may be shorter than source (`a\|b` → `a|b`).
         let localProj = NSRange(
-            location: clipped.location - bodyProj.location,
-            length: clipped.length
+            location: editedProjection.location - bodyProj.location,
+            length: editedProjection.length
         )
         guard let localSource = mapProjectedCellRangeToSource(
             projected: localProj,
@@ -757,7 +809,7 @@ nonisolated enum SemanticEditEngine {
         ) else {
             return .refused(.mappingFailure)
         }
-        let newCellText = cellText.replacingCharacters(in: localSource, with: text)
+        let newCellText = cellText.replacingCharacters(in: localSource, with: encodedText)
         let absolute = NSRange(
             location: cellSource.location + localSource.location,
             length: localSource.length
@@ -770,6 +822,38 @@ nonisolated enum SemanticEditEngine {
             grouping: grouping,
             selectionBefore: SourceSelection(utf16: absolute, affinity: selection.affinity)
         )
+    }
+
+    private static func tablePresentationEdit(
+        command: SemanticCommand,
+        selection: NSRange,
+        body: NSRange,
+        rendered: String
+    ) -> String? {
+        guard selection.location >= body.location,
+              NSMaxRange(selection) <= NSMaxRange(body) else {
+            return nil
+        }
+        let ns = rendered as NSString
+        let currentBody = ns.substring(with: body) as NSString
+        var local = NSRange(location: selection.location - body.location, length: selection.length)
+        let replacement: String
+        switch command {
+        case .insertText(let text):
+            replacement = text
+        case .deleteBackward:
+            replacement = ""
+            if local.length == 0 {
+                guard local.location > 0 else { return nil }
+                local = currentBody.rangeOfComposedCharacterSequence(at: local.location - 1)
+            }
+        case .replaceTableCell(_, let text):
+            local = NSRange(location: 0, length: currentBody.length)
+            replacement = text
+        default:
+            return nil
+        }
+        return currentBody.replacingCharacters(in: local, with: replacement)
     }
 
     /// Map a range in the projected (unescaped) cell body into the raw source cell body.
