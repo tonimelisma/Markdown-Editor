@@ -332,9 +332,36 @@ private nonisolated struct CompilerBuilder {
         let projection = NSRange(location: start, length: utf16)
 
         let sourceRange = sourceUTF16(of: node)
-        let contentSource: NSRange
         if let sourceRange {
-            contentSource = resolveContentSource(node: node, rendered: string, full: sourceRange)
+            guard let contentSource = resolveContentSource(node: node, rendered: string, full: sourceRange) else {
+                // Normalized code/fence bodies are not 1:1 with rendered text — refuse edits.
+                segments.append(.uneditable(projection: projection, reason: .ambiguous))
+                var styleSet = Set(styles)
+                if literalFallback { styleSet.insert(.literalFallback) }
+                if link != nil { styleSet.insert(.link) }
+                runs.append(
+                    ProjectionRun(
+                        nodeID: node.id,
+                        utf16Range: projection,
+                        styles: styleSet,
+                        linkDestination: link,
+                        isLiteralFallback: literalFallback
+                    )
+                )
+                return
+            }
+            if literalFallback {
+                segments.append(.literalFallback(projection: projection, source: contentSource))
+            } else {
+                segments.append(
+                    .source(
+                        projection: projection,
+                        source: contentSource,
+                        insertionBefore: contentSource.location,
+                        insertionAfter: NSMaxRange(contentSource)
+                    )
+                )
+            }
         } else {
             // Exact source unavailable — still render, but mark uneditable rather than invent a span.
             segments.append(.uneditable(projection: projection, reason: .unsupported))
@@ -351,19 +378,6 @@ private nonisolated struct CompilerBuilder {
                 )
             )
             return
-        }
-
-        if literalFallback {
-            segments.append(.literalFallback(projection: projection, source: contentSource))
-        } else {
-            segments.append(
-                .source(
-                    projection: projection,
-                    source: contentSource,
-                    insertionBefore: contentSource.location,
-                    insertionAfter: NSMaxRange(contentSource)
-                )
-            )
         }
 
         var styleSet = Set(styles)
@@ -432,12 +446,13 @@ private nonisolated struct CompilerBuilder {
     /// Map rendered leaf text to the exact source slice derived from concrete structure.
     ///
     /// // REQ-057/087: never locate parser-owned content via `range(of: rendered)`.
-    func resolveContentSource(node: MarkdownNode, rendered: String, full: NSRange) -> NSRange {
+    /// Returns `nil` when structure is present but not identity-mappable (normalized code).
+    func resolveContentSource(node: MarkdownNode, rendered: String, full: NSRange) -> NSRange? {
         switch node.kind {
         case .text:
             return full
         case .code:
-            return StructuralSourceSpans.inlineCodeBody(full: full, rendered: rendered, map: map) ?? full
+            return StructuralSourceSpans.inlineCodeBody(full: full, rendered: rendered, map: map)
         case .codeBlock(let info, let literal, let fenced, let fenceChar, let fenceLength):
             if fenced, let fenceChar, fenceLength > 0 {
                 return StructuralSourceSpans.fencedCodeBody(
@@ -448,20 +463,20 @@ private nonisolated struct CompilerBuilder {
                     fenceChar: fenceChar,
                     fenceLength: fenceLength,
                     map: map
-                ) ?? full
+                )
             }
-            // Indented code: body is the node span (no fence delimiters).
+            // Indented code: body is the node span only when identical to rendered.
             if case .success(let slice) = map.substring(utf16: full), slice == rendered {
                 return full
             }
-            return full
+            return nil
         default:
             break
         }
         if case .success(let slice) = map.substring(utf16: full), slice == rendered {
             return full
         }
-        return full
+        return nil
     }
 
     func sourceUTF16(of node: MarkdownNode) -> NSRange? {

@@ -161,7 +161,8 @@ nonisolated enum SemanticEditEngine {
     static func classifyContext(
         projectionSelection: NSRange,
         projection: MarkdownProjectionModel,
-        tree: MarkdownTree?
+        tree: MarkdownTree?,
+        affinity: SelectionAffinity = .downstream
     ) -> SemanticEditContext {
         // Task attachment hit.
         for attachment in projection.attachments {
@@ -173,25 +174,9 @@ nonisolated enum SemanticEditEngine {
             }
         }
 
-        // Table cell containing the selection.
-        for table in projection.tables {
-            for cell in table.cells {
-                if NSIntersectionRange(cell.utf16Range, projectionSelection).length > 0
-                    || (projectionSelection.length == 0
-                        && NSLocationInRange(projectionSelection.location, cell.utf16Range)
-                        || projectionSelection.location == cell.utf16Range.location
-                        || projectionSelection.location == NSMaxRange(cell.utf16Range)) {
-                    // Prefer the cell whose range contains the caret/selection start.
-                    if projectionSelection.length == 0 {
-                        let loc = projectionSelection.location
-                        if loc >= cell.utf16Range.location && loc <= NSMaxRange(cell.utf16Range) {
-                            return .tableCell(nodeID: cell.nodeID)
-                        }
-                    } else if NSIntersectionRange(cell.utf16Range, projectionSelection).length > 0 {
-                        return .tableCell(nodeID: cell.nodeID)
-                    }
-                }
-            }
+        // Table cell containing the selection — half-open ranges at shared tab boundaries.
+        if let cellID = tableCell(containing: projectionSelection, in: projection, affinity: affinity) {
+            return .tableCell(nodeID: cellID)
         }
 
         // Inspect overlapping segments.
@@ -242,6 +227,72 @@ nonisolated enum SemanticEditEngine {
         if sawPlain { return .plainText }
         _ = tree
         return .plainText
+    }
+
+    /// Half-open cell ownership: a caret at a shared boundary belongs to the cell that starts there
+    /// (downstream) or the preceding cell (upstream). Avoids column-N typing hitting column N-1.
+    private static func tableCell(
+        containing selection: NSRange,
+        in projection: MarkdownProjectionModel,
+        affinity: SelectionAffinity
+    ) -> MarkdownNodeID? {
+        let cells = projection.tables.flatMap(\.cells)
+        guard !cells.isEmpty else { return nil }
+
+        if selection.length == 0 {
+            let loc = selection.location
+            // Prefer the cell whose half-open range contains the caret.
+            for cell in cells {
+                let r = cell.utf16Range
+                if r.length == 0 {
+                    if loc == r.location { return cell.nodeID }
+                    continue
+                }
+                if loc >= r.location && loc < NSMaxRange(r) {
+                    return cell.nodeID
+                }
+            }
+            // Caret exactly at a shared boundary / end: resolve by affinity.
+            for (index, cell) in cells.enumerated() {
+                let end = NSMaxRange(cell.utf16Range)
+                guard loc == end else { continue }
+                if affinity == .upstream {
+                    return cell.nodeID
+                }
+                // Downstream: prefer the next cell that starts here.
+                if index + 1 < cells.count, cells[index + 1].utf16Range.location == loc {
+                    return cells[index + 1].nodeID
+                }
+                return cell.nodeID
+            }
+            return nil
+        }
+
+        // Non-empty: first cell with positive intersection, preferring later cells on ties
+        // at a pure boundary tab so column N wins over column N-1's trailing separator.
+        var best: (MarkdownNodeID, Int)?
+        for cell in cells {
+            let overlap = NSIntersectionRange(cell.utf16Range, selection)
+            guard overlap.length > 0 else { continue }
+            // If overlap is only the trailing separator of a prior cell and the next cell
+            // also intersects, prefer the later cell.
+            if let existing = best, overlap.length <= 1,
+               overlap.location == NSMaxRange(cell.utf16Range) - 1 || overlap.location == cell.utf16Range.location {
+                _ = existing
+            }
+            if best == nil || cell.utf16Range.location >= (cells.first { $0.nodeID == best?.0 }?.utf16Range.location ?? 0) {
+                // Keep the cell with the greatest start among positive overlaps — later column.
+                if let current = best {
+                    let currentStart = cells.first { $0.nodeID == current.0 }?.utf16Range.location ?? 0
+                    if cell.utf16Range.location >= currentStart {
+                        best = (cell.nodeID, overlap.length)
+                    }
+                } else {
+                    best = (cell.nodeID, overlap.length)
+                }
+            }
+        }
+        return best?.0
     }
 
     // MARK: - Source mode
@@ -397,25 +448,41 @@ nonisolated enum SemanticEditEngine {
         guard let projection, projection.sourceVersion == snapshot.sourceVersion else {
             return .refused(.staleVersion)
         }
-        let selectionBefore = SourceSelection(utf16: selection.utf16Range, affinity: selection.affinity)
 
         switch command {
         case .toggleTask(let nodeID):
+            // History selection is the exact source marker span (set inside toggleTaskMarker).
             return toggleTaskMarker(
                 snapshot: snapshot,
                 tree: tree,
                 nodeID: nodeID,
-                selectionBefore: selectionBefore
+                selectionBefore: SourceSelection(
+                    utf16: NSRange(location: 0, length: 0),
+                    affinity: selection.affinity
+                )
             )
 
         case .replaceTableCell(let nodeID, let text):
+            let before: SourceSelection
+            if let mapped = mapProjectionSelectionToSource(
+                selection.utf16Range,
+                affinity: selection.affinity,
+                projection: projection
+            ) {
+                before = SourceSelection(utf16: mapped, affinity: selection.affinity)
+            } else if let cell = projection.tables.flatMap(\.cells).first(where: { $0.nodeID == nodeID }),
+                      let cellSource = cell.sourceUTF16Range {
+                before = SourceSelection(utf16: cellSource, affinity: selection.affinity)
+            } else {
+                return .refused(.mappingFailure)
+            }
             return TableCellEditPlanner.replace(
                 snapshot: snapshot,
                 tree: tree,
                 nodeID: nodeID,
                 text: text,
                 grouping: grouping,
-                selectionBefore: selectionBefore
+                selectionBefore: before
             )
 
         case .insertImageMarkdown(let markdown):
@@ -439,7 +506,8 @@ nonisolated enum SemanticEditEngine {
             let context = classifyContext(
                 projectionSelection: selection.utf16Range,
                 projection: projection,
-                tree: tree
+                tree: tree,
+                affinity: selection.affinity
             )
             switch context {
             case .tableCell(let nodeID):
@@ -463,7 +531,10 @@ nonisolated enum SemanticEditEngine {
                     snapshot: snapshot,
                     tree: tree,
                     nodeID: nodeID,
-                    selectionBefore: selectionBefore
+                    selectionBefore: SourceSelection(
+                        utf16: NSRange(location: 0, length: 0),
+                        affinity: selection.affinity
+                    )
                 )
             case .ambiguous:
                 return .refused(.ambiguousSelection)
@@ -490,7 +561,8 @@ nonisolated enum SemanticEditEngine {
             let context = classifyContext(
                 projectionSelection: selection.utf16Range,
                 projection: projection,
-                tree: tree
+                tree: tree,
+                affinity: selection.affinity
             )
             if case .tableCell(let nodeID) = context {
                 return applyTableCellTyping(
@@ -558,7 +630,10 @@ nonisolated enum SemanticEditEngine {
         }
     }
 
-    /// Apply a native table-cell edit through `TableCellEditPlanner`.
+    /// Apply a native table-cell edit through `TableCellEditPlanner` using source cell bytes.
+    ///
+    /// Edits the canonical cell source (preserving escapes like `\|`) by mapping the projection
+    /// selection into the cell's source span rather than rebuilding from rendered text.
     private static func applyTableCellTyping(
         text: String,
         nodeID: MarkdownNodeID,
@@ -572,29 +647,127 @@ nonisolated enum SemanticEditEngine {
               let cellSource = cell.sourceUTF16Range else {
             return .refused(.mappingFailure)
         }
-        // Current projected cell text with the native replacement applied.
-        let rendered = projection.renderedString as NSString
+        let ns = snapshot.text as NSString
+        let cellText = ns.substring(with: cellSource) as NSString
+
+        // Clip selection to the projected cell body (exclude trailing separator tab).
         let cellProj = cell.utf16Range
-        guard NSMaxRange(cellProj) <= rendered.length else { return .refused(.mappingFailure) }
-        let before = rendered.substring(with: cellProj) as NSString
-        let local = NSRange(
-            location: selection.utf16Range.location - cellProj.location,
-            length: selection.utf16Range.length
+        var bodyLength = cellProj.length
+        let rendered = projection.renderedString as NSString
+        if bodyLength > 0,
+           NSMaxRange(cellProj) <= rendered.length,
+           rendered.character(at: NSMaxRange(cellProj) - 1) == 0x09 {
+            bodyLength -= 1
+        }
+        let bodyProj = NSRange(location: cellProj.location, length: bodyLength)
+        let clippedLocation = max(selection.utf16Range.location, bodyProj.location)
+        let clippedEnd = min(NSMaxRange(selection.utf16Range), NSMaxRange(bodyProj))
+        guard clippedEnd >= clippedLocation else { return .refused(.mappingFailure) }
+        let clipped = NSRange(location: clippedLocation, length: clippedEnd - clippedLocation)
+
+        // Full projected-body selection → replace the entire source cell (matches select-all-in-cell).
+        if clipped.length == bodyProj.length, clipped.location == bodyProj.location {
+            return TableCellEditPlanner.replace(
+                snapshot: snapshot,
+                tree: tree,
+                nodeID: nodeID,
+                text: text,
+                grouping: grouping,
+                selectionBefore: SourceSelection(utf16: cellSource, affinity: selection.affinity)
+            )
+        }
+
+        // Preferred path: exact coordinate-map into the cell source span.
+        if let mapped = mapProjectionSelectionToSource(
+            clipped,
+            affinity: selection.affinity,
+            projection: projection
+        ),
+           mapped.location >= cellSource.location,
+           NSMaxRange(mapped) <= NSMaxRange(cellSource) {
+            let local = NSRange(
+                location: mapped.location - cellSource.location,
+                length: mapped.length
+            )
+            guard local.location >= 0, NSMaxRange(local) <= cellText.length else {
+                return .refused(.mappingFailure)
+            }
+            let newCellText = cellText.replacingCharacters(in: local, with: text)
+            return TableCellEditPlanner.replace(
+                snapshot: snapshot,
+                tree: tree,
+                nodeID: nodeID,
+                text: newCellText,
+                grouping: grouping,
+                selectionBefore: SourceSelection(utf16: mapped, affinity: selection.affinity)
+            )
+        }
+
+        // Escape-aware fallback: projection may be shorter than source (`a\|b` → `a|b`).
+        let localProj = NSRange(
+            location: clipped.location - bodyProj.location,
+            length: clipped.length
         )
-        guard local.location >= 0, NSMaxRange(local) <= before.length else {
+        guard let localSource = mapProjectedCellRangeToSource(
+            projected: localProj,
+            sourceCell: cellText as String
+        ) else {
             return .refused(.mappingFailure)
         }
-        let newCellText = before.replacingCharacters(in: local, with: text)
-        // Strip synthetic tab separators that may appear in multi-column projection.
-        let cleaned = newCellText.replacingOccurrences(of: "\t", with: "")
+        let newCellText = cellText.replacingCharacters(in: localSource, with: text)
+        let absolute = NSRange(
+            location: cellSource.location + localSource.location,
+            length: localSource.length
+        )
         return TableCellEditPlanner.replace(
             snapshot: snapshot,
             tree: tree,
             nodeID: nodeID,
-            text: cleaned,
+            text: newCellText,
             grouping: grouping,
-            selectionBefore: SourceSelection(utf16: cellSource, affinity: selection.affinity)
+            selectionBefore: SourceSelection(utf16: absolute, affinity: selection.affinity)
         )
+    }
+
+    /// Map a range in the projected (unescaped) cell body into the raw source cell body.
+    ///
+    /// Walks source escapes (`\|`, `\\`) so a caret after projected `a` in `a|b` lands after
+    /// source `a` in `a\|b`, preserving the escape when the edit is applied.
+    private static func mapProjectedCellRangeToSource(
+        projected: NSRange,
+        sourceCell: String
+    ) -> NSRange? {
+        let source = sourceCell as NSString
+        var sourceIndex = 0
+        var projectedIndex = 0
+        var startSource: Int?
+        let targetStart = projected.location
+        let targetEnd = NSMaxRange(projected)
+
+        func advance() -> Bool {
+            guard sourceIndex < source.length else { return false }
+            let c = source.character(at: sourceIndex)
+            if c == 0x5C, sourceIndex + 1 < source.length { // backslash escape
+                sourceIndex += 2
+            } else {
+                sourceIndex += 1
+            }
+            projectedIndex += 1
+            return true
+        }
+
+        while projectedIndex < targetStart {
+            guard advance() else { return nil }
+        }
+        startSource = sourceIndex
+        if projected.length == 0 {
+            return NSRange(location: sourceIndex, length: 0)
+        }
+        while projectedIndex < targetEnd {
+            guard advance() else { return nil }
+        }
+        guard let start = startSource else { return nil }
+        return NSRange(location: start, length: sourceIndex - start)
     }
 
     // MARK: - Helpers
@@ -662,13 +835,18 @@ nonisolated enum SemanticEditEngine {
         let outsideAfter = ns.substring(
             with: NSRange(location: NSMaxRange(markerRange), length: ns.length - NSMaxRange(markerRange))
         )
+        // History selection is the exact marker span in source — never a projection offset.
+        let sourceSelectionBefore = SourceSelection(
+            utf16: markerRange,
+            affinity: selectionBefore.affinity
+        )
         return SemanticPlannerGate.commitIfValid(
             snapshot: snapshot,
             range: markerRange,
             replacement: replacement,
             action: "Toggle Task",
             grouping: .discrete,
-            selectionBefore: selectionBefore
+            selectionBefore: sourceSelectionBefore
         ) { _, newText in
             let newNS = newText as NSString
             guard NSMaxRange(markerRange) <= newNS.length else { return false }

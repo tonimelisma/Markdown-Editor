@@ -121,11 +121,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     }
 
     // REQ-015: background read uses byte snapshot only — never main.sync (deadlock risk).
-    // COR-08 D9: each read captures a load generation; stale applications refuse.
+    // COR-08 D9: capture load generation BEFORE publishing loaded bytes so a concurrent
+    // main-actor mutation cannot make the gate accept an older payload.
     nonisolated override func read(from data: Data, ofType typeName: String) throws {
         let decoded = try MarkdownDocumentData(data: data)
-        applyIOText(decoded.text)
         let (token, began) = loadGate.beginLoad()
+        applyIOText(decoded.text)
         scheduleApplyLoadedText(decoded.text, loadToken: token, beganAtRevision: began)
     }
 
@@ -441,8 +442,15 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     private func closeTypingGroupIfNeeded() {
         guard typingGroupOpen else { return }
-        undoManager?.endUndoGrouping()
         typingGroupOpen = false
+        // Only end a group we actually opened — AppKit/checkpoint churn can leave
+        // groupingLevel 0 while our flag was still set.
+        guard let undoManager, undoManager.groupingLevel > 0 else { return }
+        undoManager.endUndoGrouping()
+    }
+
+    func closeTypingUndoGroup() {
+        closeTypingGroupIfNeeded()
     }
 
     /// Close an open typing group before undo/redo so UndoManager is never left nested.
@@ -484,6 +492,8 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
               sourceVersion == beganAtRevision else {
             trace?.record(.loadApplicationStale(token: loadToken, currentRevision: sourceVersion))
             loadGate.clearPending()
+            // Restore I/O box to canonical main text if a stale payload overwrote it.
+            syncIOText(text)
             return .staleLoad
         }
 

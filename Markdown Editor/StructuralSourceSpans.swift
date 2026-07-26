@@ -10,13 +10,23 @@ import Foundation
 /// // REQ-057/078/087: fence/task ranges come from fence metadata and line boundaries —
 /// // never from substring search of rendered text.
 nonisolated enum StructuralSourceSpans {
-    /// Body of an inline code span: skip opening backticks, take rendered UTF-16 length.
+    /// Body of an inline code span when source bytes equal the rendered literal exactly.
+    ///
+    /// cmark-gfm code-node positions usually exclude the surrounding backticks and cover the
+    /// raw interior (including spaces CommonMark strips from the literal). When that interior
+    /// is not identical to `rendered` (e.g. `` ` foo ` `` → `foo`), returns `nil` so callers
+    /// refuse rather than invent a shifted span. If the node range still includes ticks, the
+    /// body after the opening ticks is accepted only when those bytes equal `rendered`.
     static func inlineCodeBody(
         full: NSRange,
         rendered: String,
         map: SourceCoordinateMap
     ) -> NSRange? {
         guard case .success(let slice) = map.substring(utf16: full) else { return nil }
+        // Common case: node span is already the content between ticks.
+        if slice == rendered {
+            return full
+        }
         let ns = slice as NSString
         var i = 0
         while i < ns.length {
@@ -25,12 +35,22 @@ nonisolated enum StructuralSourceSpans {
             i += 1
         }
         guard i > 0 else { return nil }
+        let openCount = i
         let bodyLength = (rendered as NSString).length
-        guard i + bodyLength <= ns.length else { return nil }
+        guard i + bodyLength + openCount <= ns.length else { return nil }
+        let candidate = ns.substring(with: NSRange(location: i, length: bodyLength))
+        // Exact identity only — refuses normalized spans like `` ` foo ` ``.
+        guard candidate == rendered else { return nil }
+        for k in 0..<openCount {
+            guard ns.character(at: i + bodyLength + k) == 0x60 else { return nil }
+        }
         return NSRange(location: full.location + i, length: bodyLength)
     }
 
-    /// Body of a fenced code block from opening-fence / closing-fence line boundaries.
+    /// Body of a fenced code block when the raw body UTF-16 equals the rendered literal.
+    ///
+    /// Returns `nil` when CRLF normalization or fence-indent stripping make the raw body
+    /// differ from `rendered` — callers must refuse rather than patch shifted bytes.
     static func fencedCodeBody(
         full: NSRange,
         info: String,
@@ -47,10 +67,10 @@ nonisolated enum StructuralSourceSpans {
         var indent = 0
         while idx < ns.length, indent < 3 {
             let c = ns.character(at: idx)
-            if c == 0x20 { // space
+            if c == 0x20 {
                 indent += 1
                 idx += 1
-            } else if c == 0x09 { // tab counts as indent stop
+            } else if c == 0x09 {
                 idx += 1
                 break
             } else {
@@ -64,29 +84,75 @@ nonisolated enum StructuralSourceSpans {
             idx += 1
         }
         guard fenceCount >= fenceLength else { return nil }
-        // Skip info string to end of line.
         while idx < ns.length {
             let c = ns.character(at: idx)
             idx += 1
-            if c == 0x0A { break } // LF
+            if c == 0x0A { break }
             if c == 0x0D {
                 if idx < ns.length, ns.character(at: idx) == 0x0A { idx += 1 }
                 break
             }
         }
         let bodyStartInSlice = idx
-        let renderedUTF16 = (rendered as NSString).length
-        // Prefer concrete rendered length (compiler may append a trailing newline).
-        let bodyLength: Int
-        if bodyStartInSlice + renderedUTF16 <= ns.length {
-            bodyLength = renderedUTF16
-        } else {
-            let literalUTF16 = (literal as NSString).length
-            guard bodyStartInSlice + literalUTF16 <= ns.length else { return nil }
-            bodyLength = literalUTF16
+
+        // Closing fence line: scan from the end for a line that is only indent + fence chars.
+        var bodyEndInSlice = ns.length
+        var search = ns.length
+        while search > bodyStartInSlice {
+            // Find previous line break.
+            var lineEnd = search
+            var lineStart = bodyStartInSlice
+            var p = search
+            while p > bodyStartInSlice {
+                p -= 1
+                let c = ns.character(at: p)
+                if c == 0x0A || c == 0x0D {
+                    lineStart = p + 1
+                    break
+                }
+            }
+            if p == bodyStartInSlice { lineStart = bodyStartInSlice }
+
+            var q = lineStart
+            while q < lineEnd, ns.character(at: q) == 0x20 || ns.character(at: q) == 0x09 {
+                q += 1
+            }
+            var closeCount = 0
+            while q < lineEnd, ns.character(at: q) == fenceScalar {
+                closeCount += 1
+                q += 1
+            }
+            // Rest of line must be only optional whitespace / CR.
+            var onlyWS = true
+            while q < lineEnd {
+                let c = ns.character(at: q)
+                if c != 0x20 && c != 0x09 && c != 0x0D && c != 0x0A {
+                    onlyWS = false
+                    break
+                }
+                q += 1
+            }
+            if closeCount >= fenceLength, onlyWS {
+                bodyEndInSlice = lineStart
+                break
+            }
+            search = lineStart > bodyStartInSlice ? lineStart - 1 : bodyStartInSlice
+            if search <= bodyStartInSlice { break }
+            _ = lineEnd
         }
-        _ = info // info is structural context; body starts after the opening line regardless.
-        return NSRange(location: full.location + bodyStartInSlice, length: bodyLength)
+
+        guard bodyEndInSlice >= bodyStartInSlice else { return nil }
+        let rawBody = ns.substring(
+            with: NSRange(location: bodyStartInSlice, length: bodyEndInSlice - bodyStartInSlice)
+        )
+        // Exact identity only — refuse CRLF / indent-stripped normalization.
+        guard rawBody == rendered else { return nil }
+        _ = info
+        _ = literal
+        return NSRange(
+            location: full.location + bodyStartInSlice,
+            length: (rawBody as NSString).length
+        )
     }
 
     /// Exact three-character task marker (`[ ]` / `[x]` / `[X]`) inside a list-item source span.

@@ -176,6 +176,10 @@ struct MarkdownTextView: NSViewRepresentable {
             guard let textView else { return }
             let range = textView.selectedRange()
             document.reportSourceSelection(SourceSelection(utf16: range))
+            // Close typing groups on caret moves; skip selection churn from in-flight typing.
+            if !isNativeEditInFlight {
+                document.closeTypingUndoGroup()
+            }
             if let session {
                 var state = session.sourceViewState
                 state.selection = range
