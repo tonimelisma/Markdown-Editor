@@ -66,12 +66,22 @@ struct WYSIWYGTextView: NSViewRepresentable {
         if !context.coordinator.isNativeEditInFlight {
             context.coordinator.applyProjectionIfNeeded(force: false)
         }
-        if let pending = document.pendingSelection, session.mode == .wysiwyg {
-            let length = textView.string.utf16.count
-            let loc = min(pending.nsRange.location, length)
-            let len = min(pending.nsRange.length, max(0, length - loc))
-            textView.setSelectedRange(NSRange(location: loc, length: len))
-            document.pendingSelection = nil
+        if let restoration = session.consumePendingSelectionRestoration(),
+           session.mode == .wysiwyg,
+           case .projection = restoration.domain {
+            session.updateOrigin.with(.selectionRestoration) {
+                if let projected = restoration.projectionSelection {
+                    textView.setSelectedRange(projected.nsRange)
+                }
+            }
+        } else if let pending = document.pendingSelection, session.mode == .wysiwyg {
+            session.updateOrigin.with(.selectionRestoration) {
+                let length = textView.string.utf16.count
+                let loc = min(pending.nsRange.location, length)
+                let len = min(pending.nsRange.length, max(0, length - loc))
+                textView.setSelectedRange(NSRange(location: loc, length: len))
+                document.pendingSelection = nil
+            }
         }
     }
 
@@ -86,11 +96,21 @@ struct WYSIWYGTextView: NSViewRepresentable {
         /// When true, final composition insert applies to storage without a second source commit.
         var committingComposition = false
 
-        func beginMarkedText(sourceVersion: UInt64, sourceRange: NSRange, marked: NSRange) {
+        func beginMarkedText(
+            sourceVersion: UInt64,
+            sourceRange: NSRange,
+            marked: NSRange,
+            snapshotID: PresentationSnapshot.ID? = nil
+        ) {
             if composition.isComposing {
                 composition.update(marked: marked)
             } else {
-                composition.begin(sourceVersion: sourceVersion, sourceRange: sourceRange, marked: marked)
+                composition.begin(
+                    sourceVersion: sourceVersion,
+                    sourceRange: sourceRange,
+                    marked: marked,
+                    snapshotID: snapshotID
+                )
             }
         }
 
@@ -109,7 +129,7 @@ struct WYSIWYGTextView: NSViewRepresentable {
             return true
         }
 
-        func complete() -> (version: UInt64, range: NSRange)? {
+        func complete() -> (version: UInt64, range: NSRange, snapshotID: PresentationSnapshot.ID?)? {
             composition.complete()
         }
     }
@@ -124,7 +144,7 @@ struct WYSIWYGTextView: NSViewRepresentable {
         weak var scrollView: NSScrollView?
         var isProgrammaticUpdate = false
         var isNativeEditInFlight = false
-        private var appliedVersion: UInt64 = .max
+        private var appliedSnapshotID: PresentationSnapshot.ID?
 
         init(document: MarkdownDocument, session: EditorSession, placementController: ImagePlacementController) {
             self.document = document
@@ -133,31 +153,44 @@ struct WYSIWYGTextView: NSViewRepresentable {
         }
 
         func applyProjectionIfNeeded(force: Bool) {
-            guard let textView, let projection = session.projection else { return }
-            guard force || projection.sourceVersion != appliedVersion else { return }
+            guard let textView else { return }
+            guard let presentation = session.presentation else {
+                textView.isEditable = false
+                return
+            }
+            let editable: Bool
+            if case .editable(let id) = session.wysiwygModeState.availability, id == presentation.id {
+                editable = true
+            } else {
+                editable = false
+            }
+            textView.isEditable = editable
+            guard editable else { return }
+            guard force || appliedSnapshotID != presentation.id else { return }
             // Never replace storage during marked text.
             if textView.hasMarkedText() || input.composition.isComposing { return }
 
-            isProgrammaticUpdate = true
-            let built = RichTextBuilder.build(
-                model: projection,
-                theme: MarkdownTheme(),
-                images: session.resolvedImages,
-                openURL: session.openURL,
-                onTaskPress: { [weak self] nodeID in
-                    self?.performTaskToggle(nodeID: nodeID)
-                }
-            )
-            let selected = textView.selectedRange()
-            textView.textStorage?.setAttributedString(built.attributed)
-            appliedVersion = projection.sourceVersion
+            session.updateOrigin.with(.programmaticPresentation) {
+                isProgrammaticUpdate = true
+                let built = RichTextBuilder.build(
+                    model: presentation.asProjectionModel,
+                    theme: MarkdownTheme(),
+                    images: session.resolvedImages,
+                    openURL: session.openURL,
+                    onTaskPress: { [weak self] nodeID in
+                        self?.performTaskToggle(nodeID: nodeID)
+                    }
+                )
+                let selected = textView.selectedRange()
+                textView.textStorage?.setAttributedString(built.attributed)
+                appliedSnapshotID = presentation.id
 
-            // Restore logical selection when possible.
-            let length = built.attributed.length
-            let loc = min(selected.location, length)
-            let len = min(selected.length, max(0, length - loc))
-            textView.setSelectedRange(NSRange(location: loc, length: len))
-            isProgrammaticUpdate = false
+                let length = built.attributed.length
+                let loc = min(selected.location, length)
+                let len = min(selected.length, max(0, length - loc))
+                textView.setSelectedRange(NSRange(location: loc, length: len))
+                isProgrammaticUpdate = false
+            }
         }
 
         func textView(
@@ -165,6 +198,7 @@ struct WYSIWYGTextView: NSViewRepresentable {
             shouldChangeTextIn affectedCharRange: NSRange,
             replacementString: String?
         ) -> Bool {
+            if session.updateOrigin.current != .nativeUserInput { return true }
             guard !isProgrammaticUpdate else { return true }
             // Attribute-only changes (nil replacement) stay native.
             guard let replacement = replacementString else { return true }
@@ -174,27 +208,82 @@ struct WYSIWYGTextView: NSViewRepresentable {
                 return true
             }
 
-            let selection = SemanticSelection(
-                mode: .wysiwyg,
-                utf16Range: affectedCharRange,
-                sourceVersion: document.sourceVersion
-            )
-            let result: SemanticEditResult
-            if replacement.isEmpty && affectedCharRange.length > 0 {
-                result = session.perform(.insertText(""), selection: selection)
-            } else if replacement.isEmpty {
-                result = session.perform(.deleteBackward, selection: selection)
-            } else {
-                result = session.perform(.insertText(replacement), selection: selection)
+            guard let presentation = session.presentation,
+                  case .editable(let id) = session.wysiwygModeState.availability,
+                  id == presentation.id else {
+                return false
             }
-            switch result {
-            case .mutation:
-                isNativeEditInFlight = true
-                // Allow optimistic native mutation; projection refresh replaces storage when ready.
-                return true
+
+            let projectionSelection = ProjectionSelection(
+                utf16: affectedCharRange,
+                revision: presentation.projectionRevision,
+                affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
+            )
+            let command: SemanticCommand
+            if replacement.isEmpty && affectedCharRange.length > 0 {
+                command = .insertText("")
+            } else if replacement.isEmpty {
+                command = .deleteBackward
+            } else {
+                command = .insertText(replacement)
+            }
+            let outcome = session.perform(
+                command,
+                selection: .projection(projectionSelection),
+                expectedSourceRevision: SourceRevision(value: document.sourceVersion)
+            )
+            switch outcome {
+            case .accepted(let edit):
+                // REQ-091; ARC-005: apply the accepted presentation transition programmatically
+                // and refuse TextKit's optimistic second mutation.
+                if let transition = edit.presentationTransition {
+                    session.updateOrigin.with(.programmaticPresentation) {
+                        isProgrammaticUpdate = true
+                        applyAcceptedTransition(transition, in: textView)
+                        appliedSnapshotID = transition.nextSnapshot.id
+                        isProgrammaticUpdate = false
+                    }
+                }
+                return false
             case .refused:
                 return false
             }
+        }
+
+        private func applyAcceptedTransition(_ transition: PresentationTransition, in textView: NSTextView) {
+            guard let storage = textView.textStorage else { return }
+            let range = transition.projectionReplacementRange
+            let safeLoc = min(max(0, range.location), storage.length)
+            let safeLen = min(max(0, range.length), max(0, storage.length - safeLoc))
+            let safeRange = NSRange(location: safeLoc, length: safeLen)
+
+            if safeRange == NSRange(location: 0, length: storage.length),
+               transition.projectionReplacement == transition.nextSnapshot.renderedString {
+                let built = RichTextBuilder.build(
+                    model: transition.nextSnapshot.asProjectionModel,
+                    theme: MarkdownTheme(),
+                    images: session.resolvedImages,
+                    openURL: session.openURL,
+                    onTaskPress: { [weak self] nodeID in
+                        self?.performTaskToggle(nodeID: nodeID)
+                    }
+                )
+                storage.setAttributedString(built.attributed)
+            } else {
+                storage.replaceCharacters(in: safeRange, with: transition.projectionReplacement)
+                // Re-apply styles for the affected snapshot when possible via full rebuild for safety.
+                let built = RichTextBuilder.build(
+                    model: transition.nextSnapshot.asProjectionModel,
+                    theme: MarkdownTheme(),
+                    images: session.resolvedImages,
+                    openURL: session.openURL,
+                    onTaskPress: { [weak self] nodeID in
+                        self?.performTaskToggle(nodeID: nodeID)
+                    }
+                )
+                storage.setAttributedString(built.attributed)
+            }
+            textView.setSelectedRange(transition.selectionAfter.nsRange)
         }
 
         func textDidChange(_ notification: Notification) {
@@ -204,28 +293,38 @@ struct WYSIWYGTextView: NSViewRepresentable {
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView else { return }
             let range = textView.selectedRange()
-            var state = session.wysiwygViewState
-            state.selection = range
-            state.affinity = textView.selectionAffinity == .upstream ? .upstream : .downstream
-            session.wysiwygViewState = state
-            // Close typing groups on caret moves; skip selection churn from in-flight typing.
-            if !isNativeEditInFlight {
+            if let presentation = session.presentation,
+               case .editable(let id) = session.wysiwygModeState.availability,
+               id == presentation.id {
+                session.updateWYSIWYGModeState { state in
+                    state.selection = ProjectionSelection(
+                        utf16: range,
+                        revision: presentation.projectionRevision,
+                        affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
+                    )
+                }
+            }
+            // Close typing groups only on real native caret moves.
+            if session.updateOrigin.current == .nativeUserInput && !isNativeEditInFlight {
                 document.closeTypingUndoGroup()
             }
-            // COR-08 D2: never store projection coordinates as document source selection.
-            // Image intent resolves through EditorSelectionIntent + coordinate map.
         }
 
         func performTaskToggle(nodeID: MarkdownNodeID) {
-            guard let attachment = session.projection?.attachments.first(where: { $0.nodeID == nodeID }) else {
+            guard let presentation = session.presentation,
+                  let attachment = presentation.attachments.first(where: { $0.nodeID == nodeID }) else {
                 return
             }
-            let selection = SemanticSelection(
-                mode: .wysiwyg,
-                utf16Range: NSRange(location: attachment.utf16Location, length: 1),
-                sourceVersion: session.acceptedSourceVersion
+            let selection = ProjectionSelection(
+                utf16: NSRange(location: attachment.utf16Location, length: 1),
+                revision: presentation.projectionRevision
             )
-            _ = session.perform(.toggleTask(nodeID: nodeID), selection: selection)
+            _ = session.perform(
+                .toggleTask(nodeID: nodeID),
+                selection: .projection(selection),
+                expectedSourceRevision: presentation.sourceRevision
+            )
+            applyProjectionIfNeeded(force: true)
         }
 
         // REQ-079: open any URL via injected opener — do not restrict schemes.
@@ -272,7 +371,8 @@ final class MarkdownWYSIWYGTextView: NSTextView {
         inputCoordinator?.beginMarkedText(
             sourceVersion: version,
             sourceRange: sourceRange,
-            marked: NSRange(location: sourceRange.location, length: markedLength)
+            marked: NSRange(location: sourceRange.location, length: markedLength),
+            snapshotID: session?.presentation?.id
         )
         inputCoordinator?.allowingMarkedText = true
         super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
@@ -312,23 +412,33 @@ final class MarkdownWYSIWYGTextView: NSTextView {
                 (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
                 return
             }
-            let selection = SemanticSelection(
-                mode: .wysiwyg,
-                utf16Range: captured.range,
-                sourceVersion: captured.version
+            guard let session,
+                  let presentation = session.presentation else {
+                input.cancel()
+                super.unmarkText()
+                (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
+                return
+            }
+            let selection = ProjectionSelection(
+                utf16: captured.range,
+                revision: presentation.projectionRevision
             )
-            let result = session?.perform(.insertText(text), selection: selection)
+            let result = session.perform(
+                .insertText(text),
+                selection: .projection(selection),
+                expectedSourceRevision: SourceRevision(value: captured.version)
+            )
             (documentActions as? MarkdownDocument)?.trace?.record(
                 .compositionCommitted(sourceVersion: captured.version, replacementLength: (text as NSString).length)
             )
             switch result {
-            case .mutation:
+            case .accepted:
                 input.committingComposition = true
                 input.allowingMarkedText = true
                 super.unmarkText()
                 input.allowingMarkedText = false
                 input.committingComposition = false
-            case .refused, .none:
+            case .refused:
                 input.cancel()
                 super.unmarkText()
                 (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
@@ -373,17 +483,25 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             return
         }
 
-        let selection = SemanticSelection(
-            mode: .wysiwyg,
-            utf16Range: captured.range,
-            sourceVersion: captured.version
+        guard let session,
+              let presentation = session.presentation else {
+            input.cancel()
+            return
+        }
+        let selection = ProjectionSelection(
+            utf16: captured.range,
+            revision: presentation.projectionRevision
         )
-        let result = session?.perform(.insertText(text), selection: selection)
+        let result = session.perform(
+            .insertText(text),
+            selection: .projection(selection),
+            expectedSourceRevision: SourceRevision(value: captured.version)
+        )
         (documentActions as? MarkdownDocument)?.trace?.record(
             .compositionCommitted(sourceVersion: captured.version, replacementLength: (text as NSString).length)
         )
         switch result {
-        case .mutation:
+        case .accepted:
             // Apply final composition text directly — avoid nested NSTextView insertText/undo.
             input.committingComposition = true
             input.allowingMarkedText = true
@@ -406,7 +524,7 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             }
             input.allowingMarkedText = false
             input.committingComposition = false
-        case .refused, .none:
+        case .refused:
             input.cancel()
             unmarkText()
         }
@@ -453,18 +571,21 @@ final class MarkdownWYSIWYGTextView: NSTextView {
     @discardableResult
     func toggleTask(atUTF16 index: Int) -> Bool {
         guard let session,
-              let projection = session.projection,
-              let attachment = projection.attachments.first(where: { $0.utf16Location == index }),
+              let presentation = session.presentation,
+              let attachment = presentation.attachments.first(where: { $0.utf16Location == index }),
               case .task = attachment.kind else {
             return false
         }
-        let selection = SemanticSelection(
-            mode: .wysiwyg,
-            utf16Range: NSRange(location: index, length: 1),
-            sourceVersion: session.acceptedSourceVersion
+        let selection = ProjectionSelection(
+            utf16: NSRange(location: index, length: 1),
+            revision: presentation.projectionRevision
         )
-        let result = session.perform(.toggleTask(nodeID: attachment.nodeID), selection: selection)
-        if case .mutation = result { return true }
+        let result = session.perform(
+            .toggleTask(nodeID: attachment.nodeID),
+            selection: .projection(selection),
+            expectedSourceRevision: presentation.sourceRevision
+        )
+        if case .accepted = result { return true }
         return false
     }
 
@@ -479,24 +600,29 @@ final class MarkdownWYSIWYGTextView: NSTextView {
 
     // MARK: - Paste / drag
 
-    /// COR-08 D2: resolve the live WYSIWYG selection to source before COR-02 starts.
+    /// Resolve the live WYSIWYG selection to an immutable source-domain placement intent.
+    ///
+    /// // REQ-060; ARC-012: capture before asynchronous paste/drop work.
     private func resolveAndReportImageIntent() -> Bool {
         guard let actions = documentActions,
               let session,
-              let projection = session.projection else {
+              let presentation = session.presentation,
+              case .editable(let id) = session.wysiwygModeState.availability,
+              id == presentation.id else {
             return false
         }
         let snapshot = actions.sourceSnapshot()
-        let intent = EditorSelectionIntent(
-            domain: .wysiwyg,
-            sourceVersion: snapshot.sourceVersion,
-            range: selectedRange(),
+        guard presentation.sourceRevision.value == snapshot.sourceVersion else { return false }
+        switch presentation.coordinateMap.sourceRange(
+            forProjection: selectedRange(),
             affinity: selectionAffinity == .upstream ? .upstream : .downstream
-        )
-        switch intent.resolvedSourceRange(snapshot: snapshot, projection: projection) {
+        ) {
         case .exact(let sourceRange):
             actions.reportSourceSelection(
-                SourceSelection(utf16: sourceRange, affinity: intent.affinity)
+                SourceSelection(
+                    utf16: sourceRange,
+                    affinity: selectionAffinity == .upstream ? .upstream : .downstream
+                )
             )
             return true
         case .refused:
@@ -522,15 +648,21 @@ final class MarkdownWYSIWYGTextView: NSTextView {
                 return
             }
             // REQ-059: always paste plain text even when RTF/HTML are available.
-            if let plain = PastePolicy.plainText(from: .general) {
+            if let plain = PastePolicy.plainText(from: .general),
+               let session,
+               let presentation = session.presentation {
                 let range = selectedRange()
-                let selection = SemanticSelection(
-                    mode: .wysiwyg,
-                    utf16Range: range,
-                    sourceVersion: documentActions?.sourceSnapshot().sourceVersion ?? 0
+                let selection = ProjectionSelection(
+                    utf16: range,
+                    revision: presentation.projectionRevision
                 )
                 // Paste must not coalesce into an open typing undo group (REQ-016).
-                _ = session?.perform(.insertText(plain), selection: selection, grouping: .discrete)
+                _ = session.perform(
+                    .insertText(plain),
+                    selection: .projection(selection),
+                    expectedSourceRevision: SourceRevision(value: documentActions?.sourceSnapshot().sourceVersion ?? 0),
+                    grouping: .discrete
+                )
             }
         }
     }

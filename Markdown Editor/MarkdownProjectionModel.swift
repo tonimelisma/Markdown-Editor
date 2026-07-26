@@ -79,14 +79,10 @@ nonisolated struct ProjectionListMarker: Sendable, Equatable {
     let kind: MarkdownListKind
 }
 
-nonisolated struct LogicalSelection: Sendable, Equatable {
-    /// Mode-local UTF-16 selection.
-    let range: NSRange
-}
-
 /// Off-main projection snapshot for one source version.
 ///
 /// // REQ-054–056/087: typed segments replace proportional anchors.
+/// Prefer `PresentationSnapshot` for session-owned editable state (ARC-003).
 nonisolated struct MarkdownProjectionModel: Sendable, Equatable {
     let sourceVersion: UInt64
     let renderedString: String
@@ -96,9 +92,33 @@ nonisolated struct MarkdownProjectionModel: Sendable, Equatable {
     let segments: [ProjectionSegment]
     let listMarkers: [ProjectionListMarker]
     let sourceUTF16Count: Int
+    private let storedMap: ProjectionCoordinateMap?
+
+    init(
+        sourceVersion: UInt64,
+        renderedString: String,
+        runs: [ProjectionRun],
+        attachments: [ProjectionAttachment],
+        tables: [ProjectionTable],
+        segments: [ProjectionSegment],
+        listMarkers: [ProjectionListMarker],
+        sourceUTF16Count: Int,
+        prebuiltMap: ProjectionCoordinateMap? = nil
+    ) {
+        self.sourceVersion = sourceVersion
+        self.renderedString = renderedString
+        self.runs = runs
+        self.attachments = attachments
+        self.tables = tables
+        self.segments = segments
+        self.listMarkers = listMarkers
+        self.sourceUTF16Count = sourceUTF16Count
+        self.storedMap = prebuiltMap
+    }
 
     var coordinateMap: ProjectionCoordinateMap {
-        ProjectionCoordinateMap(
+        if let storedMap { return storedMap }
+        return ProjectionCoordinateMap(
             segments: segments,
             projectionUTF16Count: (renderedString as NSString).length,
             sourceUTF16Count: sourceUTF16Count

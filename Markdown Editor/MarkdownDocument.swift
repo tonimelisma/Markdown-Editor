@@ -34,13 +34,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     // MARK: - I/O snapshot (any thread)
 
-    /// Byte-faithful text used by background `read` / `data(ofType:)`.
-    /// // REQ-018/088: Sendable Mutex box — no `nonisolated(unsafe)`.
-    nonisolated private let ioText = DocumentIOText()
-
-    /// Exposes the I/O box for concurrent snapshot tests without MainActor hops.
-    nonisolated var ioTextForTesting: DocumentIOText { ioText }
-
     // MARK: - Main-actor editor state
 
     /// Canonical source. Mutated only on the main actor via transactions / load.
@@ -74,15 +67,11 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// Notification center seam for observer lifecycle tests.
     var notificationCenterForTesting: NotificationCenter = .default
 
-    /// Cross-actor load generation + mirrored source revision (COR-08 D9).
-    nonisolated private let loadGate = DocumentLoadGate()
-
     // MARK: - NSDocument lifecycle
 
     override init() {
         super.init()
         text = ""
-        syncIOText("")
         publishedFileURL = nil
         undoManager?.groupsByEvent = false
         attachUndoCheckpointObserverIfNeeded()
@@ -99,13 +88,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     }
 
     override func makeWindowControllers() {
-        // Ensure editor state matches the I/O snapshot before hosting (read may have
-        // applied bytes off-main and only scheduled the published-state hop).
-        let loaded = copyIOText()
-        if text != loaded {
-            let (token, began) = loadGate.beginLoad()
-            _ = applyLoadedText(loaded, loadToken: token, beganAtRevision: began)
-        }
         undoManager?.groupsByEvent = false
         attachUndoCheckpointObserverIfNeeded()
         let contentView = ContentView(document: self)
@@ -120,19 +102,27 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         addWindowController(controller)
     }
 
-    // REQ-015: background read uses byte snapshot only — never main.sync (deadlock risk).
-    // COR-08 D9: capture load generation BEFORE publishing loaded bytes so a concurrent
-    // main-actor mutation cannot make the gate accept an older payload.
+    // REQ-015/018; ARC-011: AppKit's default serialized read — assert main thread, install canonically.
     nonisolated override func read(from data: Data, ofType typeName: String) throws {
+        precondition(
+            Thread.isMainThread,
+            "ARC-011 counterexample: NSDocument read invoked off-main while canConcurrentlyReadDocuments remains false"
+        )
         let decoded = try MarkdownDocumentData(data: data)
-        let (token, began) = loadGate.beginLoad()
-        applyIOText(decoded.text)
-        scheduleApplyLoadedText(decoded.text, loadToken: token, beganAtRevision: began)
+        MainActor.assumeIsolated {
+            self.installLoadedText(decoded.text)
+        }
     }
 
-    // REQ-015: background write uses byte snapshot only.
+    // REQ-015/018; ARC-011: AppKit's default serialized write — snapshot canonical text on main.
     nonisolated override func data(ofType typeName: String) throws -> Data {
-        ioText.data()
+        precondition(
+            Thread.isMainThread,
+            "ARC-011 counterexample: NSDocument data(ofType:) invoked off-main while canAsynchronouslyWrite remains false"
+        )
+        return MainActor.assumeIsolated {
+            MarkdownDocumentData(text: self.text).data()
+        }
     }
 
     // REQ-019: advance location generation on URL change (except expected untitled Save).
@@ -171,24 +161,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     _ = self.applyFileURLChange(from: previous, to: newValue)
-                }
-            }
-        }
-    }
-
-    nonisolated private func scheduleApplyLoadedText(
-        _ value: String,
-        loadToken: UInt64,
-        beganAtRevision: UInt64
-    ) {
-        if Thread.isMainThread {
-            MainActor.assumeIsolated {
-                _ = self.applyLoadedText(value, loadToken: loadToken, beganAtRevision: beganAtRevision)
-            }
-        } else {
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    _ = self.applyLoadedText(value, loadToken: loadToken, beganAtRevision: beganAtRevision)
                 }
             }
         }
@@ -332,12 +304,23 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         closeTypingGroupIfNeeded()
         text = value
         sourceVersion = 0
-        loadGate.setRevisionMirror(0)
-        syncIOText(value)
         sourceSelectionStorage = SourceSelection(utf16: NSRange(location: 0, length: 0))
         pendingSelection = nil
         updateChangeCount(.changeCleared)
         undoManager?.removeAllActions()
+    }
+
+    /// Canonical load path used by serialized `read(from:ofType:)`.
+    private func installLoadedText(_ value: String) {
+        closeTypingGroupIfNeeded()
+        text = value
+        sourceVersion = 0
+        sourceSelectionStorage = SourceSelection(utf16: NSRange(location: 0, length: 0))
+        pendingSelection = nil
+        activeTracker = nil
+        activeTrackingGeneration = nil
+        undoManager?.removeAllActions()
+        updateChangeCount(.changeCleared)
     }
 
     // MARK: - Private mutation / history
@@ -353,8 +336,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         let newText = ns.replacingCharacters(in: range, with: replacement)
         text = newText
         sourceVersion &+= 1
-        loadGate.setRevisionMirror(sourceVersion)
-        syncIOText(newText)
         sourceSelectionStorage = selectionAfter
         pendingSelection = selectionAfter
         noteTrackedEdit(edited: range, changeInLength: replacementUTF16 - range.length)
@@ -465,54 +446,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
                 self?.closeTypingGroupIfNeeded()
             }
         }
-    }
-
-    // MARK: - I/O helpers
-
-    nonisolated private func applyIOText(_ value: String) {
-        ioText.store(value)
-    }
-
-    nonisolated private func copyIOText() -> String {
-        ioText.load()
-    }
-
-    nonisolated private func syncIOText(_ value: String) {
-        applyIOText(value)
-    }
-
-    /// Applies loaded text only when the load token is current and no newer mutation landed.
-    @discardableResult
-    func applyLoadedText(
-        _ value: String,
-        loadToken: UInt64,
-        beganAtRevision: UInt64
-    ) -> LoadedTextApplicationResult {
-        guard loadGate.validateApplication(token: loadToken, beganAtRevision: beganAtRevision),
-              sourceVersion == beganAtRevision else {
-            trace?.record(.loadApplicationStale(token: loadToken, currentRevision: sourceVersion))
-            loadGate.clearPending()
-            // Restore I/O box to canonical main text if a stale payload overwrote it.
-            syncIOText(text)
-            return .staleLoad
-        }
-
-        closeTypingGroupIfNeeded()
-        text = value
-        sourceVersion = 0
-        loadGate.setRevisionMirror(0)
-        loadGate.clearPending()
-        sourceSelectionStorage = SourceSelection(utf16: NSRange(location: 0, length: 0))
-        pendingSelection = nil
-        activeTracker = nil
-        activeTrackingGeneration = nil
-        return .applied
-    }
-
-    /// Test seam: begin a load and return its token + captured revision.
-    func beginLoadForTesting() -> (token: UInt64, beganAtRevision: UInt64) {
-        loadGate.setRevisionMirror(sourceVersion)
-        return loadGate.beginLoad()
     }
 
     func detachUndoCheckpointObserver() {

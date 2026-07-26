@@ -198,9 +198,11 @@ struct COR08IntegrationCharacterizationTests {
         let session = EditorSession()
         session.attach(document: doc)
         session.setMode(.source)
-        session.sourceViewState.selection = NSRange(location: 0, length: 0)
+        session.updateSourceModeState {
+            $0.selection = SourceSelection(utf16: NSRange(location: 0, length: 0))
+        }
         // Simulate toolbar selection resolution without the old sentinel fallback.
-        let range = session.sourceViewState.selection
+        let range = session.sourceModeState.selection.nsRange
         #expect(range.location == 0)
         #expect(range != doc.sourceSelection.nsRange || doc.sourceSelection.nsRange.location == 0 || true)
         let selection = SemanticSelection(
@@ -246,30 +248,16 @@ struct COR08IntegrationCharacterizationTests {
         #expect(found == "alt text")
     }
 
-    // MARK: - D9 generation-bound load
+    // MARK: - Serialized I/O (COR-09)
 
-    // Verifies: REQ-015 — delayed load cannot overwrite a newer mutation.
-    @Test func delayedLoadCannotOverwriteNewerMutation() {
+    // Verifies: REQ-015 — serialized main-thread read installs canonical text without a mirror/gate.
+    @Test func serializedReadInstallsCanonicalTextOnMain() throws {
         let doc = MarkdownDocument()
         doc.installTextForTesting("original")
-        let (token, began) = doc.beginLoadForTesting()
-        #expect(began == 0)
-        // Commit a newer mutation.
-        let mutation = SourceMutation(
-            expectedRevision: 0,
-            range: NSRange(location: 0, length: 8),
-            expectedText: "original",
-            replacement: "mutated",
-            selectionBefore: SourceSelection(utf16: NSRange(location: 0, length: 8)),
-            selectionAfter: SourceSelection(utf16: NSRange(location: 7, length: 0)),
-            actionName: "Edit",
-            grouping: .discrete
-        )
-        _ = doc.commitSourceMutation(mutation)
-        #expect(doc.text == "mutated")
-        let result = doc.applyLoadedText("from-disk", loadToken: token, beganAtRevision: began)
-        #expect(result == .staleLoad)
-        #expect(doc.text == "mutated")
+        let data = try MarkdownDocumentData(text: "from-disk").data()
+        try doc.read(from: data, ofType: "net.daringfireball.markdown")
+        #expect(doc.text == "from-disk")
+        #expect(doc.sourceVersion == 0)
     }
 
     // MARK: - D10 observer teardown
@@ -317,24 +305,22 @@ struct COR08IntegrationCharacterizationTests {
 
     // MARK: - D2 image intent resolves before placement
 
-    // Verifies: REQ-060 — projection intent maps to source before placement tracking.
+    // Verifies: REQ-060 — projection selection maps to source before placement tracking.
     @Test func imageIntentResolvesProjectionBeforePlacement() throws {
         let source = "**bold** here\n"
         let (_, model) = try parseBuild(source)
         let rendered = model.renderedString as NSString
         let here = rendered.range(of: "here")
         #expect(here.location != NSNotFound)
-        let intent = EditorSelectionIntent(
-            domain: .wysiwyg,
-            sourceVersion: 1,
-            range: NSRange(location: here.location, length: 0),
-            affinity: .downstream
-        )
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
-        guard case .exact(let sourceRange) = intent.resolvedSourceRange(snapshot: snapshot, projection: model) else {
+        guard case .exact(let sourceRange) = model.coordinateMap.sourceRange(
+            forProjection: NSRange(location: here.location, length: 0),
+            affinity: .downstream
+        ) else {
             Issue.record("expected exact source intent")
             return
         }
+        _ = snapshot
         // After "**bold** " (7 chars) + hidden delimiters make projection shorter than source.
         #expect(sourceRange.location > here.location || sourceRange.location == 8)
         #expect((source as NSString).substring(with: NSRange(location: sourceRange.location, length: 4)) == "here"
@@ -534,11 +520,10 @@ struct COR08IntegrationCharacterizationTests {
         #expect((source as NSString).substring(with: mutation.selectionBefore.nsRange) == "[ ]")
     }
 
-    // Verifies: REQ-015 — beginLoad precedes applyIOText; stale restores ioText.
-    @Test func staleLoadRestoresIOTextToCanonical() {
+    // Verifies: REQ-015 — data(ofType:) snapshots canonical main-actor text.
+    @Test func dataOfTypeSnapshotsCanonicalText() throws {
         let doc = MarkdownDocument()
         doc.installTextForTesting("canonical")
-        let (token, began) = doc.beginLoadForTesting()
         let mutation = SourceMutation(
             expectedRevision: 0,
             range: NSRange(location: 0, length: 9),
@@ -551,9 +536,7 @@ struct COR08IntegrationCharacterizationTests {
         )
         _ = doc.commitSourceMutation(mutation)
         #expect(doc.text == "edited")
-        let result = doc.applyLoadedText("from-disk", loadToken: token, beganAtRevision: began)
-        #expect(result == .staleLoad)
-        #expect(doc.text == "edited")
-        #expect(doc.ioTextForTesting.load() == "edited")
+        let data = try doc.data(ofType: "net.daringfireball.markdown")
+        #expect(String(data: data, encoding: .utf8) == "edited")
     }
 }

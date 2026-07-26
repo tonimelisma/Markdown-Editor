@@ -13,6 +13,16 @@ nonisolated struct ImageActionID: Hashable, Sendable {
     init(_ uuid: UUID = UUID()) { self.uuid = uuid }
 }
 
+/// Immutable source-domain image placement intent captured before async work.
+///
+/// // REQ-060; ARC-012: never consult later live editor state for the insertion point.
+nonisolated struct ImagePlacementIntent: Sendable, Equatable {
+    let sourceSelection: SourceSelection
+    let sourceRevision: SourceRevision
+    let locationGeneration: UInt64
+    let operationID: UUID
+}
+
 nonisolated enum ImagePlacementPhase: Equatable, Sendable {
     case idle
     case accepted

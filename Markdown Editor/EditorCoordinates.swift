@@ -16,16 +16,22 @@ nonisolated struct SourceRevision: Sendable, Equatable, Hashable, Comparable {
     }
 }
 
-/// Accepted projection revision (matches the source revision that produced it).
+/// Identity of one presented WYSIWYG snapshot — not a source revision.
+///
+/// // REQ-091; ARC-003: interchangeable only with `PresentationSnapshot.ID`.
 nonisolated struct ProjectionRevision: Sendable, Equatable, Hashable {
     let value: UInt64
 
-    init(source: SourceRevision) {
-        value = source.value
+    init(snapshotID: PresentationSnapshot.ID) {
+        value = snapshotID.value
     }
 
     init(value: UInt64) {
         self.value = value
+    }
+
+    var snapshotID: PresentationSnapshot.ID {
+        PresentationSnapshot.ID(value: value)
     }
 }
 

@@ -107,13 +107,11 @@ struct MarkdownDocumentTests {
         #expect(doc.locationGeneration == 1)
     }
 
-    // Verifies: REQ-018 — background data(ofType:) uses immutable snapshot.
-    @Test func backgroundDataUsesSendableSnapshot() async throws {
+    // Verifies: REQ-018 — data(ofType:) snapshots canonical main-actor text under serialized I/O.
+    @Test func dataOfTypeSnapshotsCanonicalMainActorText() throws {
         let doc = MarkdownDocument()
         doc.installTextForTesting("snapshot-me")
-        let data = try await Task.detached {
-            try doc.data(ofType: MarkdownContentType.identifier)
-        }.value
+        let data = try doc.data(ofType: MarkdownContentType.identifier)
         #expect(data == Data("snapshot-me".utf8))
     }
 

@@ -181,10 +181,12 @@ struct MarkdownTextView: NSViewRepresentable {
                 document.closeTypingUndoGroup()
             }
             if let session {
-                var state = session.sourceViewState
-                state.selection = range
-                state.affinity = textView.selectionAffinity == .upstream ? .upstream : .downstream
-                session.sourceViewState = state
+                session.updateSourceModeState { state in
+                    state.selection = SourceSelection(
+                        utf16: range,
+                        affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
+                    )
+                }
             }
         }
 

@@ -9,7 +9,7 @@ import Foundation
 ///
 /// // REQ-056/087: affinity at boundaries; typed refusal — never clamp or proportion.
 /// // REQ-084: synthetic endpoints follow `SyntheticInsertionPolicy` (COR-08).
-nonisolated struct ProjectionCoordinateMap: Sendable {
+nonisolated struct ProjectionCoordinateMap: Sendable, Equatable {
     let segments: [ProjectionSegment]
     let projectionUTF16Count: Int
     let sourceUTF16Count: Int

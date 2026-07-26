@@ -73,4 +73,32 @@ nonisolated enum ProjectionOracle {
         }
         return .success(())
     }
+
+    /// Validate a complete presentation snapshot before it becomes editable.
+    ///
+    /// // REQ-091/093; ARC-003: rendered length, atom coverage, tables, attachments, map bounds.
+    static func validate(snapshot: PresentationSnapshot) -> Result<Void, Failure> {
+        let model = snapshot.asProjectionModel
+        if case .failure(let failure) = validate(model: model, sourceUTF16Count: snapshot.sourceUTF16Count) {
+            return .failure(failure)
+        }
+        let renderedCount = (snapshot.renderedString as NSString).length
+        if snapshot.coordinateMap.projectionUTF16Count != renderedCount {
+            return .failure(Failure(code: "map_proj_len", detail: "map=\(snapshot.coordinateMap.projectionUTF16Count) rendered=\(renderedCount)"))
+        }
+        if snapshot.coordinateMap.sourceUTF16Count != snapshot.sourceUTF16Count {
+            return .failure(Failure(code: "map_src_len", detail: "map=\(snapshot.coordinateMap.sourceUTF16Count) src=\(snapshot.sourceUTF16Count)"))
+        }
+        for attachment in snapshot.attachments {
+            guard attachment.utf16Location >= 0, attachment.utf16Location < renderedCount || renderedCount == 0 else {
+                return .failure(Failure(code: "attach_oob", detail: "loc=\(attachment.utf16Location)"))
+            }
+        }
+        for table in snapshot.tables {
+            guard table.utf16Range.location >= 0, NSMaxRange(table.utf16Range) <= renderedCount else {
+                return .failure(Failure(code: "table_oob", detail: "loc=\(table.utf16Range.location)"))
+            }
+        }
+        return .success(())
+    }
 }

@@ -16,10 +16,10 @@ final class EditorActionRouter: ObservableObject {
     weak var document: MarkdownDocument?
     weak var session: EditorSession?
 
-    /// Captured selection intent for the window that initiated Add Image.
-    private(set) var pendingImageIntent: EditorSelectionIntent?
+    /// Immutable source-domain intent captured before async picker/promise work.
+    private(set) var pendingImageIntent: ImagePlacementIntent?
 
-    func captureImageInsertionIntent(_ intent: EditorSelectionIntent) {
+    func captureImagePlacementIntent(_ intent: ImagePlacementIntent) {
         pendingImageIntent = intent
     }
 
@@ -29,16 +29,14 @@ final class EditorActionRouter: ObservableObject {
 
     func handleAddImageClaims(_ claims: [ImageClaim]) {
         guard let placement, let document else { return }
-        // REQ-082: resolve the captured intent to a source range before placement.
+        // REQ-060/082: consume the immutable intent — never re-read live editor selection.
         if let intent = pendingImageIntent {
-            let snapshot = document.sourceSnapshot()
-            switch intent.resolvedSourceRange(snapshot: snapshot, projection: session?.projection) {
-            case .exact(let sourceRange):
-                document.reportSourceSelection(SourceSelection(utf16: sourceRange))
-            case .refused:
+            guard intent.sourceRevision.value == document.sourceVersion,
+                  intent.locationGeneration == document.locationGeneration else {
                 pendingImageIntent = nil
                 return
             }
+            document.reportSourceSelection(intent.sourceSelection)
         }
         placement.handleImageAction(
             claims: claims,
@@ -47,9 +45,6 @@ final class EditorActionRouter: ObservableObject {
         pendingImageIntent = nil
     }
 }
-
-/// Mode-local editor chrome state for the persistent dual host.
-typealias EditorViewChromeState = EditorViewState
 
 /// Persistent dual TextKit 1 host — both editors live for the representable lifetime.
 ///
@@ -102,8 +97,8 @@ struct EditorHostView: NSViewRepresentable {
         var sourceCoordinator: MarkdownTextView.Coordinator?
         var wysiwygCoordinator: WYSIWYGTextView.Coordinator?
 
-        var sourceChrome = EditorViewChromeState()
-        var wysiwygChrome = EditorViewChromeState()
+        var sourceChrome = SourceModeState()
+        var wysiwygChrome = WYSIWYGModeState()
         /// Last mode applied to visibility — used to transfer focus on toggle.
         private var lastAppliedMode: EditorMode?
 
@@ -209,42 +204,58 @@ struct EditorHostView: NSViewRepresentable {
                 || firstResponder === sourceScroll
                 || firstResponder === wysiwygScroll
             if sourceScroll.isHidden == false {
-                sourceChrome.selection = sourceText.selectedRange()
-                sourceChrome.affinity = sourceText.selectionAffinity == .upstream ? .upstream : .downstream
+                sourceChrome.selection = SourceSelection(
+                    utf16: sourceText.selectedRange(),
+                    affinity: sourceText.selectionAffinity == .upstream ? .upstream : .downstream
+                )
                 sourceChrome.scrollOffset = sourceScroll.contentView.bounds.origin
-                sourceChrome.acceptedSourceVersion = document.sourceVersion
+                session.updateSourceModeState { $0 = sourceChrome }
             }
             if wysiwygScroll.isHidden == false {
-                wysiwygChrome.selection = wysiwygText.selectedRange()
-                wysiwygChrome.affinity = wysiwygText.selectionAffinity == .upstream ? .upstream : .downstream
+                let affinity: SelectionAffinity =
+                    wysiwygText.selectionAffinity == .upstream ? .upstream : .downstream
+                let revision = session.presentation?.projectionRevision ?? ProjectionRevision(value: 0)
+                wysiwygChrome.selection = ProjectionSelection(
+                    utf16: wysiwygText.selectedRange(),
+                    revision: revision,
+                    affinity: affinity
+                )
                 wysiwygChrome.scrollOffset = wysiwygScroll.contentView.bounds.origin
-                wysiwygChrome.acceptedSourceVersion = session.acceptedSourceVersion
+                wysiwygChrome.availability = session.wysiwygModeState.availability
+                session.updateWYSIWYGModeState { $0 = wysiwygChrome }
             }
             let showSource = (mode == .source)
             sourceScroll.isHidden = !showSource
             wysiwygScroll.isHidden = showSource
             let shouldFocus = focus || (modeChanged && hadEditorFocus)
             lastAppliedMode = mode
-            if showSource {
-                let affinity: NSSelectionAffinity = sourceChrome.affinity == .upstream ? .upstream : .downstream
-                sourceText.setSelectedRanges(
-                    [NSValue(range: sourceChrome.selection)],
-                    affinity: affinity,
-                    stillSelecting: false
-                )
-                sourceScroll.contentView.scroll(to: sourceChrome.scrollOffset)
-                sourceScroll.reflectScrolledClipView(sourceScroll.contentView)
-                if shouldFocus { sourceText.window?.makeFirstResponder(sourceText) }
-            } else {
-                let affinity: NSSelectionAffinity = wysiwygChrome.affinity == .upstream ? .upstream : .downstream
-                wysiwygText.setSelectedRanges(
-                    [NSValue(range: wysiwygChrome.selection)],
-                    affinity: affinity,
-                    stillSelecting: false
-                )
-                wysiwygScroll.contentView.scroll(to: wysiwygChrome.scrollOffset)
-                wysiwygScroll.reflectScrolledClipView(wysiwygScroll.contentView)
-                if shouldFocus { wysiwygText.window?.makeFirstResponder(wysiwygText) }
+            session.updateOrigin.with(.modeRestoration) {
+                if showSource {
+                    sourceChrome = session.sourceModeState
+                    let affinity: NSSelectionAffinity =
+                        sourceChrome.selection.affinity == .upstream ? .upstream : .downstream
+                    sourceText.setSelectedRanges(
+                        [NSValue(range: sourceChrome.selection.nsRange)],
+                        affinity: affinity,
+                        stillSelecting: false
+                    )
+                    sourceScroll.contentView.scroll(to: sourceChrome.scrollOffset)
+                    sourceScroll.reflectScrolledClipView(sourceScroll.contentView)
+                    if shouldFocus { sourceText.window?.makeFirstResponder(sourceText) }
+                } else {
+                    wysiwygChrome = session.wysiwygModeState
+                    let range = wysiwygChrome.selection?.nsRange ?? NSRange(location: 0, length: 0)
+                    let affinity: NSSelectionAffinity =
+                        (wysiwygChrome.selection?.affinity == .upstream) ? .upstream : .downstream
+                    wysiwygText.setSelectedRanges(
+                        [NSValue(range: range)],
+                        affinity: affinity,
+                        stillSelecting: false
+                    )
+                    wysiwygScroll.contentView.scroll(to: wysiwygChrome.scrollOffset)
+                    wysiwygScroll.reflectScrolledClipView(wysiwygScroll.contentView)
+                    if shouldFocus { wysiwygText.window?.makeFirstResponder(wysiwygText) }
+                }
             }
         }
 
@@ -252,10 +263,12 @@ struct EditorHostView: NSViewRepresentable {
             if session.mode == .source {
                 guard let text = sourceText, let coord = sourceCoordinator else { return }
                 if !coord.isNativeEditInFlight, text.string != document.text {
-                    coord.isProgrammaticUpdate = true
-                    text.string = document.text
-                    coord.isProgrammaticUpdate = false
-                    coord.highlight()
+                    session.updateOrigin.with(.programmaticPresentation) {
+                        coord.isProgrammaticUpdate = true
+                        text.string = document.text
+                        coord.isProgrammaticUpdate = false
+                        coord.highlight()
+                    }
                 }
             } else {
                 wysiwygCoordinator?.applyProjectionIfNeeded(force: false)
@@ -263,29 +276,66 @@ struct EditorHostView: NSViewRepresentable {
             applyPendingSelectionIfNeeded()
         }
 
-        /// Apply document-owned post-edit caret (always source UTF-16) to the visible editor.
+        /// Apply one-shot session selection restoration to the visible editor.
         ///
-        /// In WYSIWYG, wait for a projection whose `sourceVersion` matches the document before
-        /// mapping — never clamp source coords into a stale projection and clear the pending caret.
+        /// // REQ-083/086: never clamp source coords into a stale projection.
         func applyPendingSelectionIfNeeded() {
+            if let restoration = session.pendingSelectionRestoration {
+                switch restoration.domain {
+                case .source:
+                    guard session.mode == .source, let sourceText else { return }
+                    session.updateOrigin.with(.selectionRestoration) {
+                        let length = (sourceText.string as NSString).length
+                        let pending = restoration.sourceSelection.nsRange
+                        let loc = min(max(0, pending.location), length)
+                        let len = min(max(0, pending.length), max(0, length - loc))
+                        sourceText.setSelectedRange(NSRange(location: loc, length: len))
+                        _ = session.consumePendingSelectionRestoration()
+                    }
+                case .projection(let snapshotID):
+                    guard session.mode == .wysiwyg, let wysiwygText else { return }
+                    guard let presentation = session.presentation, presentation.id == snapshotID else {
+                        return
+                    }
+                    session.updateOrigin.with(.selectionRestoration) {
+                        if let projected = restoration.projectionSelection {
+                            wysiwygText.setSelectedRange(projected.nsRange)
+                        } else if case .exact(let projected) = presentation.coordinateMap.projectionRange(
+                            forSource: restoration.sourceSelection.nsRange
+                        ) {
+                            wysiwygText.setSelectedRange(projected)
+                        } else {
+                            return
+                        }
+                        _ = session.consumePendingSelectionRestoration()
+                    }
+                }
+                return
+            }
+
+            // Image placement still publishes through the document handoff until adapters refresh.
             guard let pending = document.pendingSelection else { return }
             if session.mode == .source {
                 guard let sourceText else { return }
-                let length = (sourceText.string as NSString).length
-                let loc = min(max(0, pending.nsRange.location), length)
-                let len = min(max(0, pending.nsRange.length), max(0, length - loc))
-                sourceText.setSelectedRange(NSRange(location: loc, length: len))
-                document.pendingSelection = nil
+                session.updateOrigin.with(.selectionRestoration) {
+                    let length = (sourceText.string as NSString).length
+                    let loc = min(max(0, pending.nsRange.location), length)
+                    let len = min(max(0, pending.nsRange.length), max(0, length - loc))
+                    sourceText.setSelectedRange(NSRange(location: loc, length: len))
+                    document.pendingSelection = nil
+                }
             } else {
                 guard let wysiwygText else { return }
-                guard let projection = session.projection,
-                      projection.sourceVersion == document.sourceVersion,
-                      case .exact(let projected) = projection.coordinateMap.projectionRange(forSource: pending.nsRange)
+                guard let presentation = session.presentation,
+                      presentation.sourceRevision.value == document.sourceVersion,
+                      case .exact(let projected) = presentation.coordinateMap.projectionRange(forSource: pending.nsRange)
                 else {
                     return
                 }
-                wysiwygText.setSelectedRange(projected)
-                document.pendingSelection = nil
+                session.updateOrigin.with(.selectionRestoration) {
+                    wysiwygText.setSelectedRange(projected)
+                    document.pendingSelection = nil
+                }
             }
         }
 

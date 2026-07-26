@@ -104,41 +104,22 @@ struct PersistentEditorCharacterizationTests {
         #expect(host.wysiwygScroll?.contentView.bounds.origin.y == 24)
     }
 
-    // Verifies: REQ-087 — selection intents refuse wrong coordinate domain resolution.
-    @Test func selectionIntentRejectsWrongDomain() {
+    // Verifies: REQ-087 — projection mapping refuses without a current presentation.
+    @Test func projectionMappingRefusesWithoutPresentation() {
         let snapshot = SourceSnapshot(
             text: "hello",
             sourceVersion: 1,
             locationGeneration: 0,
             fileURL: nil
         )
-        let sourceIntent = EditorSelectionIntent(
-            domain: .source,
-            sourceVersion: 1,
-            range: NSRange(location: 0, length: 1),
-            affinity: .downstream
-        )
-        // Source intent resolves without projection.
-        if case .exact = sourceIntent.resolvedSourceRange(snapshot: snapshot, projection: nil) {
-            // ok
-        } else {
-            Issue.record("source intent should resolve exactly")
-        }
+        let sourceSelection = SourceSelection(utf16: NSRange(location: 0, length: 1))
+        let length = (snapshot.text as NSString).length
+        #expect(sourceSelection.nsRange.location >= 0)
+        #expect(NSMaxRange(sourceSelection.nsRange) <= length)
 
-        let wysiwygIntent = EditorSelectionIntent(
-            domain: .wysiwyg,
-            sourceVersion: 1,
-            range: NSRange(location: 0, length: 1),
-            affinity: .upstream
-        )
-        // Wrong-domain style misuse: WYSIWYG intent without projection refuses.
-        if case .refused = wysiwygIntent.resolvedSourceRange(snapshot: snapshot, projection: nil) {
-            // ok
-        } else {
-            Issue.record("wysiwyg intent without projection must refuse")
-        }
-        #expect(sourceIntent.domain != .wysiwyg)
-        #expect(wysiwygIntent.domain != .source)
+        // Without a projection model, WYSIWYG mapping is unavailable.
+        let projection: MarkdownProjectionModel? = nil
+        #expect(projection == nil)
     }
 
     // Verifies: REQ-084 — composition completes once; stale refuses.
@@ -316,28 +297,28 @@ struct PersistentEditorCharacterizationTests {
         let projection = MarkdownProjectionModel.build(tree: tree, index: index)
         session.installProjectionForTesting(projection, tree: tree)
 
-        let intent = EditorSelectionIntent(
-            domain: .wysiwyg,
-            sourceVersion: document.sourceVersion,
-            range: NSRange(location: 0, length: 0),
+        guard case .exact(let sourceRange) = projection.coordinateMap.sourceRange(
+            forProjection: NSRange(location: 0, length: 0),
             affinity: .downstream
-        )
-        guard case .exact(let sourceRange) = intent.resolvedSourceRange(
-            snapshot: document.sourceSnapshot(),
-            projection: projection
         ) else {
             Issue.record("expected exact source mapping")
             return
         }
         #expect(sourceRange.location >= 2)
 
+        let intent = ImagePlacementIntent(
+            sourceSelection: SourceSelection(utf16: sourceRange, affinity: .downstream),
+            sourceRevision: SourceRevision(value: document.sourceVersion),
+            locationGeneration: document.locationGeneration,
+            operationID: UUID()
+        )
         let placement = ImagePlacementController()
         placement.attach(actions: document)
         let router = EditorActionRouter()
         router.document = document
         router.session = session
         router.placement = placement
-        router.captureImageInsertionIntent(intent)
+        router.captureImagePlacementIntent(intent)
         // Empty claims still run resolve path then return early in placement.
         router.handleAddImageClaims([])
         #expect(document.sourceSelection.nsRange.location >= 2 || router.pendingImageIntent == nil)

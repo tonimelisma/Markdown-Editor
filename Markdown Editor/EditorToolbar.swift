@@ -62,30 +62,36 @@ struct EditorToolbar: View {
         )
     }
 
-    private func currentSelection() -> SemanticSelection {
-        // REQ-058/COR-08 D7: mode-local selection is always valid; offset zero is not a sentinel.
+    private func currentSelection() -> EditorSelection {
+        // REQ-052/058: mode-local typed selection; offset zero is valid.
         switch session.mode {
         case .source:
-            let range = session.sourceViewState.selection
-            return SemanticSelection(
-                mode: .source,
-                utf16Range: range,
-                sourceVersion: document.sourceVersion,
-                affinity: session.sourceViewState.affinity
-            )
+            return .source(session.sourceModeState.selection)
         case .wysiwyg:
-            let range = session.wysiwygViewState.selection
-            return SemanticSelection(
-                mode: .wysiwyg,
-                utf16Range: range,
-                sourceVersion: document.sourceVersion,
-                affinity: session.wysiwygViewState.affinity
-            )
+            if let selection = session.wysiwygModeState.selection {
+                return .projection(selection)
+            }
+            // No current presentation selection — empty projection caret if editable.
+            if let presentation = session.presentation,
+               case .editable(let id) = session.wysiwygModeState.availability,
+               id == presentation.id {
+                return .projection(
+                    ProjectionSelection(
+                        utf16: NSRange(location: 0, length: 0),
+                        revision: presentation.projectionRevision
+                    )
+                )
+            }
+            return .source(session.sourceModeState.selection)
         }
     }
 
     private func run(_ command: SemanticCommand) {
-        _ = session.perform(command, selection: currentSelection())
+        _ = session.perform(
+            command,
+            selection: currentSelection(),
+            expectedSourceRevision: SourceRevision(value: document.sourceVersion)
+        )
     }
 
     private func promptLink() {

@@ -257,31 +257,16 @@ struct SourceIntegrityCharacterizationTests {
         #expect(doc.isDocumentEdited == true)
     }
 
-    // Verifies: REQ-018 — background data(ofType:) reads a complete immutable snapshot.
-    @Test func concurrentBackgroundDataReadsCompleteImmutableSnapshot() async throws {
+    // Verifies: REQ-018 — serialized data(ofType:) reads the current canonical text.
+    @Test func serializedDataReadsCanonicalText() throws {
         let doc = MarkdownDocument()
         let payload = String(repeating: "snapshot-", count: 200)
         doc.installTextForTesting(payload)
 
         let expected = try doc.data(ofType: MarkdownContentType.identifier)
-        // Sendable I/O box — child tasks must not touch the MainActor document.
-        let io = doc.ioTextForTesting
-
-        let results = await withTaskGroup(of: Data.self, returning: [Data].self) { group in
-            for _ in 0..<8 {
-                group.addTask { io.data() }
-            }
-            var collected: [Data] = []
-            for await item in group {
-                collected.append(item)
-            }
-            return collected
-        }
-
-        #expect(results.count == 8)
-        for data in results {
-            #expect(data == expected)
-        }
+        #expect(expected == Data(payload.utf8))
+        let again = try doc.data(ofType: MarkdownContentType.identifier)
+        #expect(again == expected)
     }
 
     // Verifies: REQ-089 — traces never carry document content or paths.

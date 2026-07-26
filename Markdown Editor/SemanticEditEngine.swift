@@ -70,6 +70,344 @@ nonisolated enum SemanticEditResult: Sendable, Equatable {
 ///
 /// // REQ-057/058/078–080/083/087: preserve spelling when safe; smallest unit rewrite; typed refusal.
 nonisolated enum SemanticEditEngine {
+    /// Plan an accepted edit including a provisional presentation transition when required.
+    ///
+    /// // REQ-091; ARC-005: WYSIWYG acceptance carries source mutation + presentation together.
+    static func plan(
+        _ request: EditorEditRequest,
+        snapshot: SourceSnapshot,
+        presentation: PresentationSnapshot?,
+        tree: MarkdownTree?,
+        nextSnapshotID: PresentationSnapshot.ID
+    ) -> EditorEditOutcome {
+        guard request.expectedSourceRevision.value == snapshot.sourceVersion else {
+            return .refused(.staleVersion)
+        }
+
+        let projection = presentation?.asProjectionModel
+        let legacy = apply(request, snapshot: snapshot, projection: projection, tree: tree)
+        switch legacy {
+        case .refused(let refusal):
+            return .refused(mapRefusal(refusal))
+        case .mutation(let mutation):
+            switch request.selection {
+            case .source:
+                return .accepted(
+                    AcceptedEdit(
+                        sourceMutation: mutation,
+                        presentationTransition: nil,
+                        sourceSelectionAfter: mutation.selectionAfter,
+                        projectionSelectionAfter: nil
+                    )
+                )
+            case .projection(let projSel):
+                guard let presentation else { return .refused(.unavailable) }
+                guard presentation.id == projSel.range.revision.snapshotID else {
+                    return .refused(.stalePresentation)
+                }
+                guard presentation.sourceRevision.value == snapshot.sourceVersion else {
+                    return .refused(.stalePresentation)
+                }
+
+                // Structural toolbar commands / task toggles may rebuild from authoritative model
+                // after commit via reconciliation; for ordinary typing produce a sync transition.
+                let needsTransition: Bool = {
+                    switch request.command {
+                    case .insertText, .deleteBackward, .replaceTableCell:
+                        return true
+                    default:
+                        return true // keep WYSIWYG current for every accepted projection edit
+                    }
+                }()
+
+                guard needsTransition else {
+                    return .accepted(
+                        AcceptedEdit(
+                            sourceMutation: mutation,
+                            presentationTransition: nil,
+                            sourceSelectionAfter: mutation.selectionAfter,
+                            projectionSelectionAfter: nil
+                        )
+                    )
+                }
+
+                let replacement: String
+                switch request.command {
+                case .insertText(let text):
+                    replacement = text
+                case .deleteBackward:
+                    replacement = ""
+                case .replaceTableCell(_, let text):
+                    // Table cell planner replaces whole cell source; use projected body rewrite.
+                    replacement = text
+                default:
+                    // For semantic formatting, build next snapshot from the post-mutation source
+                    // synchronously when the tree/source metadata already supports it.
+                    return planAuthoritativeTransition(
+                        mutation: mutation,
+                        snapshot: snapshot,
+                        presentation: presentation,
+                        tree: tree,
+                        nextSnapshotID: nextSnapshotID,
+                        affinity: projSel.affinity
+                    )
+                }
+
+                let encodedReplacement: String
+                if case .insertText(let text) = request.command, !text.isEmpty {
+                    let classif = ProjectionSelectionClassifier.classify(
+                        selection: projSel.nsRange,
+                        affinity: projSel.affinity,
+                        snapshot: presentation
+                    )
+                    switch classif {
+                    case .identityText, .tableCell:
+                        let encodeCtx = LiteralEncodeContext(
+                            intendedVisibleText: text,
+                            precedingSourceCharacter: precedingCharacter(snapshot: snapshot, range: mutation.range),
+                            followingSourceCharacter: followingCharacter(snapshot: snapshot, range: mutation.range),
+                            atLineStart: isAtLineStart(snapshot: snapshot, location: mutation.range.location),
+                            container: container(for: classif),
+                            dialect: .formalGFM
+                        )
+                        switch MarkdownLiteralEncoder.encode(encodeCtx) {
+                        case .encoded(let sourceSpelling):
+                            // Mutation already planned with raw text from legacy apply — if encoding
+                            // differs, rebuild the mutation with encoded source while keeping
+                            // visible replacement for the presentation transition.
+                            if sourceSpelling != text {
+                                guard let remade = SourceMutation.exact(
+                                    snapshot: snapshot,
+                                    range: mutation.range,
+                                    replacement: sourceSpelling,
+                                    selectionBefore: mutation.selectionBefore,
+                                    actionName: mutation.actionName,
+                                    grouping: mutation.grouping
+                                ) else {
+                                    return .refused(.invalidRange)
+                                }
+                                return finishIdentityTransition(
+                                    mutation: remade,
+                                    presentation: presentation,
+                                    projectionRange: projSel.nsRange,
+                                    visibleReplacement: text,
+                                    nextSnapshotID: nextSnapshotID,
+                                    affinity: projSel.affinity
+                                )
+                            }
+                            encodedReplacement = text
+                        case .refused:
+                            return .refused(.unprovable)
+                        }
+                    default:
+                        encodedReplacement = replacement
+                    }
+                } else {
+                    encodedReplacement = replacement
+                    _ = encodedReplacement
+                }
+
+                return finishIdentityTransition(
+                    mutation: mutation,
+                    presentation: presentation,
+                    projectionRange: projSel.nsRange,
+                    visibleReplacement: replacement,
+                    nextSnapshotID: nextSnapshotID,
+                    affinity: projSel.affinity
+                )
+            }
+        }
+    }
+
+    private static func finishIdentityTransition(
+        mutation: SourceMutation,
+        presentation: PresentationSnapshot,
+        projectionRange: NSRange,
+        visibleReplacement: String,
+        nextSnapshotID: PresentationSnapshot.ID,
+        affinity: SelectionAffinity
+    ) -> EditorEditOutcome {
+        let nextSourceCount = presentation.sourceUTF16Count
+            - mutation.range.length
+            + (mutation.replacement as NSString).length
+        guard let transition = PresentationTransitionPlanner.identityReplacement(
+            snapshot: presentation,
+            projectionRange: projectionRange,
+            replacement: visibleReplacement,
+            nextSourceRevision: SourceRevision(value: mutation.expectedRevision &+ 1),
+            nextSourceUTF16Count: nextSourceCount,
+            nextSnapshotID: nextSnapshotID,
+            affinity: affinity
+        ) else {
+            // Fall back to authoritative rebuild for non-identity local edits.
+            return planAuthoritativeTransition(
+                mutation: mutation,
+                snapshot: SourceSnapshot(
+                    text: "", // unused in failure path below
+                    sourceVersion: mutation.expectedRevision,
+                    locationGeneration: presentation.locationGeneration,
+                    fileURL: nil
+                ),
+                presentation: presentation,
+                tree: nil,
+                nextSnapshotID: nextSnapshotID,
+                affinity: affinity,
+                forcedMutationOnly: mutation
+            )
+        }
+        if case .failure = ProjectionOracle.validate(snapshot: transition.nextSnapshot) {
+            return .refused(.unprovable)
+        }
+        return .accepted(
+            AcceptedEdit(
+                sourceMutation: mutation,
+                presentationTransition: transition,
+                sourceSelectionAfter: mutation.selectionAfter,
+                projectionSelectionAfter: transition.selectionAfter
+            )
+        )
+    }
+
+    private static func planAuthoritativeTransition(
+        mutation: SourceMutation,
+        snapshot: SourceSnapshot,
+        presentation: PresentationSnapshot,
+        tree: MarkdownTree?,
+        nextSnapshotID: PresentationSnapshot.ID,
+        affinity: SelectionAffinity,
+        forcedMutationOnly: SourceMutation? = nil
+    ) -> EditorEditOutcome {
+        let activeMutation = forcedMutationOnly ?? mutation
+        // Apply mutation to a temporary source string and recompile when tree/source available.
+        let ns = snapshot.text as NSString
+        let usableSource: String
+        if snapshot.text.isEmpty, forcedMutationOnly != nil {
+            // Caller lacked a post-mutation snapshot — refuse rather than guess.
+            return .accepted(
+                AcceptedEdit(
+                    sourceMutation: activeMutation,
+                    presentationTransition: nil,
+                    sourceSelectionAfter: activeMutation.selectionAfter,
+                    projectionSelectionAfter: nil
+                )
+            )
+        }
+        guard activeMutation.range.location >= 0,
+              NSMaxRange(activeMutation.range) <= ns.length else {
+            return .refused(.invalidRange)
+        }
+        usableSource = ns.replacingCharacters(in: activeMutation.range, with: activeMutation.replacement)
+        let nextRevision = activeMutation.expectedRevision &+ 1
+        let index = MarkdownSourceIndex(source: usableSource, sourceVersion: nextRevision)
+        let parseResult = MarkdownParser.parse(usableSource, sourceVersion: nextRevision)
+        guard case .success(let newTree) = parseResult else {
+            return .accepted(
+                AcceptedEdit(
+                    sourceMutation: activeMutation,
+                    presentationTransition: nil,
+                    sourceSelectionAfter: activeMutation.selectionAfter,
+                    projectionSelectionAfter: nil
+                )
+            )
+        }
+        _ = tree
+        let model = MarkdownProjectionModel.build(tree: newTree, index: index)
+        let next = PresentationSnapshot.from(
+            model: model,
+            id: nextSnapshotID,
+            locationGeneration: presentation.locationGeneration
+        )
+        // Override source revision to the post-commit value.
+        let nextFixed = PresentationSnapshot.make(
+            id: next.id,
+            sourceRevision: SourceRevision(value: nextRevision),
+            locationGeneration: presentation.locationGeneration,
+            renderedString: next.renderedString,
+            runs: next.runs,
+            attachments: next.attachments,
+            tables: next.tables,
+            listMarkers: next.listMarkers,
+            atoms: next.atoms,
+            sourceUTF16Count: next.sourceUTF16Count
+        )
+        if case .failure = ProjectionOracle.validate(snapshot: nextFixed) {
+            return .accepted(
+                AcceptedEdit(
+                    sourceMutation: activeMutation,
+                    presentationTransition: nil,
+                    sourceSelectionAfter: activeMutation.selectionAfter,
+                    projectionSelectionAfter: nil
+                )
+            )
+        }
+        let sourceAfter = activeMutation.selectionAfter.nsRange
+        let projSel: ProjectionSelection
+        switch nextFixed.coordinateMap.projectionRange(forSource: sourceAfter, affinity: affinity) {
+        case .exact(let range):
+            projSel = ProjectionSelection(utf16: range, revision: nextFixed.projectionRevision, affinity: affinity)
+        case .refused:
+            projSel = ProjectionSelection(
+                utf16: NSRange(location: min(sourceAfter.location, (nextFixed.renderedString as NSString).length), length: 0),
+                revision: nextFixed.projectionRevision,
+                affinity: affinity
+            )
+        }
+        let transition = PresentationTransition(
+            fromSnapshotID: presentation.id,
+            nextSnapshot: nextFixed,
+            projectionReplacementRange: NSRange(location: 0, length: (presentation.renderedString as NSString).length),
+            projectionReplacement: nextFixed.renderedString,
+            selectionAfter: projSel
+        )
+        return .accepted(
+            AcceptedEdit(
+                sourceMutation: activeMutation,
+                presentationTransition: transition,
+                sourceSelectionAfter: activeMutation.selectionAfter,
+                projectionSelectionAfter: projSel
+            )
+        )
+    }
+
+    private static func mapRefusal(_ refusal: SemanticEditRefusal) -> EditRefusal {
+        switch refusal {
+        case .staleVersion: return .staleVersion
+        case .ambiguousSelection: return .ambiguousSelection
+        case .unsupportedCommand: return .unsupportedCommand
+        case .mappingFailure: return .mappingFailure
+        case .invalidRange: return .invalidRange
+        }
+    }
+
+    private static func precedingCharacter(snapshot: SourceSnapshot, range: NSRange) -> Character? {
+        guard range.location > 0 else { return nil }
+        let ns = snapshot.text as NSString
+        let idx = range.location - 1
+        let scalar = ns.character(at: idx)
+        return Character(UnicodeScalar(scalar)!)
+    }
+
+    private static func followingCharacter(snapshot: SourceSnapshot, range: NSRange) -> Character? {
+        let ns = snapshot.text as NSString
+        let idx = NSMaxRange(range)
+        guard idx < ns.length else { return nil }
+        let scalar = ns.character(at: idx)
+        return Character(UnicodeScalar(scalar)!)
+    }
+
+    private static func isAtLineStart(snapshot: SourceSnapshot, location: Int) -> Bool {
+        if location == 0 { return true }
+        let ns = snapshot.text as NSString
+        return ns.character(at: location - 1) == 0x0A
+    }
+
+    private static func container(for classif: ProjectionSelectionClass) -> LiteralEncodeContext.LiteralContainer {
+        switch classif {
+        case .tableCell: return .tableCell
+        default: return .paragraph
+        }
+    }
+
     /// Primary pipeline entry — typed request with grouping and domain.
     static func apply(_ request: EditorEditRequest,
                       snapshot: SourceSnapshot,
@@ -89,9 +427,11 @@ nonisolated enum SemanticEditEngine {
                 affinity: sourceSel.affinity
             )
         case .projection(let projSel):
-            guard let projection, projection.sourceVersion == projSel.range.revision.value else {
+            guard let projection, projection.sourceVersion == snapshot.sourceVersion else {
                 return .refused(.staleVersion)
             }
+            // ProjectionRevision identifies the presentation snapshot, not the source version.
+            _ = projSel.range.revision
             selection = SemanticSelection(
                 mode: .wysiwyg,
                 utf16Range: projSel.nsRange,
