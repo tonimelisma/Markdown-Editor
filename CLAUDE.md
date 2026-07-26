@@ -1,217 +1,212 @@
 # CLAUDE.md — Operating Manual
 
-This file is auto-loaded by Claude Code. It defines **how we work** in this repo.
-`docs/VISION.md` defines **what is true** about the product and architecture.
-Keep the split clean: *process* lives here, *durable truths* live in VISION.
+This file defines how agents work in this repository. `AGENTS.md` is a symlink to this file.
 
-> **This file is self-maintaining.** Whenever the working process changes — including
-> a correction from the user — update this file in the *same* change, and re-verify it
-> in the Definition-of-Done report (§9). If a rule here ever stops matching reality, the
-> file is stale and must be fixed before the task is "done".
+Product truth lives in `docs/VISION.md`; current engineering architecture in
+`docs/ENGINEERING.md`; behavior in `docs/REQUIREMENTS.md`.
 
-> ## ⛔ PRIME DIRECTIVE — informed consent
+This file is self-maintaining. A user correction to the working process is updated here in the
+same change and verified in the Definition of Done.
+
+> ## PRIME DIRECTIVE — informed consent
 >
-> **Nothing is written into the specs without the user's explicit, informed approval first.**
-> "The specs" = everything under `docs/**` — VISION, REQUIREMENTS, ROADMAP, ADRs, plans, and
-> any research doc that asserts a decision.
+> Nothing is written into the specs without the user's explicit, informed approval first.
 >
-> - The agent **does not invent** requirements, roadmap items, ADRs, invariants, or decisions
->   on the user's behalf. Ever.
-> - The order is always: **research → present findings → ask questions → get an explicit yes →
->   only then write.**
-> - Approval is **per item and specific**. Answering one question does not authorize the agent
->   to extrapolate a dozen related decisions into the docs.
-> - When unsure whether something is approved, **propose it in chat and wait.** Silence is not
->   consent.
+> “Specs” includes `VISION`, `ENGINEERING`, `REQUIREMENTS`, `ROADMAP`, plans, and research
+> recommendations. The order is research → findings/options/questions → explicit approval →
+> documentation. Approval is specific; silence is not consent.
 
----
+## 1. Product
 
-## 1. What this project is
+A native macOS Markdown editor: pure Swift, SwiftUI-first with narrow AppKit adapters, local-first,
+no accounts, no lock-in, and ordinary Markdown files.
 
-A native **macOS Markdown editor** — pure Swift, SwiftUI-first (AppKit where SwiftUI
-can't reach), local-first, no accounts, no lock-in. Idiomatic, HIG-faithful, "don't make
-the user think." Full product & engineering vision: **[docs/VISION.md](docs/VISION.md)**.
+Read `docs/VISION.md`, `docs/ENGINEERING.md`, `docs/REQUIREMENTS.md`, and `docs/ROADMAP.md` before
+planning or changing production code.
 
----
+## 2. Documentation authority
 
-## 2. Documentation model — spec-driven, conservative authority
+Code and tests are canonical implementation. The specs are the synchronized current intent layer.
+The working tree contains current truth and actionable work; Git is the archive.
 
-**Code + tests are canonical. The docs are the synchronized intent layer.** (We did *not*
-adopt the "spec is the sole source of truth" model — see
-[ADR-0001](docs/decisions/0001-spec-driven-documentation-conservative-authority.md).)
-
-Doc map (MECE — every doc has one job, no overlap):
-
-| Doc | Job |
+| Path | Sole job |
 |---|---|
-| `docs/VISION.md` | Durable product + engineering vision, principles, **invariants**, rules. |
-| `docs/REQUIREMENTS.md` | Numbered requirements (`REQ-###`) in EARS, traced to code + tests. The single source of truth for **WHAT**. |
-| `docs/ROADMAP.md` | Increments in logical order + status; backlog. Future vs. existing is explicit. |
-| `docs/decisions/` | ADRs — one decision per file. **Living, not immutable** (§8). |
-| `docs/research/` | Research docs: online research, native-API investigation, spikes/POCs. |
-| `docs/plans/` | Per-increment implementation plans, approved before code. |
+| `docs/VISION.md` | Durable product direction, priorities, and product policies |
+| `docs/ENGINEERING.md` | Authoritative current architecture, state ownership, runtime contracts, `ARC-###` invariants, quality scenarios, and risks |
+| `docs/REQUIREMENTS.md` | Current numbered behavior requirements (`REQ-###`) with code/test traceability |
+| `docs/ROADMAP.md` | Current delivery state, active sequence, and uncommitted backlog |
+| `docs/research/` | Still-valid costly evidence; never architecture authority |
+| `docs/plans/` | Approved and not-yet-implemented code plans |
 
-**Nothing stale.** Every change reconciles *all* affected docs in the same change. The
-DoD checklist (§9) enforces it.
+There is no ADR system and no documentation archive.
 
-**Consent-gated & incremental.** These docs are populated only with the user's approval
-(see the Prime Directive). They are created as the project earns them — so not every file
-listed above exists at every point in time. An empty or absent doc is normal, not stale.
+### No stale documents
 
----
+- Rewrite or delete stale text in the same change that makes it stale.
+- Do not retain obsolete guidance behind “superseded”, “corrected by”, “historical”, or warning
+  banners.
+- Implemented plans are deleted in the implementing change. Multiple approved pending plans may
+  coexist.
+- Research may remain when facts are still valid, useful, and expensive to reproduce. Each
+  research file states evidence-only authority, first-researched/last-verified dates, environment,
+  reproducible method, and refresh triggers.
+- Refresh or delete research when a dependency, SDK, requirement, or architectural assumption
+  invalidates material findings.
+- Historical rationale, completed plans, and displaced architecture remain available through Git.
+- Run `Scripts/check-documentation-authority.sh` before every commit.
 
-## 3. The increment lifecycle
+## 3. Increment lifecycle
 
-Each roadmap increment is built the same way (the **full lane**):
+### Discovery unit
 
-1. **Pick** the next increment from `docs/ROADMAP.md`; mark it `Active`.
-2. **Research** every unknown → `docs/research/NNNN-*.md`. Online research **and** probe
-   the real macOS/Swift APIs, plus spikes/POCs. No plan until unknowns are resolved.
-3. **Clarify** — surface open questions (product *and* engineering) to the user and get
-   answers before planning.
-4. **Specify** — add/update `REQ-###` entries in `docs/REQUIREMENTS.md` (EARS).
-5. **Plan** — write `docs/plans/NNNN-*.md`, explain it to the user, get approval **before** code.
-6. **Implement** — code + tests, each carrying `REQ-###` anchors (§4).
-7. **Reconcile (on the branch, *before* opening the PR)** — update REQUIREMENTS status +
-   traceability anchors, mark ROADMAP progress, write/update ADRs for decisions taken, touch
-   VISION only if a principle actually changed. The PR carries the code **and** these spec
-   updates, so the reviewer can verify traceability from the diff.
-8. **Review** — a **separate agent** code-reviews the diff against plan + requirements (§6).
-9. **Close** — mark the increment done in ROADMAP; add newly-found work to the backlog.
+1. Pick or define the next increment in ROADMAP.
+2. Research every unknown online and against real macOS/Swift APIs. Use bounded throwaway POCs
+   where documentation does not prove behavior.
+3. Present findings, credible options, trade-offs, and open product/engineering questions.
+4. Obtain explicit informed approval.
+5. Update VISION/ENGINEERING only for approved current truths.
+6. Add/update EARS requirements.
+7. Write an approved, code-focused plan.
+8. Reconcile all affected docs and remove stale material.
+9. Commit doc/config work directly to `main`.
 
-> **Discovery and build never mix.** Research, spikes, discovery, requirements-setting, and
-> planning (steps 2–5) are completed and approved as their **own unit(s) — with no production
-> code** — before any implementation. **Spikes are standalone units** (their POC code is
-> throwaway, not merged). A **build unit** (step 6) implements an already-approved plan; it
-> does not define new requirements or decisions. (Reconciling requirement *status* and
-> traceability *after* coding — step 7 — is part of the build unit and is fine; *setting*
-> requirements is discovery.)
+### Build unit
 
-### Closing sequence — order matters
+1. Start from an approved plan; do not mix new discovery or requirement-setting into the build.
+2. Create an app-code worktree and branch.
+3. Implement code and automated non-UI tests with `REQ-###` anchors.
+4. Produce the plan's architecture proofs, traces, and measurements.
+5. Delete displaced production paths; no compatibility shim remains.
+6. Reconcile requirement status/anchors and ROADMAP on the branch.
+7. Delete the implemented plan on the branch.
+8. Run documentation-authority and architecture-conformance gates.
+9. Open a PR and obtain separate-agent code review.
+10. Triage review comments, squash-merge, and clean every artifact created by the unit.
 
-Run these in order at the *end* of a task, once the work itself is finished:
+Discovery and build never mix. Spike code is throwaway and is never merged. If implementation
+contradicts ENGINEERING, stop the build and return to a separately approved discovery unit.
 
-**Code increment:**
-1. **Rebase if needed** — if `main` advanced, rebase the branch onto it so the PR is current.
-2. **PR-comment triage (§6a)** — review the last 10 PRs and their comments; claim, properly
-   fix, and record the fixing commit for every unaddressed comment.
-3. Squash-merge the PR → integrate into `main`.
-4. Clean up **your own** artifacts — worktree, branch (local + remote), WIP, stashes.
-5. **Stale-work sweep (§7)** — *only now*, after your own artifacts are gone, scan for any
-   *other* unrecognized work. This ordering is deliberate: it guarantees what you find is
-   never your own leftovers.
-6. **DoD report (§9)** — including the code-smell / quality analysis.
+### Architecture change gate
 
-**Doc-only or config-only increment:** commit straight to `main` — **no** worktree, PR,
-review, or self-cleanup (there's nothing to clean; you never left `main`). Then the
-stale-work sweep (§7) and DoD report (§9).
+An implementation plan cannot redefine architecture. Changing an `ARC-###` invariant requires:
 
-**Fast lane** (typos, one-liners, doc tweaks): skip lifecycle steps 2–5; still keep
-traceability honest and still produce a DoD report.
+1. a reproduced counterexample or new approved constraint;
+2. fresh evidence and real API probes where applicable;
+3. credible options evaluated against architecture drivers and quality scenarios;
+4. explicit user approval;
+5. an atomic update to ENGINEERING and affected requirements;
+6. an executable proof that discriminates the new contract; and
+7. deletion of the displaced production path in the same build.
 
----
+There are no supersession documents, indefinite migrations, or architectural compatibility
+layers.
 
-## 4. Traceability rules (mechanical, not a promise)
+### Closing sequence
 
-- **Code anchor:** `// REQ-012: autosave 500ms after last keystroke`
-- **Test anchor:** `// Verifies: REQ-012`
-- Each requirement row in `REQUIREMENTS.md` lists its code + verification anchors.
-- **No manual tests, ever.** Verification is **automated** (`test`) or **inherent** (satisfied
-  by construction — adopting a standard framework component that provides the behavior, or code
-  inspection such as "makes no network calls"). Never mark a requirement verified by hand.
-- **No UI tests, ever.** Do not run, add, or rely on the UI-test target; automated verification
-  uses unit/integration tests that do not require macOS UI automation.
-- **Forward:** every requirement has ≥1 verification (a `test`, or a justified `inherent`).
-  **Backward:** every `REQ-###` in code exists in REQUIREMENTS.md. A requirement with no
-  verification, or a code anchor with no requirement, is a DoD failure.
+For an app-code increment:
 
----
+1. Rebase onto current `main` if needed.
+2. Complete separate-agent review and PR-comment triage.
+3. Squash-merge.
+4. Remove the branch locally/remotely, worktree, WIP, and stashes created by the unit.
+5. Run the stale-work sweep.
+6. Run the documentation-authority check.
+7. Produce the Definition-of-Done report.
 
-## 5. Git & change workflow
+For docs/config only: commit and push directly on `main`, then run stale-work sweep and DoD.
 
-- **Doc-only and project-config changes → commit straight to `main`.** No branch, no PR.
-  *Project-config* = Xcode project files (`project.pbxproj`), build settings, entitlements.
-- **App-code changes (Swift sources, logic, tests) → worktree + branch + PR + squash-merge:**
-  1. Create a **git worktree** for the change (keeps `main` clean).
-  2. Branch name: `inc-NN-slug` (increment) or `fix-slug` (fix).
-  3. **Reconcile the specs on the branch *before* opening the PR** — REQUIREMENTS status +
-     traceability anchors, ROADMAP, ADRs — so the PR carries code **and** its spec updates.
-  4. Open a PR; **squash-merge**.
-  5. After merge: delete the branch (**local + remote**), remove the worktree, drop any
-     stashes you created. **Leave no trace you created.**
-- **Never destroy work:** before deleting/cleaning anything, verify it is yours *and*
-  merged or genuinely obsolete.
-- Commit trailer: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+## 4. Traceability and proof
 
-> A GitHub remote (`origin`, private) is configured. **Doc/config commits** are pushed to
-> `origin/main`. **App-code changes** use `gh` for the PR (create + squash-merge), and remote
-> branch cleanup (delete the branch on `origin` after merge) applies.
+- Each requirement row names current production types/routes and verification.
+- Local code comments such as `// REQ-012: ...` and test comments such as
+  `// Verifies: REQ-012` are optional cross-references for important or cross-cutting contracts.
+- Every `REQ-###` comment that exists in code/tests resolves to a current requirement.
+- Every `Done` requirement has automated test evidence or a precise construction/framework proof.
+- Every affected `ARC-###` invariant has the proof named in ENGINEERING and the active plan.
+- Backward traceability: every `REQ-###` in code/tests exists in REQUIREMENTS.
+- Forward traceability: every Done row identifies current production responsibility and at least
+  one real verification.
 
----
+### No manual or UI tests, ever
 
-## 6. Code review
+- Do not add, run, or cite an XCUITest/UI-test target.
+- Do not use screen automation as verification.
+- Automated verification uses unit or component/integration tests that do not require UI
+  automation. Direct construction of AppKit components is allowed.
+- “Inherent” applies only when a standard framework supplies the behavior without custom
+  interception, or source inspection proves an absence such as no networking.
 
-Every **code** increment is reviewed by a **separate agent** against the plan and the
-requirements before merge. **Spawn this review subagent automatically — do not ask the user
-first.** The reviewer posts its findings as comments on the PR. Doc-only changes don't require
-a separate review pass.
+A green existing suite is not proof of a new claim. Tests must fail for the relevant defective
+behavior before the fix or otherwise discriminate the required invariant.
 
-## 6a. PR-comment triage (end of each build increment, before the DoD)
+## 5. Git workflow
 
-After the separate-agent review has posted its findings, and before squash-merge:
+- Docs-only and project-config changes commit directly to `main`; no branch, worktree, or PR.
+- Swift application/test changes use a worktree, branch, PR, and squash merge.
+- Branch names: `inc-NN-slug`, `cor-NN-slug`, or `fix-slug`.
+- Reconcile specs before opening the PR so code and current truth are reviewed together.
+- Never destroy work. Resolve ownership and merged/obsolete status before cleanup.
+- Remove local and remote branches, worktrees, stashes, and WIP created by the task after merge.
+- Push doc/config commits to `origin/main`.
+- Commit trailer:
+  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 
-1. **Rebase** the branch onto `main` if `main` has advanced.
-2. **Review the last 10 PRs and their comments** (this PR and recent ones) — nothing rots.
-3. For every **unclaimed** comment (a finding not yet addressed):
-   - **Claim it** by replying `to fix`.
-   - **Design a proper, root-cause fix — never a bandaid.**
-   - Apply it and commit; keep a comment's fix in **one commit**.
-   - After committing, **reply to the comment with the fixing commit SHA**.
-4. Squash-merge only once every comment is claimed and fixed.
+## 6. Code review and PR comments
 
----
+Every code increment receives a separate-agent review against VISION, ENGINEERING, REQUIREMENTS,
+and its approved plan before merge. Spawn the reviewer automatically. Doc-only changes do not
+require a separate review.
 
-## 7. Stale-work sweep (run right before the DoD — *after* your own cleanup)
+Before squash merge:
 
-**Timing:** this runs at the very end of a task, *after* you've merged your PR into `main`
-and removed your own worktree/branch/WIP/stashes (see the closing sequence in §3). Not at
-the start of an increment. By running it last, anything you find is genuinely *other* work,
-not your own leftovers.
+1. Rebase if `main` advanced.
+2. Review the last 10 PRs and their comments.
+3. For each unclaimed actionable comment:
+   - reply `to fix`;
+   - design and implement the root-cause correction;
+   - keep that correction in one commit; and
+   - reply with the fixing commit SHA.
+4. Merge only after every comment is resolved.
 
-Check **branches, PRs, stashes, worktrees — local and remote** — for anything unrecognized:
+## 7. Stale-work sweep
 
-- **Recent/active** → leave it, note it in the DoD.
-- **Old/forgotten** → investigate. **Ensure no work is ever lost.** Integrate cleanly to
-  `main` unless genuinely obsolete; then clean it up. Suggest deeper investigation if the
-  provenance is unclear.
+Run after the task's own artifacts are gone and immediately before DoD.
 
----
+Inspect local and remote branches, PRs, stashes, and worktrees:
 
-## 8. On user correction
+- leave recent/active recognized work and report it;
+- investigate old/unrecognized work;
+- integrate valuable work or remove only material proven obsolete;
+- never lose work whose provenance is unclear.
 
-When the user corrects something, treat it as **durable**, not conversational:
+Also sweep documentation for obsolete symbols, links, implemented plans, invalidated research,
+and claims that conflict with code or current specs.
 
-1. Apply the correction where it belongs (VISION / REQUIREMENTS / ADR / this file / …).
-2. **Sweep all docs for staleness** related to the correction and fix them comprehensively.
-3. If it changes a past decision, **update** the relevant ADR (ADRs are living, not immutable).
-4. Confirm in the DoD that the correction is now recorded in durable repo state.
+## 8. User corrections
 
----
+A user correction is durable:
 
-## 9. Definition of Done (DoD) — end every task with this
+1. update the authoritative current document or this manual;
+2. sweep every affected doc and delete/rewrite stale statements;
+3. update requirements and executable proof where behavior changes;
+4. do not retain the displaced rule as an active document; and
+5. confirm propagation in the DoD.
 
-Report a red/green checklist confirming each applicable step was followed (or ❌ + why):
+## 9. Definition of Done
 
-- Docs reconciled (VISION / REQUIREMENTS / ROADMAP / ADRs / research / plans, as affected)
-- Traceability intact (REQ anchors ↔ code ↔ tests)
-- Git workflow followed (doc/config→`main`, or app-code→worktree/PR/squash)
-- Branches / stashes / worktrees cleaned (local + remote)
-- Code review done (code changes only) — review subagent spawned automatically
-- PR-comment triage done — last 10 PRs' comments reviewed; unclaimed ones claimed, properly fixed, fixing commit noted (code increments)
-- Stale-work sweep done + reported
-- **CLAUDE.md self-check** — updated if the process changed, still matches reality
-- **Informed consent** — everything written to `docs/**` this task was shown to and approved by the user first
-- User corrections propagated to durable docs
-- **Code-smell / quality scan** — remaining code smells or quality issues analyzed and reported (every DoD)
+Report ✅, ❌, or ➖ for:
 
-Use ✅ / ❌ (and ➖ for N/A). If any box is ❌, say so plainly and explain.
+- Docs reconciled: VISION / ENGINEERING / REQUIREMENTS / ROADMAP / research / plans
+- Documentation-authority check passed
+- Traceability intact: REQ anchors and affected ARC proofs
+- Git workflow followed
+- Branches, stashes, and worktrees cleaned locally/remotely
+- Separate-agent code review completed (code only)
+- Last-10-PR comment triage completed (code only)
+- Stale-work and stale-document sweep completed
+- CLAUDE.md/AGENTS.md self-check completed
+- Informed consent honored
+- User corrections propagated to durable current docs
+- Code-smell/quality analysis reported
+
+Any ❌ means the task is not complete and must be explained plainly.
