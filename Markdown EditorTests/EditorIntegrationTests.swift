@@ -386,6 +386,32 @@ struct EditorIntegrationTests {
         #expect(id == second.nodeID)
     }
 
+    // Verifies: REQ-080/087; ARC-009 — cell ownership requires complete
+    // containment; a selection extending into prose is mixed and uneditable.
+    @Test func tableSelectionExtendingIntoParagraphIsMixed() throws {
+        let source = "| a |\n| --- |\n| b |\n\nafter\n"
+        let snapshot = try #require(
+            AuthoritativePresentationBuilder.build(
+                source: source,
+                sourceRevision: 1,
+                snapshotID: PresentationSnapshot.ID(value: 1),
+                locationGeneration: 0
+            )
+        )
+        let finalCell = try #require(snapshot.tables.first?.cells.last)
+        let selection = NSRange(
+            location: finalCell.utf16Range.location,
+            length: (snapshot.renderedString as NSString).length - finalCell.utf16Range.location
+        )
+
+        let classification = ProjectionSelectionClassifier.classify(
+            selection: selection,
+            affinity: .downstream,
+            snapshot: snapshot
+        )
+        #expect(classification == .mixed)
+    }
+
     // Verifies: REQ-080 — typing in a cell with `\|` edits source escapes, not rendered rebuild.
     @Test func tableTypingPreservesEscapedPipeInSource() throws {
         let source = "| a\\|b |\n| --- |\n| c |\n"

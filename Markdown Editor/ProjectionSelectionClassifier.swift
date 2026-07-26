@@ -167,18 +167,12 @@ nonisolated enum ProjectionSelectionClassifier {
         let body = projectionBody(for: cell, in: snapshot)
         // Selection must stay within the cell body (or its empty caret boundaries).
         if selection.length > 0 {
-            let clipped = NSIntersectionRange(selection, body)
-            if clipped != selection && !(selection.length > 0 && NSLocationInRange(selection.location, cell.utf16Range)) {
-                // Allow selection exactly equal to cell range including trailing tab only when replacing whole cell via body.
-                if selection != cell.utf16Range {
-                    // Mixed table/text if selection extends outside cell.
-                    if selection.location < cell.utf16Range.location
-                        || NSMaxRange(selection) > NSMaxRange(cell.utf16Range) {
-                        return .mixed
-                    }
-                }
+            let entirelyInBody = selection.location >= body.location
+                && NSMaxRange(selection) <= NSMaxRange(body)
+            let exactCellIncludingSeparator = selection == cell.utf16Range
+            if !entirelyInBody && !exactCellIncludingSeparator {
+                return .mixed
             }
-            _ = clipped
         }
         return .tableCell(nodeID: cell.nodeID, sourceRange: source, projectionBody: body)
     }
