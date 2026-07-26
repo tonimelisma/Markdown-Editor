@@ -104,6 +104,8 @@ struct EditorHostView: NSViewRepresentable {
 
         var sourceChrome = EditorViewChromeState()
         var wysiwygChrome = EditorViewChromeState()
+        /// Last mode applied to visibility — used to transfer focus on toggle.
+        private var lastAppliedMode: EditorMode?
 
         /// Stable identities for characterization tests.
         var sourceViewIdentity: ObjectIdentifier? {
@@ -199,6 +201,13 @@ struct EditorHostView: NSViewRepresentable {
 
         func applyMode(_ mode: EditorMode, focus: Bool) {
             guard let sourceScroll, let wysiwygScroll, let sourceText, let wysiwygText else { return }
+            let modeChanged = lastAppliedMode != nil && lastAppliedMode != mode
+            let firstResponder = sourceText.window?.firstResponder
+            let hadEditorFocus =
+                firstResponder === sourceText
+                || firstResponder === wysiwygText
+                || firstResponder === sourceScroll
+                || firstResponder === wysiwygScroll
             if sourceScroll.isHidden == false {
                 sourceChrome.selection = sourceText.selectedRange()
                 sourceChrome.affinity = sourceText.selectionAffinity == .upstream ? .upstream : .downstream
@@ -214,6 +223,8 @@ struct EditorHostView: NSViewRepresentable {
             let showSource = (mode == .source)
             sourceScroll.isHidden = !showSource
             wysiwygScroll.isHidden = showSource
+            let shouldFocus = focus || (modeChanged && hadEditorFocus)
+            lastAppliedMode = mode
             if showSource {
                 let affinity: NSSelectionAffinity = sourceChrome.affinity == .upstream ? .upstream : .downstream
                 sourceText.setSelectedRanges(
@@ -223,7 +234,7 @@ struct EditorHostView: NSViewRepresentable {
                 )
                 sourceScroll.contentView.scroll(to: sourceChrome.scrollOffset)
                 sourceScroll.reflectScrolledClipView(sourceScroll.contentView)
-                if focus { sourceText.window?.makeFirstResponder(sourceText) }
+                if shouldFocus { sourceText.window?.makeFirstResponder(sourceText) }
             } else {
                 let affinity: NSSelectionAffinity = wysiwygChrome.affinity == .upstream ? .upstream : .downstream
                 wysiwygText.setSelectedRanges(
@@ -233,7 +244,7 @@ struct EditorHostView: NSViewRepresentable {
                 )
                 wysiwygScroll.contentView.scroll(to: wysiwygChrome.scrollOffset)
                 wysiwygScroll.reflectScrolledClipView(wysiwygScroll.contentView)
-                if focus { wysiwygText.window?.makeFirstResponder(wysiwygText) }
+                if shouldFocus { wysiwygText.window?.makeFirstResponder(wysiwygText) }
             }
         }
 
@@ -253,6 +264,9 @@ struct EditorHostView: NSViewRepresentable {
         }
 
         /// Apply document-owned post-edit caret (always source UTF-16) to the visible editor.
+        ///
+        /// In WYSIWYG, wait for a projection whose `sourceVersion` matches the document before
+        /// mapping — never clamp source coords into a stale projection and clear the pending caret.
         func applyPendingSelectionIfNeeded() {
             guard let pending = document.pendingSelection else { return }
             if session.mode == .source {
@@ -261,21 +275,18 @@ struct EditorHostView: NSViewRepresentable {
                 let loc = min(max(0, pending.location), length)
                 let len = min(max(0, pending.length), max(0, length - loc))
                 sourceText.setSelectedRange(NSRange(location: loc, length: len))
+                document.pendingSelection = nil
             } else {
                 guard let wysiwygText else { return }
-                let projected: NSRange
-                if let projection = session.projection,
-                   case .exact(let range) = projection.coordinateMap.projectionRange(forSource: pending) {
-                    projected = range
-                } else {
-                    let length = (wysiwygText.string as NSString).length
-                    let loc = min(max(0, pending.location), length)
-                    let len = min(max(0, pending.length), max(0, length - loc))
-                    projected = NSRange(location: loc, length: len)
+                guard let projection = session.projection,
+                      projection.sourceVersion == document.sourceVersion,
+                      case .exact(let projected) = projection.coordinateMap.projectionRange(forSource: pending)
+                else {
+                    return
                 }
                 wysiwygText.setSelectedRange(projected)
+                document.pendingSelection = nil
             }
-            document.pendingSelection = nil
         }
 
         private func configureSource(_ textView: MarkdownSourceTextView) {
@@ -287,6 +298,7 @@ struct EditorHostView: NSViewRepresentable {
             textView.isAutomaticQuoteSubstitutionEnabled = false
             textView.isAutomaticDashSubstitutionEnabled = false
             textView.isAutomaticTextReplacementEnabled = false
+            textView.isAutomaticSpellingCorrectionEnabled = false
             textView.usesFindBar = true
             textView.isIncrementalSearchingEnabled = true
             textView.textContainerInset = NSSize(width: 8, height: 8)
@@ -310,6 +322,7 @@ struct EditorHostView: NSViewRepresentable {
             textView.isAutomaticQuoteSubstitutionEnabled = false
             textView.isAutomaticDashSubstitutionEnabled = false
             textView.isAutomaticTextReplacementEnabled = false
+            textView.isAutomaticSpellingCorrectionEnabled = false
             textView.usesFindBar = true
             textView.isIncrementalSearchingEnabled = true
             textView.textContainerInset = NSSize(width: 8, height: 8)

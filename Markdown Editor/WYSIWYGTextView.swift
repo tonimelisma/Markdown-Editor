@@ -206,6 +206,7 @@ struct WYSIWYGTextView: NSViewRepresentable {
             let range = textView.selectedRange()
             var state = session.wysiwygViewState
             state.selection = range
+            state.affinity = textView.selectionAffinity == .upstream ? .upstream : .downstream
             session.wysiwygViewState = state
             document.reportActiveSelection(range)
         }
@@ -275,6 +276,60 @@ final class MarkdownWYSIWYGTextView: NSTextView {
     }
 
     override func unmarkText() {
+        // Some IMEs finish composition via unmarkText rather than insertText. Commit the
+        // marked characters to source before clearing composition state; empty marked text
+        // (Escape / cancel) still cancels without a source write.
+        if let input = inputCoordinator, input.committingComposition {
+            super.unmarkText()
+            return
+        }
+        if let input = inputCoordinator, input.composition.isComposing || hasMarkedText() {
+            let marked = markedRange()
+            let text: String
+            if marked.location != NSNotFound, let storage = textStorage {
+                let safeLoc = min(max(0, marked.location), storage.length)
+                let safeLen = min(max(0, marked.length), max(0, storage.length - safeLoc))
+                text = (storage.string as NSString).substring(with: NSRange(location: safeLoc, length: safeLen))
+            } else {
+                text = ""
+            }
+            if text.isEmpty {
+                input.cancel()
+                super.unmarkText()
+                (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
+                return
+            }
+            let currentVersion = documentActions?.sourceSnapshot().sourceVersion ?? 0
+            guard input.prepareCommit(currentVersion: currentVersion),
+                  let captured = input.complete() else {
+                input.cancel()
+                super.unmarkText()
+                (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
+                return
+            }
+            let selection = SemanticSelection(
+                mode: .wysiwyg,
+                utf16Range: captured.range,
+                sourceVersion: captured.version
+            )
+            let result = session?.perform(.insertText(text), selection: selection)
+            (documentActions as? MarkdownDocument)?.trace?.record(
+                .compositionCommitted(sourceVersion: captured.version, replacementLength: (text as NSString).length)
+            )
+            switch result {
+            case .transaction:
+                input.committingComposition = true
+                input.allowingMarkedText = true
+                super.unmarkText()
+                input.allowingMarkedText = false
+                input.committingComposition = false
+            case .refused, .none:
+                input.cancel()
+                super.unmarkText()
+                (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
+            }
+            return
+        }
         inputCoordinator?.cancel()
         super.unmarkText()
         (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)

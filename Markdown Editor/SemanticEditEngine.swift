@@ -293,7 +293,7 @@ nonisolated enum SemanticEditEngine {
             range: sourceRange,
             replacement: replacement,
             action: "Toggle Task"
-        ) { newTree in
+        ) { newTree, _ in
             guard let item = findNode(id: nodeID, in: newTree.root),
                   case .item(let newChecked) = item.kind else {
                 // Node IDs are per-parse; accept flipped marker text instead.

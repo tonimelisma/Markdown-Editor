@@ -266,6 +266,42 @@ struct PersistentEditorCharacterizationTests {
         #expect(document.pendingSelection == nil)
     }
 
+    // Verifies: review — WYSIWYG pendingSelection waits for matching projection version.
+    @Test func pendingSelectionWaitsForMatchingProjection() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("abcdefghij\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        session.setMode(.wysiwyg)
+        let placement = ImagePlacementController()
+        let router = EditorActionRouter()
+        let host = EditorHostView.HostCoordinator(
+            document: document,
+            session: session,
+            placementController: placement,
+            actionRouter: router
+        )
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        host.buildEditors(in: root)
+        host.applyMode(.wysiwyg, focus: false)
+
+        // Stale / missing matching projection must not clear the pending caret.
+        document.pendingSelection = NSRange(location: 4, length: 0)
+        session.clearProjectionForTesting()
+        host.applyPendingSelectionIfNeeded()
+        #expect(document.pendingSelection == NSRange(location: 4, length: 0))
+
+        let index = MarkdownSourceIndex(source: document.text, sourceVersion: document.sourceVersion)
+        guard case .success(let tree) = MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion) else {
+            Issue.record("parse failed")
+            return
+        }
+        let projection = MarkdownProjectionModel.build(tree: tree, index: index)
+        session.installProjectionForTesting(projection, tree: tree)
+        host.applyPendingSelectionIfNeeded()
+        #expect(document.pendingSelection == nil)
+    }
+
     // Verifies: REQ-082 — captured WYSIWYG intent resolves to source before placement.
     @Test func addImageResolvesCapturedIntentToSourceRange() {
         let document = MarkdownDocument()

@@ -18,8 +18,10 @@ nonisolated enum SyntheticKind: Sendable, Equatable {
 }
 
 nonisolated enum SyntheticInsertionPolicy: Sendable, Equatable {
-    /// Insert at this absolute UTF-16 source location.
+    /// Insert at this absolute UTF-16 source location (both boundaries).
     case atSourceLocation(Int)
+    /// Distinct before/after source boundaries (e.g. list markers spanning `- ` / `1. `).
+    case atSourceBoundaries(before: Int, after: Int)
     /// Refuse edits that land only on this synthetic unit.
     case refuse
 }

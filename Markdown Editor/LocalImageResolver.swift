@@ -98,7 +98,11 @@ final class LocalImageCache {
         if let cached = byteCache.image(
             path: descriptor.resolvedURL.path,
             locationGeneration: descriptor.locationGeneration,
-            modification: descriptor.fileModificationDate
+            modification: descriptor.fileModificationDate,
+            contentType: descriptor.contentType,
+            pixelWidth: descriptor.pixelWidth,
+            pixelHeight: descriptor.pixelHeight,
+            byteCost: descriptor.byteCost
         ) {
             return NSImage(
                 cgImage: cached,
@@ -110,7 +114,10 @@ final class LocalImageCache {
             cost: descriptor.byteCost,
             path: descriptor.resolvedURL.path,
             locationGeneration: descriptor.locationGeneration,
-            modification: descriptor.fileModificationDate
+            modification: descriptor.fileModificationDate,
+            contentType: descriptor.contentType,
+            pixelWidth: descriptor.pixelWidth,
+            pixelHeight: descriptor.pixelHeight
         )
         // REQ-089: privacy-safe cache instrumentation (cost/total only).
         trace?.record(.imageCacheStore(cost: descriptor.byteCost, totalBytes: byteCache.totalBytes))
