@@ -112,7 +112,7 @@ Post-merge review found that REQ-016's undo closure captured a historical expect
 REQ-018 did not compile under Swift 6 complete concurrency. Those defects are corrected by
 [COR-05](#cor-05--source-integrity-and-swift-6--build--done).
 
-## INC-04 · WYSIWYG mode — `[build]` 🟠 Correction required
+## INC-04 · WYSIWYG mode — `[build]` ✅ Done
 
 - Provide two editable modes over the same canonical Markdown source:
   - Source shows literal Markdown with live lexical styling.
@@ -163,13 +163,15 @@ Replaced proportional/clamped coordinates with typed `ProjectionSegment` / `Proj
 Requirements: REQ-054–REQ-058, REQ-080, REQ-087, REQ-089–REQ-090.
 Approved design: [PLAN-0010](plans/0010-inc04-correction-program.md) §6.
 
-## COR-07 · Persistent native editing and interaction completion — `[build]` ⚪ Planned
+## COR-07 · Persistent native editing and interaction completion — `[build]` ✅ Done
 
-Host both TextKit 1 editors persistently; complete selection/scroll/IME behavior, window-scoped
-Add Image routing, task accessibility/keyboard operation, exact table-cell editing, and bounded
-direct `CGImage` display for distinct PNG/JPEG/GIF/HEIC/HEIF fixtures.
+Hosts both TextKit 1 editors persistently (`EditorHostView`); mode-local selection/scroll/affinity;
+IME `CompositionState`/`WYSIWYGInputCoordinator`; window-scoped `EditorActionRouter`; task
+mouse/Space/Return/accessibility press; bounded direct `CGImage` display with distinct
+PNG/JPEG/GIF/HEIC/HEIF fixtures + SHA-256 manifest; Release keystroke/toggle gates.
 
 Requirements: REQ-032, REQ-052, REQ-078–REQ-087, REQ-089–REQ-090.
+Approved design: [PLAN-0010](plans/0010-inc04-correction-program.md) §7.
 
 ---
 

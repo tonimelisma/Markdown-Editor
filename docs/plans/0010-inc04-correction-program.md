@@ -2,7 +2,7 @@
 
 - **Program:** COR-05, COR-06, COR-07
 - **Date:** 2026-07-25
-- **Status:** Approved / ready to implement
+- **Status:** COR-05/06/07 implemented (program complete pending merge of COR-07)
 - **Research:** [RESEARCH-0008](../research/0008-inc04-correction-architecture-review.md)
 - **Decision:** [ADR-0013](../decisions/0013-source-backed-rich-projection-and-semantic-edits.md)
 - **Requirements:** REQ-011, REQ-016, REQ-018, REQ-032, REQ-052, REQ-054–REQ-058,
@@ -450,26 +450,26 @@ tasks, tables, accessibility, and local image display.
 
 ### Implementation checklist
 
-- [ ] Add `EditorHostController` containing both persistent text views.
-- [ ] Replace the conditional SwiftUI mode branches with that one host.
-- [ ] Add mode-local selection, affinity, scroll, focus, and accepted-revision state.
-- [ ] Add typed `EditorSelectionIntent`.
-- [ ] Route every native edit and toolbar command through exact selection resolution.
-- [ ] Add pure `CompositionState` and `WYSIWYGInputCoordinator`.
-- [ ] Suppress rich rebuild during marked text and commit one final mutation.
-- [ ] Ensure native typing remains the synchronous path.
-- [ ] Replace `.editorAddImageClaims` and global notification subscription with
+- [x] Add `EditorHostController` containing both persistent text views.
+- [x] Replace the conditional SwiftUI mode branches with that one host.
+- [x] Add mode-local selection, affinity, scroll, focus, and accepted-revision state.
+- [x] Add typed `EditorSelectionIntent`.
+- [x] Route every native edit and toolbar command through exact selection resolution.
+- [x] Add pure `CompositionState` and `WYSIWYGInputCoordinator`.
+- [x] Suppress rich rebuild during marked text and commit one final mutation.
+- [x] Ensure native typing remains the synchronous path.
+- [x] Replace `.editorAddImageClaims` and global notification subscription with
       `EditorActionRouter`.
-- [ ] Capture image insertion intent before asynchronous picker/placement work.
-- [ ] Implement task checkbox role, label, value, Space, Return, and accessibility press.
-- [ ] Preserve direct all-scheme link opening through the injected `NSWorkspace` action.
-- [ ] Render and edit table-cell content through exact cell mappings.
-- [ ] Implement allowed-UTI, bounded `CGImage` decode off-main.
-- [ ] Remove intermediate display PNG encoding and every JPEG destination path.
-- [ ] Implement content-aware, display-bound, location-aware, 64 MiB LRU image cache.
-- [ ] Add distinct licensed image fixtures and SHA-256 manifest.
-- [ ] Move every test-created file into a unique temporary directory.
-- [ ] Add signposts and run all performance gates.
+- [x] Capture image insertion intent before asynchronous picker/placement work.
+- [x] Implement task checkbox role, label, value, Space, Return, and accessibility press.
+- [x] Preserve direct all-scheme link opening through the injected `NSWorkspace` action.
+- [x] Render and edit table-cell content through exact cell mappings.
+- [x] Implement allowed-UTI, bounded `CGImage` decode off-main.
+- [x] Remove intermediate display PNG encoding and every JPEG destination path.
+- [x] Implement content-aware, display-bound, location-aware, 64 MiB LRU image cache.
+- [x] Add distinct licensed image fixtures and SHA-256 manifest.
+- [x] Move every test-created file into a unique temporary directory.
+- [x] Add signposts and run all performance gates.
 
 ### Native component verification
 

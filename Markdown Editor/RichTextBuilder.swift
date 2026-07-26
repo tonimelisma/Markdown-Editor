@@ -19,7 +19,8 @@ enum RichTextBuilder {
         model: MarkdownProjectionModel,
         theme: MarkdownTheme,
         images: [MarkdownNodeID: NSImage] = [:],
-        openURL: ((URL) -> Void)? = nil
+        openURL: ((URL) -> Void)? = nil,
+        onTaskPress: ((MarkdownNodeID) -> Void)? = nil
     ) -> BuiltRichText {
         let storage = NSMutableAttributedString(string: model.renderedString)
         let full = NSRange(location: 0, length: storage.length)
@@ -67,7 +68,10 @@ enum RichTextBuilder {
             let nsAttachment = NSTextAttachment()
             switch attachment.kind {
             case .task(let checked, let label):
-                nsAttachment.attachmentCell = TaskCheckboxAttachmentCell(checked: checked, label: label)
+                let cell = TaskCheckboxAttachmentCell(checked: checked, label: label)
+                let nodeID = attachment.nodeID
+                cell.onPress = { onTaskPress?(nodeID) }
+                nsAttachment.attachmentCell = cell
             case .image(let destination, let description):
                 if let image = images[attachment.nodeID] {
                     nsAttachment.image = image
@@ -139,6 +143,8 @@ enum RichTextBuilder {
 final class TaskCheckboxAttachmentCell: NSTextAttachmentCell {
     private let checked: Bool
     private let label: String
+    /// Window-scoped press handler — mouse/Space/Return/VoiceOver share one transaction path.
+    var onPress: (() -> Void)?
 
     init(checked: Bool, label: String) {
         self.checked = checked
@@ -172,6 +178,14 @@ final class TaskCheckboxAttachmentCell: NSTextAttachmentCell {
     nonisolated override func accessibilityRole() -> NSAccessibility.Role? { .checkBox }
     nonisolated override func accessibilityLabel() -> String? { label.isEmpty ? "Task" : label }
     nonisolated override func accessibilityValue() -> Any? { checked ? 1 : 0 }
+
+    // REQ-032/078/084: VoiceOver press equals mouse/Space/Return toggle.
+    nonisolated override func accessibilityPerformPress() -> Bool {
+        MainActor.assumeIsolated {
+            onPress?()
+        }
+        return true
+    }
 }
 
 @MainActor

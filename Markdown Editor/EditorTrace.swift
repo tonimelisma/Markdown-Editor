@@ -20,6 +20,11 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case parseCompleted(sourceVersion: UInt64)
     case parseCancelled(sourceVersion: UInt64)
     case modeToggle(toSource: Bool)
+    case compositionBegan(sourceVersion: UInt64)
+    case compositionCommitted(sourceVersion: UInt64, replacementLength: Int)
+    case compositionCancelled
+    case compositionRefusedStale
+    case imageCacheStore(cost: Int, totalBytes: Int)
 }
 
 nonisolated enum HistoryDirection: String, Sendable, Equatable {
@@ -78,6 +83,16 @@ final class OSLogEditorTrace: EditorTraceSink {
             logger.debug("parseCancelled rev=\(sourceVersion)")
         case .modeToggle(let toSource):
             logger.debug("modeToggle toSource=\(toSource)")
+        case .compositionBegan(let sourceVersion):
+            logger.debug("compositionBegan rev=\(sourceVersion)")
+        case .compositionCommitted(let sourceVersion, let replacementLength):
+            logger.debug("compositionCommitted rev=\(sourceVersion) replLen=\(replacementLength)")
+        case .compositionCancelled:
+            logger.debug("compositionCancelled")
+        case .compositionRefusedStale:
+            logger.fault("compositionRefusedStale")
+        case .imageCacheStore(let cost, let totalBytes):
+            logger.debug("imageCacheStore cost=\(cost) total=\(totalBytes)")
         }
     }
 }

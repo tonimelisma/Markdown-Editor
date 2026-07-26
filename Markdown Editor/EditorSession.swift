@@ -157,8 +157,22 @@ final class EditorSession: ObservableObject {
         }
     }
 
+    /// Window-scoped image action router (REQ-082). Injected by ContentView.
+    weak var actionRouter: EditorActionRouter?
+
     func addImages() async {
         guard let document else { return }
+        // REQ-082: capture window-scoped insertion intent before async picker work.
+        let domain: EditorCoordinateDomain = mode == .source ? .source : .wysiwyg
+        let range = mode == .source ? sourceViewState.selection : wysiwygViewState.selection
+        let intent = EditorSelectionIntent(
+            domain: domain,
+            sourceVersion: document.sourceVersion,
+            range: range,
+            affinity: .downstream
+        )
+        actionRouter?.captureImageInsertionIntent(intent)
+
         let urls: [URL]
         if let pickImages {
             urls = await pickImages()
@@ -167,12 +181,7 @@ final class EditorSession: ObservableObject {
         }
         guard !urls.isEmpty else { return }
         let claims = urls.map { ImageClaim.fileURL($0, providerName: $0.lastPathComponent, declaredType: nil) }
-        // COR-02 entry — placement controller is attached by ContentView.
-        NotificationCenter.default.post(
-            name: .editorAddImageClaims,
-            object: nil,
-            userInfo: ["claims": claims, "document": document]
-        )
+        actionRouter?.handleAddImageClaims(claims)
     }
 
     private static func presentOpenPanel() async -> [URL] {
@@ -190,8 +199,4 @@ final class EditorSession: ObservableObject {
             }
         }
     }
-}
-
-extension Notification.Name {
-    static let editorAddImageClaims = Notification.Name("MarkdownEditor.addImageClaims")
 }

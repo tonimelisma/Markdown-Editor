@@ -1,0 +1,180 @@
+//
+//  LocalImageDecoder.swift
+//  Markdown Editor
+//
+
+import CoreGraphics
+import Foundation
+import ImageIO
+import UniformTypeIdentifiers
+
+/// Off-main local image decode returning a bounded `CGImage` — no PNG/JPEG re-encode of files.
+///
+/// // REQ-081/085/087: PNG/JPEG/GIF/HEIC/HEIF; UTI validation; originals untouched.
+nonisolated enum LocalImageDecoder {
+    static let maxPixelDimension = 8_192
+    static let maxDisplayEdge: CGFloat = 512
+    static let allowedUTIs: Set<String> = [
+        UTType.png.identifier,
+        UTType.jpeg.identifier,
+        UTType.gif.identifier,
+        UTType.heic.identifier,
+        UTType.heif.identifier,
+        "public.png", "public.jpeg", "public.gif", "public.heic", "public.heif"
+    ]
+
+    struct DecodedImage: Sendable {
+        let cgImage: CGImage
+        let contentType: String
+        let pixelWidth: Int
+        let pixelHeight: Int
+        let byteCost: Int
+        let fileModificationDate: Date?
+    }
+
+    static func decode(
+        destination: String,
+        documentURL: URL?
+    ) -> Result<DecodedImage, LocalImageResolveFailure> {
+        if let url = URL(string: destination), let scheme = url.scheme?.lowercased(),
+           ["http", "https", "ftp"].contains(scheme) {
+            return .failure(.remoteURL)
+        }
+        if destination.lowercased().hasPrefix("//") {
+            return .failure(.remoteURL)
+        }
+        guard let documentURL else { return .failure(.missingFile) }
+        let folder = documentURL.deletingLastPathComponent()
+        let resolved = URL(fileURLWithPath: destination, relativeTo: folder).standardizedFileURL
+
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: resolved.path, isDirectory: &isDir), !isDir.boolValue else {
+            return .failure(.missingFile)
+        }
+
+        let ext = resolved.pathExtension.lowercased()
+        guard ["png", "jpg", "jpeg", "gif", "heic", "heif"].contains(ext) else {
+            return .failure(.unsupportedType)
+        }
+
+        guard let source = CGImageSourceCreateWithURL(resolved as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else {
+            return .failure(.corrupt)
+        }
+        let uti = CGImageSourceGetType(source).map { $0 as String } ?? ""
+        guard allowedUTIs.contains(uti) else {
+            return .failure(.unsupportedType)
+        }
+        guard let props = CGImageSourceCopyPropertiesAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary) as? [CFString: Any] else {
+            return .failure(.corrupt)
+        }
+        let width = props[kCGImagePropertyPixelWidth] as? Int ?? 0
+        let height = props[kCGImagePropertyPixelHeight] as? Int ?? 0
+        guard width > 0, height > 0 else { return .failure(.corrupt) }
+        if width > maxPixelDimension || height > maxPixelDimension {
+            return .failure(.oversizeDimensions(width: width, height: height))
+        }
+
+        let thumbOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: Int(maxDisplayEdge),
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary) else {
+            return .failure(.decodeFailed)
+        }
+        let cost = max(cgImage.bytesPerRow * cgImage.height, 1)
+        let modDate = (try? resolved.resourceValues(forKeys: [.contentModificationDateKey]))?
+            .contentModificationDate
+        return .success(
+            DecodedImage(
+                cgImage: cgImage,
+                contentType: uti,
+                pixelWidth: width,
+                pixelHeight: height,
+                byteCost: cost,
+                fileModificationDate: modDate
+            )
+        )
+    }
+}
+
+/// Content-aware, display-bound, location-aware LRU cache capped at 64 MiB decoded cost.
+///
+/// // REQ-081: never exceeds 64 MiB.
+@MainActor
+final class LocalImageByteCache {
+    static let maxBytes = 64 * 1024 * 1024
+
+    private struct Key: Hashable {
+        let path: String
+        let locationGeneration: UInt64
+        let modificationTime: TimeInterval
+        let displayEdge: Int
+    }
+
+    private struct Entry {
+        let image: CGImage
+        let cost: Int
+    }
+
+    private var map: [Key: Entry] = [:]
+    private var order: [Key] = []
+    private(set) var totalBytes = 0
+
+    func image(
+        path: String,
+        locationGeneration: UInt64,
+        modification: Date?,
+        displayEdge: Int = Int(LocalImageDecoder.maxDisplayEdge)
+    ) -> CGImage? {
+        let key = Key(
+            path: path,
+            locationGeneration: locationGeneration,
+            modificationTime: modification?.timeIntervalSinceReferenceDate ?? 0,
+            displayEdge: displayEdge
+        )
+        guard let entry = map[key] else { return nil }
+        if let idx = order.firstIndex(of: key) {
+            order.remove(at: idx)
+            order.append(key)
+        }
+        return entry.image
+    }
+
+    func store(
+        _ image: CGImage,
+        cost: Int,
+        path: String,
+        locationGeneration: UInt64,
+        modification: Date?,
+        displayEdge: Int = Int(LocalImageDecoder.maxDisplayEdge)
+    ) {
+        let key = Key(
+            path: path,
+            locationGeneration: locationGeneration,
+            modificationTime: modification?.timeIntervalSinceReferenceDate ?? 0,
+            displayEdge: displayEdge
+        )
+        if let old = map[key] {
+            totalBytes -= old.cost
+            map.removeValue(forKey: key)
+            order.removeAll { $0 == key }
+        }
+        map[key] = Entry(image: image, cost: cost)
+        order.append(key)
+        totalBytes += cost
+        while totalBytes > Self.maxBytes, let oldest = order.first {
+            if let entry = map.removeValue(forKey: oldest) {
+                totalBytes -= entry.cost
+            }
+            order.removeFirst()
+        }
+    }
+
+    func clear() {
+        map.removeAll()
+        order.removeAll()
+        totalBytes = 0
+    }
+}

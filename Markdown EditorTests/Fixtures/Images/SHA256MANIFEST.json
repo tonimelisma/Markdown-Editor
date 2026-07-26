@@ -1,0 +1,27 @@
+{
+  "sample.gif": {
+    "sha256": "2d64623d7cca2ddbc0255cca23010f5d173cc8a077c91ba96c79ca00a611ee58",
+    "bytes": 42,
+    "license": "project-owned minimal fixture for decode tests; not redistributed as media"
+  },
+  "sample.heic": {
+    "sha256": "7805e61d3f512a7a9317d180dd58a9180a62420d7115086b54532f056f55e904",
+    "bytes": 545,
+    "license": "project-owned minimal fixture for decode tests; not redistributed as media"
+  },
+  "sample.heif": {
+    "sha256": "ed975eac641798fbe4daa247d0d13332f2511c89bfee6de4ad1da8942f9a4c7a",
+    "bytes": 552,
+    "license": "project-owned minimal fixture for decode tests; not redistributed as media"
+  },
+  "sample.jpg": {
+    "sha256": "2b23df0aadc6f23e36eab47e75bd0c540df0aa97e6c5f6a6311c59289da327f2",
+    "bytes": 795,
+    "license": "project-owned minimal fixture for decode tests; not redistributed as media"
+  },
+  "sample.png": {
+    "sha256": "cfaf0ec884179e2ae6ad2eaba39947bda342384c233e99f4102ee71b3dd341fc",
+    "bytes": 93,
+    "license": "project-owned minimal fixture for decode tests; not redistributed as media"
+  }
+}
