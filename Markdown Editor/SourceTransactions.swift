@@ -34,12 +34,13 @@ nonisolated enum SourceEditRefusal: Error, Sendable, Equatable {
     case contentMismatch
 }
 
-/// UTF-16 selection to apply after a committed edit.
-nonisolated struct SourceSelection: Sendable, Equatable {
-    let range: NSRange
-}
-
 nonisolated enum SourceEditResult: Sendable, Equatable {
     case committed(SourceSelection)
     case refused(SourceEditRefusal)
+}
+
+/// Result of applying a generation-bound background load on the main actor.
+nonisolated enum LoadedTextApplicationResult: Sendable, Equatable {
+    case applied
+    case staleLoad
 }

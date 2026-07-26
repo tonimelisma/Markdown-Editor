@@ -108,8 +108,8 @@ struct SourceIntegrityCharacterizationTests {
             range: NSRange(location: 0, length: 3),
             before: "abc",
             after: "XYZ", // document still has "abc", not "XYZ"
-            selectionBefore: SourceSelection(range: NSRange(location: 0, length: 0)),
-            selectionAfter: SourceSelection(range: NSRange(location: 3, length: 0)),
+            selectionBefore: SourceSelection(utf16: NSRange(location: 0, length: 0)),
+            selectionAfter: SourceSelection(utf16: NSRange(location: 3, length: 0)),
             actionName: "Divergent"
         )
         let beforeText = doc.text
@@ -194,9 +194,9 @@ struct SourceIntegrityCharacterizationTests {
     @Test func undoRedoRestoresSourceSelectionsAcrossModeChanges() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hello")
-        let before = SourceSelection(range: NSRange(location: 0, length: 5))
-        let after = SourceSelection(range: NSRange(location: 5, length: 0))
-        doc.reportActiveSelection(before.range)
+        let before = SourceSelection(utf16: NSRange(location: 0, length: 5))
+        let after = SourceSelection(utf16: NSRange(location: 5, length: 0))
+        doc.reportSourceSelection(before)
 
         expectCommitted(
             doc.commitSourceMutation(
@@ -212,22 +212,22 @@ struct SourceIntegrityCharacterizationTests {
                 )
             )
         )
-        #expect(doc.activeSelection == after.range)
-        #expect(doc.pendingSelection == after.range)
+        #expect(doc.sourceSelection.nsRange == after.nsRange)
+        #expect(doc.pendingSelection?.nsRange == after.nsRange)
 
         // Simulate mode switch without touching source.
-        doc.pendingSelection = NSRange(location: 2, length: 0)
-        doc.reportActiveSelection(NSRange(location: 2, length: 0))
+        doc.pendingSelection = SourceSelection(utf16: NSRange(location: 2, length: 0))
+        doc.reportSourceSelection(SourceSelection(utf16: NSRange(location: 2, length: 0)))
 
         doc.undoManager?.undo()
         #expect(doc.text == "hello")
-        #expect(doc.activeSelection == before.range)
-        #expect(doc.pendingSelection == before.range)
+        #expect(doc.sourceSelection.nsRange == before.nsRange)
+        #expect(doc.pendingSelection?.nsRange == before.nsRange)
 
         doc.undoManager?.redo()
         #expect(doc.text == "HELLO")
-        #expect(doc.activeSelection == after.range)
-        #expect(doc.pendingSelection == after.range)
+        #expect(doc.sourceSelection.nsRange == after.nsRange)
+        #expect(doc.pendingSelection?.nsRange == after.nsRange)
     }
 
     // Verifies: REQ-011 — dirty clears at saved history point; dirty again on redo.
@@ -327,8 +327,8 @@ struct SourceIntegrityCharacterizationTests {
             range: range,
             expectedText: expected,
             replacement: replacement,
-            selectionBefore: SourceSelection(range: doc.activeSelection),
-            selectionAfter: SourceSelection(range: NSRange(location: afterLoc, length: 0)),
+            selectionBefore: SourceSelection(utf16: doc.sourceSelection.nsRange),
+            selectionAfter: SourceSelection(utf16: NSRange(location: afterLoc, length: 0)),
             actionName: name,
             grouping: grouping
         )

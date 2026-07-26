@@ -74,7 +74,11 @@ enum RichTextBuilder {
                 nsAttachment.attachmentCell = cell
             case .image(let destination, let description):
                 if let image = images[attachment.nodeID] {
-                    nsAttachment.image = image
+                    let cell = ResolvedImageAttachmentCell(
+                        image: image,
+                        description: description
+                    )
+                    nsAttachment.attachmentCell = cell
                     let maxWidth: CGFloat = 480
                     let size = image.size
                     if size.width > maxWidth && size.width > 0 {
@@ -186,6 +190,30 @@ final class TaskCheckboxAttachmentCell: NSTextAttachmentCell {
         }
         return true
     }
+}
+
+@MainActor
+final class ResolvedImageAttachmentCell: NSTextAttachmentCell {
+    private let imageValue: NSImage
+    private let descriptionText: String
+
+    init(image: NSImage, description: String) {
+        self.imageValue = image
+        self.descriptionText = description
+        super.init(imageCell: image)
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    // REQ-084: authored Markdown image description; empty means decorative (no invented alt).
+    nonisolated override func accessibilityLabel() -> String? {
+        MainActor.assumeIsolated {
+            descriptionText.isEmpty ? nil : descriptionText
+        }
+    }
+
+    nonisolated override func accessibilityRole() -> NSAccessibility.Role? { .image }
 }
 
 @MainActor

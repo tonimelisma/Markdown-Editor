@@ -11,17 +11,53 @@ import AppKit
 @MainActor
 struct SourceTransactionTests {
 
+    private func mutate(
+        _ doc: MarkdownDocument,
+        range: NSRange,
+        replacement: String,
+        expectedRevision: UInt64,
+        action: String
+    ) -> SourceEditResult {
+        let snap = doc.sourceSnapshot()
+        guard let mutation = SourceMutation.exact(
+            snapshot: SourceSnapshot(
+                text: snap.text,
+                sourceVersion: expectedRevision,
+                locationGeneration: snap.locationGeneration,
+                fileURL: snap.fileURL
+            ),
+            range: range,
+            replacement: replacement,
+            selectionBefore: SourceSelection(utf16: range),
+            actionName: action,
+            grouping: .discrete
+        ) else {
+            return .refused(.invalidRange)
+        }
+        // Force expected revision for stale tests.
+        let forced = SourceMutation(
+            expectedRevision: expectedRevision,
+            range: mutation.range,
+            expectedText: mutation.expectedText,
+            replacement: mutation.replacement,
+            selectionBefore: mutation.selectionBefore,
+            selectionAfter: mutation.selectionAfter,
+            actionName: mutation.actionName,
+            grouping: mutation.grouping
+        )
+        return doc.commitSourceMutation(forced)
+    }
+
     // Verifies: REQ-016
     @Test func exactUTF16ReplaceAdvancesVersion() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("Hello World")
-        let result = doc.commitSourceEdit(
-            SourceEdit(
-                expectedVersion: 0,
-                range: NSRange(location: 6, length: 5),
-                replacement: "there",
-                actionName: "Replace"
-            )
+        let result = mutate(
+            doc,
+            range: NSRange(location: 6, length: 5),
+            replacement: "there",
+            expectedRevision: 0,
+            action: "Replace"
         )
         guard case .committed(let selection) = result else {
             Issue.record("expected commit")
@@ -29,21 +65,19 @@ struct SourceTransactionTests {
         }
         #expect(doc.text == "Hello there")
         #expect(doc.sourceVersion == 1)
-        #expect(selection.range == NSRange(location: 11, length: 0))
+        #expect(selection.nsRange == NSRange(location: 11, length: 0))
     }
 
     // Verifies: REQ-016 — Unicode scalar boundaries (emoji is 2 UTF-16 units).
     @Test func unicodeScalarBoundaryReplace() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("a😀b")
-        // 😀 is U+1F600 → surrogate pair at UTF-16 indices 1..<3
-        let result = doc.commitSourceEdit(
-            SourceEdit(
-                expectedVersion: 0,
-                range: NSRange(location: 1, length: 2),
-                replacement: "X",
-                actionName: "Replace emoji"
-            )
+        let result = mutate(
+            doc,
+            range: NSRange(location: 1, length: 2),
+            replacement: "X",
+            expectedRevision: 0,
+            action: "Replace emoji"
         )
         guard case .committed = result else {
             Issue.record("expected commit")
@@ -57,13 +91,15 @@ struct SourceTransactionTests {
     @Test func staleVersionRefusesWithoutMutation() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("abc")
-        _ = doc.commitSourceEdit(
-            SourceEdit(expectedVersion: 0, range: NSRange(location: 0, length: 1), replacement: "A", actionName: "1")
-        )
+        _ = mutate(doc, range: NSRange(location: 0, length: 1), replacement: "A", expectedRevision: 0, action: "1")
         let before = doc.text
         let version = doc.sourceVersion
-        let result = doc.commitSourceEdit(
-            SourceEdit(expectedVersion: 0, range: NSRange(location: 1, length: 1), replacement: "Z", actionName: "stale")
+        let result = mutate(
+            doc,
+            range: NSRange(location: 1, length: 1),
+            replacement: "Z",
+            expectedRevision: 0,
+            action: "stale"
         )
         #expect(result == .refused(.staleVersion))
         #expect(doc.text == before)
@@ -74,8 +110,12 @@ struct SourceTransactionTests {
     @Test func invalidRangeRefusesWithoutMutation() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi")
-        let result = doc.commitSourceEdit(
-            SourceEdit(expectedVersion: 0, range: NSRange(location: 0, length: 99), replacement: "x", actionName: "bad")
+        let result = mutate(
+            doc,
+            range: NSRange(location: 0, length: 99),
+            replacement: "x",
+            expectedRevision: 0,
+            action: "bad"
         )
         #expect(result == .refused(.invalidRange))
         #expect(doc.text == "hi")
@@ -86,9 +126,7 @@ struct SourceTransactionTests {
     @Test func undoRedoRestoresTextAndAdvancesVersion() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("abc")
-        _ = doc.commitSourceEdit(
-            SourceEdit(expectedVersion: 0, range: NSRange(location: 1, length: 1), replacement: "X", actionName: "Edit")
-        )
+        _ = mutate(doc, range: NSRange(location: 1, length: 1), replacement: "X", expectedRevision: 0, action: "Edit")
         #expect(doc.text == "aXc")
         #expect(doc.sourceVersion == 1)
 
@@ -106,9 +144,7 @@ struct SourceTransactionTests {
         let doc = MarkdownDocument()
         doc.installTextForTesting("one")
         let snap = doc.sourceSnapshot()
-        _ = doc.commitSourceEdit(
-            SourceEdit(expectedVersion: 0, range: NSRange(location: 0, length: 3), replacement: "two", actionName: "Edit")
-        )
+        _ = mutate(doc, range: NSRange(location: 0, length: 3), replacement: "two", expectedRevision: 0, action: "Edit")
         #expect(snap.text == "one")
         #expect(snap.sourceVersion == 0)
         #expect(doc.sourceSnapshot().text == "two")

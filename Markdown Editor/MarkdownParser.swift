@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import Synchronization
 import cmark_gfm
 import cmark_gfm_extensions
 
@@ -19,6 +20,9 @@ nonisolated enum MarkdownParser {
     /// Enabled formal-GFM extension names (exact set).
     static let enabledExtensions = ["table", "tasklist", "strikethrough", "autolink", "tagfilter"]
 
+    /// cmark-gfm global registration / parse is not concurrent-safe.
+    private static let parseLock = Mutex(false)
+
     /// Parser option bits: double-tilde strikethrough only; no smart/table-span extras.
     static var parserOptions: Int32 {
         Int32(CMARK_OPT_STRIKETHROUGH_DOUBLE_TILDE)
@@ -29,13 +33,15 @@ nonisolated enum MarkdownParser {
         _ source: String,
         sourceVersion: UInt64
     ) -> Result<MarkdownTree, MarkdownParseFailure> {
-        var bytes = Array(source.utf8)
-        return bytes.withUnsafeMutableBufferPointer { buffer in
-            guard let base = buffer.baseAddress else {
-                return parseUTF8("", byteCount: 0, sourceVersion: sourceVersion)
-            }
-            return base.withMemoryRebound(to: CChar.self, capacity: buffer.count) { cPtr in
-                parseUTF8(cPtr, byteCount: buffer.count, sourceVersion: sourceVersion)
+        parseLock.withLock { _ in
+            var bytes = Array(source.utf8)
+            return bytes.withUnsafeMutableBufferPointer { buffer in
+                guard let base = buffer.baseAddress else {
+                    return parseUTF8Unlocked("", byteCount: 0, sourceVersion: sourceVersion)
+                }
+                return base.withMemoryRebound(to: CChar.self, capacity: buffer.count) { cPtr in
+                    parseUTF8Unlocked(cPtr, byteCount: buffer.count, sourceVersion: sourceVersion)
+                }
             }
         }
     }
@@ -50,19 +56,41 @@ nonisolated enum MarkdownParser {
         _ source: String,
         extensions: [String]
     ) -> Result<String, MarkdownParseFailure> {
-        var bytes = Array(source.utf8)
-        return bytes.withUnsafeMutableBufferPointer { buffer in
-            guard let base = buffer.baseAddress else {
-                return renderHTMLUTF8("", byteCount: 0, extensions: extensions)
-            }
-            return base.withMemoryRebound(to: CChar.self, capacity: buffer.count) { cPtr in
-                renderHTMLUTF8(cPtr, byteCount: buffer.count, extensions: extensions)
+        parseLock.withLock { _ in
+            var bytes = Array(source.utf8)
+            return bytes.withUnsafeMutableBufferPointer { buffer in
+                guard let base = buffer.baseAddress else {
+                    return renderHTMLUTF8Unlocked("", byteCount: 0, extensions: extensions)
+                }
+                return base.withMemoryRebound(to: CChar.self, capacity: buffer.count) { cPtr in
+                    renderHTMLUTF8Unlocked(cPtr, byteCount: buffer.count, extensions: extensions)
+                }
             }
         }
     }
 
     /// Parse UTF-8 bytes (used by conformance fixtures that may contain NULs).
     static func parseUTF8(
+        _ bytes: UnsafePointer<CChar>,
+        byteCount: Int,
+        sourceVersion: UInt64
+    ) -> Result<MarkdownTree, MarkdownParseFailure> {
+        parseLock.withLock { _ in
+            parseUTF8Unlocked(bytes, byteCount: byteCount, sourceVersion: sourceVersion)
+        }
+    }
+
+    static func renderHTMLUTF8(
+        _ bytes: UnsafePointer<CChar>,
+        byteCount: Int,
+        extensions: [String] = MarkdownParser.enabledExtensions
+    ) -> Result<String, MarkdownParseFailure> {
+        parseLock.withLock { _ in
+            renderHTMLUTF8Unlocked(bytes, byteCount: byteCount, extensions: extensions)
+        }
+    }
+
+    private static func parseUTF8Unlocked(
         _ bytes: UnsafePointer<CChar>,
         byteCount: Int,
         sourceVersion: UInt64
@@ -94,10 +122,10 @@ nonisolated enum MarkdownParser {
         return .success(MarkdownTree(sourceVersion: sourceVersion, root: root))
     }
 
-    static func renderHTMLUTF8(
+    private static func renderHTMLUTF8Unlocked(
         _ bytes: UnsafePointer<CChar>,
         byteCount: Int,
-        extensions: [String] = MarkdownParser.enabledExtensions
+        extensions: [String]
     ) -> Result<String, MarkdownParseFailure> {
         cmark_gfm_core_extensions_ensure_registered()
 

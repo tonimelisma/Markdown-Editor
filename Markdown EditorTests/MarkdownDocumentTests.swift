@@ -147,8 +147,8 @@ struct DocumentActionInterfaceTests {
     @Test func placementTrackingIsEditorNeutral() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hello")
-        doc.reportActiveSelection(NSRange(location: 2, length: 0))
-        let gen = doc.beginPlacementTracking(range: doc.activeSelection)
+        doc.reportSourceSelection(SourceSelection(utf16: NSRange(location: 2, length: 0)))
+        let gen = doc.beginPlacementTracking(range: doc.sourceSelection.range)
         #expect(doc.trackedPlacement(for: gen)?.range.location == 2)
         doc.noteTrackedEdit(edited: NSRange(location: 0, length: 1), changeInLength: 0)
         #expect(doc.trackedPlacement(for: gen)?.range.location == 2)

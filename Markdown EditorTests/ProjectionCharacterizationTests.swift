@@ -104,13 +104,13 @@ struct ProjectionCharacterizationTests {
             projection: nil,
             tree: nil
         )
-        guard case .transaction(let edit, _) = result else {
+        guard case .mutation(let mutation) = result else {
             Issue.record("expected transaction")
             return
         }
-        #expect(edit.replacement.contains(">"))
-        #expect(edit.replacement.contains("- "))
-        #expect(edit.replacement.hasPrefix("> -") || edit.replacement.contains("> - "))
+        #expect(mutation.replacement.contains(">"))
+        #expect(mutation.replacement.contains("- "))
+        #expect(mutation.replacement.hasPrefix("> -") || mutation.replacement.contains("> - "))
     }
 
     // Verifies: REQ-057 — underscore bold alternate spelling.
@@ -124,11 +124,11 @@ struct ProjectionCharacterizationTests {
             projection: nil,
             tree: nil
         )
-        guard case .transaction(let edit, _) = result else {
+        guard case .mutation(let mutation) = result else {
             Issue.record("expected unwrap")
             return
         }
-        #expect(edit.replacement == "hello")
+        #expect(mutation.replacement == "hello")
     }
 
     // Verifies: REQ-080 — table cell replace changes only that cell's source span intent.
@@ -146,14 +146,14 @@ struct ProjectionCharacterizationTests {
             projection: model,
             tree: tree
         )
-        guard case .transaction(let edit, _) = result else {
+        guard case .mutation(let mutation) = result else {
             Issue.record("expected cell edit, got \(result)")
             return
         }
-        #expect(edit.replacement == "Z")
-        #expect(edit.range.length > 0)
+        #expect(mutation.replacement == "Z")
+        #expect(mutation.range.length > 0)
         // Other header text remains outside the replaced range.
-        let before = (source as NSString).substring(with: NSRange(location: 0, length: edit.range.location))
+        let before = (source as NSString).substring(with: NSRange(location: 0, length: mutation.range.location))
         #expect(before.contains("a") || before.contains("|"))
     }
 
@@ -177,11 +177,11 @@ struct ProjectionCharacterizationTests {
             projection: model,
             tree: tree
         )
-        guard case .transaction(let edit, _) = result else {
+        guard case .mutation(let mutation) = result else {
             Issue.record("expected empty cell clear, got \(result)")
             return
         }
-        #expect(edit.replacement.isEmpty)
+        #expect(mutation.replacement.isEmpty)
     }
 
     // Verifies: review — pipe/newline cell edits refuse rather than vacuous postcondition.
@@ -232,7 +232,7 @@ struct ProjectionCharacterizationTests {
             projection: model,
             tree: tree
         )
-        guard case .transaction = result else {
+        guard case .mutation = result else {
             Issue.record("expected transaction for escaped pipe, got \(result)")
             return
         }
@@ -256,7 +256,7 @@ struct ProjectionCharacterizationTests {
             if case .strong = kind { return true }
             return false
         }
-        guard case .transaction = ok else {
+        guard case .mutation = ok else {
             Issue.record("expected wrap of plain text, got \(ok)")
             return
         }
@@ -320,8 +320,8 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: review — non-empty selection whose start lies on a synthetic list marker is refused.
-    @Test func selectionStartingOnListMarkerIsRefused() throws {
+    // Verifies: COR-08 D1 — selection from list marker through item text maps to source.
+    @Test func selectionStartingOnListMarkerMapsToSource() throws {
         let source = "1. a\n"
         let tree = try parse(source)
         let model = build(source, tree: tree)
@@ -332,17 +332,18 @@ struct ProjectionCharacterizationTests {
         let rendered = model.renderedString as NSString
         let textRange = rendered.range(of: "a")
         #expect(textRange.location != NSNotFound)
-        // From start of marker through text — start endpoint is synthetic.
         let selection = NSRange(
             location: marker.utf16Range.location,
             length: NSMaxRange(textRange) - marker.utf16Range.location
         )
         #expect(selection.length > 0)
         let result = model.coordinateMap.sourceRange(forProjection: selection)
-        guard case .refused = result else {
-            Issue.record("expected refusal for selection starting on list marker, got \(result)")
+        guard case .exact(let sourceRange) = result else {
+            Issue.record("expected exact map for marker-through-text selection, got \(result)")
             return
         }
+        #expect((source as NSString).substring(with: sourceRange).contains("a"))
+        try expectOracle(model, source: source)
     }
 
     // Verifies: REQ-090 — parse+index+projection p95 < 100ms at 100k UTF-16 off-main.

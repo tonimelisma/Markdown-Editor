@@ -68,8 +68,8 @@ struct WYSIWYGTextView: NSViewRepresentable {
         }
         if let pending = document.pendingSelection, session.mode == .wysiwyg {
             let length = textView.string.utf16.count
-            let loc = min(pending.location, length)
-            let len = min(pending.length, max(0, length - loc))
+            let loc = min(pending.nsRange.location, length)
+            let len = min(pending.nsRange.length, max(0, length - loc))
             textView.setSelectedRange(NSRange(location: loc, length: len))
             document.pendingSelection = nil
         }
@@ -188,7 +188,7 @@ struct WYSIWYGTextView: NSViewRepresentable {
                 result = session.perform(.insertText(replacement), selection: selection)
             }
             switch result {
-            case .transaction:
+            case .mutation:
                 isNativeEditInFlight = true
                 // Allow optimistic native mutation; projection refresh replaces storage when ready.
                 return true
@@ -208,7 +208,8 @@ struct WYSIWYGTextView: NSViewRepresentable {
             state.selection = range
             state.affinity = textView.selectionAffinity == .upstream ? .upstream : .downstream
             session.wysiwygViewState = state
-            document.reportActiveSelection(range)
+            // COR-08 D2: never store projection coordinates as document source selection.
+            // Image intent resolves through EditorSelectionIntent + coordinate map.
         }
 
         func performTaskToggle(nodeID: MarkdownNodeID) {
@@ -317,7 +318,7 @@ final class MarkdownWYSIWYGTextView: NSTextView {
                 .compositionCommitted(sourceVersion: captured.version, replacementLength: (text as NSString).length)
             )
             switch result {
-            case .transaction:
+            case .mutation:
                 input.committingComposition = true
                 input.allowingMarkedText = true
                 super.unmarkText()
@@ -378,7 +379,7 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             .compositionCommitted(sourceVersion: captured.version, replacementLength: (text as NSString).length)
         )
         switch result {
-        case .transaction:
+        case .mutation:
             // Apply final composition text directly — avoid nested NSTextView insertText/undo.
             input.committingComposition = true
             input.allowingMarkedText = true
@@ -459,7 +460,7 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             sourceVersion: session.acceptedSourceVersion
         )
         let result = session.perform(.toggleTask(nodeID: attachment.nodeID), selection: selection)
-        if case .transaction = result { return true }
+        if case .mutation = result { return true }
         return false
     }
 
@@ -474,10 +475,39 @@ final class MarkdownWYSIWYGTextView: NSTextView {
 
     // MARK: - Paste / drag
 
+    /// COR-08 D2: resolve the live WYSIWYG selection to source before COR-02 starts.
+    private func resolveAndReportImageIntent() -> Bool {
+        guard let actions = documentActions,
+              let session,
+              let projection = session.projection else {
+            return false
+        }
+        let snapshot = actions.sourceSnapshot()
+        let intent = EditorSelectionIntent(
+            domain: .wysiwyg,
+            sourceVersion: snapshot.sourceVersion,
+            range: selectedRange(),
+            affinity: selectionAffinity == .upstream ? .upstream : .downstream
+        )
+        switch intent.resolvedSourceRange(snapshot: snapshot, projection: projection) {
+        case .exact(let sourceRange):
+            actions.reportSourceSelection(
+                SourceSelection(utf16: sourceRange, affinity: intent.affinity)
+            )
+            return true
+        case .refused:
+            return false
+        }
+    }
+
     override func paste(_ sender: Any?) {
         let classification = ImagePasteboardClassifier.classifyPasteboard(.general)
         switch classification {
         case .images(let claims):
+            guard resolveAndReportImageIntent() else {
+                placementController?.alert = .error("Could not resolve image insertion point.")
+                return
+            }
             placementController?.handleImageAction(
                 claims: claims,
                 documentURL: documentActions?.sourceSnapshot().fileURL
@@ -505,12 +535,14 @@ final class MarkdownWYSIWYGTextView: NSTextView {
         let url = documentActions?.sourceSnapshot().fileURL
         if let receivers = pb.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver],
            !receivers.isEmpty {
+            guard resolveAndReportImageIntent() else { return false }
             placementController?.handleFilePromises(receivers, documentURL: url)
             return true
         }
         let classification = ImagePasteboardClassifier.classifyDragInfo(sender)
         switch classification {
         case .images(let claims):
+            guard resolveAndReportImageIntent() else { return false }
             placementController?.handleImageAction(claims: claims, documentURL: url)
             return true
         case .fallthroughToNativeText, .unsupported:

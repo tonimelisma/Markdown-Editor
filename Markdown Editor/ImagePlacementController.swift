@@ -83,14 +83,14 @@ final class ImagePlacementController: ObservableObject {
         }
         let live = actions.sourceSnapshot()
         documentLocationGeneration = live.locationGeneration
-        let selection = actions.activeSelection
-        activeTrackingGeneration = actions.beginPlacementTracking(range: selection)
+        let selection = actions.sourceSelection
+        activeTrackingGeneration = actions.beginPlacementTracking(range: selection.range)
         let snapshot = ImageActionSnapshot(
             id: id,
             claims: claims,
             documentURL: documentURL,
             documentLocationGeneration: live.locationGeneration,
-            selection: selection
+            selection: selection.nsRange
         )
         pendingSnapshot = snapshot
 
@@ -121,15 +121,15 @@ final class ImagePlacementController: ObservableObject {
         }
         let live = actions.sourceSnapshot()
         documentLocationGeneration = live.locationGeneration
-        let selection = actions.activeSelection
-        activeTrackingGeneration = actions.beginPlacementTracking(range: selection)
+        let selection = actions.sourceSelection
+        activeTrackingGeneration = actions.beginPlacementTracking(range: selection.range)
         let token = FilePromiseReceiptToken()
         let snapshot = ImageActionSnapshot(
             id: id,
             claims: [.promiseToken(token)],
             documentURL: documentURL,
             documentLocationGeneration: live.locationGeneration,
-            selection: selection
+            selection: selection.nsRange
         )
         pendingSnapshot = snapshot
         guard apply(.startReceivingPromises, id: id) else { return }
@@ -304,24 +304,36 @@ final class ImagePlacementController: ObservableObject {
 
             let markdown = published.published.map(\.markdown).joined(separator: "\n")
             let snap = actions.sourceSnapshot()
-            let edit = SourceEdit(
-                expectedVersion: snap.sourceVersion,
+            let selectionBefore = actions.sourceSelection
+            guard let mutation = SourceMutation.exact(
+                snapshot: snap,
                 range: tracker.range,
                 replacement: markdown,
-                actionName: "Insert Image"
-            )
-            switch actions.commitSourceEdit(edit) {
+                selectionBefore: selectionBefore,
+                actionName: "Insert Image",
+                grouping: .discrete
+            ) else {
+                await AssetDirectoryStore.rollback(
+                    pins: published.createdPins,
+                    assetsPath: published.assetsPath,
+                    createdAssetsDirectory: published.createdAssetsDirectory,
+                    executor: executor
+                )
+                fail(snapshot.id, .writeFailed)
+                return
+            }
+            switch actions.commitSourceMutation(mutation) {
             case .committed:
                 if published.published.count == 1 {
                     let descStart = tracker.range.location + 2
-                    let pending = NSRange(location: descStart, length: 0)
+                    let pending = SourceSelection(utf16: NSRange(location: descStart, length: 0))
                     actions.pendingSelection = pending
-                    actions.reportActiveSelection(pending)
+                    actions.reportSourceSelection(pending)
                 } else {
                     let end = tracker.range.location + (markdown as NSString).length
-                    let pending = NSRange(location: end, length: 0)
+                    let pending = SourceSelection(utf16: NSRange(location: end, length: 0))
                     actions.pendingSelection = pending
-                    actions.reportActiveSelection(pending)
+                    actions.reportSourceSelection(pending)
                 }
             case .refused:
                 await AssetDirectoryStore.rollback(

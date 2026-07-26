@@ -429,29 +429,37 @@ private nonisolated struct CompilerBuilder {
         )
     }
 
-    /// Map rendered leaf text to the exact source slice of that text when possible.
+    /// Map rendered leaf text to the exact source slice derived from concrete structure.
     ///
-    /// Inline/fenced code and HTML nodes' positions include delimiters; the projection
-    /// carries only the literal, so we must pinch `full` down to the rendered content.
+    /// // REQ-057/087: never locate parser-owned content via `range(of: rendered)`.
     func resolveContentSource(node: MarkdownNode, rendered: String, full: NSRange) -> NSRange {
         switch node.kind {
         case .text:
             return full
+        case .code:
+            return StructuralSourceSpans.inlineCodeBody(full: full, rendered: rendered, map: map) ?? full
+        case .codeBlock(let info, let literal, let fenced, let fenceChar, let fenceLength):
+            if fenced, let fenceChar, fenceLength > 0 {
+                return StructuralSourceSpans.fencedCodeBody(
+                    full: full,
+                    info: info,
+                    literal: literal,
+                    rendered: rendered,
+                    fenceChar: fenceChar,
+                    fenceLength: fenceLength,
+                    map: map
+                ) ?? full
+            }
+            // Indented code: body is the node span (no fence delimiters).
+            if case .success(let slice) = map.substring(utf16: full), slice == rendered {
+                return full
+            }
+            return full
         default:
             break
         }
-        // Exact match (no delimiters in the node span).
         if case .success(let slice) = map.substring(utf16: full), slice == rendered {
             return full
-        }
-        // Search for rendered text inside the full node span (backticks, fences, wrappers).
-        if full.location != NSNotFound, full.length > 0,
-           case .success(let slice) = map.substring(utf16: full),
-           let r = slice.range(of: rendered) {
-            let prefix = String(slice[..<r.lowerBound])
-            let prefixUTF16 = (prefix as NSString).length
-            let renderedUTF16 = (rendered as NSString).length
-            return NSRange(location: full.location + prefixUTF16, length: renderedUTF16)
         }
         return full
     }

@@ -46,17 +46,17 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
             projection: nil,
             tree: nil
         )
-        guard case .transaction(let edit, _) = result else {
-            return XCTFail("expected transaction")
+        guard case .mutation(let mutation) = result else {
+            return XCTFail("expected mutation")
         }
-        XCTAssertEqual(edit.replacement, "**hello**")
+        XCTAssertEqual(mutation.replacement, "**hello**")
         let wrapped = SourceSnapshot(text: "**hello** world", sourceVersion: 4, locationGeneration: 0, fileURL: nil)
         let sel2 = SemanticSelection(mode: .source, utf16Range: NSRange(location: 0, length: 9), sourceVersion: 4)
         let result2 = SemanticEditEngine.apply(command: .toggleBold, selection: sel2, snapshot: wrapped, projection: nil, tree: nil)
-        guard case .transaction(let edit2, _) = result2 else {
+        guard case .mutation(let mutation2) = result2 else {
             return XCTFail("expected unwrap")
         }
-        XCTAssertEqual(edit2.replacement, "hello")
+        XCTAssertEqual(mutation2.replacement, "hello")
     }
 
     // Verifies: REQ-057
@@ -64,11 +64,11 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
         let snapshot = SourceSnapshot(text: "strike", sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let selection = SemanticSelection(mode: .source, utf16Range: NSRange(location: 0, length: 6), sourceVersion: 1)
         let result = SemanticEditEngine.apply(command: .toggleStrikethrough, selection: selection, snapshot: snapshot, projection: nil, tree: nil)
-        guard case .transaction(let edit, _) = result else {
-            return XCTFail("expected transaction")
+        guard case .mutation(let mutation) = result else {
+            return XCTFail("expected mutation")
         }
-        XCTAssertEqual(edit.replacement, "~~strike~~")
-        let tree = MarkdownParser.parse(edit.replacement, sourceVersion: 0)
+        XCTAssertEqual(mutation.replacement, "~~strike~~")
+        let tree = MarkdownParser.parse(mutation.replacement, sourceVersion: 0)
         guard case .success(let t) = tree else { return XCTFail("reparse") }
         XCTAssertTrue(contains(t.root) { if case .strikethrough = $0.kind { return true }; return false })
     }
@@ -89,10 +89,10 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
             projection: model,
             tree: tree
         )
-        guard case .transaction(let edit, _) = result else {
-            return XCTFail("expected task toggle transaction, got \(result)")
+        guard case .mutation(let mutation) = result else {
+            return XCTFail("expected task toggle mutation, got \(result)")
         }
-        XCTAssertTrue(edit.replacement.contains("[x]") || edit.replacement.contains("[X]"))
+        XCTAssertTrue(mutation.replacement.contains("[x]") || mutation.replacement.contains("[X]"))
     }
 
     // Verifies: REQ-087

@@ -34,7 +34,7 @@ final class EditorActionRouter: ObservableObject {
             let snapshot = document.sourceSnapshot()
             switch intent.resolvedSourceRange(snapshot: snapshot, projection: session?.projection) {
             case .exact(let sourceRange):
-                document.reportActiveSelection(sourceRange)
+                document.reportSourceSelection(SourceSelection(utf16: sourceRange))
             case .refused:
                 pendingImageIntent = nil
                 return
@@ -272,15 +272,15 @@ struct EditorHostView: NSViewRepresentable {
             if session.mode == .source {
                 guard let sourceText else { return }
                 let length = (sourceText.string as NSString).length
-                let loc = min(max(0, pending.location), length)
-                let len = min(max(0, pending.length), max(0, length - loc))
+                let loc = min(max(0, pending.nsRange.location), length)
+                let len = min(max(0, pending.nsRange.length), max(0, length - loc))
                 sourceText.setSelectedRange(NSRange(location: loc, length: len))
                 document.pendingSelection = nil
             } else {
                 guard let wysiwygText else { return }
                 guard let projection = session.projection,
                       projection.sourceVersion == document.sourceVersion,
-                      case .exact(let projected) = projection.coordinateMap.projectionRange(forSource: pending)
+                      case .exact(let projected) = projection.coordinateMap.projectionRange(forSource: pending.nsRange)
                 else {
                     return
                 }
