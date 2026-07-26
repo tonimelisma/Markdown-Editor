@@ -65,6 +65,8 @@ final class EditorSession: ObservableObject {
 
     func setMode(_ newMode: EditorMode) {
         guard newMode != mode else { return }
+        // Close an open typing undo group before the mode boundary (REQ-016).
+        document?.closeTypingUndoGroup()
         // Snapshot current mode state is owned by adapters; switching never touches source.
         mode = newMode
         // REQ-052/086: inactive view applies newest accepted document version on next update.
@@ -148,10 +150,15 @@ final class EditorSession: ObservableObject {
     }
 
     @discardableResult
-    func perform(_ command: SemanticCommand, selection: SemanticSelection) -> SemanticEditResult {
+    func perform(
+        _ command: SemanticCommand,
+        selection: SemanticSelection,
+        grouping groupingOverride: MutationGrouping? = nil
+    ) -> SemanticEditResult {
         guard let document else { return .refused(.staleVersion) }
         let snapshot = document.sourceSnapshot()
-        let grouping = SemanticEditEngine.defaultGrouping(for: command)
+        // Paste and other adapter-owned boundaries may override command-default grouping.
+        let grouping = groupingOverride ?? SemanticEditEngine.defaultGrouping(for: command)
         let editorSelection: EditorSelection
         switch selection.mode {
         case .source:

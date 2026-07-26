@@ -37,4 +37,7 @@ protocol DocumentActionInterface: AnyObject {
 
     /// Deterministic undo-checkpoint observer teardown (REQ-015/COR-08).
     @MainActor func detachUndoCheckpointObserver()
+
+    /// Close an open typing undo group (selection / mode / discrete boundaries).
+    @MainActor func closeTypingUndoGroup()
 }

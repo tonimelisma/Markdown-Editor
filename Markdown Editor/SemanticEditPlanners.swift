@@ -145,7 +145,13 @@ nonisolated enum BlockEditPlanner {
         selectionBefore: SourceSelection? = nil
     ) -> SemanticEditResult {
         let prefix = String(repeating: "#", count: max(1, min(level, 6))) + " "
-        return transformLine(snapshot: snapshot, range: range, action: "Heading") { content, hadNewline in
+        return transformLine(
+            snapshot: snapshot,
+            range: range,
+            action: "Heading",
+            grouping: grouping,
+            selectionBefore: selectionBefore
+        ) { content, hadNewline in
             let stripped = stripSameLineBlockChrome(content)
             return prefix + stripped + (hadNewline ? "\n" : "")
         } postcondition: { tree, _ in
@@ -162,7 +168,13 @@ nonisolated enum BlockEditPlanner {
         grouping: MutationGrouping = .discrete,
         selectionBefore: SourceSelection? = nil
     ) -> SemanticEditResult {
-        transformLine(snapshot: snapshot, range: range, action: "Paragraph") { content, hadNewline in
+        transformLine(
+            snapshot: snapshot,
+            range: range,
+            action: "Paragraph",
+            grouping: grouping,
+            selectionBefore: selectionBefore
+        ) { content, hadNewline in
             stripSameLineBlockChrome(content) + (hadNewline ? "\n" : "")
         } postcondition: { _, _ in true }
     }
@@ -199,6 +211,8 @@ nonisolated enum BlockEditPlanner {
         snapshot: SourceSnapshot,
         range: NSRange,
         action: String,
+        grouping: MutationGrouping = .discrete,
+        selectionBefore: SourceSelection? = nil,
         transform: (String, Bool) -> String,
         postcondition: @escaping (MarkdownTree, String) -> Bool
     ) -> SemanticEditResult {
@@ -213,6 +227,8 @@ nonisolated enum BlockEditPlanner {
             range: line,
             replacement: replacement,
             action: action,
+            grouping: grouping,
+            selectionBefore: selectionBefore,
             postcondition: postcondition
         )
     }
@@ -244,7 +260,9 @@ nonisolated enum ListEditPlanner {
             snapshot: snapshot,
             range: line,
             replacement: replacement,
-            action: action
+            action: action,
+            grouping: grouping,
+            selectionBefore: selectionBefore
         ) { _, _ in true }
     }
 

@@ -208,6 +208,10 @@ struct WYSIWYGTextView: NSViewRepresentable {
             state.selection = range
             state.affinity = textView.selectionAffinity == .upstream ? .upstream : .downstream
             session.wysiwygViewState = state
+            // Close typing groups on caret moves; skip selection churn from in-flight typing.
+            if !isNativeEditInFlight {
+                document.closeTypingUndoGroup()
+            }
             // COR-08 D2: never store projection coordinates as document source selection.
             // Image intent resolves through EditorSelectionIntent + coordinate map.
         }
@@ -525,7 +529,8 @@ final class MarkdownWYSIWYGTextView: NSTextView {
                     utf16Range: range,
                     sourceVersion: documentActions?.sourceSnapshot().sourceVersion ?? 0
                 )
-                _ = session?.perform(.insertText(plain), selection: selection)
+                // Paste must not coalesce into an open typing undo group (REQ-016).
+                _ = session?.perform(.insertText(plain), selection: selection, grouping: .discrete)
             }
         }
     }
