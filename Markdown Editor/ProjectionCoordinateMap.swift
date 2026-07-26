@@ -32,6 +32,15 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
         var covered = 0
         let selEnd = NSMaxRange(selection)
 
+        // Refuse when either endpoint character lies in a synthetic segment. Bridging is only
+        // for synthetics strictly between source-backed endpoints (e.g. paragraph breaks).
+        if selection.length > 0 {
+            if isSyntheticProjectionIndex(selection.location)
+                || isSyntheticProjectionIndex(selEnd - 1) {
+                return .refused(.uneditableSynthetic)
+            }
+        }
+
         for segment in segments {
             let overlap = intersection(selection, segment.projectionRange)
             guard overlap.length > 0 || (overlap.length == 0 && selection.length == 0) else { continue }
@@ -59,9 +68,7 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
                 case .refuse:
                     return .refused(.uneditableSynthetic)
                 case .atSourceLocation, .atSourceBoundaries:
-                    // Bridge coverage only. Non-empty synthetic-only selections must still refuse
-                    // (do not invent a source span from an insertion policy alone). Source-backed
-                    // endpoints on either side already define the contiguous mapped range.
+                    // Interior bridge only — endpoints already validated as non-synthetic.
                     break
                 }
             case .uneditable:
@@ -125,6 +132,16 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
     }
 
     // MARK: - Private
+
+    private func isSyntheticProjectionIndex(_ index: Int) -> Bool {
+        for segment in segments {
+            let range = segment.projectionRange
+            guard index >= range.location, index < NSMaxRange(range) else { continue }
+            if case .synthetic = segment { return true }
+            return false
+        }
+        return false
+    }
 
     private func sourceInsertionPoint(at location: Int, affinity: SelectionAffinity) -> CoordinateMappingResult {
         guard location >= 0, location <= projectionUTF16Count else {

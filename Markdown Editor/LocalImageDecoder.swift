@@ -30,6 +30,8 @@ nonisolated enum LocalImageDecoder {
         let pixelHeight: Int
         let byteCost: Int
         let fileModificationDate: Date?
+        /// SHA-256 hex of file bytes — real content identity for the display cache.
+        let contentDigest: String
     }
 
     static func decode(
@@ -57,7 +59,15 @@ nonisolated enum LocalImageDecoder {
             return .failure(.unsupportedType)
         }
 
-        guard let source = CGImageSourceCreateWithURL(resolved as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else {
+        guard let fileData = try? Data(contentsOf: resolved, options: [.mappedIfSafe]) else {
+            return .failure(.missingFile)
+        }
+        let contentDigest = ImageAssetPolicy.sha256Hex(fileData)
+
+        guard let source = CGImageSourceCreateWithData(
+            fileData as CFData,
+            [kCGImageSourceShouldCache: false] as CFDictionary
+        ) else {
             return .failure(.corrupt)
         }
         let uti = CGImageSourceGetType(source).map { $0 as String } ?? ""
@@ -93,7 +103,8 @@ nonisolated enum LocalImageDecoder {
                 pixelWidth: width,
                 pixelHeight: height,
                 byteCost: cost,
-                fileModificationDate: modDate
+                fileModificationDate: modDate,
+                contentDigest: contentDigest
             )
         )
     }
@@ -111,12 +122,8 @@ final class LocalImageByteCache {
         let locationGeneration: UInt64
         let modificationTime: TimeInterval
         let displayEdge: Int
-        /// Content identity — path+mtime alone can collide when a file is replaced in place
-        /// without a timestamp change, or when mtime lookup returns nil.
-        let contentType: String
-        let pixelWidth: Int
-        let pixelHeight: Int
-        let byteCost: Int
+        /// SHA-256 of file bytes — metadata alone can collide for same-size replacements.
+        let contentDigest: String
     }
 
     private struct Entry {
@@ -132,10 +139,7 @@ final class LocalImageByteCache {
         path: String,
         locationGeneration: UInt64,
         modification: Date?,
-        contentType: String,
-        pixelWidth: Int,
-        pixelHeight: Int,
-        byteCost: Int,
+        contentDigest: String,
         displayEdge: Int = Int(LocalImageDecoder.maxDisplayEdge)
     ) -> CGImage? {
         let key = Key(
@@ -143,10 +147,7 @@ final class LocalImageByteCache {
             locationGeneration: locationGeneration,
             modificationTime: modification?.timeIntervalSinceReferenceDate ?? 0,
             displayEdge: displayEdge,
-            contentType: contentType,
-            pixelWidth: pixelWidth,
-            pixelHeight: pixelHeight,
-            byteCost: byteCost
+            contentDigest: contentDigest
         )
         guard let entry = map[key] else { return nil }
         if let idx = order.firstIndex(of: key) {
@@ -162,9 +163,7 @@ final class LocalImageByteCache {
         path: String,
         locationGeneration: UInt64,
         modification: Date?,
-        contentType: String,
-        pixelWidth: Int,
-        pixelHeight: Int,
+        contentDigest: String,
         displayEdge: Int = Int(LocalImageDecoder.maxDisplayEdge)
     ) {
         let key = Key(
@@ -172,10 +171,7 @@ final class LocalImageByteCache {
             locationGeneration: locationGeneration,
             modificationTime: modification?.timeIntervalSinceReferenceDate ?? 0,
             displayEdge: displayEdge,
-            contentType: contentType,
-            pixelWidth: pixelWidth,
-            pixelHeight: pixelHeight,
-            byteCost: cost
+            contentDigest: contentDigest
         )
         if let old = map[key] {
             totalBytes -= old.cost
