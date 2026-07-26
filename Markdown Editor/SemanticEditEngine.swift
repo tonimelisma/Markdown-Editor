@@ -783,10 +783,10 @@ nonisolated enum SemanticEditEngine {
 
         // Full projected-body selection → replace the entire source cell (matches select-all-in-cell).
         if editedProjection == bodyProj {
-            return TableCellEditPlanner.replace(
+            return TableCellEditPlanner.replaceExactCell(
                 snapshot: snapshot,
                 tree: tree,
-                nodeID: nodeID,
+                sourceRange: cellSource,
                 text: encodedText,
                 grouping: grouping,
                 selectionBefore: SourceSelection(utf16: cellSource, affinity: selection.affinity)
@@ -809,10 +809,10 @@ nonisolated enum SemanticEditEngine {
                 return .refused(.mappingFailure)
             }
             let newCellText = cellText.replacingCharacters(in: local, with: encodedText)
-            return TableCellEditPlanner.replace(
+            return TableCellEditPlanner.replaceExactCell(
                 snapshot: snapshot,
                 tree: tree,
-                nodeID: nodeID,
+                sourceRange: cellSource,
                 text: newCellText,
                 grouping: grouping,
                 selectionBefore: SourceSelection(utf16: mapped, affinity: selection.affinity)
@@ -835,10 +835,10 @@ nonisolated enum SemanticEditEngine {
             location: cellSource.location + localSource.location,
             length: localSource.length
         )
-        return TableCellEditPlanner.replace(
+        return TableCellEditPlanner.replaceExactCell(
             snapshot: snapshot,
             tree: tree,
-            nodeID: nodeID,
+            sourceRange: cellSource,
             text: newCellText,
             grouping: grouping,
             selectionBefore: SourceSelection(utf16: absolute, affinity: selection.affinity)
@@ -904,7 +904,28 @@ nonisolated enum SemanticEditEngine {
         ) else {
             return false
         }
+        guard let local = PresentationTransitionPlanner.identityReplacement(
+            snapshot: presentation,
+            projectionRange: projectionRange,
+            visibleReplacement: visibleReplacement,
+            sourceRange: mutation.range,
+            sourceReplacement: mutation.replacement,
+            nextSourceRevision: SourceRevision(value: mutation.expectedRevision &+ 1),
+            nextSourceUTF16Count: (candidate as NSString).length,
+            nextSnapshotID: nextSnapshotID,
+            affinity: mutation.selectionBefore.affinity
+        )?.nextSnapshot else {
+            return false
+        }
+        // Equal visible strings are insufficient: a list marker, entity, or other
+        // control atom can emerge without changing the plain text. The authoritative
+        // parse must agree with the locally intended presentation structure too.
         return built.renderedString == expected
+            && built.runs == local.runs
+            && built.attachments == local.attachments
+            && built.tables == local.tables
+            && built.listMarkers == local.listMarkers
+            && built.atoms == local.atoms
     }
 
     /// If syntax emerged from earlier literal keystrokes, protect the closest source

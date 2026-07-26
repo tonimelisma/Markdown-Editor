@@ -341,6 +341,28 @@ nonisolated enum LinkEditPlanner {
 }
 
 nonisolated enum TableCellEditPlanner {
+    static func replaceExactCell(
+        snapshot: SourceSnapshot,
+        tree: MarkdownTree?,
+        sourceRange: NSRange,
+        text: String,
+        grouping: MutationGrouping,
+        selectionBefore: SourceSelection
+    ) -> SemanticEditResult {
+        guard sourceRange.location >= 0,
+              NSMaxRange(sourceRange) <= (snapshot.text as NSString).length else {
+            return .refused(.mappingFailure)
+        }
+        return replaceValidated(
+            snapshot: snapshot,
+            tree: tree,
+            sourceRange: sourceRange,
+            text: text,
+            grouping: grouping,
+            selectionBefore: selectionBefore
+        )
+    }
+
     static func replace(
         snapshot: SourceSnapshot,
         tree: MarkdownTree?,
@@ -349,12 +371,6 @@ nonisolated enum TableCellEditPlanner {
         grouping: MutationGrouping = .discrete,
         selectionBefore: SourceSelection? = nil
     ) -> SemanticEditResult {
-        // Unescaped pipes / newlines change GFM table structure — refuse rather than accept
-        // a vacuous postcondition (node IDs are unstable across reparse). Escaped pipes (`\|`)
-        // are literal cell content and must be allowed.
-        if containsUnescapedPipe(text) || text.contains("\n") || text.contains("\r") {
-            return .refused(.ambiguousSelection)
-        }
         guard let tree, let node = findNode(id: nodeID, in: tree.root) else {
             return .refused(.mappingFailure)
         }
@@ -374,6 +390,30 @@ nonisolated enum TableCellEditPlanner {
         guard let sourceRange else {
             return .refused(.mappingFailure)
         }
+        return replaceValidated(
+            snapshot: snapshot,
+            tree: tree,
+            sourceRange: sourceRange,
+            text: text,
+            grouping: grouping,
+            selectionBefore: selectionBefore
+        )
+    }
+
+    private static func replaceValidated(
+        snapshot: SourceSnapshot,
+        tree: MarkdownTree?,
+        sourceRange: NSRange,
+        text: String,
+        grouping: MutationGrouping,
+        selectionBefore: SourceSelection?
+    ) -> SemanticEditResult {
+        // Unescaped pipes / newlines change GFM table structure — refuse rather than accept
+        // a vacuous postcondition. Escaped pipes (`\|`) are literal cell content.
+        if containsUnescapedPipe(text) || text.contains("\n") || text.contains("\r") {
+            return .refused(.ambiguousSelection)
+        }
+        guard let tree else { return .refused(.mappingFailure) }
         let beforeTables = countTables(in: tree.root)
         let beforeCells = countTableCells(in: tree.root)
         return SemanticPlannerGate.commitIfValid(
