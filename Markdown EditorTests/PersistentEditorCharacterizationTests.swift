@@ -57,6 +57,20 @@ struct PersistentEditorCharacterizationTests {
         document.installTextForTesting("abcdefghij\n")
         let session = EditorSession()
         session.attach(document: document)
+        let tree = MarkdownParser.parse(
+            document.text,
+            sourceVersion: document.sourceVersion
+        ).get()!
+        session.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: tree,
+                index: MarkdownSourceIndex(
+                    source: document.text,
+                    sourceVersion: document.sourceVersion
+                )
+            ),
+            tree: tree
+        )
         let placement = ImagePlacementController()
         let router = EditorActionRouter()
         let host = EditorHostView.HostCoordinator(
@@ -67,10 +81,6 @@ struct PersistentEditorCharacterizationTests {
         )
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         host.buildEditors(in: root)
-        // Selection restore is chrome state — seed both storages without waiting on async parse.
-        host.sourceText?.string = document.text
-        host.wysiwygText?.string = "abcdefghij\n"
-
         // Establish source chrome by selecting while source is visible, then leave.
         host.applyMode(.source, focus: false)
         host.sourceText?.setSelectedRanges(
@@ -374,9 +384,14 @@ struct PersistentEditorCharacterizationTests {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         host.buildEditors(in: root)
         host.applyMode(.wysiwyg, focus: false)
-        host.wysiwygText?.setSelectedRange(NSRange(location: 4, length: 0))
+        session.updateWYSIWYGModeState {
+            $0.selection = ProjectionSelection(
+                utf16: NSRange(location: 4, length: 0),
+                revision: session.presentation!.projectionRevision
+            )
+        }
 
-        let replacementSource = "short\n"
+        let replacementSource = "klmnopqrst\n"
         let replacementTree = try #require(
             MarkdownParser.parse(
                 replacementSource,
