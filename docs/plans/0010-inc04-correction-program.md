@@ -324,21 +324,21 @@ changes:
 
 ### Implementation checklist
 
-- [ ] Add `EditorTrace` event protocol and in-memory recorder.
-- [ ] Add `SourceMutation`, `MutationGrouping`, and `HistoryPatch`.
-- [ ] Add the one private document mutation application method.
-- [ ] Validate revision, range, and expected content before public commits.
-- [ ] Register undo using a dynamic history operation; never call the version-gated public API
+- [x] Add `EditorTrace` event protocol and in-memory recorder.
+- [x] Add `SourceMutation`, `MutationGrouping`, and `HistoryPatch`.
+- [x] Add the one private document mutation application method.
+- [x] Validate revision, range, and expected content before public commits.
+- [x] Register undo using a dynamic history operation; never call the version-gated public API
       from an undo closure.
-- [ ] Define typing coalescing and discrete semantic-action grouping.
-- [ ] Remove duplicate manual `objectWillChange` sends where `@Published` already supplies them.
-- [ ] Replace `ioLock` plus `nonisolated(unsafe) ioText` with `Synchronization.Mutex`.
-- [ ] Remove the dead `MarkdownSourceIndex.stringIndex` loop.
-- [ ] Remove the custom actor-inferred `Result.flatMap`.
-- [ ] Replace constructed Save selectors with `#selector`.
-- [ ] Resolve every Swift 5 concurrency warning without `nonisolated(unsafe)`.
-- [ ] Make app and test code compile with `SWIFT_VERSION=6` and complete concurrency.
-- [ ] After the code is clean, land the project configuration enabling Swift 6 as prescribed by
+- [x] Define typing coalescing and discrete semantic-action grouping.
+- [x] Remove duplicate manual `objectWillChange` sends where `@Published` already supplies them.
+- [x] Replace `ioLock` plus `nonisolated(unsafe) ioText` with `Synchronization.Mutex`.
+- [x] Remove the dead `MarkdownSourceIndex.stringIndex` loop.
+- [x] Remove the custom actor-inferred `Result.flatMap`.
+- [x] Replace constructed Save selectors with `#selector`.
+- [x] Resolve every Swift 5 concurrency warning without `nonisolated(unsafe)`.
+- [x] Make app and test code compile with `SWIFT_VERSION=6` and complete concurrency.
+- [x] After the code is clean, land the project configuration enabling Swift 6 as prescribed by
       the repository Git workflow.
 
 ### COR-05 stop conditions

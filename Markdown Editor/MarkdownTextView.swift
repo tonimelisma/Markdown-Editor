@@ -128,13 +128,27 @@ struct MarkdownTextView: NSViewRepresentable {
             guard !isProgrammaticUpdate else { return true }
             // Attribute-only or marked-text updates may omit a replacement string.
             guard let replacement = replacementString else { return true }
-            let edit = SourceEdit(
-                expectedVersion: document.sourceVersion,
+            let ns = document.text as NSString
+            let expectedText: String
+            if affectedCharRange.location >= 0,
+               NSMaxRange(affectedCharRange) <= ns.length {
+                expectedText = ns.substring(with: affectedCharRange)
+            } else {
+                return false
+            }
+            let selectionBefore = SourceSelection(range: document.activeSelection)
+            let afterLocation = affectedCharRange.location + (replacement as NSString).length
+            let mutation = SourceMutation(
+                expectedRevision: document.sourceVersion,
                 range: affectedCharRange,
+                expectedText: expectedText,
                 replacement: replacement,
-                actionName: "Typing"
+                selectionBefore: selectionBefore,
+                selectionAfter: SourceSelection(range: NSRange(location: afterLocation, length: 0)),
+                actionName: "Typing",
+                grouping: .typing
             )
-            switch document.commitSourceEdit(edit) {
+            switch document.commitSourceMutation(mutation) {
             case .committed(let selection):
                 document.reportActiveSelection(selection.range)
                 // Prevent updateNSView from rewriting storage before the text view applies
@@ -158,7 +172,7 @@ struct MarkdownTextView: NSViewRepresentable {
             guard let textView else { return }
             let range = textView.selectedRange()
             document.reportActiveSelection(range)
-            if var session {
+            if let session {
                 var state = session.sourceViewState
                 state.selection = range
                 session.sourceViewState = state

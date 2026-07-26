@@ -63,7 +63,12 @@ final class EditorSession: ObservableObject {
         // Snapshot current mode state is owned by adapters; switching never touches source.
         mode = newMode
         // REQ-052/086: inactive view applies newest accepted document version on next update.
-        objectWillChange.send()
+        // @Published `mode` already notifies observers.
+        traceModeToggle(toSource: newMode == .source)
+    }
+
+    private func traceModeToggle(toSource: Bool) {
+        document?.trace?.record(.modeToggle(toSource: toSource))
     }
 
     func scheduleParse() {
@@ -144,7 +149,7 @@ final class EditorSession: ObservableObject {
                 switch refusal {
                 case .staleVersion: return .refused(.staleVersion)
                 case .invalidRange: return .refused(.invalidRange)
-                case .conflict: return .refused(.ambiguousSelection)
+                case .conflict, .contentMismatch: return .refused(.ambiguousSelection)
                 }
             }
         case .refused:

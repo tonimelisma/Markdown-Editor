@@ -150,21 +150,13 @@ nonisolated struct MarkdownSourceIndex: Sendable {
         guard utf8Offset >= 0, utf8Offset <= utf8Count else {
             return .failure(.invalidUTF8Boundary)
         }
-        var viewed = utf8Offset
-        var idx = source.startIndex
-        while viewed > 0 && idx < source.endIndex {
-            let len = source.utf8.distance(from: idx, to: source.index(after: idx))
-            // Better: use utf8 index
-            break
-        }
         // Use UTF8View indexing for exact byte boundaries.
         let utf8View = source.utf8
         guard let utf8Index = utf8View.index(utf8View.startIndex, offsetBy: utf8Offset, limitedBy: utf8View.endIndex) else {
             return .failure(.invalidUTF8Boundary)
         }
         // Must land on a Character boundary (Scalar/Character).
-        let stringIndex = utf8Index.samePosition(in: source)
-        guard let stringIndex else {
+        guard let stringIndex = utf8Index.samePosition(in: source) else {
             return .failure(.invalidUTF8Boundary)
         }
         return .success(stringIndex)
@@ -188,7 +180,12 @@ nonisolated struct MarkdownSourceIndex: Sendable {
     }
 
     func utf16Range(for position: SourcePosition) -> Result<NSRange, SourceMappingFailure> {
-        utf8Range(for: position).flatMap { utf16Range(for: $0) }
+        switch utf8Range(for: position) {
+        case .success(let utf8):
+            return utf16Range(for: utf8)
+        case .failure(let err):
+            return .failure(err)
+        }
     }
 
     func substring(utf8: UTF8Range) -> Result<String, SourceMappingFailure> {
@@ -203,7 +200,12 @@ nonisolated struct MarkdownSourceIndex: Sendable {
     }
 
     func substring(position: SourcePosition) -> Result<String, SourceMappingFailure> {
-        utf8Range(for: position).flatMap { substring(utf8: $0) }
+        switch utf8Range(for: position) {
+        case .success(let utf8):
+            return substring(utf8: utf8)
+        case .failure(let err):
+            return .failure(err)
+        }
     }
 
     /// Slice corresponding to an exact UTF-16 NSRange.
@@ -212,16 +214,5 @@ nonisolated struct MarkdownSourceIndex: Sendable {
             return .failure(.invalidUTF16Range)
         }
         return .success((source as NSString).substring(with: range))
-    }
-}
-
-extension Result where Failure == SourceMappingFailure {
-    func flatMap<NewSuccess>(
-        _ transform: (Success) -> Result<NewSuccess, SourceMappingFailure>
-    ) -> Result<NewSuccess, SourceMappingFailure> {
-        switch self {
-        case .success(let value): return transform(value)
-        case .failure(let error): return .failure(error)
-        }
     }
 }

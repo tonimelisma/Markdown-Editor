@@ -9,7 +9,17 @@ import XCTest
 final class LocalImageAndPasteTests: XCTestCase {
     // Verifies: REQ-081
     func testResolvesPNGJPEGGIFHEICWithoutTouchingOriginalBytes() throws {
-        let dir = fixturesImagesDirectory()
+        let fixtures = fixturesImagesDirectory()
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("md-editor-image-resolve-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        for name in ["sample.png", "sample.jpg", "sample.gif", "sample.heic"] {
+            let source = fixtures.appendingPathComponent(name)
+            let url = dir.appendingPathComponent(name)
+            try FileManager.default.copyItem(at: source, to: url)
+        }
         let docURL = dir.appendingPathComponent("doc.md")
         try "![x](sample.png)\n".write(to: docURL, atomically: true, encoding: .utf8)
 

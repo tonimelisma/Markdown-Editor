@@ -35,15 +35,15 @@ struct Markdown_EditorApp: App {
             // REQ-014: restore standard document File actions removed with DocumentGroup.
             CommandGroup(replacing: .saveItem) {
                 Button("Save") {
-                    NSApp.sendAction(Selector(("saveDocument:")), to: nil, from: nil)
+                    NSApp.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil)
                 }
                 .keyboardShortcut("s")
                 Button("Save As…") {
-                    NSApp.sendAction(Selector(("saveDocumentAs:")), to: nil, from: nil)
+                    NSApp.sendAction(#selector(NSDocument.saveAs(_:)), to: nil, from: nil)
                 }
                 .keyboardShortcut("S")
                 Button("Revert to Saved") {
-                    NSApp.sendAction(Selector(("revertDocumentToSaved:")), to: nil, from: nil)
+                    NSApp.sendAction(#selector(NSDocument.revertToSaved(_:)), to: nil, from: nil)
                 }
             }
         }
@@ -61,6 +61,19 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         "revertDocumentToSaved:",
     ]
 
+    /// True when the app binary is hosted by XCTest / Swift Testing.
+    nonisolated static var isRunningUnitTests: Bool {
+        let env = ProcessInfo.processInfo.environment
+        if env["XCTestConfigurationFilePath"] != nil { return true }
+        if env["XCTestBundlePath"] != nil { return true }
+        if env["XCTestSessionIdentifier"] != nil { return true }
+        if NSClassFromString("XCTestCase") != nil { return true }
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.contains("xctest") }) {
+            return true
+        }
+        return false
+    }
+
     override init() {
         // First NSDocumentController subclass instance becomes the shared controller.
         documentController = MarkdownDocumentController()
@@ -69,15 +82,26 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = documentController
+        guard !Self.isRunningUnitTests else { return }
         ensureOpenRecentMenuItem()
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        true
+        // Unit tests host the app binary; opening an untitled document hangs the suite.
+        if Self.isRunningUnitTests { return false }
+        return true
+    }
+
+    func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        // Returning false here still allows applicationShouldOpenUntitledFile → true
+        // to open an untitled document on normal launch; under tests both refuse.
+        if Self.isRunningUnitTests { return false }
+        return true
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
-        true
+        if Self.isRunningUnitTests { return false }
+        return true
     }
 
     /// NSDocumentController populates Open Recent when a standard menu item exists.
@@ -112,4 +136,5 @@ final class MarkdownDocumentController: NSDocumentController {
         }
         return super.documentClass(forType: typeName) ?? MarkdownDocument.self
     }
+
 }

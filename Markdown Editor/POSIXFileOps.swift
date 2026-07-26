@@ -194,7 +194,8 @@ nonisolated enum POSIXFileOps {
         if fcntl(dirFD, F_GETPATH, &buf) != 0 {
             throw ImagePlacementError.writeFailed
         }
-        return String(cString: buf)
+        let length = buf.firstIndex(of: 0) ?? buf.count
+        return String(decoding: buf.prefix(length).map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 }
 

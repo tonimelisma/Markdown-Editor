@@ -52,6 +52,7 @@ enum ImagePasteboardClassifier {
         return .fallthroughToNativeText
     }
 
+    @MainActor
     static func classifyDragInfo(_ info: NSDraggingInfo) -> PasteClassification {
         classifyPasteboard(info.draggingPasteboard)
     }
