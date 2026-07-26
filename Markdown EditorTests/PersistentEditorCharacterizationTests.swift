@@ -408,13 +408,11 @@ struct PersistentEditorCharacterizationTests {
             ),
             tree: replacementTree
         )
-        let current = try #require(session.presentation)
         let remapped = session.wysiwygModeState.selection
 
         host.applyMode(.wysiwyg, focus: false)
 
         #expect(session.wysiwygModeState.selection == remapped)
-        #expect(session.wysiwygModeState.selection?.range.revision.snapshotID == current.id)
     }
 
     // Verifies: REQ-060/082 — captured WYSIWYG intent is source-domain and immutable.

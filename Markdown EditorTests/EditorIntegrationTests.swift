@@ -128,17 +128,18 @@ struct EditorIntegrationTests {
         #expect(mutation.actionName == "Edit Cell")
         #expect(mutation.replacement == "z")
 
-        let refused = SemanticEditEngine.apply(
+        let literalPipe = SemanticEditEngine.apply(
             command: .insertText("x|y"),
             selection: selection,
             snapshot: snapshot,
             projection: model,
             tree: tree
         )
-        guard case .refused = refused else {
-            Issue.record("expected refusal for unescaped pipe")
+        guard case .mutation(let pipeMutation) = literalPipe else {
+            Issue.record("expected literal pipe encoding, got \(literalPipe)")
             return
         }
+        #expect(pipeMutation.replacement == "x\\|y")
         #expect(snapshot.text == source)
     }
 

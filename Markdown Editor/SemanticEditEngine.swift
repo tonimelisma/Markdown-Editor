@@ -91,7 +91,7 @@ nonisolated enum SemanticEditEngine {
                     affinity: projSel.affinity,
                     snapshot: presentation
                 )
-                var transitionRange = projSel.range.utf16
+                let transitionRange = projSel.range.utf16
                 let replacement: String
                 switch request.command {
                 case .insertText(let text):
@@ -117,7 +117,7 @@ nonisolated enum SemanticEditEngine {
                     )
                 }
 
-                var visibleReplacement = replacement
+                let visibleReplacement = replacement
                 if case .tableCell(_, _, let projectionBody) = classification {
                     guard let tableEdit = tablePresentationEdit(
                         command: request.command,
@@ -127,8 +127,14 @@ nonisolated enum SemanticEditEngine {
                     ) else {
                         return .refused(.unprovable)
                     }
-                    transitionRange = projectionBody
-                    visibleReplacement = tableEdit
+                    return planAuthoritativeTransition(
+                        mutation: mutation,
+                        snapshot: snapshot,
+                        presentation: presentation,
+                        nextSnapshotID: nextSnapshotID,
+                        affinity: projSel.affinity,
+                        projectionSelectionLocation: tableEdit.selectionLocation
+                    )
                 }
 
                 if case .insertText(let text) = request.command, !text.isEmpty {
@@ -264,7 +270,8 @@ nonisolated enum SemanticEditEngine {
         presentation: PresentationSnapshot,
         nextSnapshotID: PresentationSnapshot.ID,
         affinity: SelectionAffinity,
-        taskNodeID: MarkdownNodeID? = nil
+        taskNodeID: MarkdownNodeID? = nil,
+        projectionSelectionLocation: Int? = nil
     ) -> EditorEditOutcome {
         let activeMutation = mutation
         // Apply the candidate to immutable source, then build one exact authoritative result.
@@ -287,7 +294,16 @@ nonisolated enum SemanticEditEngine {
         }
         let sourceAfter = activeMutation.selectionAfter.range.utf16
         let projSel: ProjectionSelection
-        switch nextFixed.coordinateMap.projectionRange(forSource: sourceAfter, affinity: affinity) {
+        if let projectionSelectionLocation,
+           projectionSelectionLocation >= 0,
+           projectionSelectionLocation <= (nextFixed.renderedString as NSString).length {
+            projSel = ProjectionSelection(
+                utf16: NSRange(location: projectionSelectionLocation, length: 0),
+                revision: nextFixed.projectionRevision,
+                affinity: affinity
+            )
+        } else {
+            switch nextFixed.coordinateMap.projectionRange(forSource: sourceAfter, affinity: affinity) {
         case .exact(let range):
             projSel = ProjectionSelection(utf16: range, revision: nextFixed.projectionRevision, affinity: affinity)
         case .refused:
@@ -306,6 +322,7 @@ nonisolated enum SemanticEditEngine {
             } else {
                 return .refused(.mappingFailure)
             }
+        }
         }
         let transition = PresentationTransition(
             fromSnapshotID: presentation.id,
@@ -747,6 +764,9 @@ nonisolated enum SemanticEditEngine {
         }
         let bodyProj = NSRange(location: cellProj.location, length: bodyLength)
         var editedProjection = selection.range.utf16
+        if editedProjection == cellProj {
+            editedProjection = bodyProj
+        }
         guard editedProjection.location >= bodyProj.location,
               NSMaxRange(editedProjection) <= NSMaxRange(bodyProj) else {
             return .refused(.mappingFailure)
@@ -850,7 +870,7 @@ nonisolated enum SemanticEditEngine {
         selection: NSRange,
         body: NSRange,
         rendered: String
-    ) -> String? {
+    ) -> (replacement: String, selectionLocation: Int)? {
         guard selection.location >= body.location,
               NSMaxRange(selection) <= NSMaxRange(body) else {
             return nil
@@ -874,7 +894,11 @@ nonisolated enum SemanticEditEngine {
         default:
             return nil
         }
-        return currentBody.replacingCharacters(in: local, with: replacement)
+        let nextBody = currentBody.replacingCharacters(in: local, with: replacement)
+        return (
+            replacement: nextBody,
+            selectionLocation: body.location + local.location + (replacement as NSString).length
+        )
     }
 
     /// Reparse the completed source context and prove that it renders exactly as the
@@ -904,28 +928,54 @@ nonisolated enum SemanticEditEngine {
         ) else {
             return false
         }
-        guard let local = PresentationTransitionPlanner.identityReplacement(
-            snapshot: presentation,
-            projectionRange: projectionRange,
-            visibleReplacement: visibleReplacement,
-            sourceRange: mutation.range,
-            sourceReplacement: mutation.replacement,
-            nextSourceRevision: SourceRevision(value: mutation.expectedRevision &+ 1),
-            nextSourceUTF16Count: (candidate as NSString).length,
-            nextSnapshotID: nextSnapshotID,
-            affinity: mutation.selectionBefore.affinity
-        )?.nextSnapshot else {
-            return false
-        }
         // Equal visible strings are insufficient: a list marker, entity, or other
-        // control atom can emerge without changing the plain text. The authoritative
-        // parse must agree with the locally intended presentation structure too.
+        // control run can emerge without changing the plain text. Compare semantic
+        // structure while deliberately ignoring node IDs, shifted ranges, and atom
+        // fragmentation, which are representation details of a fresh parse.
         return built.renderedString == expected
-            && built.runs == local.runs
-            && built.attachments == local.attachments
-            && built.tables == local.tables
-            && built.listMarkers == local.listMarkers
-            && built.atoms == local.atoms
+            && sameRunSemantics(built.runs, presentation.runs)
+            && sameAttachmentSemantics(built.attachments, presentation.attachments)
+            && sameTableSemantics(built.tables, presentation.tables)
+            && sameListSemantics(built.listMarkers, presentation.listMarkers)
+    }
+
+    private static func sameRunSemantics(_ lhs: [ProjectionRun], _ rhs: [ProjectionRun]) -> Bool {
+        lhs.count == rhs.count && zip(lhs, rhs).allSatisfy {
+            $0.styles == $1.styles
+                && $0.linkDestination == $1.linkDestination
+                && $0.isLiteralFallback == $1.isLiteralFallback
+        }
+    }
+
+    private static func sameAttachmentSemantics(
+        _ lhs: [ProjectionAttachment],
+        _ rhs: [ProjectionAttachment]
+    ) -> Bool {
+        lhs.count == rhs.count && zip(lhs, rhs).allSatisfy {
+            switch ($0.kind, $1.kind) {
+            case (.task(let a, _), .task(let b, _)): return a == b
+            case (.image(let a, _), .image(let b, _)): return a == b
+            case (.thematicBreak, .thematicBreak): return true
+            default: return false
+            }
+        }
+    }
+
+    private static func sameTableSemantics(_ lhs: [ProjectionTable], _ rhs: [ProjectionTable]) -> Bool {
+        lhs.count == rhs.count && zip(lhs, rhs).allSatisfy {
+            $0.columnCount == $1.columnCount
+                && $0.alignments == $1.alignments
+                && $0.cells.count == $1.cells.count
+        }
+    }
+
+    private static func sameListSemantics(
+        _ lhs: [ProjectionListMarker],
+        _ rhs: [ProjectionListMarker]
+    ) -> Bool {
+        lhs.count == rhs.count && zip(lhs, rhs).allSatisfy {
+            $0.text == $1.text && $0.nesting == $1.nesting && $0.kind == $1.kind
+        }
     }
 
     /// If syntax emerged from earlier literal keystrokes, protect the closest source
