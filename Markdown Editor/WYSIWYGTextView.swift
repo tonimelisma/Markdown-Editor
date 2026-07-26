@@ -475,10 +475,39 @@ final class MarkdownWYSIWYGTextView: NSTextView {
 
     // MARK: - Paste / drag
 
+    /// COR-08 D2: resolve the live WYSIWYG selection to source before COR-02 starts.
+    private func resolveAndReportImageIntent() -> Bool {
+        guard let actions = documentActions,
+              let session,
+              let projection = session.projection else {
+            return false
+        }
+        let snapshot = actions.sourceSnapshot()
+        let intent = EditorSelectionIntent(
+            domain: .wysiwyg,
+            sourceVersion: snapshot.sourceVersion,
+            range: selectedRange(),
+            affinity: selectionAffinity == .upstream ? .upstream : .downstream
+        )
+        switch intent.resolvedSourceRange(snapshot: snapshot, projection: projection) {
+        case .exact(let sourceRange):
+            actions.reportSourceSelection(
+                SourceSelection(utf16: sourceRange, affinity: intent.affinity)
+            )
+            return true
+        case .refused:
+            return false
+        }
+    }
+
     override func paste(_ sender: Any?) {
         let classification = ImagePasteboardClassifier.classifyPasteboard(.general)
         switch classification {
         case .images(let claims):
+            guard resolveAndReportImageIntent() else {
+                placementController?.alert = .error("Could not resolve image insertion point.")
+                return
+            }
             placementController?.handleImageAction(
                 claims: claims,
                 documentURL: documentActions?.sourceSnapshot().fileURL
@@ -506,12 +535,14 @@ final class MarkdownWYSIWYGTextView: NSTextView {
         let url = documentActions?.sourceSnapshot().fileURL
         if let receivers = pb.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver],
            !receivers.isEmpty {
+            guard resolveAndReportImageIntent() else { return false }
             placementController?.handleFilePromises(receivers, documentURL: url)
             return true
         }
         let classification = ImagePasteboardClassifier.classifyDragInfo(sender)
         switch classification {
         case .images(let claims):
+            guard resolveAndReportImageIntent() else { return false }
             placementController?.handleImageAction(claims: claims, documentURL: url)
             return true
         case .fallthroughToNativeText, .unsupported:

@@ -688,23 +688,4 @@ nonisolated enum SemanticEditEngine {
         }
         return nil
     }
-
-    private static func findItemNear(location: Int, in tree: MarkdownTree, source: String) -> MarkdownNode? {
-        let index = MarkdownSourceIndex(source: source, sourceVersion: tree.sourceVersion)
-        var best: MarkdownNode?
-        var bestDistance = Int.max
-        func walk(_ node: MarkdownNode) {
-            if case .item = node.kind,
-               case .success(let range) = index.utf16Range(for: node.position) {
-                let distance = abs(range.location - location)
-                if distance < bestDistance {
-                    bestDistance = distance
-                    best = node
-                }
-            }
-            for child in node.children { walk(child) }
-        }
-        walk(tree.root)
-        return best
-    }
 }

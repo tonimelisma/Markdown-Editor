@@ -205,16 +205,6 @@ final class EditorSession: ObservableObject {
         }
     }
 
-    /// Close an open typing undo group when selection moves or mode changes.
-    func noteSelectionOrModeBoundary() {
-        // Discrete commit path closes typing groups; selection changes are observed by
-        // document undo checkpoint + explicit discrete actions.
-        guard let document else { return }
-        // Force a discrete boundary by committing an empty no-op is wrong; instead rely on
-        // `commitSourceMutation` discrete grouping. Adapters call this before discrete work.
-        _ = document
-    }
-
     /// Window-scoped image action router (REQ-082). Injected by ContentView.
     weak var actionRouter: EditorActionRouter?
 
