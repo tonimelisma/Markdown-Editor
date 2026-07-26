@@ -66,6 +66,12 @@ final class EditorSession: ObservableObject {
         cancellables.removeAll()
         document.objectWillChange
             .sink { [weak self] _ in
+                // @Published emits before the canonical value changes. Invalidate the
+                // old map synchronously so loaded/reverted source is never editable
+                // through a presentation carrying the previous content identity.
+                MainActor.assumeIsolated {
+                    self?.invalidateDerivedState()
+                }
                 Task { @MainActor in
                     self?.scheduleParse()
                 }
@@ -77,6 +83,20 @@ final class EditorSession: ObservableObject {
             }
             .store(in: &cancellables)
         scheduleParse()
+    }
+
+    private func invalidateDerivedState() {
+        operationGeneration &+= 1
+        parseTask?.cancel()
+        presentation = nil
+        authoritativeTree = nil
+        resolvedImages = [:]
+        updateWYSIWYGModeState {
+            $0.availability = .waitingForCurrentProjection(
+                SourceRevision(value: document?.sourceVersion ?? 0)
+            )
+            $0.selection = nil
+        }
     }
 
     func setMode(_ newMode: EditorMode) {

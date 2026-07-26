@@ -253,7 +253,45 @@ struct EditorIntegrationTests {
         let data = MarkdownDocumentData(text: "from-disk").data()
         try doc.read(from: data, ofType: "net.daringfireball.markdown")
         #expect(doc.text == "from-disk")
-        #expect(doc.sourceVersion == 0)
+        #expect(doc.sourceVersion == 1)
+    }
+
+    // Verifies: REQ-018/091/093; ARC-003/004 — load identities are monotonic
+    // and synchronously make any prior presentation unavailable.
+    @Test func repeatedLoadsNeverReuseRevisionOrOldPresentation() throws {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("original")
+        let session = EditorSession()
+        session.attach(document: doc)
+        let tree = try #require(
+            MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get()
+        )
+        session.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: tree,
+                index: MarkdownSourceIndex(
+                    source: doc.text,
+                    sourceVersion: doc.sourceVersion
+                )
+            ),
+            tree: tree
+        )
+        #expect(session.presentation != nil)
+
+        try doc.read(
+            from: MarkdownDocumentData(text: "first").data(),
+            ofType: "net.daringfireball.markdown"
+        )
+        let firstRevision = doc.sourceVersion
+        #expect(firstRevision == 1)
+        #expect(session.presentation == nil)
+
+        try doc.read(
+            from: MarkdownDocumentData(text: "second").data(),
+            ofType: "net.daringfireball.markdown"
+        )
+        #expect(doc.sourceVersion == firstRevision + 1)
+        #expect(session.presentation == nil)
     }
 
     // MARK: - D10 observer teardown

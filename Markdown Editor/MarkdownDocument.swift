@@ -308,7 +308,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     private func installLoadedText(_ value: String) {
         closeTypingGroupIfNeeded()
         text = value
-        sourceVersion = 0
+        // A revision identifies source content for this document's entire lifetime.
+        // Loads/reverts therefore advance it just like edits; identities are never reused.
+        sourceVersion &+= 1
         activeTracker = nil
         activeTrackingGeneration = nil
         undoManager?.removeAllActions()
