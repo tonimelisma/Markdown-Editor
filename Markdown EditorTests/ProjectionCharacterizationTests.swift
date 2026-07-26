@@ -309,7 +309,7 @@ struct ProjectionCharacterizationTests {
         }
     }
 
-    // Verifies: REQ-057/084
+    // Verifies: REQ-084
     @Test func orderedMarkersIncrementAndTrailingCaretMapsAfterMarker() throws {
         let source = "1. a\n2. b\n"
         let tree = try parse(source)
@@ -333,7 +333,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: REQ-057/087
+    // Verifies: REQ-084
     @Test func inlineCodeContentSourceExcludesBackticks() throws {
         let source = "a `xy` b\n"
         let tree = try parse(source)
@@ -350,7 +350,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: REQ-084/087
+    // Verifies: REQ-084
     @Test func selectionAcrossParagraphBreakMapsContiguousSource() throws {
         let source = "one\n\ntwo\n"
         let tree = try parse(source)
@@ -367,7 +367,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: REQ-084/087 — selection from list marker through item text maps to source.
+    // Verifies: REQ-084 — selection from list marker through item text maps to source.
     @Test func selectionStartingOnListMarkerMapsToSource() throws {
         let source = "1. a\n"
         let tree = try parse(source)
