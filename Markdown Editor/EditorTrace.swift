@@ -25,6 +25,9 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case compositionCancelled
     case compositionRefusedStale
     case imageCacheStore(cost: Int, totalBytes: Int)
+    case loadApplicationStale(token: UInt64, currentRevision: UInt64)
+    case editRouted(context: String, groupingTyping: Bool, planner: String)
+    case mappingResult(accepted: Bool, domain: String)
 }
 
 nonisolated enum HistoryDirection: String, Sendable, Equatable {
@@ -93,6 +96,12 @@ final class OSLogEditorTrace: EditorTraceSink {
             logger.fault("compositionRefusedStale")
         case .imageCacheStore(let cost, let totalBytes):
             logger.debug("imageCacheStore cost=\(cost) total=\(totalBytes)")
+        case .loadApplicationStale(let token, let currentRevision):
+            logger.fault("loadApplicationStale token=\(token) rev=\(currentRevision)")
+        case .editRouted(let context, let groupingTyping, let planner):
+            logger.debug("editRouted context=\(context, privacy: .public) typing=\(groupingTyping) planner=\(planner, privacy: .public)")
+        case .mappingResult(let accepted, let domain):
+            logger.debug("mappingResult accepted=\(accepted) domain=\(domain, privacy: .public)")
         }
     }
 }

@@ -50,8 +50,8 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// Mirror of `fileURL` for SwiftUI observation (NSDocument's property is not @Published).
     @Published private(set) var publishedFileURL: URL?
 
-    private var activeSelectionStorage = NSRange(location: 0, length: 0)
-    var pendingSelection: NSRange?
+    private var sourceSelectionStorage = SourceSelection(utf16: NSRange(location: 0, length: 0))
+    var pendingSelection: SourceSelection?
 
     private var trackingGeneration: Int = 0
     private var activeTracker: InsertionRangeTracker?
@@ -70,6 +70,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// Open typing undo group (MutationGrouping.typing coalescing).
     private var typingGroupOpen = false
     private var undoCheckpointObserver: NSObjectProtocol?
+
+    /// Notification center seam for observer lifecycle tests.
+    var notificationCenterForTesting: NotificationCenter = .default
+
+    /// Cross-actor load generation + mirrored source revision (COR-08 D9).
+    nonisolated private let loadGate = DocumentLoadGate()
 
     // MARK: - NSDocument lifecycle
 
@@ -97,7 +103,8 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         // applied bytes off-main and only scheduled the published-state hop).
         let loaded = copyIOText()
         if text != loaded {
-            applyLoadedText(loaded)
+            let (token, began) = loadGate.beginLoad()
+            _ = applyLoadedText(loaded, loadToken: token, beganAtRevision: began)
         }
         undoManager?.groupsByEvent = false
         attachUndoCheckpointObserverIfNeeded()
@@ -114,10 +121,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     }
 
     // REQ-015: background read uses byte snapshot only — never main.sync (deadlock risk).
+    // COR-08 D9: each read captures a load generation; stale applications refuse.
     nonisolated override func read(from data: Data, ofType typeName: String) throws {
         let decoded = try MarkdownDocumentData(data: data)
         applyIOText(decoded.text)
-        scheduleApplyLoadedText(decoded.text)
+        let (token, began) = loadGate.beginLoad()
+        scheduleApplyLoadedText(decoded.text, loadToken: token, beganAtRevision: began)
     }
 
     // REQ-015: background write uses byte snapshot only.
@@ -166,15 +175,19 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         }
     }
 
-    nonisolated private func scheduleApplyLoadedText(_ value: String) {
+    nonisolated private func scheduleApplyLoadedText(
+        _ value: String,
+        loadToken: UInt64,
+        beganAtRevision: UInt64
+    ) {
         if Thread.isMainThread {
             MainActor.assumeIsolated {
-                self.applyLoadedText(value)
+                _ = self.applyLoadedText(value, loadToken: loadToken, beganAtRevision: beganAtRevision)
             }
         } else {
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    self.applyLoadedText(value)
+                    _ = self.applyLoadedText(value, loadToken: loadToken, beganAtRevision: beganAtRevision)
                 }
             }
         }
@@ -191,15 +204,15 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         )
     }
 
-    var activeSelection: NSRange { activeSelectionStorage }
+    var sourceSelection: SourceSelection { sourceSelectionStorage }
 
-    func reportActiveSelection(_ range: NSRange) {
-        activeSelectionStorage = range
+    func reportSourceSelection(_ selection: SourceSelection) {
+        sourceSelectionStorage = selection
     }
 
-    func beginPlacementTracking(range: NSRange) -> Int {
+    func beginPlacementTracking(range: SourceRange) -> Int {
         trackingGeneration &+= 1
-        activeTracker = InsertionRangeTracker(range: range)
+        activeTracker = InsertionRangeTracker(range: range.utf16)
         activeTrackingGeneration = trackingGeneration
         return trackingGeneration
     }
@@ -225,36 +238,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     }
 
     var documentUndoManager: UndoManager? { undoManager }
-
-    // Compatibility adapter — builds a content-validated SourceMutation (discrete).
-    // REQ-016: Source/COR-02 callers keep compiling.
-    @discardableResult
-    func commitSourceEdit(_ edit: SourceEdit) -> SourceEditResult {
-        let ns = text as NSString
-        let length = ns.length
-        let expectedText: String
-        if edit.range.location >= 0,
-           edit.range.length >= 0,
-           NSMaxRange(edit.range) <= length {
-            expectedText = ns.substring(with: edit.range)
-        } else {
-            expectedText = ""
-        }
-        let replacementUTF16 = (edit.replacement as NSString).length
-        let mutation = SourceMutation(
-            expectedRevision: edit.expectedVersion,
-            range: edit.range,
-            expectedText: expectedText,
-            replacement: edit.replacement,
-            selectionBefore: SourceSelection(range: activeSelectionStorage),
-            selectionAfter: SourceSelection(
-                range: NSRange(location: edit.range.location + replacementUTF16, length: 0)
-            ),
-            actionName: edit.actionName,
-            grouping: .discrete
-        )
-        return commitSourceMutation(mutation)
-    }
 
     // REQ-016: validate revision, range, and expected content; one private apply path.
     @discardableResult
@@ -334,6 +317,11 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         return ok
     }
 
+    override func close() {
+        detachUndoCheckpointObserver()
+        super.close()
+    }
+
     // MARK: - Testing helpers
 
     /// Install text without going through file I/O (unit tests).
@@ -343,8 +331,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         closeTypingGroupIfNeeded()
         text = value
         sourceVersion = 0
+        loadGate.setRevisionMirror(0)
         syncIOText(value)
-        activeSelectionStorage = NSRange(location: 0, length: 0)
+        sourceSelectionStorage = SourceSelection(utf16: NSRange(location: 0, length: 0))
         pendingSelection = nil
         updateChangeCount(.changeCleared)
         undoManager?.removeAllActions()
@@ -363,9 +352,10 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         let newText = ns.replacingCharacters(in: range, with: replacement)
         text = newText
         sourceVersion &+= 1
+        loadGate.setRevisionMirror(sourceVersion)
         syncIOText(newText)
-        activeSelectionStorage = selectionAfter.range
-        pendingSelection = selectionAfter.range
+        sourceSelectionStorage = selectionAfter
+        pendingSelection = selectionAfter
         noteTrackedEdit(edited: range, changeInLength: replacementUTF16 - range.length)
         // Dirty state is driven by UndoManager registration — do not also call
         // updateChangeCount(.changeDone) or undo/redo will double-count.
@@ -458,7 +448,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// Close an open typing group before undo/redo so UndoManager is never left nested.
     private func attachUndoCheckpointObserverIfNeeded() {
         guard undoCheckpointObserver == nil, let undoManager else { return }
-        undoCheckpointObserver = NotificationCenter.default.addObserver(
+        undoCheckpointObserver = notificationCenterForTesting.addObserver(
             forName: .NSUndoManagerCheckpoint,
             object: undoManager,
             queue: .main
@@ -483,13 +473,43 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         applyIOText(value)
     }
 
-    private func applyLoadedText(_ value: String) {
+    /// Applies loaded text only when the load token is current and no newer mutation landed.
+    @discardableResult
+    func applyLoadedText(
+        _ value: String,
+        loadToken: UInt64,
+        beganAtRevision: UInt64
+    ) -> LoadedTextApplicationResult {
+        guard loadGate.validateApplication(token: loadToken, beganAtRevision: beganAtRevision),
+              sourceVersion == beganAtRevision else {
+            trace?.record(.loadApplicationStale(token: loadToken, currentRevision: sourceVersion))
+            loadGate.clearPending()
+            return .staleLoad
+        }
+
         closeTypingGroupIfNeeded()
         text = value
         sourceVersion = 0
-        activeSelectionStorage = NSRange(location: 0, length: 0)
+        loadGate.setRevisionMirror(0)
+        loadGate.clearPending()
+        sourceSelectionStorage = SourceSelection(utf16: NSRange(location: 0, length: 0))
         pendingSelection = nil
         activeTracker = nil
         activeTrackingGeneration = nil
+        return .applied
+    }
+
+    /// Test seam: begin a load and return its token + captured revision.
+    func beginLoadForTesting() -> (token: UInt64, beganAtRevision: UInt64) {
+        loadGate.setRevisionMirror(sourceVersion)
+        return loadGate.beginLoad()
+    }
+
+    func detachUndoCheckpointObserver() {
+        if let token = undoCheckpointObserver {
+            notificationCenterForTesting.removeObserver(token)
+            undoCheckpointObserver = nil
+        }
+        closeTypingGroupIfNeeded()
     }
 }

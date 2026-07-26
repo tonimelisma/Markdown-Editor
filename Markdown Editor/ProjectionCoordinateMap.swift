@@ -8,6 +8,7 @@ import Foundation
 /// Maps between WYSIWYG projection selections and canonical source selections.
 ///
 /// // REQ-056/087: affinity at boundaries; typed refusal — never clamp or proportion.
+/// // REQ-084: synthetic endpoints follow `SyntheticInsertionPolicy` (COR-08).
 nonisolated struct ProjectionCoordinateMap: Sendable {
     let segments: [ProjectionSegment]
     let projectionUTF16Count: Int
@@ -27,63 +28,13 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
             return sourceInsertionPoint(at: selection.location, affinity: affinity)
         }
 
-        var sourceStart: Int?
-        var sourceEnd: Int?
-        var covered = 0
-        let selEnd = NSMaxRange(selection)
+        return mapNonEmptySelection(selection, affinity: affinity)
+    }
 
-        // Refuse when either endpoint character lies in a synthetic segment. Bridging is only
-        // for synthetics strictly between source-backed endpoints (e.g. paragraph breaks).
-        if selection.length > 0 {
-            if isSyntheticProjectionIndex(selection.location)
-                || isSyntheticProjectionIndex(selEnd - 1) {
-                return .refused(.uneditableSynthetic)
-            }
-        }
-
-        for segment in segments {
-            let overlap = intersection(selection, segment.projectionRange)
-            guard overlap.length > 0 || (overlap.length == 0 && selection.length == 0) else { continue }
-            if overlap.length == 0 { continue }
-            covered += overlap.length
-
-            switch segment {
-            case .source(_, let source, _, _), .literalFallback(_, let source):
-                let local = overlap.location - segment.projectionRange.location
-                let mappedStart = source.location + local
-                let mappedEnd = mappedStart + overlap.length
-                // Only 1:1 when projection unit count equals source unit count for this segment.
-                if segment.projectionRange.length == source.length {
-                    sourceStart = min(sourceStart ?? mappedStart, mappedStart)
-                    sourceEnd = max(sourceEnd ?? mappedEnd, mappedEnd)
-                } else if overlap == segment.projectionRange {
-                    // Whole-segment map when lengths differ (entities/escapes).
-                    sourceStart = min(sourceStart ?? source.location, source.location)
-                    sourceEnd = max(sourceEnd ?? NSMaxRange(source), NSMaxRange(source))
-                } else {
-                    return .refused(.ambiguous)
-                }
-            case .synthetic(_, _, let insertion):
-                switch insertion {
-                case .refuse:
-                    return .refused(.uneditableSynthetic)
-                case .atSourceLocation, .atSourceBoundaries:
-                    // Interior bridge only — endpoints already validated as non-synthetic.
-                    break
-                }
-            case .uneditable:
-                return .refused(.unsupported)
-            }
-        }
-
-        guard covered == selection.length,
-              let start = sourceStart,
-              let end = sourceEnd,
-              start <= end,
-              end <= sourceUTF16Count else {
-            return .refused(.ambiguous)
-        }
-        return .exact(NSRange(location: start, length: end - start))
+    func sourceRange(
+        forProjection selection: ProjectionSelection
+    ) -> CoordinateMappingResult {
+        sourceRange(forProjection: selection.nsRange, affinity: selection.affinity)
     }
 
     func projectionRange(
@@ -131,17 +82,98 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
         return .exact(NSRange(location: start, length: end - start))
     }
 
-    // MARK: - Private
+    // MARK: - Non-empty selection (COR-08 synthetic endpoint policy)
 
-    private func isSyntheticProjectionIndex(_ index: Int) -> Bool {
+    /// Union source-backed overlaps with allowed synthetic endpoint anchors / interior bridges.
+    private func mapNonEmptySelection(
+        _ selection: NSRange,
+        affinity: SelectionAffinity
+    ) -> CoordinateMappingResult {
+        var sourceStart: Int?
+        var sourceEnd: Int?
+        var covered = 0
+        var overlappedSourceBacked = false
+        let selEnd = NSMaxRange(selection)
+
         for segment in segments {
-            let range = segment.projectionRange
-            guard index >= range.location, index < NSMaxRange(range) else { continue }
-            if case .synthetic = segment { return true }
-            return false
+            let overlap = intersection(selection, segment.projectionRange)
+            guard overlap.length > 0 else { continue }
+            covered += overlap.length
+
+            let touchesLeading = overlap.location == selection.location
+            let touchesTrailing = NSMaxRange(overlap) == selEnd
+            let isInterior = !touchesLeading && !touchesTrailing
+
+            switch segment {
+            case .source(_, let source, _, _), .literalFallback(_, let source):
+                overlappedSourceBacked = true
+                let local = overlap.location - segment.projectionRange.location
+                let mappedStart = source.location + local
+                let mappedEnd = mappedStart + overlap.length
+                if segment.projectionRange.length == source.length {
+                    sourceStart = min(sourceStart ?? mappedStart, mappedStart)
+                    sourceEnd = max(sourceEnd ?? mappedEnd, mappedEnd)
+                } else if overlap == segment.projectionRange {
+                    sourceStart = min(sourceStart ?? source.location, source.location)
+                    sourceEnd = max(sourceEnd ?? NSMaxRange(source), NSMaxRange(source))
+                } else {
+                    return .refused(.ambiguous)
+                }
+
+            case .synthetic(_, _, let insertion):
+                switch insertion {
+                case .refuse:
+                    return .refused(.uneditableSynthetic)
+                case .atSourceLocation(let loc):
+                    // Endpoint anchors and interior bridges fold to the declared location.
+                    if touchesLeading {
+                        sourceStart = min(sourceStart ?? loc, loc)
+                    }
+                    if touchesTrailing {
+                        sourceEnd = max(sourceEnd ?? loc, loc)
+                    }
+                    if isInterior {
+                        // Strictly interior synthetic (e.g. paragraph break) bridges without
+                        // expanding the source range beyond source-backed endpoints.
+                        break
+                    }
+                case .atSourceBoundaries(let before, let after):
+                    if touchesLeading {
+                        // Leading endpoint: upstream affinity prefers the before boundary;
+                        // otherwise fold to after so Select All / marker→text includes content.
+                        let anchor = affinity == .upstream ? before : after
+                        sourceStart = min(sourceStart ?? anchor, anchor)
+                    }
+                    if touchesTrailing {
+                        let anchor = affinity == .upstream ? before : after
+                        sourceEnd = max(sourceEnd ?? anchor, anchor)
+                    }
+                    if isInterior {
+                        break
+                    }
+                }
+
+            case .uneditable:
+                return .refused(.unsupported)
+            }
         }
-        return false
+
+        // Synthetic-only selections must not invent a source span (COR-08 / REQ-087).
+        guard overlappedSourceBacked else {
+            return .refused(.uneditableSynthetic)
+        }
+
+        guard covered == selection.length,
+              let start = sourceStart,
+              let end = sourceEnd,
+              start <= end,
+              end <= sourceUTF16Count else {
+            return .refused(.ambiguous)
+        }
+        return .exact(NSRange(location: start, length: end - start))
     }
+
+    // MARK: - Insertion points
 
     private func sourceInsertionPoint(at location: Int, affinity: SelectionAffinity) -> CoordinateMappingResult {
         guard location >= 0, location <= projectionUTF16Count else {
@@ -259,7 +291,7 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
     }
 }
 
-private extension ProjectionSegment {
+extension ProjectionSegment {
     var projectionRange: NSRange {
         switch self {
         case .source(let projection, _, _, _),

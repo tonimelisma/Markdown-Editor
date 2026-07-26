@@ -481,7 +481,7 @@ struct ImageMarkdownCommitTests {
     @Test @MainActor func commitsOrderedBatchAsOneUndoableReplacement() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("Hello|")
-        doc.reportActiveSelection(NSRange(location: 5, length: 1))
+        doc.reportSourceSelection(SourceSelection(utf16: NSRange(location: 5, length: 1)))
         let tv = MarkdownSourceTextView(usingTextLayoutManager: false)
         tv.documentActions = doc
         tv.string = doc.text
@@ -500,7 +500,7 @@ struct ImageMarkdownCommitTests {
         tv.string = ""
         tv.insertImageMarkdown("![](assets/photo.heic)", at: NSRange(location: 0, length: 0), selectEmptyDescription: true)
         #expect(doc.text == "![](assets/photo.heic)")
-        #expect(doc.pendingSelection == NSRange(location: 2, length: 0))
+        #expect(doc.pendingSelection?.nsRange == NSRange(location: 2, length: 0))
     }
 
     // Verifies: REQ-074

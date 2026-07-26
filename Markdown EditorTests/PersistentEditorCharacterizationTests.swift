@@ -260,7 +260,7 @@ struct PersistentEditorCharacterizationTests {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         host.buildEditors(in: root)
         host.applyMode(.source, focus: false)
-        document.pendingSelection = NSRange(location: 4, length: 2)
+        document.pendingSelection = SourceSelection(utf16: NSRange(location: 4, length: 2))
         host.applyPendingSelectionIfNeeded()
         #expect(host.sourceText?.selectedRange() == NSRange(location: 4, length: 2))
         #expect(document.pendingSelection == nil)
@@ -286,10 +286,10 @@ struct PersistentEditorCharacterizationTests {
         host.applyMode(.wysiwyg, focus: false)
 
         // Stale / missing matching projection must not clear the pending caret.
-        document.pendingSelection = NSRange(location: 4, length: 0)
+        document.pendingSelection = SourceSelection(utf16: NSRange(location: 4, length: 0))
         session.clearProjectionForTesting()
         host.applyPendingSelectionIfNeeded()
-        #expect(document.pendingSelection == NSRange(location: 4, length: 0))
+        #expect(document.pendingSelection?.nsRange == NSRange(location: 4, length: 0))
 
         let index = MarkdownSourceIndex(source: document.text, sourceVersion: document.sourceVersion)
         guard case .success(let tree) = MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion) else {
@@ -340,7 +340,7 @@ struct PersistentEditorCharacterizationTests {
         router.captureImageInsertionIntent(intent)
         // Empty claims still run resolve path then return early in placement.
         router.handleAddImageClaims([])
-        #expect(document.activeSelection.location >= 2 || router.pendingImageIntent == nil)
+        #expect(document.sourceSelection.nsRange.location >= 2 || router.pendingImageIntent == nil)
         #expect(router.pendingImageIntent == nil)
     }
 

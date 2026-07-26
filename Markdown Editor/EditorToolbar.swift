@@ -63,17 +63,24 @@ struct EditorToolbar: View {
     }
 
     private func currentSelection() -> SemanticSelection {
-        let range: NSRange
+        // REQ-058/COR-08 D7: mode-local selection is always valid; offset zero is not a sentinel.
         switch session.mode {
         case .source:
-            range = session.sourceViewState.selection
-            if range.length == 0 && range.location == 0 {
-                return SemanticSelection(mode: .source, utf16Range: document.activeSelection, sourceVersion: document.sourceVersion)
-            }
-            return SemanticSelection(mode: .source, utf16Range: range, sourceVersion: document.sourceVersion)
+            let range = session.sourceViewState.selection
+            return SemanticSelection(
+                mode: .source,
+                utf16Range: range,
+                sourceVersion: document.sourceVersion,
+                affinity: session.sourceViewState.affinity
+            )
         case .wysiwyg:
-            let r = session.wysiwygViewState.selection
-            return SemanticSelection(mode: .wysiwyg, utf16Range: r, sourceVersion: document.sourceVersion)
+            let range = session.wysiwygViewState.selection
+            return SemanticSelection(
+                mode: .wysiwyg,
+                utf16Range: range,
+                sourceVersion: document.sourceVersion,
+                affinity: session.wysiwygViewState.affinity
+            )
         }
     }
 

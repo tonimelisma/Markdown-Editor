@@ -69,9 +69,9 @@ struct MarkdownTextView: NSViewRepresentable {
         if context.coordinator.isNativeEditInFlight {
             // Native keystroke owns storage application until textDidChange clears the gate.
             if let pending = document.pendingSelection {
-                textView.setSelectedRange(pending)
+                textView.setSelectedRange(pending.nsRange)
                 document.pendingSelection = nil
-                document.reportActiveSelection(pending)
+                document.reportSourceSelection(pending)
             }
             return
         }
@@ -81,9 +81,9 @@ struct MarkdownTextView: NSViewRepresentable {
             let selected = textView.selectedRange()
             textView.string = document.text
             if let pending = document.pendingSelection {
-                textView.setSelectedRange(pending)
+                textView.setSelectedRange(pending.nsRange)
                 document.pendingSelection = nil
-                document.reportActiveSelection(pending)
+                document.reportSourceSelection(pending)
             } else {
                 let length = (document.text as NSString).length
                 let loc = min(selected.location, length)
@@ -94,9 +94,9 @@ struct MarkdownTextView: NSViewRepresentable {
             context.coordinator.isProgrammaticUpdate = false
             context.coordinator.highlight()
         } else if let pending = document.pendingSelection {
-            textView.setSelectedRange(pending)
+            textView.setSelectedRange(pending.nsRange)
             document.pendingSelection = nil
-            document.reportActiveSelection(pending)
+            document.reportSourceSelection(pending)
         }
     }
 
@@ -140,7 +140,7 @@ struct MarkdownTextView: NSViewRepresentable {
             }
             let discrete = preferDiscreteGrouping
             preferDiscreteGrouping = false
-            let selectionBefore = SourceSelection(range: document.activeSelection)
+            let selectionBefore = SourceSelection(utf16: document.sourceSelection.nsRange)
             let afterLocation = affectedCharRange.location + (replacement as NSString).length
             let mutation = SourceMutation(
                 expectedRevision: document.sourceVersion,
@@ -148,13 +148,13 @@ struct MarkdownTextView: NSViewRepresentable {
                 expectedText: expectedText,
                 replacement: replacement,
                 selectionBefore: selectionBefore,
-                selectionAfter: SourceSelection(range: NSRange(location: afterLocation, length: 0)),
+                selectionAfter: SourceSelection(utf16: NSRange(location: afterLocation, length: 0)),
                 actionName: discrete ? "Paste" : "Typing",
                 grouping: discrete ? .discrete : .typing
             )
             switch document.commitSourceMutation(mutation) {
             case .committed(let selection):
-                document.reportActiveSelection(selection.range)
+                document.reportSourceSelection(selection)
                 // Prevent updateNSView from rewriting storage before the text view applies
                 // the same replacement (PLAN-0008 recursive-writeback risk).
                 isNativeEditInFlight = true
@@ -168,14 +168,14 @@ struct MarkdownTextView: NSViewRepresentable {
             guard !isProgrammaticUpdate, let textView else { return }
             isNativeEditInFlight = false
             // Canonical source already updated in shouldChangeTextIn via transaction.
-            document.reportActiveSelection(textView.selectedRange())
+            document.reportSourceSelection(SourceSelection(utf16: textView.selectedRange()))
             highlight(debounced: true)
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView else { return }
             let range = textView.selectedRange()
-            document.reportActiveSelection(range)
+            document.reportSourceSelection(SourceSelection(utf16: range))
             if let session {
                 var state = session.sourceViewState
                 state.selection = range
@@ -242,24 +242,29 @@ final class MarkdownSourceTextView: NSTextView {
         guard let actions = documentActions else { return }
         let snapshot = actions.sourceSnapshot()
         let safe = NSIntersectionRange(range, NSRange(location: 0, length: (snapshot.text as NSString).length))
-        let edit = SourceEdit(
-            expectedVersion: snapshot.sourceVersion,
+        let selectionBefore = actions.sourceSelection
+        guard let mutation = SourceMutation.exact(
+            snapshot: snapshot,
             range: safe,
             replacement: markdown,
-            actionName: "Insert Image"
-        )
-        switch actions.commitSourceEdit(edit) {
+            selectionBefore: selectionBefore,
+            actionName: "Insert Image",
+            grouping: .discrete
+        ) else {
+            return
+        }
+        switch actions.commitSourceMutation(mutation) {
         case .committed:
             if selectEmptyDescription {
                 let descStart = safe.location + 2
-                let pending = NSRange(location: descStart, length: 0)
+                let pending = SourceSelection(utf16: NSRange(location: descStart, length: 0))
                 actions.pendingSelection = pending
-                actions.reportActiveSelection(pending)
+                actions.reportSourceSelection(pending)
             } else {
                 let end = safe.location + (markdown as NSString).length
-                let pending = NSRange(location: end, length: 0)
+                let pending = SourceSelection(utf16: NSRange(location: end, length: 0))
                 actions.pendingSelection = pending
-                actions.reportActiveSelection(pending)
+                actions.reportSourceSelection(pending)
             }
         case .refused:
             break

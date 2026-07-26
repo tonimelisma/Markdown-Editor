@@ -14,6 +14,8 @@ nonisolated enum SemanticPlannerGate {
         range: NSRange,
         replacement: String,
         action: String,
+        grouping: MutationGrouping = .discrete,
+        selectionBefore: SourceSelection? = nil,
         postcondition: (MarkdownTree, String) -> Bool
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
@@ -29,16 +31,18 @@ nonisolated enum SemanticPlannerGate {
                 return .refused(.ambiguousSelection)
             }
         }
-        let edit = SourceEdit(
-            expectedVersion: snapshot.sourceVersion,
+        let before = selectionBefore ?? SourceSelection(utf16: range)
+        guard let mutation = SourceMutation.exact(
+            snapshot: snapshot,
             range: range,
             replacement: replacement,
-            actionName: action
-        )
-        let selection = LogicalSelection(
-            range: NSRange(location: range.location + (replacement as NSString).length, length: 0)
-        )
-        return .transaction(edit, postEditSelection: selection)
+            selectionBefore: before,
+            actionName: action,
+            grouping: grouping
+        ) else {
+            return .refused(.invalidRange)
+        }
+        return .mutation(mutation)
     }
 }
 
@@ -48,6 +52,8 @@ nonisolated enum InlineEditPlanner {
         range: NSRange,
         delimiters: [(String, String)],
         action: String,
+        grouping: MutationGrouping = .discrete,
+        selectionBefore: SourceSelection? = nil,
         expectsKind: @escaping (MarkdownNodeKind) -> Bool
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
@@ -60,7 +66,9 @@ nonisolated enum InlineEditPlanner {
                     snapshot: snapshot,
                     range: range,
                     replacement: inner,
-                    action: action
+                    action: action,
+                    grouping: grouping,
+                    selectionBefore: selectionBefore
                 ) { _, _ in true }
             }
             let beforeStart = range.location >= open.count
@@ -78,7 +86,9 @@ nonisolated enum InlineEditPlanner {
                             snapshot: snapshot,
                             range: expanded,
                             replacement: selected,
-                            action: action
+                            action: action,
+                            grouping: grouping,
+                            selectionBefore: selectionBefore
                         ) { _, _ in true }
                     }
                 }
@@ -91,13 +101,20 @@ nonisolated enum InlineEditPlanner {
             snapshot: snapshot,
             range: range,
             replacement: replacement,
-            action: action
+            action: action,
+            grouping: grouping,
+            selectionBefore: selectionBefore
         ) { tree, newText in
             containsKind(tree, source: newText, covering: cover, where: expectsKind)
         }
     }
 
-    static func wrapCode(snapshot: SourceSnapshot, range: NSRange) -> SemanticEditResult {
+    static func wrapCode(
+        snapshot: SourceSnapshot,
+        range: NSRange,
+        grouping: MutationGrouping = .discrete,
+        selectionBefore: SourceSelection? = nil
+    ) -> SemanticEditResult {
         let selected = (snapshot.text as NSString).substring(with: range)
         var ticks = "`"
         while selected.contains(ticks) { ticks += "`" }
@@ -107,7 +124,9 @@ nonisolated enum InlineEditPlanner {
             snapshot: snapshot,
             range: range,
             replacement: replacement,
-            action: "Inline Code"
+            action: "Inline Code",
+            grouping: grouping,
+            selectionBefore: selectionBefore
         ) { tree, newText in
             containsKind(tree, source: newText, covering: cover) { kind in
                 if case .code = kind { return true }
@@ -118,7 +137,13 @@ nonisolated enum InlineEditPlanner {
 }
 
 nonisolated enum BlockEditPlanner {
-    static func setHeading(snapshot: SourceSnapshot, range: NSRange, level: Int) -> SemanticEditResult {
+    static func setHeading(
+        snapshot: SourceSnapshot,
+        range: NSRange,
+        level: Int,
+        grouping: MutationGrouping = .discrete,
+        selectionBefore: SourceSelection? = nil
+    ) -> SemanticEditResult {
         let prefix = String(repeating: "#", count: max(1, min(level, 6))) + " "
         return transformLine(snapshot: snapshot, range: range, action: "Heading") { content, hadNewline in
             let stripped = stripSameLineBlockChrome(content)
@@ -131,13 +156,23 @@ nonisolated enum BlockEditPlanner {
         }
     }
 
-    static func setParagraph(snapshot: SourceSnapshot, range: NSRange) -> SemanticEditResult {
+    static func setParagraph(
+        snapshot: SourceSnapshot,
+        range: NSRange,
+        grouping: MutationGrouping = .discrete,
+        selectionBefore: SourceSelection? = nil
+    ) -> SemanticEditResult {
         transformLine(snapshot: snapshot, range: range, action: "Paragraph") { content, hadNewline in
             stripSameLineBlockChrome(content) + (hadNewline ? "\n" : "")
         } postcondition: { _, _ in true }
     }
 
-    static func toggleCodeFence(snapshot: SourceSnapshot, range: NSRange) -> SemanticEditResult {
+    static func toggleCodeFence(
+        snapshot: SourceSnapshot,
+        range: NSRange,
+        grouping: MutationGrouping = .discrete,
+        selectionBefore: SourceSelection? = nil
+    ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
         let line = ns.lineRange(for: range)
         let content = ns.substring(with: line)
@@ -152,7 +187,9 @@ nonisolated enum BlockEditPlanner {
             snapshot: snapshot,
             range: line,
             replacement: replacement,
-            action: "Code Block"
+            action: "Code Block",
+            grouping: grouping,
+            selectionBefore: selectionBefore
         ) { tree, _ in
             contains(tree.root) { if case .codeBlock = $0.kind { return true }; return false }
         }
@@ -186,7 +223,9 @@ nonisolated enum ListEditPlanner {
         snapshot: SourceSnapshot,
         range: NSRange,
         prefix: String,
-        action: String
+        action: String,
+        grouping: MutationGrouping = .discrete,
+        selectionBefore: SourceSelection? = nil
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
         let line = ns.lineRange(for: range)
@@ -209,7 +248,12 @@ nonisolated enum ListEditPlanner {
         ) { _, _ in true }
     }
 
-    static func toggleBlockQuote(snapshot: SourceSnapshot, range: NSRange) -> SemanticEditResult {
+    static func toggleBlockQuote(
+        snapshot: SourceSnapshot,
+        range: NSRange,
+        grouping: MutationGrouping = .discrete,
+        selectionBefore: SourceSelection? = nil
+    ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
         let line = ns.lineRange(for: range)
         var content = ns.substring(with: line)
@@ -225,7 +269,9 @@ nonisolated enum ListEditPlanner {
             snapshot: snapshot,
             range: line,
             replacement: replacement,
-            action: "Quote"
+            action: "Quote",
+            grouping: grouping,
+            selectionBefore: selectionBefore
         ) { _, _ in true }
     }
 }
@@ -234,7 +280,9 @@ nonisolated enum LinkEditPlanner {
     static func setLink(
         snapshot: SourceSnapshot,
         range: NSRange,
-        destination: String?
+        destination: String?,
+        grouping: MutationGrouping = .discrete,
+        selectionBefore: SourceSelection? = nil
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
         let selected = ns.substring(with: range)
@@ -246,7 +294,9 @@ nonisolated enum LinkEditPlanner {
                     snapshot: snapshot,
                     range: range,
                     replacement: text,
-                    action: "Remove Link"
+                    action: "Remove Link",
+                    grouping: grouping,
+                    selectionBefore: selectionBefore
                 ) { _, _ in true }
             }
             return .refused(.ambiguousSelection)
@@ -258,7 +308,9 @@ nonisolated enum LinkEditPlanner {
             snapshot: snapshot,
             range: range,
             replacement: replacement,
-            action: "Link"
+            action: "Link",
+            grouping: grouping,
+            selectionBefore: selectionBefore
         ) { tree, newText in
             containsKind(tree, source: newText, covering: cover) { kind in
                 if case .link = kind { return true }
@@ -273,7 +325,9 @@ nonisolated enum TableCellEditPlanner {
         snapshot: SourceSnapshot,
         tree: MarkdownTree?,
         nodeID: MarkdownNodeID,
-        text: String
+        text: String,
+        grouping: MutationGrouping = .discrete,
+        selectionBefore: SourceSelection? = nil
     ) -> SemanticEditResult {
         // Unescaped pipes / newlines change GFM table structure — refuse rather than accept
         // a vacuous postcondition (node IDs are unstable across reparse). Escaped pipes (`\|`)
@@ -297,7 +351,9 @@ nonisolated enum TableCellEditPlanner {
             snapshot: snapshot,
             range: sourceRange,
             replacement: text,
-            action: "Edit Cell"
+            action: "Edit Cell",
+            grouping: grouping,
+            selectionBefore: selectionBefore
         ) { newTree, newText in
             guard countTables(in: newTree.root) == beforeTables,
                   countTableCells(in: newTree.root) == beforeCells else {

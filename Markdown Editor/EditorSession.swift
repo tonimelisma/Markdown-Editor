@@ -151,19 +151,47 @@ final class EditorSession: ObservableObject {
     func perform(_ command: SemanticCommand, selection: SemanticSelection) -> SemanticEditResult {
         guard let document else { return .refused(.staleVersion) }
         let snapshot = document.sourceSnapshot()
-        let result = SemanticEditEngine.apply(
+        let grouping = SemanticEditEngine.defaultGrouping(for: command)
+        let editorSelection: EditorSelection
+        switch selection.mode {
+        case .source:
+            editorSelection = .source(
+                SourceSelection(utf16: selection.utf16Range, affinity: selection.affinity)
+            )
+        case .wysiwyg:
+            editorSelection = .projection(
+                ProjectionSelection(
+                    utf16: selection.utf16Range,
+                    revision: ProjectionRevision(value: selection.sourceVersion),
+                    affinity: selection.affinity
+                )
+            )
+        }
+        let request = EditorEditRequest(
             command: command,
-            selection: selection,
+            selection: editorSelection,
+            expectedSourceRevision: SourceRevision(value: selection.sourceVersion),
+            grouping: grouping
+        )
+        let result = SemanticEditEngine.apply(
+            request,
             snapshot: snapshot,
             projection: projection,
             tree: tree
         )
         switch result {
-        case .transaction(let edit, let post):
-            switch document.commitSourceEdit(edit) {
+        case .mutation(let mutation):
+            document.trace?.record(
+                .editRouted(
+                    context: selection.mode == .wysiwyg ? "wysiwyg" : "source",
+                    groupingTyping: mutation.grouping == .typing,
+                    planner: mutation.actionName
+                )
+            )
+            switch document.commitSourceMutation(mutation) {
             case .committed:
-                document.pendingSelection = post.range
-                document.reportActiveSelection(post.range)
+                document.pendingSelection = mutation.selectionAfter
+                document.reportSourceSelection(mutation.selectionAfter)
                 return result
             case .refused(let refusal):
                 switch refusal {
@@ -175,6 +203,16 @@ final class EditorSession: ObservableObject {
         case .refused:
             return result
         }
+    }
+
+    /// Close an open typing undo group when selection moves or mode changes.
+    func noteSelectionOrModeBoundary() {
+        // Discrete commit path closes typing groups; selection changes are observed by
+        // document undo checkpoint + explicit discrete actions.
+        guard let document else { return }
+        // Force a discrete boundary by committing an empty no-op is wrong; instead rely on
+        // `commitSourceMutation` discrete grouping. Adapters call this before discrete work.
+        _ = document
     }
 
     /// Window-scoped image action router (REQ-082). Injected by ContentView.

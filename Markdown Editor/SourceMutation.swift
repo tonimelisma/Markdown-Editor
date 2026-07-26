@@ -50,4 +50,35 @@ nonisolated struct SourceMutation: Sendable, Equatable {
         self.actionName = actionName
         self.grouping = grouping
     }
+
+    /// Builds a mutation from an exact source range and replacement.
+    static func exact(
+        snapshot: SourceSnapshot,
+        range: NSRange,
+        replacement: String,
+        selectionBefore: SourceSelection,
+        selectionAfter: SourceSelection? = nil,
+        actionName: String,
+        grouping: MutationGrouping
+    ) -> SourceMutation? {
+        let ns = snapshot.text as NSString
+        guard range.location >= 0, range.length >= 0, NSMaxRange(range) <= ns.length else {
+            return nil
+        }
+        let expectedText = ns.substring(with: range)
+        let after = selectionAfter ?? SourceSelection(
+            utf16: NSRange(location: range.location + (replacement as NSString).length, length: 0),
+            affinity: selectionBefore.affinity
+        )
+        return SourceMutation(
+            expectedRevision: snapshot.sourceVersion,
+            range: range,
+            expectedText: expectedText,
+            replacement: replacement,
+            selectionBefore: selectionBefore,
+            selectionAfter: after,
+            actionName: actionName,
+            grouping: grouping
+        )
+    }
 }
