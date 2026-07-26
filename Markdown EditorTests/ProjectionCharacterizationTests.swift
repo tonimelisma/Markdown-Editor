@@ -11,6 +11,55 @@ import Foundation
 
 struct ProjectionCharacterizationTests {
 
+    // Verifies: REQ-087; ARC-009 — uneditable/refuse boundaries never invent source offset zero.
+    @Test func uneditableBoundariesRefuseInsteadOfMappingToZero() {
+        let uneditable = ProjectionCoordinateMap(
+            segments: [
+                .source(
+                    projection: NSRange(location: 0, length: 1),
+                    source: NSRange(location: 0, length: 1),
+                    insertionBefore: 0,
+                    insertionAfter: 1
+                ),
+                .uneditable(
+                    projection: NSRange(location: 1, length: 1),
+                    reason: .unsupported
+                )
+            ],
+            projectionUTF16Count: 2,
+            sourceUTF16Count: 2
+        )
+        if case .refused = uneditable.sourceRange(
+            forProjection: NSRange(location: 2, length: 0),
+            affinity: .downstream
+        ) {
+            // expected
+        } else {
+            Issue.record("trailing uneditable boundary must refuse")
+        }
+
+        let synthetic = ProjectionCoordinateMap(
+            segments: [
+                .synthetic(
+                    projection: NSRange(location: 0, length: 1),
+                    kind: .paragraphBreak,
+                    insertion: .refuse
+                )
+            ],
+            projectionUTF16Count: 1,
+            sourceUTF16Count: 0
+        )
+        for location in 0...1 {
+            if case .refused = synthetic.sourceRange(
+                forProjection: NSRange(location: location, length: 0),
+                affinity: .downstream
+            ) {
+                continue
+            }
+            Issue.record("refuse-policy boundary \(location) must refuse")
+        }
+    }
+
     // Verifies: REQ-054 — one-character cmark node maps to one source character.
     @Test func oneCharacterNodeMapsToOneSourceCharacter() throws {
         let source = "a\n"
