@@ -29,6 +29,7 @@ nonisolated struct LocalImageDescriptor: @unchecked Sendable, Equatable {
     let pixelHeight: Int
     let byteCost: Int
     let fileModificationDate: Date?
+    let contentDigest: String
     let cgImage: CGImage
 
     static func == (lhs: LocalImageDescriptor, rhs: LocalImageDescriptor) -> Bool {
@@ -41,6 +42,7 @@ nonisolated struct LocalImageDescriptor: @unchecked Sendable, Equatable {
             && lhs.pixelHeight == rhs.pixelHeight
             && lhs.byteCost == rhs.byteCost
             && lhs.fileModificationDate == rhs.fileModificationDate
+            && lhs.contentDigest == rhs.contentDigest
             && lhs.cgImage === rhs.cgImage
     }
 }
@@ -79,6 +81,7 @@ nonisolated enum LocalImageResolver {
                     pixelHeight: decoded.pixelHeight,
                     byteCost: decoded.byteCost,
                     fileModificationDate: decoded.fileModificationDate,
+                    contentDigest: decoded.contentDigest,
                     cgImage: decoded.cgImage
                 )
             )
@@ -99,10 +102,7 @@ final class LocalImageCache {
             path: descriptor.resolvedURL.path,
             locationGeneration: descriptor.locationGeneration,
             modification: descriptor.fileModificationDate,
-            contentType: descriptor.contentType,
-            pixelWidth: descriptor.pixelWidth,
-            pixelHeight: descriptor.pixelHeight,
-            byteCost: descriptor.byteCost
+            contentDigest: descriptor.contentDigest
         ) {
             return NSImage(
                 cgImage: cached,
@@ -115,9 +115,7 @@ final class LocalImageCache {
             path: descriptor.resolvedURL.path,
             locationGeneration: descriptor.locationGeneration,
             modification: descriptor.fileModificationDate,
-            contentType: descriptor.contentType,
-            pixelWidth: descriptor.pixelWidth,
-            pixelHeight: descriptor.pixelHeight
+            contentDigest: descriptor.contentDigest
         )
         // REQ-089: privacy-safe cache instrumentation (cost/total only).
         trace?.record(.imageCacheStore(cost: descriptor.byteCost, totalBytes: byteCache.totalBytes))

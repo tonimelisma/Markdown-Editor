@@ -211,6 +211,33 @@ struct ProjectionCharacterizationTests {
         }
     }
 
+    // Verifies: review — escaped pipes in table cells are literal content, not structure.
+    @Test func tableCellAllowsEscapedPipe() {
+        let source = "| a | b |\n| - | - |\n| c | d |\n"
+        guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: 1) else {
+            Issue.record("parse failed")
+            return
+        }
+        let model = build(source, tree: tree)
+        let cell = model.tables.first?.cells.last
+        guard let cell else {
+            Issue.record("missing cell")
+            return
+        }
+        let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
+        let result = SemanticEditEngine.apply(
+            command: .replaceTableCell(nodeID: cell.nodeID, text: "x\\|y"),
+            selection: SemanticSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
+            snapshot: snapshot,
+            projection: model,
+            tree: tree
+        )
+        guard case .transaction = result else {
+            Issue.record("expected transaction for escaped pipe, got \(result)")
+            return
+        }
+    }
+
     // Verifies: review — inline wrap postcondition requires a matching node at the edited span.
     @Test func inlineWrapPostconditionRequiresNodeAtEditedSpan() {
         let snapshot = SourceSnapshot(
@@ -291,6 +318,31 @@ struct ProjectionCharacterizationTests {
         }
         #expect(sourceRange.length > 0)
         try expectOracle(model, source: source)
+    }
+
+    // Verifies: review — non-empty selection whose start lies on a synthetic list marker is refused.
+    @Test func selectionStartingOnListMarkerIsRefused() throws {
+        let source = "1. a\n"
+        let tree = try parse(source)
+        let model = build(source, tree: tree)
+        guard let marker = model.listMarkers.first else {
+            Issue.record("missing list marker")
+            return
+        }
+        let rendered = model.renderedString as NSString
+        let textRange = rendered.range(of: "a")
+        #expect(textRange.location != NSNotFound)
+        // From start of marker through text — start endpoint is synthetic.
+        let selection = NSRange(
+            location: marker.utf16Range.location,
+            length: NSMaxRange(textRange) - marker.utf16Range.location
+        )
+        #expect(selection.length > 0)
+        let result = model.coordinateMap.sourceRange(forProjection: selection)
+        guard case .refused = result else {
+            Issue.record("expected refusal for selection starting on list marker, got \(result)")
+            return
+        }
     }
 
     // Verifies: REQ-090 — parse+index+projection p95 < 100ms at 100k UTF-16 off-main.

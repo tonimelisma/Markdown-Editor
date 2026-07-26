@@ -578,6 +578,8 @@ struct PersistentEditorCharacterizationTests {
         // Extension says png but content is JPEG — UTI detect should accept JPEG.
         let desc2 = try #require(second.get())
         #expect(desc2.contentType.contains("jpeg") || desc2.pixelWidth > 0)
+        // Different file bytes must yield different content digests (SHA-256 cache key).
+        #expect(desc1.contentDigest != desc2.contentDigest)
         let image2 = mainCache.image(for: desc2)
         #expect(image2 != nil)
         #expect(mainCache.totalBytes <= LocalImageByteCache.maxBytes)

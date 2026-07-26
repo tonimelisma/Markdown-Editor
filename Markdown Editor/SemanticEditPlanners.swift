@@ -276,8 +276,9 @@ nonisolated enum TableCellEditPlanner {
         text: String
     ) -> SemanticEditResult {
         // Unescaped pipes / newlines change GFM table structure — refuse rather than accept
-        // a vacuous postcondition (node IDs are unstable across reparse).
-        if text.contains("|") || text.contains("\n") || text.contains("\r") {
+        // a vacuous postcondition (node IDs are unstable across reparse). Escaped pipes (`\|`)
+        // are literal cell content and must be allowed.
+        if containsUnescapedPipe(text) || text.contains("\n") || text.contains("\r") {
             return .refused(.ambiguousSelection)
         }
         guard let tree, let node = findNode(id: nodeID, in: tree.root) else {
@@ -352,6 +353,23 @@ private func stripMatchingListPrefix(_ line: String, matching prefix: String) ->
 private func contains(_ node: MarkdownNode, where predicate: (MarkdownNode) -> Bool) -> Bool {
     if predicate(node) { return true }
     return node.children.contains { contains($0, where: predicate) }
+}
+
+/// True when `text` contains a `|` that is not escaped by a preceding backslash.
+private func containsUnescapedPipe(_ text: String) -> Bool {
+    var i = text.startIndex
+    while i < text.endIndex {
+        if text[i] == "\\" {
+            i = text.index(after: i)
+            if i < text.endIndex {
+                i = text.index(after: i)
+            }
+            continue
+        }
+        if text[i] == "|" { return true }
+        i = text.index(after: i)
+    }
+    return false
 }
 
 private func containsKind(
