@@ -144,20 +144,24 @@ nonisolated enum SemanticEditEngine {
                         )
                         switch MarkdownLiteralEncoder.encode(encodeCtx) {
                         case .encoded(let sourceSpelling):
-                            // The source mutation initially carries visible text. If encoding
-                            // differs, rebuild the mutation with encoded source while keeping
-                            // visible replacement for the presentation transition.
-                            if sourceSpelling != text {
-                                guard let remade = SourceMutation.exact(
-                                    snapshot: snapshot,
-                                    range: mutation.range,
-                                    replacement: sourceSpelling,
-                                    selectionBefore: mutation.selectionBefore,
-                                    actionName: mutation.actionName,
-                                    grouping: mutation.grouping
-                                ) else {
-                                    return .refused(.invalidRange)
-                                }
+                            guard let remade = SourceMutation.exact(
+                                snapshot: snapshot,
+                                range: mutation.range,
+                                replacement: sourceSpelling,
+                                selectionBefore: mutation.selectionBefore,
+                                actionName: mutation.actionName,
+                                grouping: mutation.grouping
+                            ) else {
+                                return .refused(.invalidRange)
+                            }
+                            if literalCandidatePreservesPresentation(
+                                mutation: remade,
+                                snapshot: snapshot,
+                                presentation: presentation,
+                                projectionRange: projSel.range.utf16,
+                                visibleReplacement: text,
+                                nextSnapshotID: nextSnapshotID
+                            ) {
                                 return finishIdentityTransition(
                                     mutation: remade,
                                     presentation: presentation,
@@ -167,6 +171,24 @@ nonisolated enum SemanticEditEngine {
                                     affinity: projSel.affinity
                                 )
                             }
+                            guard let contextual = contextualLiteralMutation(
+                                original: mutation,
+                                encodedInsertion: sourceSpelling,
+                                snapshot: snapshot,
+                                presentation: presentation,
+                                projectionRange: projSel.range.utf16,
+                                visibleReplacement: text,
+                                nextSnapshotID: nextSnapshotID
+                            ) else {
+                                return .refused(.unprovable)
+                            }
+                            return planAuthoritativeTransition(
+                                mutation: contextual,
+                                snapshot: snapshot,
+                                presentation: presentation,
+                                nextSnapshotID: nextSnapshotID,
+                                affinity: projSel.affinity
+                            )
                         case .refused:
                             return .refused(.unprovable)
                         }
@@ -853,6 +875,99 @@ nonisolated enum SemanticEditEngine {
             return nil
         }
         return currentBody.replacingCharacters(in: local, with: replacement)
+    }
+
+    /// Reparse the completed source context and prove that it renders exactly as the
+    /// native literal insertion intended. This catches syntax assembled across edits.
+    private static func literalCandidatePreservesPresentation(
+        mutation: SourceMutation,
+        snapshot: SourceSnapshot,
+        presentation: PresentationSnapshot,
+        projectionRange: NSRange,
+        visibleReplacement: String,
+        nextSnapshotID: PresentationSnapshot.ID
+    ) -> Bool {
+        let source = snapshot.text as NSString
+        guard mutation.range.location >= 0, NSMaxRange(mutation.range) <= source.length else {
+            return false
+        }
+        let candidate = source.replacingCharacters(in: mutation.range, with: mutation.replacement)
+        let expected = (presentation.renderedString as NSString).replacingCharacters(
+            in: projectionRange,
+            with: visibleReplacement
+        )
+        guard let built = AuthoritativePresentationBuilder.build(
+            source: candidate,
+            sourceRevision: mutation.expectedRevision &+ 1,
+            snapshotID: nextSnapshotID,
+            locationGeneration: presentation.locationGeneration
+        ) else {
+            return false
+        }
+        return built.renderedString == expected
+    }
+
+    /// If syntax emerged from earlier literal keystrokes, protect the closest source
+    /// punctuation that caused it and validate the completed context again.
+    private static func contextualLiteralMutation(
+        original: SourceMutation,
+        encodedInsertion: String,
+        snapshot: SourceSnapshot,
+        presentation: PresentationSnapshot,
+        projectionRange: NSRange,
+        visibleReplacement: String,
+        nextSnapshotID: PresentationSnapshot.ID
+    ) -> SourceMutation? {
+        guard original.range.length == 0 else { return nil }
+        let source = snapshot.text as NSString
+        let line = source.lineRange(for: NSRange(location: original.range.location, length: 0))
+        let lowerBound = max(line.location, original.range.location - 128)
+        guard original.range.location > lowerBound else { return nil }
+
+        for location in stride(from: original.range.location - 1, through: lowerBound, by: -1) {
+            let scalar = source.character(at: location)
+            let protection: String
+            if scalar == 0x26 { // & — backslash escaping does not suppress entities.
+                protection = "&amp;"
+            } else if isASCIIPunctuation(scalar) {
+                protection = "\\" + source.substring(with: NSRange(location: location, length: 1))
+            } else {
+                continue
+            }
+            let between = source.substring(
+                with: NSRange(
+                    location: location + 1,
+                    length: original.range.location - location - 1
+                )
+            )
+            guard let candidate = SourceMutation.exact(
+                snapshot: snapshot,
+                range: NSRange(location: location, length: original.range.location - location),
+                replacement: protection + between + encodedInsertion,
+                selectionBefore: original.selectionBefore,
+                actionName: original.actionName,
+                grouping: original.grouping
+            ) else {
+                continue
+            }
+            if literalCandidatePreservesPresentation(
+                mutation: candidate,
+                snapshot: snapshot,
+                presentation: presentation,
+                projectionRange: projectionRange,
+                visibleReplacement: visibleReplacement,
+                nextSnapshotID: nextSnapshotID
+            ) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private static func isASCIIPunctuation(_ scalar: unichar) -> Bool {
+        guard scalar < 128, let unicode = UnicodeScalar(scalar) else { return false }
+        return CharacterSet.punctuationCharacters.contains(unicode)
+            || scalar == 0x2A || scalar == 0x2B || scalar == 0x2D
     }
 
     /// Map a range in the projected (unescaped) cell body into the raw source cell body.

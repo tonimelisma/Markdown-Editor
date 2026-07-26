@@ -213,6 +213,83 @@ struct AcceptedEditTransactionTests {
         #expect(session.presentation?.renderedString == "*😀*x\n")
     }
 
+    // Verifies: REQ-092; ARC-008 — syntax assembled by consecutive literal
+    // keystrokes is protected after reparsing the completed source context.
+    @Test func sequentialLiteralTypingCannotCreateListOrEntitySyntax() {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("hello\n")
+        let session = EditorSession()
+        session.attach(document: doc)
+        let tree = MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get()!
+        let model = MarkdownProjectionModel.build(
+            tree: tree,
+            index: MarkdownSourceIndex(source: doc.text, sourceVersion: doc.sourceVersion)
+        )
+        session.installProjectionForTesting(model, tree: tree)
+
+        var location = 0
+        for character in ["1", ".", " "] {
+            let current = session.presentation!
+            let outcome = session.perform(
+                .insertText(character),
+                selection: .projection(
+                    ProjectionSelection(
+                        utf16: NSRange(location: location, length: 0),
+                        revision: current.projectionRevision
+                    )
+                ),
+                expectedSourceRevision: current.sourceRevision
+            )
+            guard case .accepted = outcome else {
+                Issue.record("list-like literal refused at \(character): \(outcome)")
+                return
+            }
+            location += (character as NSString).length
+        }
+        #expect(doc.text == "1\\. hello\n")
+        #expect(session.presentation?.renderedString == "1. hello\n")
+
+        let entityDoc = MarkdownDocument()
+        entityDoc.installTextForTesting("x\n")
+        let entitySession = EditorSession()
+        entitySession.attach(document: entityDoc)
+        let entityTree = MarkdownParser.parse(
+            entityDoc.text,
+            sourceVersion: entityDoc.sourceVersion
+        ).get()!
+        entitySession.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: entityTree,
+                index: MarkdownSourceIndex(
+                    source: entityDoc.text,
+                    sourceVersion: entityDoc.sourceVersion
+                )
+            ),
+            tree: entityTree
+        )
+        var entityLocation = 0
+        for character in ["&", "a", "m", "p", ";"] {
+            let current = entitySession.presentation!
+            let outcome = entitySession.perform(
+                .insertText(character),
+                selection: .projection(
+                    ProjectionSelection(
+                        utf16: NSRange(location: entityLocation, length: 0),
+                        revision: current.projectionRevision
+                    )
+                ),
+                expectedSourceRevision: current.sourceRevision
+            )
+            guard case .accepted = outcome else {
+                Issue.record("entity-like literal refused at \(character): \(outcome)")
+                return
+            }
+            entityLocation += 1
+        }
+        #expect(entityDoc.text == "&amp;amp;x\n")
+        #expect(entitySession.presentation?.renderedString == "&amp;x\n")
+    }
+
     // Verifies: REQ-080/091/092; ARC-005/008 — table typing encodes only the
     // inserted fragment while the atomic transaction preserves the complete cell.
     @Test func tableLiteralInsertionPreservesCellAndAdvancesPresentation() throws {
