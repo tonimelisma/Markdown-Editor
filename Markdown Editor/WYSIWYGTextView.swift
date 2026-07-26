@@ -83,6 +83,8 @@ struct WYSIWYGTextView: NSViewRepresentable {
         var composition = CompositionState()
         /// When true, `shouldChangeTextIn` allows native marked-text updates without source mutation.
         var allowingMarkedText = false
+        /// When true, final composition insert applies to storage without a second source commit.
+        var committingComposition = false
 
         func beginMarkedText(sourceVersion: UInt64, sourceRange: NSRange, marked: NSRange) {
             if composition.isComposing {
@@ -95,6 +97,7 @@ struct WYSIWYGTextView: NSViewRepresentable {
         func cancel() {
             composition.cancel()
             allowingMarkedText = false
+            committingComposition = false
         }
 
         /// Returns false when composition is stale relative to the document.
@@ -167,7 +170,7 @@ struct WYSIWYGTextView: NSViewRepresentable {
             guard let replacement = replacementString else { return true }
 
             // REQ-084: marked-text / IME updates stay transient until composition completes.
-            if input.allowingMarkedText || textView.hasMarkedText() || input.composition.isComposing {
+            if input.committingComposition || input.allowingMarkedText || textView.hasMarkedText() || input.composition.isComposing {
                 return true
             }
 
@@ -321,10 +324,28 @@ final class MarkdownWYSIWYGTextView: NSTextView {
         )
         switch result {
         case .transaction:
-            // Clear marked text without another source mutation; projection refresh follows.
+            // Apply final composition text directly — avoid nested NSTextView insertText/undo.
+            input.committingComposition = true
             input.allowingMarkedText = true
-            super.unmarkText()
+            let marked = markedRange()
+            let applyRange: NSRange
+            if marked.location != NSNotFound {
+                applyRange = marked
+            } else {
+                applyRange = captured.range
+            }
+            if let storage = textStorage {
+                let safeLoc = min(max(0, applyRange.location), storage.length)
+                let safeLen = min(max(0, applyRange.length), max(0, storage.length - safeLoc))
+                storage.replaceCharacters(in: NSRange(location: safeLoc, length: safeLen), with: text)
+                let caret = safeLoc + (text as NSString).length
+                setSelectedRange(NSRange(location: min(caret, storage.length), length: 0))
+            }
+            if hasMarkedText() {
+                super.unmarkText()
+            }
             input.allowingMarkedText = false
+            input.committingComposition = false
         case .refused, .none:
             input.cancel()
             unmarkText()

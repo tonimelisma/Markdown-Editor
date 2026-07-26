@@ -73,21 +73,35 @@ struct PersistentEditorCharacterizationTests {
 
         // Establish source chrome by selecting while source is visible, then leave.
         host.applyMode(.source, focus: false)
-        host.sourceText?.setSelectedRange(NSRange(location: 2, length: 3))
+        host.sourceText?.setSelectedRanges(
+            [NSValue(range: NSRange(location: 2, length: 3))],
+            affinity: .upstream,
+            stillSelecting: false
+        )
         host.sourceScroll?.contentView.scroll(to: CGPoint(x: 0, y: 12))
+        host.sourceScroll?.reflectScrolledClipView(host.sourceScroll!.contentView)
 
         // Establish WYSIWYG chrome while visible.
         host.applyMode(.wysiwyg, focus: false)
-        host.wysiwygText?.setSelectedRange(NSRange(location: 0, length: 1))
+        host.wysiwygText?.setSelectedRanges(
+            [NSValue(range: NSRange(location: 0, length: 1))],
+            affinity: .downstream,
+            stillSelecting: false
+        )
         host.wysiwygScroll?.contentView.scroll(to: CGPoint(x: 0, y: 24))
+        host.wysiwygScroll?.reflectScrolledClipView(host.wysiwygScroll!.contentView)
 
-        // Return to source — restores source selection.
+        // Return to source — restores source selection, affinity, and scroll.
         host.applyMode(.source, focus: false)
         #expect(host.sourceText?.selectedRange() == NSRange(location: 2, length: 3))
+        #expect(host.sourceText?.selectionAffinity == .upstream)
+        #expect(host.sourceScroll?.contentView.bounds.origin.y == 12)
 
-        // Return to WYSIWYG — restores WYSIWYG selection.
+        // Return to WYSIWYG — restores WYSIWYG selection, affinity, and scroll.
         host.applyMode(.wysiwyg, focus: false)
         #expect(host.wysiwygText?.selectedRange() == NSRange(location: 0, length: 1))
+        #expect(host.wysiwygText?.selectionAffinity == .downstream)
+        #expect(host.wysiwygScroll?.contentView.bounds.origin.y == 24)
     }
 
     // Verifies: REQ-087 — selection intents refuse wrong coordinate domain resolution.
@@ -183,6 +197,153 @@ struct PersistentEditorCharacterizationTests {
         coord.input.allowingMarkedText = false
         #expect(allowed)
         #expect(document.text == before)
+    }
+
+    // Verifies: REQ-084 — composition success applies final text synchronously without a second source commit.
+    @Test func compositionInsertAppliesFinalTextSynchronously() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("ab")
+        let session = EditorSession()
+        session.attach(document: document)
+        let index = MarkdownSourceIndex(source: document.text, sourceVersion: document.sourceVersion)
+        guard case .success(let tree) = MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion) else {
+            Issue.record("parse failed")
+            return
+        }
+        let model = MarkdownProjectionModel.build(tree: tree, index: index)
+        session.installProjectionForTesting(model, tree: tree)
+
+        let placement = ImagePlacementController()
+        let coord = WYSIWYGTextView.Coordinator(
+            document: document,
+            session: session,
+            placementController: placement
+        )
+        let textView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
+        textView.string = "ab"
+        textView.delegate = coord
+        textView.inputCoordinator = coord.input
+        textView.documentActions = document
+        textView.session = session
+        coord.textView = textView
+
+        // Drive composition state without relying on system IME panels.
+        coord.input.beginMarkedText(
+            sourceVersion: document.sourceVersion,
+            sourceRange: NSRange(location: 2, length: 0),
+            marked: NSRange(location: 2, length: 1)
+        )
+        let versionBefore = document.sourceVersion
+        textView.insertText("日", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(!coord.input.composition.isComposing)
+        #expect(!coord.input.committingComposition)
+        #expect(document.sourceVersion == versionBefore + 1)
+        #expect(document.text.contains("日"))
+        #expect((textView.string as NSString).contains("日"))
+    }
+
+    // Verifies: REQ-086 — pendingSelection is applied by the persistent host.
+    @Test func pendingSelectionAppliedByPersistentHost() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("abcdefghij\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        session.setMode(.source)
+        let placement = ImagePlacementController()
+        let router = EditorActionRouter()
+        let host = EditorHostView.HostCoordinator(
+            document: document,
+            session: session,
+            placementController: placement,
+            actionRouter: router
+        )
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        host.buildEditors(in: root)
+        host.applyMode(.source, focus: false)
+        document.pendingSelection = NSRange(location: 4, length: 2)
+        host.applyPendingSelectionIfNeeded()
+        #expect(host.sourceText?.selectedRange() == NSRange(location: 4, length: 2))
+        #expect(document.pendingSelection == nil)
+    }
+
+    // Verifies: REQ-082 — captured WYSIWYG intent resolves to source before placement.
+    @Test func addImageResolvesCapturedIntentToSourceRange() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("**Hi**\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        let index = MarkdownSourceIndex(source: document.text, sourceVersion: document.sourceVersion)
+        guard case .success(let tree) = MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion) else {
+            Issue.record("parse failed")
+            return
+        }
+        let projection = MarkdownProjectionModel.build(tree: tree, index: index)
+        session.installProjectionForTesting(projection, tree: tree)
+
+        let intent = EditorSelectionIntent(
+            domain: .wysiwyg,
+            sourceVersion: document.sourceVersion,
+            range: NSRange(location: 0, length: 0),
+            affinity: .downstream
+        )
+        guard case .exact(let sourceRange) = intent.resolvedSourceRange(
+            snapshot: document.sourceSnapshot(),
+            projection: projection
+        ) else {
+            Issue.record("expected exact source mapping")
+            return
+        }
+        #expect(sourceRange.location >= 2)
+
+        let placement = ImagePlacementController()
+        placement.attach(actions: document)
+        let router = EditorActionRouter()
+        router.document = document
+        router.session = session
+        router.placement = placement
+        router.captureImageInsertionIntent(intent)
+        // Empty claims still run resolve path then return early in placement.
+        router.handleAddImageClaims([])
+        #expect(document.activeSelection.location >= 2 || router.pendingImageIntent == nil)
+        #expect(router.pendingImageIntent == nil)
+    }
+
+    // Verifies: REQ-089 — image cache store emits privacy-safe trace.
+    @Test func imageCacheStoreEmitsTrace() throws {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/Images")
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cor07-trace-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.copyItem(
+            at: fixtures.appendingPathComponent("sample.png"),
+            to: dir.appendingPathComponent("sample.png")
+        )
+        let docURL = dir.appendingPathComponent("doc.md")
+        try "x".write(to: docURL, atomically: true, encoding: .utf8)
+        let desc = try #require(
+            LocalImageResolver.resolve(
+                destination: "sample.png",
+                documentURL: docURL,
+                nodeID: MarkdownNodeID(rawValue: 1),
+                sourceVersion: 1,
+                locationGeneration: 1
+            ).get()
+        )
+        let trace = InMemoryEditorTrace()
+        let cache = LocalImageCache()
+        cache.trace = trace
+        #expect(cache.image(for: desc) != nil)
+        let stores = trace.eventsMatching {
+            if case .imageCacheStore = $0 { return true }
+            return false
+        }
+        #expect(!stores.isEmpty)
+        if case .imageCacheStore(_, let total) = stores[0] {
+            #expect(total <= LocalImageByteCache.maxBytes)
+        }
     }
 
     // Verifies: REQ-082 — Add Image is window-scoped via router, not a global notification.

@@ -48,11 +48,15 @@ final class EditorSession: ObservableObject {
 
     func attach(document: MarkdownDocument) {
         self.document = document
+        imageCache.trace = document.trace
         cancellables.removeAll()
         document.objectWillChange
-            .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                self?.scheduleParse()
+                // Hop to the main actor explicitly — RunLoop.main is not the MainActor executor
+                // under Swift 6 complete concurrency (REQ-088).
+                Task { @MainActor in
+                    self?.scheduleParse()
+                }
             }
             .store(in: &cancellables)
         scheduleParse()
@@ -65,6 +69,14 @@ final class EditorSession: ObservableObject {
         // REQ-052/086: inactive view applies newest accepted document version on next update.
         // @Published `mode` already notifies observers.
         traceModeToggle(toSource: newMode == .source)
+    }
+
+    /// Test/hook: install an already-built projection without waiting on the async parse path.
+    func installProjectionForTesting(_ model: MarkdownProjectionModel, tree: MarkdownTree) {
+        self.projection = model
+        self.tree = tree
+        self.acceptedSourceVersion = model.sourceVersion
+        imageCache.trace = document?.trace
     }
 
     private func traceModeToggle(toSource: Bool) {

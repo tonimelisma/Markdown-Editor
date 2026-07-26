@@ -418,6 +418,8 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         switch grouping {
         case .discrete:
             closeTypingGroupIfNeeded()
+            // Always open an explicit group — XCTest/host contexts may have groupingLevel 0
+            // without an automatic event group (REQ-016).
             undoManager.beginUndoGrouping()
             undoManager.setActionName(patch.actionName)
             undoManager.registerUndo(withTarget: self) { [patch] doc in
@@ -429,6 +431,11 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             )
         case .typing:
             if !typingGroupOpen {
+                undoManager.beginUndoGrouping()
+                typingGroupOpen = true
+            }
+            // If a checkpoint closed the group out from under us, reopen before registering.
+            if undoManager.groupingLevel == 0 {
                 undoManager.beginUndoGrouping()
                 typingGroupOpen = true
             }

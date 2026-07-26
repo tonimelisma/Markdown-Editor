@@ -14,6 +14,7 @@ import SwiftUI
 final class EditorActionRouter: ObservableObject {
     weak var placement: ImagePlacementController?
     weak var document: MarkdownDocument?
+    weak var session: EditorSession?
 
     /// Captured selection intent for the window that initiated Add Image.
     private(set) var pendingImageIntent: EditorSelectionIntent?
@@ -22,8 +23,23 @@ final class EditorActionRouter: ObservableObject {
         pendingImageIntent = intent
     }
 
+    func clearPendingImageIntent() {
+        pendingImageIntent = nil
+    }
+
     func handleAddImageClaims(_ claims: [ImageClaim]) {
         guard let placement, let document else { return }
+        // REQ-082: resolve the captured intent to a source range before placement.
+        if let intent = pendingImageIntent {
+            let snapshot = document.sourceSnapshot()
+            switch intent.resolvedSourceRange(snapshot: snapshot, projection: session?.projection) {
+            case .exact(let sourceRange):
+                document.reportActiveSelection(sourceRange)
+            case .refused:
+                pendingImageIntent = nil
+                return
+            }
+        }
         placement.handleImageAction(
             claims: claims,
             documentURL: document.publishedFileURL ?? document.fileURL
@@ -199,12 +215,24 @@ struct EditorHostView: NSViewRepresentable {
             sourceScroll.isHidden = !showSource
             wysiwygScroll.isHidden = showSource
             if showSource {
-                sourceText.setSelectedRange(sourceChrome.selection)
+                let affinity: NSSelectionAffinity = sourceChrome.affinity == .upstream ? .upstream : .downstream
+                sourceText.setSelectedRanges(
+                    [NSValue(range: sourceChrome.selection)],
+                    affinity: affinity,
+                    stillSelecting: false
+                )
                 sourceScroll.contentView.scroll(to: sourceChrome.scrollOffset)
+                sourceScroll.reflectScrolledClipView(sourceScroll.contentView)
                 if focus { sourceText.window?.makeFirstResponder(sourceText) }
             } else {
-                wysiwygText.setSelectedRange(wysiwygChrome.selection)
+                let affinity: NSSelectionAffinity = wysiwygChrome.affinity == .upstream ? .upstream : .downstream
+                wysiwygText.setSelectedRanges(
+                    [NSValue(range: wysiwygChrome.selection)],
+                    affinity: affinity,
+                    stillSelecting: false
+                )
                 wysiwygScroll.contentView.scroll(to: wysiwygChrome.scrollOffset)
+                wysiwygScroll.reflectScrolledClipView(wysiwygScroll.contentView)
                 if focus { wysiwygText.window?.makeFirstResponder(wysiwygText) }
             }
         }
@@ -221,6 +249,33 @@ struct EditorHostView: NSViewRepresentable {
             } else {
                 wysiwygCoordinator?.applyProjectionIfNeeded(force: false)
             }
+            applyPendingSelectionIfNeeded()
+        }
+
+        /// Apply document-owned post-edit caret (always source UTF-16) to the visible editor.
+        func applyPendingSelectionIfNeeded() {
+            guard let pending = document.pendingSelection else { return }
+            if session.mode == .source {
+                guard let sourceText else { return }
+                let length = (sourceText.string as NSString).length
+                let loc = min(max(0, pending.location), length)
+                let len = min(max(0, pending.length), max(0, length - loc))
+                sourceText.setSelectedRange(NSRange(location: loc, length: len))
+            } else {
+                guard let wysiwygText else { return }
+                let projected: NSRange
+                if let projection = session.projection,
+                   case .exact(let range) = projection.coordinateMap.projectionRange(forSource: pending) {
+                    projected = range
+                } else {
+                    let length = (wysiwygText.string as NSString).length
+                    let loc = min(max(0, pending.location), length)
+                    let len = min(max(0, pending.length), max(0, length - loc))
+                    projected = NSRange(location: loc, length: len)
+                }
+                wysiwygText.setSelectedRange(projected)
+            }
+            document.pendingSelection = nil
         }
 
         private func configureSource(_ textView: MarkdownSourceTextView) {

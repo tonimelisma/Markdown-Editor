@@ -46,6 +46,7 @@ struct ContentView: View {
             session.attach(document: document)
             actionRouter.placement = placementController
             actionRouter.document = document
+            actionRouter.session = session
             session.actionRouter = actionRouter
         }
         .onChange(of: document.publishedFileURL) { _, newURL in

@@ -90,6 +90,7 @@ nonisolated enum LocalImageResolver {
 @MainActor
 final class LocalImageCache {
     private let byteCache = LocalImageByteCache()
+    weak var trace: (any EditorTraceSink)?
 
     var totalBytes: Int { byteCache.totalBytes }
 
@@ -111,6 +112,8 @@ final class LocalImageCache {
             locationGeneration: descriptor.locationGeneration,
             modification: descriptor.fileModificationDate
         )
+        // REQ-089: privacy-safe cache instrumentation (cost/total only).
+        trace?.record(.imageCacheStore(cost: descriptor.byteCost, totalBytes: byteCache.totalBytes))
         return NSImage(
             cgImage: descriptor.cgImage,
             size: NSSize(width: descriptor.cgImage.width, height: descriptor.cgImage.height)
