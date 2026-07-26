@@ -67,7 +67,9 @@ nonisolated enum PresentationTransitionPlanner {
     static func identityReplacement(
         snapshot: PresentationSnapshot,
         projectionRange: NSRange,
-        replacement: String,
+        visibleReplacement: String,
+        sourceRange: NSRange,
+        sourceReplacement: String,
         nextSourceRevision: SourceRevision,
         nextSourceUTF16Count: Int,
         nextSnapshotID: PresentationSnapshot.ID,
@@ -75,21 +77,27 @@ nonisolated enum PresentationTransitionPlanner {
     ) -> PresentationTransition? {
         let rendered = snapshot.renderedString as NSString
         guard projectionRange.location >= 0,
-              NSMaxRange(projectionRange) <= rendered.length else {
+              NSMaxRange(projectionRange) <= rendered.length,
+              sourceRange.location >= 0,
+              NSMaxRange(sourceRange) <= snapshot.sourceUTF16Count else {
             return nil
         }
 
-        let delta = (replacement as NSString).length - projectionRange.length
-        let nextRendered = rendered.replacingCharacters(in: projectionRange, with: replacement)
-        let insertEnd = projectionRange.location + (replacement as NSString).length
+        let projectionDelta = (visibleReplacement as NSString).length - projectionRange.length
+        let sourceDelta = (sourceReplacement as NSString).length - sourceRange.length
+        let nextRendered = rendered.replacingCharacters(in: projectionRange, with: visibleReplacement)
+        let insertEnd = projectionRange.location + (visibleReplacement as NSString).length
 
         var nextAtoms: [ProjectionAtom] = []
         for atom in snapshot.atoms {
             guard let shifted = shift(
                 atom: atom,
                 editedProjection: projectionRange,
-                replacementLength: (replacement as NSString).length,
-                delta: delta
+                editedSource: sourceRange,
+                visibleReplacement: visibleReplacement,
+                sourceReplacement: sourceReplacement,
+                projectionDelta: projectionDelta,
+                sourceDelta: sourceDelta
             ) else {
                 return nil
             }
@@ -97,30 +105,37 @@ nonisolated enum PresentationTransitionPlanner {
         }
 
         // If the edit landed inside/at an identity atom, ensure the replacement text is covered.
-        if !replacement.isEmpty {
-            let covered = nextAtoms.contains { NSIntersectionRange($0.projectionRange, NSRange(location: projectionRange.location, length: (replacement as NSString).length)).length > 0
+        if !visibleReplacement.isEmpty {
+            let covered = nextAtoms.contains { NSIntersectionRange($0.projectionRange, NSRange(location: projectionRange.location, length: (visibleReplacement as NSString).length)).length > 0
                 || ($0.projectionRange.length == 0 && $0.projectionRange.location == projectionRange.location) }
             if !covered {
-                // Expand neighboring identity atom or insert a new identity coverage unit.
-                if let expanded = expandIdentityCoverage(
-                    atoms: nextAtoms,
-                    at: projectionRange.location,
-                    length: (replacement as NSString).length,
-                    sourceDelta: delta,
-                    originalSnapshot: snapshot,
-                    editedProjection: projectionRange
-                ) {
-                    nextAtoms = expanded
-                } else {
-                    return nil
-                }
+                guard let inserted = ProjectionAtom.concreteAtoms(
+                    projectionLocation: projectionRange.location,
+                    sourceLocation: sourceRange.location,
+                    visible: visibleReplacement,
+                    source: sourceReplacement
+                ) else { return nil }
+                nextAtoms.append(contentsOf: inserted)
+                nextAtoms.sort { $0.projectionRange.location < $1.projectionRange.location }
             }
         }
 
-        let nextRuns = shiftRuns(snapshot.runs, edited: projectionRange, delta: delta)
-        let nextAttachments = shiftAttachments(snapshot.attachments, edited: projectionRange, delta: delta)
-        let nextTables = shiftTables(snapshot.tables, edited: projectionRange, delta: delta)
-        let nextMarkers = shiftListMarkers(snapshot.listMarkers, edited: projectionRange, delta: delta)
+        let nextRuns = shiftRuns(snapshot.runs, edited: projectionRange, delta: projectionDelta)
+        let nextAttachments = shiftAttachments(
+            snapshot.attachments,
+            editedProjection: projectionRange,
+            projectionDelta: projectionDelta,
+            editedSource: sourceRange,
+            sourceDelta: sourceDelta
+        )
+        let nextTables = shiftTables(
+            snapshot.tables,
+            editedProjection: projectionRange,
+            projectionDelta: projectionDelta,
+            editedSource: sourceRange,
+            sourceDelta: sourceDelta
+        )
+        let nextMarkers = shiftListMarkers(snapshot.listMarkers, edited: projectionRange, delta: projectionDelta)
 
         let next = PresentationSnapshot.make(
             id: nextSnapshotID,
@@ -144,7 +159,7 @@ nonisolated enum PresentationTransitionPlanner {
             fromSnapshotID: snapshot.id,
             nextSnapshot: next,
             projectionReplacementRange: projectionRange,
-            projectionReplacement: replacement,
+            projectionReplacement: visibleReplacement,
             selectionAfter: selection
         )
     }
@@ -154,15 +169,18 @@ nonisolated enum PresentationTransitionPlanner {
     private static func shift(
         atom: ProjectionAtom,
         editedProjection: NSRange,
-        replacementLength: Int,
-        delta: Int
+        editedSource: NSRange,
+        visibleReplacement: String,
+        sourceReplacement: String,
+        projectionDelta: Int,
+        sourceDelta: Int
     ) -> [ProjectionAtom]? {
         let range = atom.projectionRange
         let editEnd = NSMaxRange(editedProjection)
 
         // Entirely after the edit — shift projection (and identity source) forward/back.
         if range.location >= editEnd {
-            return [shiftAtom(atom, projectionDelta: delta, sourceDelta: delta)]
+            return [shiftAtom(atom, projectionDelta: projectionDelta, sourceDelta: sourceDelta)]
         }
 
         // Entirely before the edit — unchanged.
@@ -176,11 +194,23 @@ nonisolated enum PresentationTransitionPlanner {
             return rewriteIdentity(
                 identity,
                 editedProjection: editedProjection,
-                replacementLength: replacementLength,
-                delta: delta
+                editedSource: editedSource,
+                visibleReplacement: visibleReplacement,
+                sourceReplacement: sourceReplacement
             )
-        case .atomic, .synthetic, .uneditable:
-            // Structural/atomic overlap requires a dedicated planner.
+        case .atomic(let atomic):
+            guard editedProjection == atomic.projection,
+                  editedSource == atomic.source else {
+                return nil
+            }
+            return ProjectionAtom.concreteAtoms(
+                projectionLocation: editedProjection.location,
+                sourceLocation: editedSource.location,
+                visible: visibleReplacement,
+                source: sourceReplacement
+            )
+        case .synthetic, .uneditable:
+            // Structural overlap requires a dedicated planner.
             return nil
         }
     }
@@ -188,46 +218,68 @@ nonisolated enum PresentationTransitionPlanner {
     private static func rewriteIdentity(
         _ identity: IdentityAtom,
         editedProjection: NSRange,
-        replacementLength: Int,
-        delta: Int
+        editedSource: NSRange,
+        visibleReplacement: String,
+        sourceReplacement: String
     ) -> [ProjectionAtom]? {
         let proj = identity.projection
         let editStart = editedProjection.location
         let editEnd = NSMaxRange(editedProjection)
 
         // Edit fully contained in this identity atom.
-        guard editStart >= proj.location, editEnd <= NSMaxRange(proj) else {
+        guard editStart >= proj.location,
+              editEnd <= NSMaxRange(proj),
+              editedSource.location >= identity.source.location,
+              NSMaxRange(editedSource) <= NSMaxRange(identity.source) else {
             return nil
         }
 
-        let localStart = editStart - proj.location
-        let newProjLen = proj.length + delta
-        guard newProjLen >= 0 else { return nil }
-
-        if newProjLen == 0 {
-            // Atom consumed — drop it (coverage filled by neighbors or expandIdentityCoverage).
-            return []
+        let beforeProjectionLength = editedProjection.location - proj.location
+        let beforeSourceLength = editedSource.location - identity.source.location
+        let afterProjectionLength = NSMaxRange(proj) - NSMaxRange(editedProjection)
+        let afterSourceLength = NSMaxRange(identity.source) - NSMaxRange(editedSource)
+        guard beforeProjectionLength == beforeSourceLength,
+              afterProjectionLength == afterSourceLength else {
+            return nil
         }
 
-        let sourceLocalStart = localStart
-        // Identity: source offsets match projection offsets within the atom.
-        let newSourceLen = identity.source.length + delta
-        guard newSourceLen >= 0 else { return nil }
-
-        let newProj = NSRange(location: proj.location, length: newProjLen)
-        let newSource = NSRange(location: identity.source.location, length: newSourceLen)
-        _ = sourceLocalStart
-        _ = replacementLength
-        return [
-            .identity(
-                IdentityAtom(
-                    projection: newProj,
-                    source: newSource,
-                    insertionBefore: newSource.location,
-                    insertionAfter: NSMaxRange(newSource)
+        var result: [ProjectionAtom] = []
+        if beforeProjectionLength > 0 {
+            result.append(
+                .identity(
+                    IdentityAtom(
+                        projection: NSRange(location: proj.location, length: beforeProjectionLength),
+                        source: NSRange(location: identity.source.location, length: beforeSourceLength),
+                        insertionBefore: identity.source.location,
+                        insertionAfter: identity.source.location + beforeSourceLength
+                    )
                 )
             )
-        ]
+        }
+
+        guard let replacement = ProjectionAtom.concreteAtoms(
+            projectionLocation: editedProjection.location,
+            sourceLocation: editedSource.location,
+            visible: visibleReplacement,
+            source: sourceReplacement
+        ) else { return nil }
+        result.append(contentsOf: replacement)
+
+        if afterProjectionLength > 0 {
+            let projectionLocation = editedProjection.location + (visibleReplacement as NSString).length
+            let sourceLocation = editedSource.location + (sourceReplacement as NSString).length
+            result.append(
+                .identity(
+                    IdentityAtom(
+                        projection: NSRange(location: projectionLocation, length: afterProjectionLength),
+                        source: NSRange(location: sourceLocation, length: afterSourceLength),
+                        insertionBefore: sourceLocation,
+                        insertionAfter: sourceLocation + afterSourceLength
+                    )
+                )
+            )
+        }
+        return result
     }
 
     private static func shiftAtom(_ atom: ProjectionAtom, projectionDelta: Int, sourceDelta: Int) -> ProjectionAtom {
@@ -312,31 +364,40 @@ nonisolated enum PresentationTransitionPlanner {
 
     private static func shiftAttachments(
         _ attachments: [ProjectionAttachment],
-        edited: NSRange,
-        delta: Int
+        editedProjection: NSRange,
+        projectionDelta: Int,
+        editedSource: NSRange,
+        sourceDelta: Int
     ) -> [ProjectionAttachment] {
         attachments.compactMap { attachment in
-            if attachment.utf16Location >= NSMaxRange(edited) {
+            if attachment.utf16Location >= NSMaxRange(editedProjection) {
                 return ProjectionAttachment(
                     nodeID: attachment.nodeID,
-                    utf16Location: attachment.utf16Location + delta,
+                    utf16Location: attachment.utf16Location + projectionDelta,
                     kind: attachment.kind,
                     sourceUTF16Range: attachment.sourceUTF16Range.map {
-                        NSRange(location: $0.location + delta, length: $0.length)
+                        shiftSourceRange($0, edited: editedSource, delta: sourceDelta)
                     }
                 )
             }
-            if attachment.utf16Location >= edited.location && attachment.utf16Location < NSMaxRange(edited) {
+            if attachment.utf16Location >= editedProjection.location
+                && attachment.utf16Location < NSMaxRange(editedProjection) {
                 return nil
             }
             return attachment
         }
     }
 
-    private static func shiftTables(_ tables: [ProjectionTable], edited: NSRange, delta: Int) -> [ProjectionTable] {
+    private static func shiftTables(
+        _ tables: [ProjectionTable],
+        editedProjection: NSRange,
+        projectionDelta: Int,
+        editedSource: NSRange,
+        sourceDelta: Int
+    ) -> [ProjectionTable] {
         tables.compactMap { table in
-            if NSMaxRange(table.utf16Range) <= edited.location { return table }
-            if table.utf16Range.location >= NSMaxRange(edited) {
+            if NSMaxRange(table.utf16Range) <= editedProjection.location { return table }
+            if table.utf16Range.location >= NSMaxRange(editedProjection) {
                 let cells = table.cells.map { cell in
                     ProjectionTableCell(
                         nodeID: cell.nodeID,
@@ -344,9 +405,12 @@ nonisolated enum PresentationTransitionPlanner {
                         column: cell.column,
                         isHeader: cell.isHeader,
                         alignment: cell.alignment,
-                        utf16Range: NSRange(location: cell.utf16Range.location + delta, length: cell.utf16Range.length),
+                        utf16Range: NSRange(
+                            location: cell.utf16Range.location + projectionDelta,
+                            length: cell.utf16Range.length
+                        ),
                         sourceUTF16Range: cell.sourceUTF16Range.map {
-                            NSRange(location: $0.location + delta, length: $0.length)
+                            shiftSourceRange($0, edited: editedSource, delta: sourceDelta)
                         }
                     )
                 }
@@ -355,29 +419,34 @@ nonisolated enum PresentationTransitionPlanner {
                     columnCount: table.columnCount,
                     alignments: table.alignments,
                     cells: cells,
-                    utf16Range: NSRange(location: table.utf16Range.location + delta, length: table.utf16Range.length)
+                    utf16Range: NSRange(
+                        location: table.utf16Range.location + projectionDelta,
+                        length: table.utf16Range.length
+                    )
                 )
             }
             // Contained: adjust intersecting cells.
-            if table.utf16Range.location <= edited.location && NSMaxRange(table.utf16Range) >= NSMaxRange(edited) {
+            if table.utf16Range.location <= editedProjection.location
+                && NSMaxRange(table.utf16Range) >= NSMaxRange(editedProjection) {
                 let cells = table.cells.compactMap { cell -> ProjectionTableCell? in
                     let r = cell.utf16Range
-                    if NSMaxRange(r) <= edited.location { return cell }
-                    if r.location >= NSMaxRange(edited) {
+                    if NSMaxRange(r) <= editedProjection.location { return cell }
+                    if r.location >= NSMaxRange(editedProjection) {
                         return ProjectionTableCell(
                             nodeID: cell.nodeID,
                             row: cell.row,
                             column: cell.column,
                             isHeader: cell.isHeader,
                             alignment: cell.alignment,
-                            utf16Range: NSRange(location: r.location + delta, length: r.length),
+                            utf16Range: NSRange(location: r.location + projectionDelta, length: r.length),
                             sourceUTF16Range: cell.sourceUTF16Range.map {
-                                NSRange(location: $0.location + delta, length: $0.length)
+                                shiftSourceRange($0, edited: editedSource, delta: sourceDelta)
                             }
                         )
                     }
-                    if r.location <= edited.location && NSMaxRange(r) >= NSMaxRange(edited) {
-                        let newLen = r.length + delta
+                    if r.location <= editedProjection.location
+                        && NSMaxRange(r) >= NSMaxRange(editedProjection) {
+                        let newLen = r.length + projectionDelta
                         guard newLen >= 0 else { return nil }
                         return ProjectionTableCell(
                             nodeID: cell.nodeID,
@@ -387,13 +456,13 @@ nonisolated enum PresentationTransitionPlanner {
                             alignment: cell.alignment,
                             utf16Range: NSRange(location: r.location, length: newLen),
                             sourceUTF16Range: cell.sourceUTF16Range.map {
-                                NSRange(location: $0.location, length: $0.length + delta)
+                                NSRange(location: $0.location, length: $0.length + sourceDelta)
                             }
                         )
                     }
                     return nil
                 }
-                let newLen = table.utf16Range.length + delta
+                let newLen = table.utf16Range.length + projectionDelta
                 guard newLen >= 0 else { return nil }
                 return ProjectionTable(
                     nodeID: table.nodeID,
@@ -428,30 +497,14 @@ nonisolated enum PresentationTransitionPlanner {
         }
     }
 
-    private static func expandIdentityCoverage(
-        atoms: [ProjectionAtom],
-        at location: Int,
-        length: Int,
-        sourceDelta: Int,
-        originalSnapshot: PresentationSnapshot,
-        editedProjection: NSRange
-    ) -> [ProjectionAtom]? {
-        _ = sourceDelta
-        _ = originalSnapshot
-        _ = editedProjection
-        // Insert a fresh identity atom covering the replacement when prior rewrite dropped coverage.
-        var result = atoms
-        let newAtom = ProjectionAtom.identity(
-            IdentityAtom(
-                projection: NSRange(location: location, length: length),
-                source: NSRange(location: location, length: length), // corrected by caller context for non-identity docs
-                insertionBefore: location,
-                insertionAfter: location + length
-            )
-        )
-        // Find insertion index by projection order.
-        let index = result.firstIndex { $0.projectionRange.location > location } ?? result.count
-        result.insert(newAtom, at: index)
-        return result
+    private static func shiftSourceRange(_ range: NSRange, edited: NSRange, delta: Int) -> NSRange {
+        if range.location >= NSMaxRange(edited) {
+            return NSRange(location: range.location + delta, length: range.length)
+        }
+        if range.location <= edited.location, NSMaxRange(range) >= NSMaxRange(edited) {
+            return NSRange(location: range.location, length: range.length + delta)
+        }
+        return range
     }
+
 }

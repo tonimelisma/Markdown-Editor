@@ -65,7 +65,7 @@ struct SourceTransactionTests {
         }
         #expect(doc.text == "Hello there")
         #expect(doc.sourceVersion == 1)
-        #expect(selection.nsRange == NSRange(location: 11, length: 0))
+        #expect(selection.range.utf16 == NSRange(location: 11, length: 0))
     }
 
     // Verifies: REQ-016 — Unicode scalar boundaries (emoji is 2 UTF-16 units).

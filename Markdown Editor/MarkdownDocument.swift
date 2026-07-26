@@ -12,8 +12,8 @@ import UniformTypeIdentifiers
 ///
 /// // REQ-013–REQ-019: one document/source/version/undo owner; byte-preserving I/O;
 /// // versioned source transactions; operation-scoped Save; main-actor mutation;
-/// // location generation for COR-02.
-/// // REQ-011/016/018/083/088/089: content-validated HistoryPatch undo; Mutex snapshots;
+/// // location generation for image placement.
+/// // REQ-011/016/018/083/088/089: content-validated HistoryPatch undo;
 /// // privacy-safe traces; Swift 6 complete concurrency.
 final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterface {
     // MARK: - Readable types
@@ -43,8 +43,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// Mirror of `fileURL` for SwiftUI observation (NSDocument's property is not @Published).
     @Published private(set) var publishedFileURL: URL?
 
-    private var sourceSelectionStorage = SourceSelection(utf16: NSRange(location: 0, length: 0))
-    var pendingSelection: SourceSelection?
+    let selectionRestorations = PassthroughSubject<SourceSelection, Never>()
 
     private var trackingGeneration: Int = 0
     private var activeTracker: InsertionRangeTracker?
@@ -177,10 +176,8 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         )
     }
 
-    var sourceSelection: SourceSelection { sourceSelectionStorage }
-
-    func reportSourceSelection(_ selection: SourceSelection) {
-        sourceSelectionStorage = selection
+    func requestSelectionRestoration(_ selection: SourceSelection) {
+        selectionRestorations.send(selection)
     }
 
     func beginPlacementTracking(range: SourceRange) -> Int {
@@ -249,8 +246,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         let replacementUTF16 = (mutation.replacement as NSString).length
         applyReplacement(
             range: range,
-            replacement: mutation.replacement,
-            selectionAfter: mutation.selectionAfter
+            replacement: mutation.replacement
         )
 
         let patch = HistoryPatch.fromCommitted(mutation)
@@ -304,8 +300,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         closeTypingGroupIfNeeded()
         text = value
         sourceVersion = 0
-        sourceSelectionStorage = SourceSelection(utf16: NSRange(location: 0, length: 0))
-        pendingSelection = nil
         updateChangeCount(.changeCleared)
         undoManager?.removeAllActions()
     }
@@ -315,8 +309,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         closeTypingGroupIfNeeded()
         text = value
         sourceVersion = 0
-        sourceSelectionStorage = SourceSelection(utf16: NSRange(location: 0, length: 0))
-        pendingSelection = nil
         activeTracker = nil
         activeTrackingGeneration = nil
         undoManager?.removeAllActions()
@@ -328,16 +320,13 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// One private application path for user edits, undo, and redo.
     private func applyReplacement(
         range: NSRange,
-        replacement: String,
-        selectionAfter: SourceSelection
+        replacement: String
     ) {
         let ns = text as NSString
         let replacementUTF16 = (replacement as NSString).length
         let newText = ns.replacingCharacters(in: range, with: replacement)
         text = newText
         sourceVersion &+= 1
-        sourceSelectionStorage = selectionAfter
-        pendingSelection = selectionAfter
         noteTrackedEdit(edited: range, changeInLength: replacementUTF16 - range.length)
         // Dirty state is driven by UndoManager registration — do not also call
         // updateChangeCount(.changeDone) or undo/redo will double-count.
@@ -354,9 +343,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
         applyReplacement(
             range: patch.range,
-            replacement: patch.before,
-            selectionAfter: patch.selectionBefore
+            replacement: patch.before
         )
+        requestSelectionRestoration(patch.selectionBefore)
 
         // Register the inverse dynamically — never call the version-gated public API.
         // While undoing/redoing, UndoManager forms the opposite operation from this registration.

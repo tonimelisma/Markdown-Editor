@@ -66,53 +66,39 @@ struct MarkdownTextView: NSViewRepresentable {
         placementController.attach(actions: document)
         placementController.updateDocumentURL(document.fileURL)
 
-        if context.coordinator.isNativeEditInFlight {
+        if context.coordinator.nativeStorageState == .awaitingTextDidChange {
             // Native keystroke owns storage application until textDidChange clears the gate.
-            if let pending = document.pendingSelection {
-                textView.setSelectedRange(pending.nsRange)
-                document.pendingSelection = nil
-                document.reportSourceSelection(pending)
-            }
             return
         }
 
         if textView.string != document.text {
-            context.coordinator.isProgrammaticUpdate = true
-            let selected = textView.selectedRange()
-            textView.string = document.text
-            if let pending = document.pendingSelection {
-                textView.setSelectedRange(pending.nsRange)
-                document.pendingSelection = nil
-                document.reportSourceSelection(pending)
-            } else {
+            let selected = session?.sourceModeState.selection.range.utf16 ?? textView.selectedRange()
+            context.coordinator.withOrigin(.programmaticPresentation) {
+                textView.string = document.text
                 let length = (document.text as NSString).length
-                let loc = min(selected.location, length)
-                let maxLen = length - loc
-                let len = min(selected.length, maxLen)
-                textView.setSelectedRange(NSRange(location: loc, length: len))
+                if selected.location >= 0, NSMaxRange(selected) <= length {
+                    textView.setSelectedRange(selected)
+                }
             }
-            context.coordinator.isProgrammaticUpdate = false
             context.coordinator.highlight()
-        } else if let pending = document.pendingSelection {
-            textView.setSelectedRange(pending.nsRange)
-            document.pendingSelection = nil
-            document.reportSourceSelection(pending)
         }
     }
 
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
+        enum NativeStorageState {
+            case idle
+            case awaitingTextDidChange
+        }
+
         var document: MarkdownDocument
         var session: EditorSession?
         let theme = MarkdownTheme()
         let placementController: ImagePlacementController
         private let highlighter = MarkdownHighlighter()
         weak var textView: MarkdownSourceTextView?
-        var isProgrammaticUpdate = false
-        /// Gates SwiftUI string sync while a native keystroke commit is in flight (REQ-016).
-        var isNativeEditInFlight = false
-        /// When true, the next `shouldChangeTextIn` commit uses a discrete undo group (paste).
-        var preferDiscreteGrouping = false
+        var nativeStorageState: NativeStorageState = .idle
+        var nextNativeGrouping: MutationGrouping?
         private var version = 0
         private var task: Task<Void, Never>?
 
@@ -122,12 +108,21 @@ struct MarkdownTextView: NSViewRepresentable {
             self.session = session
         }
 
+        func withOrigin<T>(_ origin: EditorUpdateOrigin, _ body: () -> T) -> T {
+            guard let session else { return body() }
+            return session.updateOrigin.with(origin, body)
+        }
+
+        private var currentOrigin: EditorUpdateOrigin {
+            session?.updateOrigin.current ?? .nativeUserInput
+        }
+
         func textView(
             _ textView: NSTextView,
             shouldChangeTextIn affectedCharRange: NSRange,
             replacementString: String?
         ) -> Bool {
-            guard !isProgrammaticUpdate else { return true }
+            guard currentOrigin == .nativeUserInput else { return true }
             // Attribute-only or marked-text updates may omit a replacement string.
             guard let replacement = replacementString else { return true }
             let ns = document.text as NSString
@@ -138,9 +133,13 @@ struct MarkdownTextView: NSViewRepresentable {
             } else {
                 return false
             }
-            let discrete = preferDiscreteGrouping
-            preferDiscreteGrouping = false
-            let selectionBefore = SourceSelection(utf16: document.sourceSelection.nsRange)
+            let grouping = nextNativeGrouping ?? .typing
+            nextNativeGrouping = nil
+            let selectionBefore = session?.sourceModeState.selection
+                ?? SourceSelection(
+                    utf16: textView.selectedRange(),
+                    affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
+                )
             let afterLocation = affectedCharRange.location + (replacement as NSString).length
             let mutation = SourceMutation(
                 expectedRevision: document.sourceVersion,
@@ -149,15 +148,15 @@ struct MarkdownTextView: NSViewRepresentable {
                 replacement: replacement,
                 selectionBefore: selectionBefore,
                 selectionAfter: SourceSelection(utf16: NSRange(location: afterLocation, length: 0)),
-                actionName: discrete ? "Paste" : "Typing",
-                grouping: discrete ? .discrete : .typing
+                actionName: grouping == .discrete ? "Paste" : "Typing",
+                grouping: grouping
             )
             switch document.commitSourceMutation(mutation) {
             case .committed(let selection):
-                document.reportSourceSelection(selection)
+                session?.updateSourceModeState { $0.selection = selection }
                 // Prevent updateNSView from rewriting storage before the text view applies
-                // the same replacement (PLAN-0008 recursive-writeback risk).
-                isNativeEditInFlight = true
+                // the same replacement, avoiding recursive writeback.
+                nativeStorageState = .awaitingTextDidChange
                 return true
             case .refused:
                 return false
@@ -165,19 +164,23 @@ struct MarkdownTextView: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
-            guard !isProgrammaticUpdate, let textView else { return }
-            isNativeEditInFlight = false
+            guard currentOrigin == .nativeUserInput, let textView else { return }
+            nativeStorageState = .idle
             // Canonical source already updated in shouldChangeTextIn via transaction.
-            document.reportSourceSelection(SourceSelection(utf16: textView.selectedRange()))
+            session?.updateSourceModeState {
+                $0.selection = SourceSelection(
+                    utf16: textView.selectedRange(),
+                    affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
+                )
+            }
             highlight(debounced: true)
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView else { return }
             let range = textView.selectedRange()
-            document.reportSourceSelection(SourceSelection(utf16: range))
             // Close typing groups on caret moves; skip selection churn from in-flight typing.
-            if !isNativeEditInFlight {
+            if currentOrigin == .nativeUserInput, nativeStorageState == .idle {
                 document.closeTypingUndoGroup()
             }
             if let session {
@@ -247,11 +250,17 @@ final class MarkdownSourceTextView: NSTextView {
     func insertImageMarkdown(_ markdown: String, at range: NSRange, selectEmptyDescription: Bool) {
         guard let actions = documentActions else { return }
         let snapshot = actions.sourceSnapshot()
-        let safe = NSIntersectionRange(range, NSRange(location: 0, length: (snapshot.text as NSString).length))
-        let selectionBefore = actions.sourceSelection
+        guard range.location >= 0,
+              NSMaxRange(range) <= (snapshot.text as NSString).length else {
+            return
+        }
+        let selectionBefore = SourceSelection(
+            utf16: selectedRange(),
+            affinity: selectionAffinity == .upstream ? .upstream : .downstream
+        )
         guard let mutation = SourceMutation.exact(
             snapshot: snapshot,
-            range: safe,
+            range: range,
             replacement: markdown,
             selectionBefore: selectionBefore,
             actionName: "Insert Image",
@@ -262,15 +271,13 @@ final class MarkdownSourceTextView: NSTextView {
         switch actions.commitSourceMutation(mutation) {
         case .committed:
             if selectEmptyDescription {
-                let descStart = safe.location + 2
+                let descStart = range.location + 2
                 let pending = SourceSelection(utf16: NSRange(location: descStart, length: 0))
-                actions.pendingSelection = pending
-                actions.reportSourceSelection(pending)
+                actions.requestSelectionRestoration(pending)
             } else {
-                let end = safe.location + (markdown as NSString).length
+                let end = range.location + (markdown as NSString).length
                 let pending = SourceSelection(utf16: NSRange(location: end, length: 0))
-                actions.pendingSelection = pending
-                actions.reportSourceSelection(pending)
+                actions.requestSelectionRestoration(pending)
             }
         case .refused:
             break
@@ -281,8 +288,9 @@ final class MarkdownSourceTextView: NSTextView {
         let classification = ImagePasteboardClassifier.classifyPasteboard(.general)
         switch classification {
         case .images(let claims):
+            guard let target = imagePlacementTarget() else { return }
             placementController?.handleImageAction(
-                claims: claims,
+                intent: ImagePlacementIntent(target: target, claims: claims),
                 documentURL: documentActions?.sourceSnapshot().fileURL ?? documentURL
             )
             case .fallthroughToNativeText, .unsupported:
@@ -294,10 +302,10 @@ final class MarkdownSourceTextView: NSTextView {
             if let plain = PastePolicy.plainText(from: .general) {
                 let range = selectedRange()
                 // Paste must not coalesce into the open typing undo group (REQ-016).
-                (delegate as? MarkdownTextView.Coordinator)?.preferDiscreteGrouping = true
+                (delegate as? MarkdownTextView.Coordinator)?.nextNativeGrouping = .discrete
                 insertText(plain, replacementRange: range)
             } else {
-                (delegate as? MarkdownTextView.Coordinator)?.preferDiscreteGrouping = true
+                (delegate as? MarkdownTextView.Coordinator)?.nextNativeGrouping = .discrete
                 super.pasteAsPlainText(sender)
             }
         }
@@ -308,13 +316,18 @@ final class MarkdownSourceTextView: NSTextView {
         let url = documentActions?.sourceSnapshot().fileURL ?? documentURL
         if let receivers = pb.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver],
            !receivers.isEmpty {
-            placementController?.handleFilePromises(receivers, documentURL: url)
+            guard let target = imagePlacementTarget() else { return false }
+            placementController?.handleFilePromises(receivers, target: target, documentURL: url)
             return true
         }
         let classification = ImagePasteboardClassifier.classifyDragInfo(sender)
         switch classification {
         case .images(let claims):
-            placementController?.handleImageAction(claims: claims, documentURL: url)
+            guard let target = imagePlacementTarget() else { return false }
+            placementController?.handleImageAction(
+                intent: ImagePlacementIntent(target: target, claims: claims),
+                documentURL: url
+            )
             return true
         case .fallthroughToNativeText, .unsupported:
             if case .unsupported = classification {
@@ -336,5 +349,24 @@ final class MarkdownSourceTextView: NSTextView {
             return .copy
         }
         return super.draggingEntered(sender)
+    }
+
+    private func imagePlacementTarget() -> ImagePlacementTarget? {
+        guard let actions = documentActions else { return nil }
+        let snapshot = actions.sourceSnapshot()
+        let selected = selectedRange()
+        guard selected.location >= 0,
+              NSMaxRange(selected) <= (snapshot.text as NSString).length else {
+            return nil
+        }
+        return ImagePlacementTarget(
+            sourceSelection: SourceSelection(
+                utf16: selected,
+                affinity: selectionAffinity == .upstream ? .upstream : .downstream
+            ),
+            sourceRevision: SourceRevision(value: snapshot.sourceVersion),
+            locationGeneration: snapshot.locationGeneration,
+            operationID: UUID()
+        )
     }
 }

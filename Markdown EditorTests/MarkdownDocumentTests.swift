@@ -118,9 +118,9 @@ struct MarkdownDocumentTests {
     // Verifies: REQ-014 — standard document File selectors remain wired for First Responder.
     @Test func requiredDocumentFileSelectorsAreDeclared() {
         for name in MarkdownAppDelegate.requiredDocumentSelectors {
-            #expect(NSSelectorFromString(name) != nil)
             #expect(name.hasSuffix(":"))
         }
+        #expect(Set(MarkdownAppDelegate.requiredDocumentSelectors).count == MarkdownAppDelegate.requiredDocumentSelectors.count)
         #expect(MarkdownAppDelegate.requiredDocumentSelectors.contains("saveDocument:"))
         #expect(MarkdownAppDelegate.requiredDocumentSelectors.contains("saveDocumentAs:"))
         #expect(MarkdownAppDelegate.requiredDocumentSelectors.contains("revertDocumentToSaved:"))
@@ -145,8 +145,9 @@ struct DocumentActionInterfaceTests {
     @Test func placementTrackingIsEditorNeutral() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hello")
-        doc.reportSourceSelection(SourceSelection(utf16: NSRange(location: 2, length: 0)))
-        let gen = doc.beginPlacementTracking(range: doc.sourceSelection.range)
+        let gen = doc.beginPlacementTracking(
+            range: SourceRange(NSRange(location: 2, length: 0))
+        )
         #expect(doc.trackedPlacement(for: gen)?.range.location == 2)
         doc.noteTrackedEdit(edited: NSRange(location: 0, length: 1), changeInLength: 0)
         #expect(doc.trackedPlacement(for: gen)?.range.location == 2)

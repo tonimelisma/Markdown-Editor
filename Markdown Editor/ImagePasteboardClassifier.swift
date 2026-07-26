@@ -7,7 +7,7 @@ import AppKit
 import UniformTypeIdentifiers
 
 // REQ-060/063/064: classify pasteboard/drag into immutable claims.
-// Main actor does NOT read file bytes or run Image I/O (ADR-0012).
+// The main actor does not read file bytes or run Image I/O.
 
 nonisolated enum PasteClassification: Sendable {
     case images([ImageClaim])

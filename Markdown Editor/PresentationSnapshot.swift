@@ -90,7 +90,8 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
     static func from(
         model: MarkdownProjectionModel,
         id: ID,
-        locationGeneration: UInt64
+        locationGeneration: UInt64,
+        sourceText: String
     ) -> PresentationSnapshot {
         make(
             id: id,
@@ -101,7 +102,11 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
             attachments: model.attachments,
             tables: model.tables,
             listMarkers: model.listMarkers,
-            atoms: ProjectionAtom.from(segments: model.segments),
+            atoms: ProjectionAtom.from(
+                segments: model.segments,
+                sourceText: sourceText,
+                renderedText: model.renderedString
+            ),
             sourceUTF16Count: model.sourceUTF16Count
         )
     }

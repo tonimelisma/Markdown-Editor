@@ -6,9 +6,9 @@
 import Foundation
 
 // REQ-041/043/047: the kinds of CommonMark/formal-GFM source elements the highlighter
-// styles. Lexical presentation aid only (ADR-0009) — not a conforming parser.
+// styles. Lexical presentation aid only — not a conforming parser.
 // `nonisolated` + `Sendable` so tokens cross the MarkdownHighlighter actor boundary
-// cleanly under the project's default-MainActor isolation (ADR-0010).
+// cleanly under the project's default-main-actor isolation.
 nonisolated enum TokenStyle: Sendable, Hashable {
     case heading(level: Int)
     case bold

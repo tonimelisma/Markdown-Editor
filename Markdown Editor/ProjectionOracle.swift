@@ -89,6 +89,27 @@ nonisolated enum ProjectionOracle {
         if snapshot.coordinateMap.sourceUTF16Count != snapshot.sourceUTF16Count {
             return .failure(Failure(code: "map_src_len", detail: "map=\(snapshot.coordinateMap.sourceUTF16Count) src=\(snapshot.sourceUTF16Count)"))
         }
+        for atom in snapshot.atoms {
+            switch atom {
+            case .identity(let identity):
+                guard identity.projection.length == identity.source.length else {
+                    return .failure(
+                        Failure(
+                            code: "identity_length",
+                            detail: "projection=\(identity.projection.length) source=\(identity.source.length)"
+                        )
+                    )
+                }
+            case .atomic(let atomic):
+                guard atomic.source.location >= 0,
+                      NSMaxRange(atomic.source) <= snapshot.sourceUTF16Count,
+                      (atomic.decodedText as NSString).length == atomic.projection.length else {
+                    return .failure(Failure(code: "atomic_shape", detail: "kind=\(atomic.kind)"))
+                }
+            case .synthetic, .uneditable:
+                break
+            }
+        }
         for attachment in snapshot.attachments {
             guard attachment.utf16Location >= 0, attachment.utf16Location < renderedCount || renderedCount == 0 else {
                 return .failure(Failure(code: "attach_oob", detail: "loc=\(attachment.utf16Location)"))

@@ -22,6 +22,7 @@ struct WYSIWYGTextView: NSViewRepresentable {
         let textView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
         textView.delegate = context.coordinator
         textView.inputCoordinator = context.coordinator.input
+        textView.adapterCoordinator = context.coordinator
         textView.session = session
         textView.documentActions = document
         textView.placementController = placementController
@@ -63,24 +64,15 @@ struct WYSIWYGTextView: NSViewRepresentable {
         textView.documentActions = document
         textView.placementController = placementController
         textView.inputCoordinator = context.coordinator.input
-        if !context.coordinator.isNativeEditInFlight {
-            context.coordinator.applyProjectionIfNeeded(force: false)
-        }
+        textView.adapterCoordinator = context.coordinator
+        context.coordinator.applyProjectionIfNeeded(force: false)
         if let restoration = session.consumePendingSelectionRestoration(),
            session.mode == .wysiwyg,
            case .projection = restoration.domain {
             session.updateOrigin.with(.selectionRestoration) {
                 if let projected = restoration.projectionSelection {
-                    textView.setSelectedRange(projected.nsRange)
+                    textView.setSelectedRange(projected.range.utf16)
                 }
-            }
-        } else if let pending = document.pendingSelection, session.mode == .wysiwyg {
-            session.updateOrigin.with(.selectionRestoration) {
-                let length = textView.string.utf16.count
-                let loc = min(pending.nsRange.location, length)
-                let len = min(pending.nsRange.length, max(0, length - loc))
-                textView.setSelectedRange(NSRange(location: loc, length: len))
-                document.pendingSelection = nil
             }
         }
     }
@@ -140,10 +132,10 @@ struct WYSIWYGTextView: NSViewRepresentable {
         var session: EditorSession
         let placementController: ImagePlacementController
         let input = WYSIWYGInputCoordinator()
-        weak var textView: MarkdownWYSIWYGTextView?
+        weak var textView: MarkdownWYSIWYGTextView? {
+            didSet { textView?.adapterCoordinator = self }
+        }
         weak var scrollView: NSScrollView?
-        var isProgrammaticUpdate = false
-        var isNativeEditInFlight = false
         private var appliedSnapshotID: PresentationSnapshot.ID?
 
         init(document: MarkdownDocument, session: EditorSession, placementController: ImagePlacementController) {
@@ -171,7 +163,6 @@ struct WYSIWYGTextView: NSViewRepresentable {
             if textView.hasMarkedText() || input.composition.isComposing { return }
 
             session.updateOrigin.with(.programmaticPresentation) {
-                isProgrammaticUpdate = true
                 let built = RichTextBuilder.build(
                     model: presentation.asProjectionModel,
                     theme: MarkdownTheme(),
@@ -181,15 +172,18 @@ struct WYSIWYGTextView: NSViewRepresentable {
                         self?.performTaskToggle(nodeID: nodeID)
                     }
                 )
-                let selected = textView.selectedRange()
                 textView.textStorage?.setAttributedString(built.attributed)
                 appliedSnapshotID = presentation.id
 
-                let length = built.attributed.length
-                let loc = min(selected.location, length)
-                let len = min(selected.length, max(0, length - loc))
-                textView.setSelectedRange(NSRange(location: loc, length: len))
-                isProgrammaticUpdate = false
+                if let selection = session.wysiwygModeState.selection,
+                   selection.range.revision.snapshotID == presentation.id {
+                    let range = selection.range.utf16
+                    precondition(
+                        range.location >= 0 && NSMaxRange(range) <= built.attributed.length,
+                        "Current typed selection is outside its presentation snapshot"
+                    )
+                    textView.setSelectedRange(range)
+                }
             }
         }
 
@@ -199,7 +193,6 @@ struct WYSIWYGTextView: NSViewRepresentable {
             replacementString: String?
         ) -> Bool {
             if session.updateOrigin.current != .nativeUserInput { return true }
-            guard !isProgrammaticUpdate else { return true }
             // Attribute-only changes (nil replacement) stay native.
             guard let replacement = replacementString else { return true }
 
@@ -210,7 +203,13 @@ struct WYSIWYGTextView: NSViewRepresentable {
 
             guard let presentation = session.presentation,
                   case .editable(let id) = session.wysiwygModeState.availability,
-                  id == presentation.id else {
+                  id == presentation.id,
+                  appliedSnapshotID == presentation.id,
+                  textView.string == presentation.renderedString,
+                  affectedCharRange.location >= 0,
+                  NSMaxRange(affectedCharRange) <= (presentation.renderedString as NSString).length
+            else {
+                applyProjectionIfNeeded(force: true)
                 return false
             }
 
@@ -238,10 +237,8 @@ struct WYSIWYGTextView: NSViewRepresentable {
                 // and refuse TextKit's optimistic second mutation.
                 if let transition = edit.presentationTransition {
                     session.updateOrigin.with(.programmaticPresentation) {
-                        isProgrammaticUpdate = true
                         applyAcceptedTransition(transition, in: textView)
                         appliedSnapshotID = transition.nextSnapshot.id
-                        isProgrammaticUpdate = false
                     }
                 }
                 return false
@@ -253,11 +250,12 @@ struct WYSIWYGTextView: NSViewRepresentable {
         private func applyAcceptedTransition(_ transition: PresentationTransition, in textView: NSTextView) {
             guard let storage = textView.textStorage else { return }
             let range = transition.projectionReplacementRange
-            let safeLoc = min(max(0, range.location), storage.length)
-            let safeLen = min(max(0, range.length), max(0, storage.length - safeLoc))
-            let safeRange = NSRange(location: safeLoc, length: safeLen)
+            precondition(
+                range.location >= 0 && NSMaxRange(range) <= storage.length,
+                "Validated presentation transition no longer matches applied TextKit storage"
+            )
 
-            if safeRange == NSRange(location: 0, length: storage.length),
+            if range == NSRange(location: 0, length: storage.length),
                transition.projectionReplacement == transition.nextSnapshot.renderedString {
                 let built = RichTextBuilder.build(
                     model: transition.nextSnapshot.asProjectionModel,
@@ -270,7 +268,7 @@ struct WYSIWYGTextView: NSViewRepresentable {
                 )
                 storage.setAttributedString(built.attributed)
             } else {
-                storage.replaceCharacters(in: safeRange, with: transition.projectionReplacement)
+                storage.replaceCharacters(in: range, with: transition.projectionReplacement)
                 // Re-apply styles for the affected snapshot when possible via full rebuild for safety.
                 let built = RichTextBuilder.build(
                     model: transition.nextSnapshot.asProjectionModel,
@@ -283,11 +281,7 @@ struct WYSIWYGTextView: NSViewRepresentable {
                 )
                 storage.setAttributedString(built.attributed)
             }
-            textView.setSelectedRange(transition.selectionAfter.nsRange)
-        }
-
-        func textDidChange(_ notification: Notification) {
-            isNativeEditInFlight = false
+            textView.setSelectedRange(transition.selectionAfter.range.utf16)
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -305,7 +299,7 @@ struct WYSIWYGTextView: NSViewRepresentable {
                 }
             }
             // Close typing groups only on real native caret moves.
-            if session.updateOrigin.current == .nativeUserInput && !isNativeEditInFlight {
+            if session.updateOrigin.current == .nativeUserInput {
                 document.closeTypingUndoGroup()
             }
         }
@@ -350,6 +344,7 @@ final class MarkdownWYSIWYGTextView: NSTextView {
     weak var documentActions: DocumentActionInterface?
     weak var placementController: ImagePlacementController?
     weak var inputCoordinator: WYSIWYGTextView.WYSIWYGInputCoordinator?
+    weak var adapterCoordinator: WYSIWYGTextView.Coordinator?
 
     override var undoManager: UndoManager? {
         documentActions?.documentUndoManager ?? super.undoManager
@@ -375,7 +370,17 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             snapshotID: session?.presentation?.id
         )
         inputCoordinator?.allowingMarkedText = true
-        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        if let session {
+            session.updateOrigin.with(.composition) {
+                super.setMarkedText(
+                    string,
+                    selectedRange: selectedRange,
+                    replacementRange: replacementRange
+                )
+            }
+        } else {
+            super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        }
         inputCoordinator?.allowingMarkedText = false
         (documentActions as? MarkdownDocument)?.trace?.record(.compositionBegan(sourceVersion: version))
     }
@@ -385,22 +390,26 @@ final class MarkdownWYSIWYGTextView: NSTextView {
         // marked characters to source before clearing composition state; empty marked text
         // (Escape / cancel) still cancels without a source write.
         if let input = inputCoordinator, input.committingComposition {
-            super.unmarkText()
+            performNativeUnmark()
             return
         }
         if let input = inputCoordinator, input.composition.isComposing || hasMarkedText() {
             let marked = markedRange()
             let text: String
             if marked.location != NSNotFound, let storage = textStorage {
-                let safeLoc = min(max(0, marked.location), storage.length)
-                let safeLen = min(max(0, marked.length), max(0, storage.length - safeLoc))
-                text = (storage.string as NSString).substring(with: NSRange(location: safeLoc, length: safeLen))
+                guard marked.location >= 0, NSMaxRange(marked) <= storage.length else {
+                    input.cancel()
+                    performNativeUnmark()
+                    (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
+                    return
+                }
+                text = (storage.string as NSString).substring(with: marked)
             } else {
                 text = ""
             }
             if text.isEmpty {
                 input.cancel()
-                super.unmarkText()
+                performNativeUnmark()
                 (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
                 return
             }
@@ -408,14 +417,14 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             guard input.prepareCommit(currentVersion: currentVersion),
                   let captured = input.complete() else {
                 input.cancel()
-                super.unmarkText()
+                performNativeUnmark()
                 (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
                 return
             }
             guard let session,
                   let presentation = session.presentation else {
                 input.cancel()
-                super.unmarkText()
+                performNativeUnmark()
                 (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
                 return
             }
@@ -435,18 +444,19 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             case .accepted:
                 input.committingComposition = true
                 input.allowingMarkedText = true
-                super.unmarkText()
+                performNativeUnmark()
                 input.allowingMarkedText = false
                 input.committingComposition = false
+                adapterCoordinator?.applyProjectionIfNeeded(force: true)
             case .refused:
                 input.cancel()
-                super.unmarkText()
+                performNativeUnmark()
                 (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
             }
             return
         }
         inputCoordinator?.cancel()
-        super.unmarkText()
+        performNativeUnmark()
         (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
     }
 
@@ -502,31 +512,27 @@ final class MarkdownWYSIWYGTextView: NSTextView {
         )
         switch result {
         case .accepted:
-            // Apply final composition text directly — avoid nested NSTextView insertText/undo.
             input.committingComposition = true
             input.allowingMarkedText = true
-            let marked = markedRange()
-            let applyRange: NSRange
-            if marked.location != NSNotFound {
-                applyRange = marked
-            } else {
-                applyRange = captured.range
-            }
-            if let storage = textStorage {
-                let safeLoc = min(max(0, applyRange.location), storage.length)
-                let safeLen = min(max(0, applyRange.length), max(0, storage.length - safeLoc))
-                storage.replaceCharacters(in: NSRange(location: safeLoc, length: safeLen), with: text)
-                let caret = safeLoc + (text as NSString).length
-                setSelectedRange(NSRange(location: min(caret, storage.length), length: 0))
-            }
             if hasMarkedText() {
-                super.unmarkText()
+                performNativeUnmark()
             }
             input.allowingMarkedText = false
             input.committingComposition = false
+            adapterCoordinator?.applyProjectionIfNeeded(force: true)
         case .refused:
             input.cancel()
             unmarkText()
+        }
+    }
+
+    private func performNativeUnmark() {
+        if let session {
+            session.updateOrigin.with(.composition) {
+                super.unmarkText()
+            }
+        } else {
+            super.unmarkText()
         }
     }
 
@@ -603,30 +609,32 @@ final class MarkdownWYSIWYGTextView: NSTextView {
     /// Resolve the live WYSIWYG selection to an immutable source-domain placement intent.
     ///
     /// // REQ-060; ARC-012: capture before asynchronous paste/drop work.
-    private func resolveAndReportImageIntent() -> Bool {
+    private func imagePlacementTarget() -> ImagePlacementTarget? {
         guard let actions = documentActions,
               let session,
               let presentation = session.presentation,
               case .editable(let id) = session.wysiwygModeState.availability,
               id == presentation.id else {
-            return false
+            return nil
         }
         let snapshot = actions.sourceSnapshot()
-        guard presentation.sourceRevision.value == snapshot.sourceVersion else { return false }
+        guard presentation.sourceRevision.value == snapshot.sourceVersion else { return nil }
         switch presentation.coordinateMap.sourceRange(
             forProjection: selectedRange(),
             affinity: selectionAffinity == .upstream ? .upstream : .downstream
         ) {
         case .exact(let sourceRange):
-            actions.reportSourceSelection(
-                SourceSelection(
+            return ImagePlacementTarget(
+                sourceSelection: SourceSelection(
                     utf16: sourceRange,
                     affinity: selectionAffinity == .upstream ? .upstream : .downstream
-                )
+                ),
+                sourceRevision: SourceRevision(value: snapshot.sourceVersion),
+                locationGeneration: snapshot.locationGeneration,
+                operationID: UUID()
             )
-            return true
         case .refused:
-            return false
+            return nil
         }
     }
 
@@ -634,12 +642,12 @@ final class MarkdownWYSIWYGTextView: NSTextView {
         let classification = ImagePasteboardClassifier.classifyPasteboard(.general)
         switch classification {
         case .images(let claims):
-            guard resolveAndReportImageIntent() else {
+            guard let target = imagePlacementTarget() else {
                 placementController?.alert = .error("Could not resolve image insertion point.")
                 return
             }
             placementController?.handleImageAction(
-                claims: claims,
+                intent: ImagePlacementIntent(target: target, claims: claims),
                 documentURL: documentActions?.sourceSnapshot().fileURL
             )
         case .fallthroughToNativeText, .unsupported:
@@ -672,15 +680,18 @@ final class MarkdownWYSIWYGTextView: NSTextView {
         let url = documentActions?.sourceSnapshot().fileURL
         if let receivers = pb.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver],
            !receivers.isEmpty {
-            guard resolveAndReportImageIntent() else { return false }
-            placementController?.handleFilePromises(receivers, documentURL: url)
+            guard let target = imagePlacementTarget() else { return false }
+            placementController?.handleFilePromises(receivers, target: target, documentURL: url)
             return true
         }
         let classification = ImagePasteboardClassifier.classifyDragInfo(sender)
         switch classification {
         case .images(let claims):
-            guard resolveAndReportImageIntent() else { return false }
-            placementController?.handleImageAction(claims: claims, documentURL: url)
+            guard let target = imagePlacementTarget() else { return false }
+            placementController?.handleImageAction(
+                intent: ImagePlacementIntent(target: target, claims: claims),
+                documentURL: url
+            )
             return true
         case .fallthroughToNativeText, .unsupported:
             if case .unsupported = classification {

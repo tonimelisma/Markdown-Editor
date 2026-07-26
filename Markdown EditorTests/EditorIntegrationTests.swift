@@ -1,5 +1,5 @@
 //
-//  COR08IntegrationCharacterizationTests.swift
+//  EditorIntegrationTests.swift
 //  Markdown EditorTests
 //
 
@@ -8,12 +8,10 @@ import Foundation
 import AppKit
 @testable import Markdown_Editor
 
-/// COR-08 D1–D10 regression and adapter-path proof.
-///
 /// // Verifies: REQ-015, REQ-057, REQ-058, REQ-060, REQ-069, REQ-078, REQ-080,
 /// // REQ-083, REQ-084, REQ-087, REQ-089
 @MainActor
-struct COR08IntegrationCharacterizationTests {
+struct EditorIntegrationTests {
 
     private func parseBuild(_ source: String, version: UInt64 = 1) throws -> (MarkdownTree, MarkdownProjectionModel) {
         let tree = try #require(MarkdownParser.parse(source, sourceVersion: version).get())
@@ -62,7 +60,7 @@ struct COR08IntegrationCharacterizationTests {
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let result = SemanticEditEngine.apply(
             command: .toggleTask(nodeID: task.nodeID),
-            selection: SemanticSelection(mode: .wysiwyg, utf16Range: NSRange(location: task.utf16Location, length: 1), sourceVersion: 1),
+            selection: TestSelection(mode: .wysiwyg, utf16Range: NSRange(location: task.utf16Location, length: 1), sourceVersion: 1),
             snapshot: snapshot,
             projection: model,
             tree: tree
@@ -111,7 +109,7 @@ struct COR08IntegrationCharacterizationTests {
         let (tree, model) = try parseBuild(source)
         let cell = try #require(model.tables.first?.cells.first)
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
-        let selection = SemanticSelection(
+        let selection = TestSelection(
             mode: .wysiwyg,
             utf16Range: NSRange(location: cell.utf16Range.location, length: cell.utf16Range.length),
             sourceVersion: 1
@@ -159,14 +157,14 @@ struct COR08IntegrationCharacterizationTests {
         let model = MarkdownProjectionModel.build(tree: tree, index: index)
         session.installProjectionForTesting(model, tree: tree)
 
-        let sel = SemanticSelection(
+        let sel = TestSelection(
             mode: .wysiwyg,
             utf16Range: NSRange(location: 0, length: 0),
             sourceVersion: doc.sourceVersion
         )
         _ = session.perform(.insertText("a"), selection: sel)
         let v1 = doc.sourceVersion
-        let sel2 = SemanticSelection(
+        let sel2 = TestSelection(
             mode: .wysiwyg,
             utf16Range: NSRange(location: 1, length: 0),
             sourceVersion: v1
@@ -185,7 +183,7 @@ struct COR08IntegrationCharacterizationTests {
             return nil
         }
         #expect(typingEvents.contains(true))
-        #expect(doc.text.hasPrefix("ab") || doc.text.contains("ab") || doc.text.hasPrefix("a"))
+        #expect(doc.text == "abhi\n")
     }
 
     // MARK: - D7 toolbar offset zero
@@ -194,7 +192,6 @@ struct COR08IntegrationCharacterizationTests {
     @Test func toolbarUsesModeLocalOffsetZero() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hello")
-        doc.reportSourceSelection(SourceSelection(utf16: NSRange(location: 3, length: 0)))
         let session = EditorSession()
         session.attach(document: doc)
         session.setMode(.source)
@@ -202,10 +199,9 @@ struct COR08IntegrationCharacterizationTests {
             $0.selection = SourceSelection(utf16: NSRange(location: 0, length: 0))
         }
         // Simulate toolbar selection resolution without the old sentinel fallback.
-        let range = session.sourceModeState.selection.nsRange
+        let range = session.sourceModeState.selection.range.utf16
         #expect(range.location == 0)
-        #expect(range != doc.sourceSelection.nsRange || doc.sourceSelection.nsRange.location == 0 || true)
-        let selection = SemanticSelection(
+        let selection = TestSelection(
             mode: .source,
             utf16Range: range,
             sourceVersion: doc.sourceVersion
@@ -248,13 +244,13 @@ struct COR08IntegrationCharacterizationTests {
         #expect(found == "alt text")
     }
 
-    // MARK: - Serialized I/O (COR-09)
+    // MARK: - Serialized I/O
 
     // Verifies: REQ-015 — serialized main-thread read installs canonical text without a mirror/gate.
     @Test func serializedReadInstallsCanonicalTextOnMain() throws {
         let doc = MarkdownDocument()
         doc.installTextForTesting("original")
-        let data = try MarkdownDocumentData(text: "from-disk").data()
+        let data = MarkdownDocumentData(text: "from-disk").data()
         try doc.read(from: data, ofType: "net.daringfireball.markdown")
         #expect(doc.text == "from-disk")
         #expect(doc.sourceVersion == 0)
@@ -298,7 +294,7 @@ struct COR08IntegrationCharacterizationTests {
         doc.detachUndoCheckpointObserver()
         // Idempotent second call.
         doc.detachUndoCheckpointObserver()
-        #expect(doc.text.hasPrefix("a") || doc.text == "ax" || doc.text.contains("a"))
+        #expect(doc.text == "ax")
         _ = mutation
         _ = center
     }
@@ -360,30 +356,31 @@ struct COR08IntegrationCharacterizationTests {
             return false
         }
         let rendered = model.renderedString
-        if rendered.contains("line") && hasUneditableCode {
-            #expect(true)
-            return
-        }
-        // LF-only identity case remains editable — skip soft assert when parser collapses CRLF away.
-        #expect(rendered.contains("line") || hasUneditableCode)
+        #expect(rendered.contains("line"))
+        #expect(hasUneditableCode)
     }
 
     // Verifies: REQ-080 — caret at start of column 2 owns cell 2, not cell 1's trailing tab.
     @Test func tableCellHalfOpenBoundaryPrefersLaterColumn() throws {
         let source = "| a | b |\n| - | - |\n| c | d |\n"
-        let (tree, model) = try parseBuild(source)
+        let (_, model) = try parseBuild(source)
         let cells = try #require(model.tables.first?.cells)
         #expect(cells.count >= 2)
         let second = cells[1]
         let caret = NSRange(location: second.utf16Range.location, length: 0)
-        let context = SemanticEditEngine.classifyContext(
-            projectionSelection: caret,
-            projection: model,
-            tree: tree,
-            affinity: .downstream
+        let snapshot = PresentationSnapshot.from(
+            model: model,
+            id: PresentationSnapshot.ID(value: 1),
+            locationGeneration: 0,
+            sourceText: source
         )
-        guard case .tableCell(let id) = context else {
-            Issue.record("expected table cell at column-2 start, got \(context)")
+        let classification = ProjectionSelectionClassifier.classify(
+            selection: caret,
+            affinity: .downstream,
+            snapshot: snapshot
+        )
+        guard case .tableCell(let id, _, _) = classification else {
+            Issue.record("expected table cell at column-2 start, got \(classification)")
             return
         }
         #expect(id == second.nodeID)
@@ -399,7 +396,7 @@ struct COR08IntegrationCharacterizationTests {
         let caret = NSRange(location: cell.utf16Range.location + 1, length: 0)
         let result = SemanticEditEngine.apply(
             command: .insertText("x"),
-            selection: SemanticSelection(mode: .wysiwyg, utf16Range: caret, sourceVersion: 1, affinity: .downstream),
+            selection: TestSelection(mode: .wysiwyg, utf16Range: caret, sourceVersion: 1, affinity: .downstream),
             snapshot: snapshot,
             projection: model,
             tree: tree
@@ -430,7 +427,7 @@ struct COR08IntegrationCharacterizationTests {
             index: MarkdownSourceIndex(source: doc.text, sourceVersion: doc.sourceVersion)
         )
         session.installProjectionForTesting(model, tree: tree)
-        let sel = SemanticSelection(
+        let sel = TestSelection(
             mode: .wysiwyg,
             utf16Range: NSRange(location: 0, length: 0),
             sourceVersion: doc.sourceVersion
@@ -492,7 +489,7 @@ struct COR08IntegrationCharacterizationTests {
             Issue.record("expected heading mutation")
             return
         }
-        #expect(mutation.selectionBefore.nsRange == caret.nsRange)
+        #expect(mutation.selectionBefore.range.utf16 == caret.range.utf16)
     }
 
     // Verifies: REQ-078 — task toggle history selection is the source marker, not projection.
@@ -503,7 +500,7 @@ struct COR08IntegrationCharacterizationTests {
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let result = SemanticEditEngine.apply(
             command: .toggleTask(nodeID: task.nodeID),
-            selection: SemanticSelection(
+            selection: TestSelection(
                 mode: .wysiwyg,
                 utf16Range: NSRange(location: task.utf16Location, length: 1),
                 sourceVersion: 1
@@ -516,8 +513,8 @@ struct COR08IntegrationCharacterizationTests {
             Issue.record("expected task mutation")
             return
         }
-        #expect(mutation.selectionBefore.nsRange.length == 3)
-        #expect((source as NSString).substring(with: mutation.selectionBefore.nsRange) == "[ ]")
+        #expect(mutation.selectionBefore.range.length == 3)
+        #expect((source as NSString).substring(with: mutation.selectionBefore.range.utf16) == "[ ]")
     }
 
     // Verifies: REQ-015 — data(ofType:) snapshots canonical main-actor text.

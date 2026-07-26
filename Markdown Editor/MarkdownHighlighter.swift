@@ -5,9 +5,8 @@
 
 import Foundation
 
-// REQ-041/043/047–051: compute style tokens for Markdown source via regex + focused
-// scanners (ADR-0009), off the main actor (ADR-0010). Lexical presentation aid only —
-// not a conforming parser. Dialect labels: CommonMark 0.31.2 + formal GFM 0.29-gfm (ADR-0003).
+// REQ-041/043/047–051: compute source-mode style tokens off-main via regex plus focused
+// scanners. This is a lexical presentation aid, not the conforming CommonMark/GFM parser.
 actor MarkdownHighlighter {
     private struct Rule {
         let regex: NSRegularExpression
@@ -52,7 +51,7 @@ actor MarkdownHighlighter {
     }
 
     // REQ-040/051: pure function — takes the text by value, returns styled ranges. Never mutates text.
-    // Observes Task cancellation between passes so superseded highlight work stops early (ADR-0010).
+    // Observe cancellation between passes so superseded highlight work stops early.
     func tokens(for text: String) throws -> [Token] {
         let nsText = text as NSString
         let full = NSRange(location: 0, length: nsText.length)

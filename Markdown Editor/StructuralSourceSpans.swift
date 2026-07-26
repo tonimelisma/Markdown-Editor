@@ -100,7 +100,7 @@ nonisolated enum StructuralSourceSpans {
         var search = ns.length
         while search > bodyStartInSlice {
             // Find previous line break.
-            var lineEnd = search
+            let lineEnd = search
             var lineStart = bodyStartInSlice
             var p = search
             while p > bodyStartInSlice {

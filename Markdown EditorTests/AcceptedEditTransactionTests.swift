@@ -42,7 +42,8 @@ struct AcceptedEditTransactionTests {
         #expect(editA.presentationTransition != nil)
         #expect(session.presentation?.id != firstID)
         #expect(session.presentation?.sourceRevision.value == doc.sourceVersion)
-        #expect(doc.text.hasPrefix("ahi") || doc.text.hasPrefix("a"))
+        #expect(doc.text == "ahi\n")
+        #expect(session.presentation?.renderedString == "ahi\n")
 
         let second = session.perform(
             .insertText("b"),
@@ -58,7 +59,8 @@ struct AcceptedEditTransactionTests {
             Issue.record("second immediate insert refused: \(second)")
             return
         }
-        #expect(doc.text.contains("ab") || doc.text.hasPrefix("ab") || doc.text.hasPrefix("ba") || doc.text.hasPrefix("a"))
+        #expect(doc.text == "abhi\n")
+        #expect(session.presentation?.renderedString == "abhi\n")
         if case .editable(let id) = session.wysiwygModeState.availability {
             #expect(id == session.presentation?.id)
         } else {
@@ -69,7 +71,7 @@ struct AcceptedEditTransactionTests {
     // Verifies: REQ-091; ARC-Q01 — 100 immediate accepted inserts.
     @Test func oneHundredImmediateKeystrokes() {
         let doc = MarkdownDocument()
-        doc.installTextForTesting("\n")
+        doc.installTextForTesting("z\n")
         let session = EditorSession()
         session.attach(document: doc)
         let tree = MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get()!
@@ -101,7 +103,116 @@ struct AcceptedEditTransactionTests {
             }
         }
         #expect(refused == 0)
-        #expect((doc.text as NSString).length >= 100)
+        #expect(doc.text == String(repeating: "x", count: 100) + "z\n")
+        #expect(session.presentation?.renderedString == doc.text)
+    }
+
+    // Verifies: REQ-084/091 — non-ASCII input at a paragraph boundary is one exact transition.
+    @Test func unicodeInsertionAtParagraphEnd() {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("ab")
+        let session = EditorSession()
+        session.attach(document: doc)
+        let tree = MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get()!
+        let model = MarkdownProjectionModel.build(
+            tree: tree,
+            index: MarkdownSourceIndex(source: doc.text, sourceVersion: doc.sourceVersion)
+        )
+        session.installProjectionForTesting(model, tree: tree)
+
+        let presentation = session.presentation!
+        let outcome = session.perform(
+            .insertText("日"),
+            selection: .projection(
+                ProjectionSelection(
+                    utf16: NSRange(location: 2, length: 0),
+                    revision: presentation.projectionRevision
+                )
+            ),
+            expectedSourceRevision: presentation.sourceRevision
+        )
+        guard case .accepted = outcome else {
+            Issue.record("Unicode end insertion refused: \(outcome); atoms=\(presentation.atoms)")
+            return
+        }
+        #expect(doc.text == "ab日")
+        #expect(session.presentation?.renderedString == "ab日\n")
+    }
+
+    // Verifies: REQ-091/092; ARC-005/008 — source and projection deltas remain distinct.
+    @Test func consecutiveLiteralPunctuationKeepsExactSourceAndVisibleText() {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("hi\n")
+        let session = EditorSession()
+        session.attach(document: doc)
+        let tree = MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get()!
+        let model = MarkdownProjectionModel.build(
+            tree: tree,
+            index: MarkdownSourceIndex(source: doc.text, sourceVersion: doc.sourceVersion)
+        )
+        session.installProjectionForTesting(model, tree: tree)
+
+        let visibleInputs = ["*", "&entity;", "<"]
+        var projectionOffset = 0
+        for input in visibleInputs {
+            let current = session.presentation!
+            let result = session.perform(
+                .insertText(input),
+                selection: .projection(
+                    ProjectionSelection(
+                        utf16: NSRange(location: projectionOffset, length: 0),
+                        revision: current.projectionRevision
+                    )
+                ),
+                expectedSourceRevision: SourceRevision(value: doc.sourceVersion)
+            )
+            guard case .accepted = result else {
+                Issue.record("literal input refused: \(input), \(result)")
+                return
+            }
+            projectionOffset += (input as NSString).length
+        }
+
+        #expect(session.presentation?.renderedString == "*&entity;<hi\n")
+        #expect(doc.text == "\\*&amp;entity;&lt;hi\n")
+    }
+
+    // Verifies: REQ-084/091; ARC-005 — the real TextKit delegate applies once before return.
+    @Test func adapterStorageMatchesCommittedPresentationBeforeCallbackReturns() {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("hi\n")
+        let session = EditorSession()
+        session.attach(document: doc)
+        let tree = MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get()!
+        let model = MarkdownProjectionModel.build(
+            tree: tree,
+            index: MarkdownSourceIndex(source: doc.text, sourceVersion: doc.sourceVersion)
+        )
+        session.installProjectionForTesting(model, tree: tree)
+
+        let placement = ImagePlacementController()
+        let coordinator = WYSIWYGTextView.Coordinator(
+            document: doc,
+            session: session,
+            placementController: placement
+        )
+        let textView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
+        textView.delegate = coordinator
+        textView.session = session
+        textView.documentActions = doc
+        coordinator.textView = textView
+        coordinator.applyProjectionIfNeeded(force: true)
+
+        let allowNative = coordinator.textView(
+            textView,
+            shouldChangeTextIn: NSRange(location: 0, length: 0),
+            replacementString: "a"
+        )
+
+        #expect(!allowNative)
+        #expect(doc.text == "ahi\n")
+        #expect(textView.string == "ahi\n")
+        #expect(textView.string == session.presentation?.renderedString)
     }
 
     // Verifies: REQ-091; ARC-005 — refused edit changes neither source nor presentation.
@@ -141,14 +252,14 @@ struct AcceptedEditTransactionTests {
 @MainActor
 struct EditorStateOwnershipTests {
 
-    // Verifies: REQ-052/086; ARC-002 — session owns typed mode state; no ModeViewState symbol.
+    // Verifies: REQ-052/086; ARC-002 — session owns one typed state per mode.
     @Test func sessionOwnsTypedModeState() {
         let session = EditorSession()
         session.updateSourceModeState {
             $0.selection = SourceSelection(utf16: NSRange(location: 2, length: 0), affinity: .upstream)
             $0.scrollOffset = CGPoint(x: 0, y: 12)
         }
-        #expect(session.sourceModeState.selection.nsRange.location == 2)
+        #expect(session.sourceModeState.selection.range.location == 2)
         #expect(session.sourceModeState.selection.affinity == .upstream)
         #expect(session.sourceModeState.scrollOffset.y == 12)
 
@@ -161,8 +272,8 @@ struct EditorStateOwnershipTests {
         #expect(!sources.contains("wysiwygViewState"))
     }
 
-    // Verifies: ARC-002 — displaced compatibility symbols are gone from production sources.
-    @Test func displacedCompatibilitySymbolsAbsent() throws {
+    // Verifies: ARC-002/003/013 — displaced architecture routes are absent from production.
+    @Test func displacedArchitectureRoutesAbsent() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -174,10 +285,30 @@ struct EditorStateOwnershipTests {
             haystack += try String(contentsOf: file, encoding: .utf8)
             haystack += "\n"
         }
-        for symbol in ["ModeViewState", "EditorViewState", "EditorViewChromeState", "LogicalSelection"] {
+        let removedTypes = [
+            "ModeViewState",
+            "EditorViewState",
+            "EditorViewChromeState",
+            "LogicalSelection",
+            "SemanticSelection",
+            "EditorCoordinateDomain",
+            "EditorSelectionIntent",
+            "DocumentIOText",
+            "DocumentLoadGate"
+        ]
+        for symbol in removedTypes {
             #expect(!haystack.contains("struct \(symbol)"), "found \(symbol)")
+            #expect(!haystack.contains("enum \(symbol)"), "found \(symbol)")
+            #expect(!haystack.contains("class \(symbol)"), "found \(symbol)")
             #expect(!haystack.contains("typealias \(symbol)"), "found typealias \(symbol)")
         }
+        #expect(!haystack.contains("var sourceChrome"))
+        #expect(!haystack.contains("var wysiwygChrome"))
+        #expect(!haystack.contains("var acceptedSourceVersion"))
+        #expect(!haystack.contains("var isProgrammaticUpdate"))
+        #expect(!haystack.contains("var isNativeEditInFlight"))
+        #expect(!haystack.contains("var preferDiscreteGrouping"))
+        #expect(!haystack.contains("var nsRange: NSRange"))
     }
 }
 
@@ -190,8 +321,18 @@ struct PresentationSnapshotTests {
             tree: MarkdownParser.parse("hi\n", sourceVersion: 1).get()!,
             index: MarkdownSourceIndex(source: "hi\n", sourceVersion: 1)
         )
-        let a = PresentationSnapshot.from(model: model, id: .init(value: 1), locationGeneration: 0)
-        let b = PresentationSnapshot.from(model: model, id: .init(value: 2), locationGeneration: 0)
+        let a = PresentationSnapshot.from(
+            model: model,
+            id: .init(value: 1),
+            locationGeneration: 0,
+            sourceText: "hi\n"
+        )
+        let b = PresentationSnapshot.from(
+            model: model,
+            id: .init(value: 2),
+            locationGeneration: 0,
+            sourceText: "hi\n"
+        )
         #expect(a.sourceRevision == b.sourceRevision)
         #expect(a.id != b.id)
         #expect(ProjectionOracle.validate(snapshot: a).get() != nil)
@@ -248,7 +389,12 @@ struct ProjectionSelectionClassifierTests {
             tree: tree,
             index: MarkdownSourceIndex(source: source, sourceVersion: 1)
         )
-        let snapshot = PresentationSnapshot.from(model: model, id: .init(value: 1), locationGeneration: 0)
+        let snapshot = PresentationSnapshot.from(
+            model: model,
+            id: .init(value: 1),
+            locationGeneration: 0,
+            sourceText: source
+        )
         guard snapshot.tables.first?.cells.count ?? 0 >= 2 else {
             Issue.record("expected table cells")
             return
@@ -278,6 +424,8 @@ struct NativeUpdateOriginTests {
     @Test func programmaticOriginDoesNotCloseTyping() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
+        let trace = InMemoryEditorTrace()
+        doc.trace = trace
         let session = EditorSession()
         session.attach(document: doc)
         let mutation = SourceMutation(
@@ -295,6 +443,8 @@ struct NativeUpdateOriginTests {
             #expect(session.updateOrigin.current == .programmaticPresentation)
         }
         #expect(session.updateOrigin.current == .nativeUserInput)
+        #expect(trace.events.contains(.updateOrigin(.programmaticPresentation)))
+        #expect(trace.events.contains(.updateOrigin(.nativeUserInput)))
         // Typing group remains open until a native selection boundary.
         let second = SourceMutation(
             expectedRevision: doc.sourceVersion,
@@ -320,10 +470,76 @@ struct DocumentSerializedIOTests {
         let doc = MarkdownDocument()
         #expect(doc.canAsynchronouslyWrite(to: URL(fileURLWithPath: "/tmp/x.md"), ofType: "net.daringfireball.markdown", for: .saveOperation) == false)
     }
+
+    // Verifies: REQ-015; ARC-001/011 — actual NSDocumentController open/save uses canonical I/O.
+    @Test func documentControllerOpenAndSaveRoundTrip() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let sourceURL = directory.appendingPathComponent("source.md")
+        let savedURL = directory.appendingPathComponent("saved.md")
+        try Data("opened\n".utf8).write(to: sourceURL)
+
+        let document: MarkdownDocument = try await withCheckedThrowingContinuation { continuation in
+            NSDocumentController.shared.openDocument(
+                withContentsOf: sourceURL,
+                display: false
+            ) { document, _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let document = document as? MarkdownDocument {
+                    continuation.resume(returning: document)
+                } else {
+                    continuation.resume(throwing: CocoaError(.fileReadUnknown))
+                }
+            }
+        }
+        #expect(document.text == "opened\n")
+
+        let mutation = SourceMutation(
+            expectedRevision: document.sourceVersion,
+            range: NSRange(location: 0, length: 6),
+            expectedText: "opened",
+            replacement: "saved",
+            selectionBefore: SourceSelection(utf16: NSRange(location: 0, length: 6)),
+            selectionAfter: SourceSelection(utf16: NSRange(location: 5, length: 0)),
+            actionName: "Edit",
+            grouping: .discrete
+        )
+        guard case .committed = document.commitSourceMutation(mutation) else {
+            Issue.record("controller-opened document refused an exact mutation")
+            document.close()
+            return
+        }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            document.save(
+                to: savedURL,
+                ofType: MarkdownContentType.identifier,
+                for: .saveAsOperation
+            ) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
+        #expect(try Data(contentsOf: savedURL) == Data("saved\n".utf8))
+        document.close()
+    }
 }
 
 @MainActor
 struct ArchitectureConformanceTests {
+
+    // Verifies: REQ-085; ARC-Q06 — semantic parser/index work cannot execute on main.
+    @Test func semanticWorkerRunsOffMainThread() {
+        let ranOnMain = EditorSemanticWorker.sync { Thread.isMainThread }
+        #expect(ranOnMain == false)
+    }
 
     // Verifies: ARC-014 — no UI-test target dependency.
     @Test func noUITestTargetInProject() throws {

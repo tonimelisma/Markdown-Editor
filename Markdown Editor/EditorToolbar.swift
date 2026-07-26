@@ -8,7 +8,7 @@ import SwiftUI
 
 /// Shared formatting toolbar for Source and WYSIWYG.
 ///
-/// // REQ-058/082: same commands in both modes; Add Image… via COR-02.
+/// // REQ-058/082: same commands in both modes, including Add Image.
 struct EditorToolbar: View {
     @ObservedObject var document: MarkdownDocument
     @ObservedObject var session: EditorSession

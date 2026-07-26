@@ -57,17 +57,11 @@ final class EditorSession: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var operationGeneration: UInt64 = 0
 
-    /// Compatibility: projection model view of the current presentation.
-    var projection: MarkdownProjectionModel? { presentation?.asProjectionModel }
-
-    /// Compatibility: accepted source version of the current editable presentation.
-    var acceptedSourceVersion: UInt64 { presentation?.sourceRevision.value ?? 0 }
-
-    /// Compatibility: authoritative tree from last matching reconciliation.
-    var tree: MarkdownTree? { authoritativeTree }
-
     func attach(document: MarkdownDocument) {
         self.document = document
+        updateOrigin.didChange = { [weak document] origin in
+            document?.trace?.record(.updateOrigin(origin))
+        }
         imageCache.trace = document.trace
         cancellables.removeAll()
         document.objectWillChange
@@ -75,6 +69,11 @@ final class EditorSession: ObservableObject {
                 Task { @MainActor in
                     self?.scheduleParse()
                 }
+            }
+            .store(in: &cancellables)
+        document.selectionRestorations
+            .sink { [weak self] selection in
+                self?.requestSelectionRestoration(selection)
             }
             .store(in: &cancellables)
         scheduleParse()
@@ -104,7 +103,8 @@ final class EditorSession: ObservableObject {
         let snapshot = PresentationSnapshot.from(
             model: model,
             id: snapshotIDs.make(),
-            locationGeneration: document?.locationGeneration ?? 0
+            locationGeneration: document?.locationGeneration ?? 0,
+            sourceText: document?.text ?? ""
         )
         installPresentation(snapshot, tree: tree, provisional: false)
     }
@@ -126,6 +126,33 @@ final class EditorSession: ObservableObject {
         return value
     }
 
+    func requestSelectionRestoration(_ selection: SourceSelection) {
+        sourceModeState.selection = selection
+        guard mode == .wysiwyg,
+              let presentation,
+              case .exact(let projected) = presentation.coordinateMap.projectionRange(
+                forSource: selection.range.utf16,
+                affinity: selection.affinity
+              ) else {
+            pendingSelectionRestoration = PendingSelectionRestoration(
+                domain: .source,
+                sourceSelection: selection,
+                projectionSelection: nil
+            )
+            return
+        }
+        let projectionSelection = ProjectionSelection(
+            utf16: projected,
+            revision: presentation.projectionRevision,
+            affinity: selection.affinity
+        )
+        pendingSelectionRestoration = PendingSelectionRestoration(
+            domain: .projection(presentation.id),
+            sourceSelection: selection,
+            projectionSelection: projectionSelection
+        )
+    }
+
     private func traceModeToggle(toSource: Bool) {
         document?.trace?.record(.modeToggle(toSource: toSource))
     }
@@ -135,33 +162,56 @@ final class EditorSession: ObservableObject {
         tree: MarkdownTree?,
         provisional: Bool
     ) {
+        let previous = presentation
+        let sourceSelection: SourceSelection? = {
+            guard let previous,
+                  let existing = wysiwygModeState.selection,
+                  existing.range.revision.snapshotID == previous.id,
+                  case .exact(let sourceRange) = previous.coordinateMap.sourceRange(
+                    forProjection: existing.range.utf16,
+                    affinity: existing.affinity
+                  ) else {
+                return nil
+            }
+            return SourceSelection(utf16: sourceRange, affinity: existing.affinity)
+        }()
         presentation = snapshot
         if !provisional {
             authoritativeTree = tree
         }
         updateWYSIWYGModeState { state in
             state.availability = .editable(snapshot.id)
-            if let existing = state.selection,
-               existing.range.revision.snapshotID == snapshot.id {
-                // keep
-            } else if let existing = state.selection {
-                // Remap selection onto the new snapshot when possible.
-                let mapped = snapshot.coordinateMap.projectionRange(
-                    forSource: existing.nsRange.length == 0
-                        ? NSRange(location: min(existing.nsRange.location, snapshot.sourceUTF16Count), length: 0)
-                        : existing.nsRange
-                )
-                // Existing selection may already be projection-domain; clamp to rendered bounds.
-                let length = (snapshot.renderedString as NSString).length
-                let loc = min(existing.nsRange.location, length)
-                let len = min(existing.nsRange.length, max(0, length - loc))
+            if let sourceSelection,
+               case .exact(let projected) = snapshot.coordinateMap.projectionRange(
+                    forSource: sourceSelection.range.utf16,
+                    affinity: sourceSelection.affinity
+               ) {
                 state.selection = ProjectionSelection(
-                    utf16: NSRange(location: loc, length: len),
+                    utf16: projected,
                     revision: snapshot.projectionRevision,
-                    affinity: existing.affinity
+                    affinity: sourceSelection.affinity
                 )
-                _ = mapped
+            } else if state.selection?.range.revision.snapshotID != snapshot.id {
+                state.selection = nil
             }
+        }
+        if mode == .wysiwyg,
+           let pendingSelectionRestoration,
+           case .source = pendingSelectionRestoration.domain,
+           case .exact(let projected) = snapshot.coordinateMap.projectionRange(
+                forSource: pendingSelectionRestoration.sourceSelection.range.utf16,
+                affinity: pendingSelectionRestoration.sourceSelection.affinity
+           ) {
+            let projectionSelection = ProjectionSelection(
+                utf16: projected,
+                revision: snapshot.projectionRevision,
+                affinity: pendingSelectionRestoration.sourceSelection.affinity
+            )
+            self.pendingSelectionRestoration = PendingSelectionRestoration(
+                domain: .projection(snapshot.id),
+                sourceSelection: pendingSelectionRestoration.sourceSelection,
+                projectionSelection: projectionSelection
+            )
         }
         document?.trace?.record(
             .presentationInstalled(
@@ -194,6 +244,7 @@ final class EditorSession: ObservableObject {
         document.trace?.record(
             .reconciliationScheduled(sourceRevision: snapshot.sourceVersion, generation: generation)
         )
+        let reconciliationStart = DispatchTime.now().uptimeNanoseconds
         parseTask = Task.detached(priority: .userInitiated) { [weak self] in
             if Task.isCancelled { return }
             let index = MarkdownSourceIndex(source: snapshot.text, sourceVersion: snapshot.sourceVersion)
@@ -263,7 +314,8 @@ final class EditorSession: ObservableObject {
                 let authoritative = PresentationSnapshot.from(
                     model: model,
                     id: self.snapshotIDs.make(),
-                    locationGeneration: snapshot.locationGeneration
+                    locationGeneration: snapshot.locationGeneration,
+                    sourceText: snapshot.text
                 )
                 if case .failure = ProjectionOracle.validate(snapshot: authoritative) {
                     self.document?.trace?.record(
@@ -272,7 +324,6 @@ final class EditorSession: ObservableObject {
                     return
                 }
 
-                let previous = self.presentation
                 self.authoritativeTree = tree
                 var images: [MarkdownNodeID: NSImage] = [:]
                 for desc in descriptors {
@@ -282,22 +333,10 @@ final class EditorSession: ObservableObject {
                 }
                 self.resolvedImages = images
 
-                if let previous, previous.sourceRevision.value == authoritative.sourceRevision.value {
+                if self.presentation?.sourceRevision.value == authoritative.sourceRevision.value {
                     // Replace provisional with authoritative under programmatic origin semantics.
                     self.updateOrigin.with(.programmaticPresentation) {
                         self.installPresentation(authoritative, tree: tree, provisional: false)
-                        if let sel = self.wysiwygModeState.selection {
-                            let length = (authoritative.renderedString as NSString).length
-                            let loc = min(sel.nsRange.location, length)
-                            let len = min(sel.nsRange.length, max(0, length - loc))
-                            self.updateWYSIWYGModeState {
-                                $0.selection = ProjectionSelection(
-                                    utf16: NSRange(location: loc, length: len),
-                                    revision: authoritative.projectionRevision,
-                                    affinity: sel.affinity
-                                )
-                            }
-                        }
                     }
                 } else {
                     self.installPresentation(authoritative, tree: tree, provisional: false)
@@ -306,7 +345,8 @@ final class EditorSession: ObservableObject {
                     .reconciliationApplied(
                         snapshotID: authoritative.id.value,
                         sourceRevision: authoritative.sourceRevision.value,
-                        generation: generation
+                        generation: generation,
+                        durationNanos: DispatchTime.now().uptimeNanoseconds - reconciliationStart
                     )
                 )
             }
@@ -330,6 +370,7 @@ final class EditorSession: ObservableObject {
             expectedSourceRevision: expectedSourceRevision,
             grouping: grouping
         )
+        let planningStart = DispatchTime.now().uptimeNanoseconds
         let outcome = SemanticEditEngine.plan(
             request,
             snapshot: snapshot,
@@ -339,6 +380,19 @@ final class EditorSession: ObservableObject {
         )
         switch outcome {
         case .accepted(let edit):
+            if case .projection = selection {
+                guard let current = presentation,
+                      let transition = edit.presentationTransition,
+                      transition.fromSnapshotID == current.id,
+                      transition.nextSnapshot.sourceRevision.value == snapshot.sourceVersion &+ 1,
+                      transition.nextSnapshot.locationGeneration == snapshot.locationGeneration,
+                      transition.selectionAfter.range.revision.snapshotID == transition.nextSnapshot.id,
+                      edit.projectionSelectionAfter?.range.revision.snapshotID == transition.nextSnapshot.id
+                else {
+                    document.trace?.record(.editRefused(category: "invalidPresentationTransition"))
+                    return .refused(.unprovable)
+                }
+            }
             document.trace?.record(
                 .editRouted(
                     context: mode == .wysiwyg ? "wysiwyg" : "source",
@@ -360,7 +414,8 @@ final class EditorSession: ObservableObject {
                         .presentationTransition(
                             from: transition.fromSnapshotID.value,
                             to: transition.nextSnapshot.id.value,
-                            sourceRevision: transition.nextSnapshot.sourceRevision.value
+                            sourceRevision: transition.nextSnapshot.sourceRevision.value,
+                            durationNanos: DispatchTime.now().uptimeNanoseconds - planningStart
                         )
                     )
                 }
@@ -405,10 +460,10 @@ final class EditorSession: ObservableObject {
     func addImages() async {
         guard let document else { return }
         // REQ-060/082; ARC-012: capture immutable source-domain intent before async picker work.
-        let intent: ImagePlacementIntent
+        let target: ImagePlacementTarget
         switch mode {
         case .source:
-            intent = ImagePlacementIntent(
+            target = ImagePlacementTarget(
                 sourceSelection: sourceModeState.selection,
                 sourceRevision: SourceRevision(value: document.sourceVersion),
                 locationGeneration: document.locationGeneration,
@@ -421,19 +476,19 @@ final class EditorSession: ObservableObject {
                   let projectionSelection = wysiwygModeState.selection,
                   projectionSelection.range.revision.snapshotID == presentation.id,
                   case .exact(let sourceRange) = presentation.coordinateMap.sourceRange(
-                    forProjection: projectionSelection.nsRange,
+                    forProjection: projectionSelection.range.utf16,
                     affinity: projectionSelection.affinity
                   ) else {
                 return
             }
-            intent = ImagePlacementIntent(
+            target = ImagePlacementTarget(
                 sourceSelection: SourceSelection(utf16: sourceRange, affinity: projectionSelection.affinity),
                 sourceRevision: SourceRevision(value: document.sourceVersion),
                 locationGeneration: document.locationGeneration,
                 operationID: UUID()
             )
         }
-        actionRouter?.captureImagePlacementIntent(intent)
+        actionRouter?.captureImagePlacementTarget(target)
 
         let urls: [URL]
         if let pickImages {

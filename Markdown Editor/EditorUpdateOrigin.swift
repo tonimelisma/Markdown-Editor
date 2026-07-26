@@ -24,16 +24,19 @@ nonisolated enum EditorUpdateOrigin: Sendable, Equatable {
 final class EditorUpdateOriginScope {
     private(set) var current: EditorUpdateOrigin = .nativeUserInput
     private var stack: [EditorUpdateOrigin] = []
+    var didChange: ((EditorUpdateOrigin) -> Void)?
 
     @discardableResult
     func push(_ origin: EditorUpdateOrigin) -> EditorUpdateOrigin {
         stack.append(current)
         current = origin
+        didChange?(current)
         return origin
     }
 
     func pop() {
         current = stack.popLast() ?? .nativeUserInput
+        didChange?(current)
     }
 
     func with<T>(_ origin: EditorUpdateOrigin, _ body: () -> T) -> T {

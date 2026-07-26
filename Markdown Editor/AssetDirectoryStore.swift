@@ -168,7 +168,7 @@ nonisolated enum AssetDirectoryStore {
         var publishError: Error?
         var publishResult: AssetPublishResult?
         let coordinator = NSFileCoordinator()
-        // ADR-0012: coordinate with file presenters; POSIX exclusive publish remains the boundary.
+        // Coordinate with file presenters; POSIX exclusive publish remains the boundary.
         coordinator.coordinate(writingItemAt: assetsURL, options: [], error: &coordinatorError) { _ in
             do {
                 publishResult = try publishLockedUncoordinated(

@@ -5,33 +5,6 @@
 
 import Foundation
 
-/// Logical selection interpreted against source or projection.
-///
-/// Prefer `EditorEditRequest` for new call sites. Kept for toolbar/test compatibility.
-nonisolated struct SemanticSelection: Sendable, Equatable {
-    enum Mode: Sendable, Equatable {
-        case source
-        case wysiwyg
-    }
-
-    let mode: Mode
-    let utf16Range: NSRange
-    let sourceVersion: UInt64
-    let affinity: SelectionAffinity
-
-    init(
-        mode: Mode,
-        utf16Range: NSRange,
-        sourceVersion: UInt64,
-        affinity: SelectionAffinity = .downstream
-    ) {
-        self.mode = mode
-        self.utf16Range = utf16Range
-        self.sourceVersion = sourceVersion
-        self.affinity = affinity
-    }
-}
-
 nonisolated enum SemanticCommand: Sendable, Equatable {
     case insertText(String)
     case deleteBackward
@@ -84,9 +57,13 @@ nonisolated enum SemanticEditEngine {
             return .refused(.staleVersion)
         }
 
-        let projection = presentation?.asProjectionModel
-        let legacy = apply(request, snapshot: snapshot, projection: projection, tree: tree)
-        switch legacy {
+        let plannedMutation = apply(
+            request,
+            snapshot: snapshot,
+            presentation: presentation,
+            tree: tree
+        )
+        switch plannedMutation {
         case .refused(let refusal):
             return .refused(mapRefusal(refusal))
         case .mutation(let mutation):
@@ -109,28 +86,6 @@ nonisolated enum SemanticEditEngine {
                     return .refused(.stalePresentation)
                 }
 
-                // Structural toolbar commands / task toggles may rebuild from authoritative model
-                // after commit via reconciliation; for ordinary typing produce a sync transition.
-                let needsTransition: Bool = {
-                    switch request.command {
-                    case .insertText, .deleteBackward, .replaceTableCell:
-                        return true
-                    default:
-                        return true // keep WYSIWYG current for every accepted projection edit
-                    }
-                }()
-
-                guard needsTransition else {
-                    return .accepted(
-                        AcceptedEdit(
-                            sourceMutation: mutation,
-                            presentationTransition: nil,
-                            sourceSelectionAfter: mutation.selectionAfter,
-                            projectionSelectionAfter: nil
-                        )
-                    )
-                }
-
                 let replacement: String
                 switch request.command {
                 case .insertText(let text):
@@ -147,21 +102,23 @@ nonisolated enum SemanticEditEngine {
                         mutation: mutation,
                         snapshot: snapshot,
                         presentation: presentation,
-                        tree: tree,
                         nextSnapshotID: nextSnapshotID,
-                        affinity: projSel.affinity
+                        affinity: projSel.affinity,
+                        taskNodeID: {
+                            if case .toggleTask(let nodeID) = request.command { return nodeID }
+                            return nil
+                        }()
                     )
                 }
 
-                let encodedReplacement: String
                 if case .insertText(let text) = request.command, !text.isEmpty {
                     let classif = ProjectionSelectionClassifier.classify(
-                        selection: projSel.nsRange,
+                        selection: projSel.range.utf16,
                         affinity: projSel.affinity,
                         snapshot: presentation
                     )
                     switch classif {
-                    case .identityText, .tableCell:
+                    case .identityText, .atomicText, .syntheticInsertion, .tableCell:
                         let encodeCtx = LiteralEncodeContext(
                             intendedVisibleText: text,
                             precedingSourceCharacter: precedingCharacter(snapshot: snapshot, range: mutation.range),
@@ -172,7 +129,7 @@ nonisolated enum SemanticEditEngine {
                         )
                         switch MarkdownLiteralEncoder.encode(encodeCtx) {
                         case .encoded(let sourceSpelling):
-                            // Mutation already planned with raw text from legacy apply — if encoding
+                            // The source mutation initially carries visible text. If encoding
                             // differs, rebuild the mutation with encoded source while keeping
                             // visible replacement for the presentation transition.
                             if sourceSpelling != text {
@@ -189,28 +146,32 @@ nonisolated enum SemanticEditEngine {
                                 return finishIdentityTransition(
                                     mutation: remade,
                                     presentation: presentation,
-                                    projectionRange: projSel.nsRange,
+                                    projectionRange: projSel.range.utf16,
                                     visibleReplacement: text,
                                     nextSnapshotID: nextSnapshotID,
                                     affinity: projSel.affinity
                                 )
                             }
-                            encodedReplacement = text
                         case .refused:
                             return .refused(.unprovable)
                         }
-                    default:
-                        encodedReplacement = replacement
+                    case .taskMarker:
+                        return .refused(.unsupportedCommand)
+                    case .uneditable:
+                        return .refused(.unprovable)
+                    case .mixed:
+                        return .refused(.mixedDomain)
+                    case .crossCell:
+                        return .refused(.crossCell)
+                    case .ambiguous:
+                        return .refused(.ambiguousSelection)
                     }
-                } else {
-                    encodedReplacement = replacement
-                    _ = encodedReplacement
                 }
 
                 return finishIdentityTransition(
                     mutation: mutation,
                     presentation: presentation,
-                    projectionRange: projSel.nsRange,
+                    projectionRange: projSel.range.utf16,
                     visibleReplacement: replacement,
                     nextSnapshotID: nextSnapshotID,
                     affinity: projSel.affinity
@@ -233,27 +194,15 @@ nonisolated enum SemanticEditEngine {
         guard let transition = PresentationTransitionPlanner.identityReplacement(
             snapshot: presentation,
             projectionRange: projectionRange,
-            replacement: visibleReplacement,
+            visibleReplacement: visibleReplacement,
+            sourceRange: mutation.range,
+            sourceReplacement: mutation.replacement,
             nextSourceRevision: SourceRevision(value: mutation.expectedRevision &+ 1),
             nextSourceUTF16Count: nextSourceCount,
             nextSnapshotID: nextSnapshotID,
             affinity: affinity
         ) else {
-            // Fall back to authoritative rebuild for non-identity local edits.
-            return planAuthoritativeTransition(
-                mutation: mutation,
-                snapshot: SourceSnapshot(
-                    text: "", // unused in failure path below
-                    sourceVersion: mutation.expectedRevision,
-                    locationGeneration: presentation.locationGeneration,
-                    fileURL: nil
-                ),
-                presentation: presentation,
-                tree: nil,
-                nextSnapshotID: nextSnapshotID,
-                affinity: affinity,
-                forcedMutationOnly: mutation
-            )
+            return .refused(.unprovable)
         }
         if case .failure = ProjectionOracle.validate(snapshot: transition.nextSnapshot) {
             return .refused(.unprovable)
@@ -272,85 +221,50 @@ nonisolated enum SemanticEditEngine {
         mutation: SourceMutation,
         snapshot: SourceSnapshot,
         presentation: PresentationSnapshot,
-        tree: MarkdownTree?,
         nextSnapshotID: PresentationSnapshot.ID,
         affinity: SelectionAffinity,
-        forcedMutationOnly: SourceMutation? = nil
+        taskNodeID: MarkdownNodeID? = nil
     ) -> EditorEditOutcome {
-        let activeMutation = forcedMutationOnly ?? mutation
-        // Apply mutation to a temporary source string and recompile when tree/source available.
+        let activeMutation = mutation
+        // Apply the candidate to immutable source, then build one exact authoritative result.
         let ns = snapshot.text as NSString
         let usableSource: String
-        if snapshot.text.isEmpty, forcedMutationOnly != nil {
-            // Caller lacked a post-mutation snapshot — refuse rather than guess.
-            return .accepted(
-                AcceptedEdit(
-                    sourceMutation: activeMutation,
-                    presentationTransition: nil,
-                    sourceSelectionAfter: activeMutation.selectionAfter,
-                    projectionSelectionAfter: nil
-                )
-            )
-        }
         guard activeMutation.range.location >= 0,
               NSMaxRange(activeMutation.range) <= ns.length else {
             return .refused(.invalidRange)
         }
         usableSource = ns.replacingCharacters(in: activeMutation.range, with: activeMutation.replacement)
         let nextRevision = activeMutation.expectedRevision &+ 1
-        let index = MarkdownSourceIndex(source: usableSource, sourceVersion: nextRevision)
-        let parseResult = MarkdownParser.parse(usableSource, sourceVersion: nextRevision)
-        guard case .success(let newTree) = parseResult else {
-            return .accepted(
-                AcceptedEdit(
-                    sourceMutation: activeMutation,
-                    presentationTransition: nil,
-                    sourceSelectionAfter: activeMutation.selectionAfter,
-                    projectionSelectionAfter: nil
-                )
-            )
-        }
-        _ = tree
-        let model = MarkdownProjectionModel.build(tree: newTree, index: index)
-        let next = PresentationSnapshot.from(
-            model: model,
-            id: nextSnapshotID,
+        guard let nextFixed = AuthoritativePresentationBuilder.build(
+            source: usableSource,
+            sourceRevision: nextRevision,
+            snapshotID: nextSnapshotID,
             locationGeneration: presentation.locationGeneration
-        )
-        // Override source revision to the post-commit value.
-        let nextFixed = PresentationSnapshot.make(
-            id: next.id,
-            sourceRevision: SourceRevision(value: nextRevision),
-            locationGeneration: presentation.locationGeneration,
-            renderedString: next.renderedString,
-            runs: next.runs,
-            attachments: next.attachments,
-            tables: next.tables,
-            listMarkers: next.listMarkers,
-            atoms: next.atoms,
-            sourceUTF16Count: next.sourceUTF16Count
-        )
+        ) else { return .refused(.unprovable) }
         if case .failure = ProjectionOracle.validate(snapshot: nextFixed) {
-            return .accepted(
-                AcceptedEdit(
-                    sourceMutation: activeMutation,
-                    presentationTransition: nil,
-                    sourceSelectionAfter: activeMutation.selectionAfter,
-                    projectionSelectionAfter: nil
-                )
-            )
+            return .refused(.unprovable)
         }
-        let sourceAfter = activeMutation.selectionAfter.nsRange
+        let sourceAfter = activeMutation.selectionAfter.range.utf16
         let projSel: ProjectionSelection
         switch nextFixed.coordinateMap.projectionRange(forSource: sourceAfter, affinity: affinity) {
         case .exact(let range):
             projSel = ProjectionSelection(utf16: range, revision: nextFixed.projectionRevision, affinity: affinity)
         case .refused:
-            projSel = ProjectionSelection(
-                utf16: NSRange(location: min(sourceAfter.location, (nextFixed.renderedString as NSString).length), length: 0),
-                revision: nextFixed.projectionRevision,
-                affinity: affinity
-            )
+            if let taskNodeID,
+               let task = nextFixed.attachments.first(where: { attachment in
+                   attachment.nodeID == taskNodeID && {
+                       if case .task = attachment.kind { return true }
+                       return false
+                   }()
+               }) {
+                projSel = ProjectionSelection(
+                    utf16: NSRange(location: task.utf16Location, length: 1),
+                    revision: nextFixed.projectionRevision,
+                    affinity: affinity
+                )
+            } else {
+                return .refused(.mappingFailure)
+            }
         }
         let transition = PresentationTransition(
             fromSnapshotID: presentation.id,
@@ -408,77 +322,38 @@ nonisolated enum SemanticEditEngine {
         }
     }
 
-    /// Primary pipeline entry — typed request with grouping and domain.
-    static func apply(_ request: EditorEditRequest,
-                      snapshot: SourceSnapshot,
-                      projection: MarkdownProjectionModel?,
-                      tree: MarkdownTree?) -> SemanticEditResult {
+    /// Typed source-mutation planning. This function never mutates document or presentation state.
+    static func apply(
+        _ request: EditorEditRequest,
+        snapshot: SourceSnapshot,
+        presentation: PresentationSnapshot?,
+        tree: MarkdownTree?
+    ) -> SemanticEditResult {
         guard request.expectedSourceRevision.value == snapshot.sourceVersion else {
             return .refused(.staleVersion)
         }
 
-        let selection: SemanticSelection
         switch request.selection {
         case .source(let sourceSel):
-            selection = SemanticSelection(
-                mode: .source,
-                utf16Range: sourceSel.nsRange,
-                sourceVersion: snapshot.sourceVersion,
-                affinity: sourceSel.affinity
+            return applySource(
+                command: request.command,
+                selection: sourceSel,
+                snapshot: snapshot,
+                grouping: request.grouping
             )
         case .projection(let projSel):
-            guard let projection, projection.sourceVersion == snapshot.sourceVersion else {
+            guard let presentation,
+                  presentation.sourceRevision.value == snapshot.sourceVersion,
+                  projSel.range.revision.snapshotID == presentation.id else {
                 return .refused(.staleVersion)
             }
-            // ProjectionRevision identifies the presentation snapshot, not the source version.
-            _ = projSel.range.revision
-            selection = SemanticSelection(
-                mode: .wysiwyg,
-                utf16Range: projSel.nsRange,
-                sourceVersion: snapshot.sourceVersion,
-                affinity: projSel.affinity
-            )
-        }
-
-        return apply(
-            command: request.command,
-            selection: selection,
-            snapshot: snapshot,
-            projection: projection,
-            tree: tree,
-            grouping: request.grouping
-        )
-    }
-
-    static func apply(
-        command: SemanticCommand,
-        selection: SemanticSelection,
-        snapshot: SourceSnapshot,
-        projection: MarkdownProjectionModel?,
-        tree: MarkdownTree?,
-        grouping: MutationGrouping? = nil
-    ) -> SemanticEditResult {
-        guard selection.sourceVersion == snapshot.sourceVersion else {
-            return .refused(.staleVersion)
-        }
-        let resolvedGrouping = grouping ?? defaultGrouping(for: command)
-
-        switch selection.mode {
-        case .source:
-            return applySource(
-                command: command,
-                selection: selection,
-                snapshot: snapshot,
-                grouping: resolvedGrouping
-            )
-        case .wysiwyg:
             return applyWYSIWYG(
-                command: command,
-                selection: selection,
+                command: request.command,
+                selection: projSel,
                 snapshot: snapshot,
-                projection: projection,
+                presentation: presentation,
                 tree: tree,
-                grouping: resolvedGrouping
+                grouping: request.grouping
             )
         }
     }
@@ -495,160 +370,20 @@ nonisolated enum SemanticEditEngine {
         }
     }
 
-    // MARK: - Context classification (COR-08)
-
-    /// Classify the semantic context intersecting a projection selection.
-    static func classifyContext(
-        projectionSelection: NSRange,
-        projection: MarkdownProjectionModel,
-        tree: MarkdownTree?,
-        affinity: SelectionAffinity = .downstream
-    ) -> SemanticEditContext {
-        // Task attachment hit.
-        for attachment in projection.attachments {
-            if case .task = attachment.kind,
-               projectionSelection.length <= 1,
-               projectionSelection.location == attachment.utf16Location
-                || NSLocationInRange(attachment.utf16Location, projectionSelection) {
-                return .taskMarker(nodeID: attachment.nodeID)
-            }
-        }
-
-        // Table cell containing the selection — half-open ranges at shared tab boundaries.
-        if let cellID = tableCell(containing: projectionSelection, in: projection, affinity: affinity) {
-            return .tableCell(nodeID: cellID)
-        }
-
-        // Inspect overlapping segments.
-        var sawCode = false
-        var sawLink = false
-        var sawInline = false
-        var sawPlain = false
-        var sawUneditable = false
-        for segment in projection.segments {
-            let overlap = NSIntersectionRange(segment.projectionRange, projectionSelection)
-            let caretOnBoundary = projectionSelection.length == 0
-                && (projectionSelection.location == segment.projectionRange.location
-                    || projectionSelection.location == NSMaxRange(segment.projectionRange)
-                    || (projectionSelection.location > segment.projectionRange.location
-                        && projectionSelection.location < NSMaxRange(segment.projectionRange)))
-            guard overlap.length > 0 || caretOnBoundary else { continue }
-            switch segment {
-            case .uneditable:
-                sawUneditable = true
-            case .synthetic(_, let kind, let insertion):
-                if case .refuse = insertion { sawUneditable = true }
-                if case .taskCheckbox = kind { /* handled above */ }
-            case .source, .literalFallback:
-                sawPlain = true
-            }
-        }
-        for run in projection.runs {
-            let overlap = NSIntersectionRange(run.utf16Range, projectionSelection)
-            guard overlap.length > 0
-                    || (projectionSelection.length == 0
-                        && projectionSelection.location >= run.utf16Range.location
-                        && projectionSelection.location <= NSMaxRange(run.utf16Range)) else {
-                continue
-            }
-            if run.styles.contains(.code) { sawCode = true }
-            if run.linkDestination != nil || run.styles.contains(.link) { sawLink = true }
-            if run.styles.contains(.emphasis)
-                || run.styles.contains(.strong)
-                || run.styles.contains(.strikethrough) {
-                sawInline = true
-            }
-        }
-
-        if sawUneditable { return .uneditable }
-        if sawCode { return .codeContent }
-        if sawLink { return .linkLabel }
-        if sawInline { return .inlineSemantics }
-        if sawPlain { return .plainText }
-        _ = tree
-        return .plainText
-    }
-
-    /// Half-open cell ownership: a caret at a shared boundary belongs to the cell that starts there
-    /// (downstream) or the preceding cell (upstream). Avoids column-N typing hitting column N-1.
-    private static func tableCell(
-        containing selection: NSRange,
-        in projection: MarkdownProjectionModel,
-        affinity: SelectionAffinity
-    ) -> MarkdownNodeID? {
-        let cells = projection.tables.flatMap(\.cells)
-        guard !cells.isEmpty else { return nil }
-
-        if selection.length == 0 {
-            let loc = selection.location
-            // Prefer the cell whose half-open range contains the caret.
-            for cell in cells {
-                let r = cell.utf16Range
-                if r.length == 0 {
-                    if loc == r.location { return cell.nodeID }
-                    continue
-                }
-                if loc >= r.location && loc < NSMaxRange(r) {
-                    return cell.nodeID
-                }
-            }
-            // Caret exactly at a shared boundary / end: resolve by affinity.
-            for (index, cell) in cells.enumerated() {
-                let end = NSMaxRange(cell.utf16Range)
-                guard loc == end else { continue }
-                if affinity == .upstream {
-                    return cell.nodeID
-                }
-                // Downstream: prefer the next cell that starts here.
-                if index + 1 < cells.count, cells[index + 1].utf16Range.location == loc {
-                    return cells[index + 1].nodeID
-                }
-                return cell.nodeID
-            }
-            return nil
-        }
-
-        // Non-empty: first cell with positive intersection, preferring later cells on ties
-        // at a pure boundary tab so column N wins over column N-1's trailing separator.
-        var best: (MarkdownNodeID, Int)?
-        for cell in cells {
-            let overlap = NSIntersectionRange(cell.utf16Range, selection)
-            guard overlap.length > 0 else { continue }
-            // If overlap is only the trailing separator of a prior cell and the next cell
-            // also intersects, prefer the later cell.
-            if let existing = best, overlap.length <= 1,
-               overlap.location == NSMaxRange(cell.utf16Range) - 1 || overlap.location == cell.utf16Range.location {
-                _ = existing
-            }
-            if best == nil || cell.utf16Range.location >= (cells.first { $0.nodeID == best?.0 }?.utf16Range.location ?? 0) {
-                // Keep the cell with the greatest start among positive overlaps — later column.
-                if let current = best {
-                    let currentStart = cells.first { $0.nodeID == current.0 }?.utf16Range.location ?? 0
-                    if cell.utf16Range.location >= currentStart {
-                        best = (cell.nodeID, overlap.length)
-                    }
-                } else {
-                    best = (cell.nodeID, overlap.length)
-                }
-            }
-        }
-        return best?.0
-    }
-
     // MARK: - Source mode
 
     private static func applySource(
         command: SemanticCommand,
-        selection: SemanticSelection,
+        selection: SourceSelection,
         snapshot: SourceSnapshot,
         grouping: MutationGrouping
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
-        let range = selection.utf16Range
+        let range = selection.range.utf16
         guard range.location >= 0, NSMaxRange(range) <= ns.length else {
             return .refused(.invalidRange)
         }
-        let selectionBefore = SourceSelection(utf16: range, affinity: selection.affinity)
+        let selectionBefore = selection
 
         switch command {
         case .insertText(let text):
@@ -779,18 +514,30 @@ nonisolated enum SemanticEditEngine {
 
     private static func applyWYSIWYG(
         command: SemanticCommand,
-        selection: SemanticSelection,
+        selection: ProjectionSelection,
         snapshot: SourceSnapshot,
-        projection: MarkdownProjectionModel?,
+        presentation: PresentationSnapshot,
         tree: MarkdownTree?,
         grouping: MutationGrouping
     ) -> SemanticEditResult {
-        guard let projection, projection.sourceVersion == snapshot.sourceVersion else {
+        guard presentation.sourceRevision.value == snapshot.sourceVersion,
+              selection.range.revision.snapshotID == presentation.id else {
             return .refused(.staleVersion)
         }
+        let projection = presentation.asProjectionModel
+        let selectionRange = selection.range.utf16
+        let classification = ProjectionSelectionClassifier.classify(
+            selection: selectionRange,
+            affinity: selection.affinity,
+            snapshot: presentation
+        )
 
         switch command {
         case .toggleTask(let nodeID):
+            guard case .taskMarker(let classifiedNodeID) = classification,
+                  classifiedNodeID == nodeID else {
+                return .refused(.ambiguousSelection)
+            }
             // History selection is the exact source marker span (set inside toggleTaskMarker).
             return toggleTaskMarker(
                 snapshot: snapshot,
@@ -803,19 +550,11 @@ nonisolated enum SemanticEditEngine {
             )
 
         case .replaceTableCell(let nodeID, let text):
-            let before: SourceSelection
-            if let mapped = mapProjectionSelectionToSource(
-                selection.utf16Range,
-                affinity: selection.affinity,
-                projection: projection
-            ) {
-                before = SourceSelection(utf16: mapped, affinity: selection.affinity)
-            } else if let cell = projection.tables.flatMap(\.cells).first(where: { $0.nodeID == nodeID }),
-                      let cellSource = cell.sourceUTF16Range {
-                before = SourceSelection(utf16: cellSource, affinity: selection.affinity)
-            } else {
-                return .refused(.mappingFailure)
+            guard case .tableCell(let classifiedNodeID, let cellSource, _) = classification,
+                  classifiedNodeID == nodeID else {
+                return .refused(.ambiguousSelection)
             }
+            let before = SourceSelection(utf16: cellSource, affinity: selection.affinity)
             return TableCellEditPlanner.replace(
                 snapshot: snapshot,
                 tree: tree,
@@ -826,13 +565,8 @@ nonisolated enum SemanticEditEngine {
             )
 
         case .insertImageMarkdown(let markdown):
-            guard let sourceRange = mapProjectionSelectionToSource(
-                selection.utf16Range,
-                affinity: selection.affinity,
-                projection: projection
-            ) else {
-                return .refused(.mappingFailure)
-            }
+            guard let sourceRange = sourceRange(for: classification, affinity: selection.affinity)
+            else { return refusal(for: classification) }
             return commit(
                 snapshot,
                 range: sourceRange,
@@ -843,14 +577,8 @@ nonisolated enum SemanticEditEngine {
             )
 
         case .insertText(let text):
-            let context = classifyContext(
-                projectionSelection: selection.utf16Range,
-                projection: projection,
-                tree: tree,
-                affinity: selection.affinity
-            )
-            switch context {
-            case .tableCell(let nodeID):
+            switch classification {
+            case .tableCell(let nodeID, _, _):
                 // Rebuild cell content from the projected edit intent.
                 return applyTableCellTyping(
                     text: text,
@@ -878,16 +606,15 @@ nonisolated enum SemanticEditEngine {
                 )
             case .ambiguous:
                 return .refused(.ambiguousSelection)
-            case .plainText, .inlineSemantics, .linkLabel, .codeContent:
+            case .mixed:
+                return .refused(.ambiguousSelection)
+            case .crossCell:
+                return .refused(.ambiguousSelection)
+            case .identityText, .atomicText, .syntheticInsertion:
                 break
             }
-            guard let sourceRange = mapProjectionSelectionToSource(
-                selection.utf16Range,
-                affinity: selection.affinity,
-                projection: projection
-            ) else {
-                return .refused(.mappingFailure)
-            }
+            guard let sourceRange = sourceRange(for: classification, affinity: selection.affinity)
+            else { return refusal(for: classification) }
             return commit(
                 snapshot,
                 range: sourceRange,
@@ -898,13 +625,7 @@ nonisolated enum SemanticEditEngine {
             )
 
         case .deleteBackward:
-            let context = classifyContext(
-                projectionSelection: selection.utf16Range,
-                projection: projection,
-                tree: tree,
-                affinity: selection.affinity
-            )
-            if case .tableCell(let nodeID) = context {
+            if case .tableCell(let nodeID, _, _) = classification {
                 return applyTableCellTyping(
                     text: "",
                     nodeID: nodeID,
@@ -915,16 +636,8 @@ nonisolated enum SemanticEditEngine {
                     grouping: grouping
                 )
             }
-            if case .uneditable = context {
-                return .refused(.unsupportedCommand)
-            }
-            guard let sourceRange = mapProjectionSelectionToSource(
-                selection.utf16Range,
-                affinity: selection.affinity,
-                projection: projection
-            ) else {
-                return .refused(.mappingFailure)
-            }
+            guard let sourceRange = sourceRange(for: classification, affinity: selection.affinity)
+            else { return refusal(for: classification) }
             if sourceRange.length > 0 {
                 return commit(
                     snapshot,
@@ -948,19 +661,9 @@ nonisolated enum SemanticEditEngine {
         case .toggleBold, .toggleItalic, .toggleStrikethrough, .toggleInlineCode,
              .setHeading, .setParagraph, .toggleOrderedList, .toggleUnorderedList,
              .toggleTaskList, .toggleBlockQuote, .toggleCodeBlock, .setLink:
-            guard let sourceRange = mapProjectionSelectionToSource(
-                selection.utf16Range,
-                affinity: selection.affinity,
-                projection: projection
-            ) else {
-                return .refused(.mappingFailure)
-            }
-            let sourceSelection = SemanticSelection(
-                mode: .source,
-                utf16Range: sourceRange,
-                sourceVersion: selection.sourceVersion,
-                affinity: selection.affinity
-            )
+            guard let sourceRange = sourceRange(for: classification, affinity: selection.affinity)
+            else { return refusal(for: classification) }
+            let sourceSelection = SourceSelection(utf16: sourceRange, affinity: selection.affinity)
             return applySource(
                 command: command,
                 selection: sourceSelection,
@@ -977,7 +680,7 @@ nonisolated enum SemanticEditEngine {
     private static func applyTableCellTyping(
         text: String,
         nodeID: MarkdownNodeID,
-        selection: SemanticSelection,
+        selection: ProjectionSelection,
         snapshot: SourceSnapshot,
         projection: MarkdownProjectionModel,
         tree: MarkdownTree?,
@@ -1000,8 +703,8 @@ nonisolated enum SemanticEditEngine {
             bodyLength -= 1
         }
         let bodyProj = NSRange(location: cellProj.location, length: bodyLength)
-        let clippedLocation = max(selection.utf16Range.location, bodyProj.location)
-        let clippedEnd = min(NSMaxRange(selection.utf16Range), NSMaxRange(bodyProj))
+        let clippedLocation = max(selection.range.utf16.location, bodyProj.location)
+        let clippedEnd = min(NSMaxRange(selection.range.utf16), NSMaxRange(bodyProj))
         guard clippedEnd >= clippedLocation else { return .refused(.mappingFailure) }
         let clipped = NSRange(location: clippedLocation, length: clippedEnd - clippedLocation)
 
@@ -1112,6 +815,43 @@ nonisolated enum SemanticEditEngine {
 
     // MARK: - Helpers
 
+    private static func sourceRange(
+        for classification: ProjectionSelectionClass,
+        affinity: SelectionAffinity
+    ) -> NSRange? {
+        switch classification {
+        case .identityText(let sourceRange), .atomicText(_, let sourceRange, _):
+            return sourceRange
+        case .syntheticInsertion(let policy):
+            switch policy {
+            case .atSourceLocation(let location):
+                return NSRange(location: location, length: 0)
+            case .atSourceBoundaries(let before, let after):
+                return NSRange(
+                    location: affinity == .upstream ? before : after,
+                    length: 0
+                )
+            case .refuse:
+                return nil
+            }
+        case .tableCell(_, let sourceRange, _):
+            return sourceRange
+        case .taskMarker, .uneditable, .mixed, .crossCell, .ambiguous:
+            return nil
+        }
+    }
+
+    private static func refusal(for classification: ProjectionSelectionClass) -> SemanticEditResult {
+        switch classification {
+        case .mixed, .crossCell, .ambiguous:
+            return .refused(.ambiguousSelection)
+        case .uneditable, .taskMarker:
+            return .refused(.unsupportedCommand)
+        case .identityText, .atomicText, .syntheticInsertion, .tableCell:
+            return .refused(.mappingFailure)
+        }
+    }
+
     private static func commit(
         _ snapshot: SourceSnapshot,
         range: NSRange,
@@ -1158,8 +898,17 @@ nonisolated enum SemanticEditEngine {
         guard case .item(let checked) = node.kind, let checked else {
             return .refused(.unsupportedCommand)
         }
-        let index = MarkdownSourceIndex(source: snapshot.text, sourceVersion: snapshot.sourceVersion)
-        guard case .success(let itemRange) = index.utf16Range(for: node.position) else {
+        let itemRange: NSRange? = EditorSemanticWorker.sync {
+            let index = MarkdownSourceIndex(
+                source: snapshot.text,
+                sourceVersion: snapshot.sourceVersion
+            )
+            guard case .success(let range) = index.utf16Range(for: node.position) else {
+                return nil
+            }
+            return range
+        }
+        guard let itemRange else {
             return .refused(.mappingFailure)
         }
         guard let markerRange = StructuralSourceSpans.taskMarkerRange(

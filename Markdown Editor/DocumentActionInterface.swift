@@ -6,16 +6,12 @@
 import AppKit
 import Foundation
 
-/// Editor-neutral document surface for Source, WYSIWYG, and COR-02.
+/// Editor-neutral document surface for both editors and image placement.
 ///
 /// // REQ-013/017/019: no controller discovers its document by walking from an NSView.
 /// // REQ-087: source-only selection values — no raw projection ranges.
 protocol DocumentActionInterface: AnyObject {
     @MainActor func sourceSnapshot() -> SourceSnapshot
-
-    /// Last known source-domain selection (reported by the active editor adapter).
-    @MainActor var sourceSelection: SourceSelection { get }
-    @MainActor func reportSourceSelection(_ selection: SourceSelection)
 
     /// Placement-range tracking owned by the document interface, not a text view.
     @MainActor func beginPlacementTracking(range: SourceRange) -> Int
@@ -27,15 +23,15 @@ protocol DocumentActionInterface: AnyObject {
     @MainActor @discardableResult
     func commitSourceMutation(_ mutation: SourceMutation) -> SourceEditResult
 
-    /// Preferred selection after a programmatic commit (e.g. image insert).
-    @MainActor var pendingSelection: SourceSelection? { get set }
+    /// Publish a source-domain selection restoration event to the attached editor session.
+    @MainActor func requestSelectionRestoration(_ selection: SourceSelection)
 
     /// Operation-scoped Save (REQ-017). Does not walk the view hierarchy.
     @MainActor func saveDocument() async -> Bool
 
     @MainActor var documentUndoManager: UndoManager? { get }
 
-    /// Deterministic undo-checkpoint observer teardown (REQ-015/COR-08).
+    /// Deterministic undo-checkpoint observer teardown (REQ-015).
     @MainActor func detachUndoCheckpointObserver()
 
     /// Close an open typing undo group (selection / mode / discrete boundaries).

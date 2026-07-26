@@ -8,7 +8,7 @@ import Foundation
 /// Maps between WYSIWYG projection selections and canonical source selections.
 ///
 /// // REQ-056/087: affinity at boundaries; typed refusal — never clamp or proportion.
-/// // REQ-084: synthetic endpoints follow `SyntheticInsertionPolicy` (COR-08).
+/// // REQ-084: synthetic endpoints follow `SyntheticInsertionPolicy`.
 nonisolated struct ProjectionCoordinateMap: Sendable, Equatable {
     let segments: [ProjectionSegment]
     let projectionUTF16Count: Int
@@ -34,7 +34,7 @@ nonisolated struct ProjectionCoordinateMap: Sendable, Equatable {
     func sourceRange(
         forProjection selection: ProjectionSelection
     ) -> CoordinateMappingResult {
-        sourceRange(forProjection: selection.nsRange, affinity: selection.affinity)
+        sourceRange(forProjection: selection.range.utf16, affinity: selection.affinity)
     }
 
     func projectionRange(
@@ -82,7 +82,7 @@ nonisolated struct ProjectionCoordinateMap: Sendable, Equatable {
         return .exact(NSRange(location: start, length: end - start))
     }
 
-    // MARK: - Non-empty selection (COR-08 synthetic endpoint policy)
+    // MARK: - Non-empty selection
 
     /// Union source-backed overlaps with allowed synthetic endpoint anchors / interior bridges.
     private func mapNonEmptySelection(
@@ -158,7 +158,7 @@ nonisolated struct ProjectionCoordinateMap: Sendable, Equatable {
             }
         }
 
-        // Synthetic-only selections must not invent a source span (COR-08 / REQ-087).
+        // Synthetic-only selections must not invent a source span (REQ-087).
         guard overlappedSourceBacked else {
             return .refused(.uneditableSynthetic)
         }

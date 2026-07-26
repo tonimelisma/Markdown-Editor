@@ -2,7 +2,7 @@
 //  ProjectionCharacterizationTests.swift
 //  Markdown EditorTests
 //
-//  COR-06 characterization (PLAN-0010 §6).
+//  Projection behavior characterization.
 //
 
 import Testing
@@ -92,7 +92,7 @@ struct ProjectionCharacterizationTests {
             locationGeneration: 0,
             fileURL: nil
         )
-        let selection = SemanticSelection(
+        let selection = TestSelection(
             mode: .source,
             utf16Range: NSRange(location: 2, length: 5),
             sourceVersion: 1
@@ -108,15 +108,13 @@ struct ProjectionCharacterizationTests {
             Issue.record("expected transaction")
             return
         }
-        #expect(mutation.replacement.contains(">"))
-        #expect(mutation.replacement.contains("- "))
-        #expect(mutation.replacement.hasPrefix("> -") || mutation.replacement.contains("> - "))
+        #expect(mutation.replacement == "> - hello\n")
     }
 
     // Verifies: REQ-057 — underscore bold alternate spelling.
     @Test func boldToggleAcceptsUnderscoreAlternateSpelling() {
         let snapshot = SourceSnapshot(text: "__hello__", sourceVersion: 1, locationGeneration: 0, fileURL: nil)
-        let selection = SemanticSelection(mode: .source, utf16Range: NSRange(location: 0, length: 9), sourceVersion: 1)
+        let selection = TestSelection(mode: .source, utf16Range: NSRange(location: 0, length: 9), sourceVersion: 1)
         let result = SemanticEditEngine.apply(
             command: .toggleBold,
             selection: selection,
@@ -141,7 +139,7 @@ struct ProjectionCharacterizationTests {
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let result = SemanticEditEngine.apply(
             command: .replaceTableCell(nodeID: cell.nodeID, text: "Z"),
-            selection: SemanticSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
+            selection: TestSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
             snapshot: snapshot,
             projection: model,
             tree: tree
@@ -172,7 +170,7 @@ struct ProjectionCharacterizationTests {
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let result = SemanticEditEngine.apply(
             command: .replaceTableCell(nodeID: cell.nodeID, text: ""),
-            selection: SemanticSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
+            selection: TestSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
             snapshot: snapshot,
             projection: model,
             tree: tree
@@ -200,7 +198,7 @@ struct ProjectionCharacterizationTests {
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let pipe = SemanticEditEngine.apply(
             command: .replaceTableCell(nodeID: cell.nodeID, text: "x|y"),
-            selection: SemanticSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
+            selection: TestSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
             snapshot: snapshot,
             projection: model,
             tree: tree
@@ -227,7 +225,7 @@ struct ProjectionCharacterizationTests {
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let result = SemanticEditEngine.apply(
             command: .replaceTableCell(nodeID: cell.nodeID, text: "x\\|y"),
-            selection: SemanticSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
+            selection: TestSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
             snapshot: snapshot,
             projection: model,
             tree: tree
@@ -320,7 +318,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: COR-08 D1 — selection from list marker through item text maps to source.
+    // Verifies: REQ-084/087 — selection from list marker through item text maps to source.
     @Test func selectionStartingOnListMarkerMapsToSource() throws {
         let source = "1. a\n"
         let tree = try parse(source)
@@ -347,7 +345,7 @@ struct ProjectionCharacterizationTests {
     }
 
     // Verifies: REQ-090 — parse+index+projection p95 < 100ms at 100k UTF-16 off-main.
-    // PLAN-0010 requires optimized builds for this gate; Debug is skipped.
+    // The performance requirement applies to optimized builds; Debug is skipped.
     @Test func parseIndexProjectionP95Under100msAt100k() async throws {
         #if DEBUG
         // Characterization still compiles; timing gate is asserted under Release.
@@ -385,6 +383,12 @@ struct ProjectionCharacterizationTests {
         samples.sort()
         let p95Index = min(samples.count - 1, Int(ceil(0.95 * Double(samples.count))) - 1)
         let p95 = samples[max(p95Index, 0)]
+        recordPerformanceEvidence(
+            name: "parse-index-projection",
+            corpus: source,
+            warmups: 5,
+            samples: samples
+        )
         #expect(p95 < 100.0, "p95=\(p95)ms samples=\(samples)")
         #endif
     }

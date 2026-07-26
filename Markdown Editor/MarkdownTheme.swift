@@ -6,7 +6,7 @@
 import AppKit
 
 // REQ-041/043/047: maps a TokenStyle to display attributes. Uses system colors so it adapts
-// to Light/Dark automatically (REQ-022). Applied on the main actor (ADR-0010).
+// to Light/Dark automatically (REQ-022). Applied on the main actor.
 @MainActor
 struct MarkdownTheme {
     var baseFontSize: CGFloat = 14
