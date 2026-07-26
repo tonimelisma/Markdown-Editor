@@ -364,12 +364,24 @@ private func containsKind(
     func walk(_ node: MarkdownNode) -> Bool {
         if expectsKind(node.kind),
            case .success(let nodeRange) = index.utf16Range(for: node.position),
-           NSIntersectionRange(nodeRange, range).length > 0 {
+           rangesOverlapOrTouch(nodeRange, range) {
             return true
         }
         return node.children.contains(where: walk)
     }
     return walk(tree.root)
+}
+
+/// Non-empty ranges use intersection; a zero-length range (e.g. cleared table cell) matches
+/// when the caret point lies inside or on the boundary of the other range.
+private func rangesOverlapOrTouch(_ a: NSRange, _ b: NSRange) -> Bool {
+    if a.length == 0 {
+        return b.location <= a.location && a.location <= NSMaxRange(b)
+    }
+    if b.length == 0 {
+        return a.location <= b.location && b.location <= NSMaxRange(a)
+    }
+    return NSIntersectionRange(a, b).length > 0
 }
 
 private func countTables(in node: MarkdownNode) -> Int {

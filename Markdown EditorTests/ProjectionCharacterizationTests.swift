@@ -157,6 +157,33 @@ struct ProjectionCharacterizationTests {
         #expect(before.contains("a") || before.contains("|"))
     }
 
+    // Verifies: review — empty table-cell clear must not fail the postcondition.
+    @Test func tableCellClearEmptyTextIsAccepted() {
+        let source = "| a | b |\n| - | - |\n| c | d |\n"
+        guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: 1) else {
+            Issue.record("parse failed")
+            return
+        }
+        let model = build(source, tree: tree)
+        guard let cell = model.tables.first?.cells.last else {
+            Issue.record("missing cell")
+            return
+        }
+        let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
+        let result = SemanticEditEngine.apply(
+            command: .replaceTableCell(nodeID: cell.nodeID, text: ""),
+            selection: SemanticSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
+            snapshot: snapshot,
+            projection: model,
+            tree: tree
+        )
+        guard case .transaction(let edit, _) = result else {
+            Issue.record("expected empty cell clear, got \(result)")
+            return
+        }
+        #expect(edit.replacement.isEmpty)
+    }
+
     // Verifies: review — pipe/newline cell edits refuse rather than vacuous postcondition.
     @Test func tableCellEditRefusesStructuralBreakers() {
         let source = "| a | b |\n| - | - |\n| c | d |\n"
