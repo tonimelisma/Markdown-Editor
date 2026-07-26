@@ -11,26 +11,19 @@ struct ContentView: View {
     @State private var statsComputer = TextStatsComputer()
     @StateObject private var placementController = ImagePlacementController()
     @StateObject private var session = EditorSession()
+    @StateObject private var actionRouter = EditorActionRouter()
 
     var body: some View {
         VStack(spacing: 0) {
             EditorToolbar(document: document, session: session)
             Divider()
-            Group {
-                if session.mode == .wysiwyg {
-                    WYSIWYGTextView(
-                        document: document,
-                        session: session,
-                        placementController: placementController
-                    )
-                } else {
-                    MarkdownTextView(
-                        document: document,
-                        placementController: placementController,
-                        session: session
-                    )
-                }
-            }
+            // REQ-052/086: persistent dual TextKit host — both editors live across mode toggles.
+            EditorHostView(
+                document: document,
+                session: session,
+                placementController: placementController,
+                actionRouter: actionRouter
+            )
             Divider()
             HStack {
                 Spacer()
@@ -51,19 +44,16 @@ struct ContentView: View {
             placementController.attach(actions: document)
             placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
             session.attach(document: document)
+            actionRouter.placement = placementController
+            actionRouter.document = document
+            actionRouter.session = session
+            session.actionRouter = actionRouter
         }
         .onChange(of: document.publishedFileURL) { _, newURL in
             placementController.updateDocumentURL(newURL)
         }
         .onChange(of: document.locationGeneration) { _, _ in
             placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .editorAddImageClaims)) { note in
-            guard let claims = note.userInfo?["claims"] as? [ImageClaim] else { return }
-            placementController.handleImageAction(
-                claims: claims,
-                documentURL: document.publishedFileURL ?? document.fileURL
-            )
         }
         .alert(alertTitle, isPresented: alertPresented) {
             Button("OK", role: .cancel) { placementController.alert = nil }

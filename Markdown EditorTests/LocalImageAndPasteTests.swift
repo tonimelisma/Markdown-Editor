@@ -15,7 +15,7 @@ final class LocalImageAndPasteTests: XCTestCase {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        for name in ["sample.png", "sample.jpg", "sample.gif", "sample.heic"] {
+        for name in ["sample.png", "sample.jpg", "sample.gif", "sample.heic", "sample.heif"] {
             let source = fixtures.appendingPathComponent(name)
             let url = dir.appendingPathComponent(name)
             try FileManager.default.copyItem(at: source, to: url)
@@ -23,7 +23,7 @@ final class LocalImageAndPasteTests: XCTestCase {
         let docURL = dir.appendingPathComponent("doc.md")
         try "![x](sample.png)\n".write(to: docURL, atomically: true, encoding: .utf8)
 
-        for name in ["sample.png", "sample.jpg", "sample.gif", "sample.heic"] {
+        for name in ["sample.png", "sample.jpg", "sample.gif", "sample.heic", "sample.heif"] {
             let url = dir.appendingPathComponent(name)
             let before = try Data(contentsOf: url)
             let result = LocalImageResolver.resolve(
@@ -34,7 +34,9 @@ final class LocalImageAndPasteTests: XCTestCase {
                 locationGeneration: 1
             )
             let descriptor = try XCTUnwrap(result.get(), "failed for \(name): \(result)")
-            XCTAssertFalse(descriptor.thumbnailPNGData.isEmpty)
+            XCTAssertGreaterThan(descriptor.pixelWidth, 0)
+            XCTAssertGreaterThan(descriptor.pixelHeight, 0)
+            XCTAssertGreaterThan(descriptor.cgImage.width, 0)
             let after = try Data(contentsOf: url)
             XCTAssertEqual(before, after, "original bytes must be untouched for \(name)")
         }
@@ -87,18 +89,25 @@ final class LocalImageAndPasteTests: XCTestCase {
         ])
     }
 
-    // Verifies: REQ-082
+    // Verifies: REQ-082 — Add Image routes through window-scoped EditorActionRouter.
     @MainActor
     func testAddImageRoutesThroughPlacementClaims() async {
         let document = MarkdownDocument()
         document.installTextForTesting("")
         let session = EditorSession()
         session.attach(document: document)
+        let placement = ImagePlacementController()
+        placement.attach(actions: document)
+        let router = EditorActionRouter()
+        router.document = document
+        router.placement = placement
+        session.actionRouter = router
+
         let fixture = fixturesImagesDirectory().appendingPathComponent("sample.png")
         session.pickImages = { [fixture] }
-        let exp = expectation(forNotification: .editorAddImageClaims, object: nil)
         await session.addImages()
-        await fulfillment(of: [exp], timeout: 2)
+        // Intent is cleared after handle; placement invoked via window-scoped router.
+        XCTAssertNil(router.pendingImageIntent)
     }
 
     private func fixturesImagesDirectory() -> URL {

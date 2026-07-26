@@ -48,11 +48,15 @@ final class EditorSession: ObservableObject {
 
     func attach(document: MarkdownDocument) {
         self.document = document
+        imageCache.trace = document.trace
         cancellables.removeAll()
         document.objectWillChange
-            .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                self?.scheduleParse()
+                // Hop to the main actor explicitly — RunLoop.main is not the MainActor executor
+                // under Swift 6 complete concurrency (REQ-088).
+                Task { @MainActor in
+                    self?.scheduleParse()
+                }
             }
             .store(in: &cancellables)
         scheduleParse()
@@ -65,6 +69,14 @@ final class EditorSession: ObservableObject {
         // REQ-052/086: inactive view applies newest accepted document version on next update.
         // @Published `mode` already notifies observers.
         traceModeToggle(toSource: newMode == .source)
+    }
+
+    /// Test/hook: install an already-built projection without waiting on the async parse path.
+    func installProjectionForTesting(_ model: MarkdownProjectionModel, tree: MarkdownTree) {
+        self.projection = model
+        self.tree = tree
+        self.acceptedSourceVersion = model.sourceVersion
+        imageCache.trace = document?.trace
     }
 
     private func traceModeToggle(toSource: Bool) {
@@ -157,8 +169,22 @@ final class EditorSession: ObservableObject {
         }
     }
 
+    /// Window-scoped image action router (REQ-082). Injected by ContentView.
+    weak var actionRouter: EditorActionRouter?
+
     func addImages() async {
         guard let document else { return }
+        // REQ-082: capture window-scoped insertion intent before async picker work.
+        let domain: EditorCoordinateDomain = mode == .source ? .source : .wysiwyg
+        let range = mode == .source ? sourceViewState.selection : wysiwygViewState.selection
+        let intent = EditorSelectionIntent(
+            domain: domain,
+            sourceVersion: document.sourceVersion,
+            range: range,
+            affinity: .downstream
+        )
+        actionRouter?.captureImageInsertionIntent(intent)
+
         let urls: [URL]
         if let pickImages {
             urls = await pickImages()
@@ -167,12 +193,7 @@ final class EditorSession: ObservableObject {
         }
         guard !urls.isEmpty else { return }
         let claims = urls.map { ImageClaim.fileURL($0, providerName: $0.lastPathComponent, declaredType: nil) }
-        // COR-02 entry — placement controller is attached by ContentView.
-        NotificationCenter.default.post(
-            name: .editorAddImageClaims,
-            object: nil,
-            userInfo: ["claims": claims, "document": document]
-        )
+        actionRouter?.handleAddImageClaims(claims)
     }
 
     private static func presentOpenPanel() async -> [URL] {
@@ -190,8 +211,4 @@ final class EditorSession: ObservableObject {
             }
         }
     }
-}
-
-extension Notification.Name {
-    static let editorAddImageClaims = Notification.Name("MarkdownEditor.addImageClaims")
 }
