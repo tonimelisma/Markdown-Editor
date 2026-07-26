@@ -157,7 +157,7 @@ struct ProjectionCharacterizationTests {
         #expect(before.contains("a") || before.contains("|"))
     }
 
-    // Verifies: review — empty table-cell clear must not fail the postcondition.
+    // Verifies: REQ-080
     @Test func tableCellClearEmptyTextIsAccepted() {
         let source = "| a | b |\n| - | - |\n| c | d |\n"
         guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: 1) else {
@@ -184,7 +184,7 @@ struct ProjectionCharacterizationTests {
         #expect(mutation.replacement.isEmpty)
     }
 
-    // Verifies: review — pipe/newline cell edits refuse rather than vacuous postcondition.
+    // Verifies: REQ-080/087
     @Test func tableCellEditRefusesStructuralBreakers() {
         let source = "| a | b |\n| - | - |\n| c | d |\n"
         guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: 1) else {
@@ -211,7 +211,7 @@ struct ProjectionCharacterizationTests {
         }
     }
 
-    // Verifies: review — escaped pipes in table cells are literal content, not structure.
+    // Verifies: REQ-080
     @Test func tableCellAllowsEscapedPipe() {
         let source = "| a | b |\n| - | - |\n| c | d |\n"
         guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: 1) else {
@@ -238,7 +238,7 @@ struct ProjectionCharacterizationTests {
         }
     }
 
-    // Verifies: review — inline wrap postcondition requires a matching node at the edited span.
+    // Verifies: REQ-057
     @Test func inlineWrapPostconditionRequiresNodeAtEditedSpan() {
         let snapshot = SourceSnapshot(
             text: "**already** plain\n",
@@ -262,7 +262,7 @@ struct ProjectionCharacterizationTests {
         }
     }
 
-    // Verifies: review — ordered markers increment; caret after marker maps after source marker.
+    // Verifies: REQ-057/084
     @Test func orderedMarkersIncrementAndTrailingCaretMapsAfterMarker() throws {
         let source = "1. a\n2. b\n"
         let tree = try parse(source)
@@ -286,7 +286,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: review — inline code content source excludes backticks.
+    // Verifies: REQ-057/087
     @Test func inlineCodeContentSourceExcludesBackticks() throws {
         let source = "a `xy` b\n"
         let tree = try parse(source)
@@ -303,7 +303,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: review — non-empty selection may cross synthetic paragraph breaks.
+    // Verifies: REQ-084/087
     @Test func selectionAcrossParagraphBreakMapsContiguousSource() throws {
         let source = "one\n\ntwo\n"
         let tree = try parse(source)

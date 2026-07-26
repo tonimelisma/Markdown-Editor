@@ -266,7 +266,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(document.pendingSelection == nil)
     }
 
-    // Verifies: review — WYSIWYG pendingSelection waits for matching projection version.
+    // Verifies: REQ-084/086
     @Test func pendingSelectionWaitsForMatchingProjection() {
         let document = MarkdownDocument()
         document.installTextForTesting("abcdefghij\n")
