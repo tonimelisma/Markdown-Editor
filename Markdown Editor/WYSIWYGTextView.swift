@@ -298,7 +298,11 @@ struct WYSIWYGTextView: NSViewRepresentable {
             let range = textView.selectedRange()
             if let presentation = session.presentation,
                case .editable(let id) = session.wysiwygModeState.availability,
-               id == presentation.id {
+               id == presentation.id,
+               appliedSnapshotID == presentation.id,
+               textView.string == presentation.renderedString,
+               range.location >= 0,
+               NSMaxRange(range) <= (presentation.renderedString as NSString).length {
                 session.updateWYSIWYGModeState { state in
                     state.selection = ProjectionSelection(
                         utf16: range,
