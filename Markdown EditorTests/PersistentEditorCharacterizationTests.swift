@@ -344,6 +344,64 @@ struct PersistentEditorCharacterizationTests {
         #expect(session.pendingSelectionRestoration == nil)
     }
 
+    // Verifies: REQ-086/091/093; ARC-004/005 — native coordinates are
+    // published only under the snapshot actually installed in TextKit storage.
+    @Test func hostDoesNotRelabelOldNativeSelectionWithNewSnapshot() throws {
+        let document = MarkdownDocument()
+        document.installTextForTesting("abcdefghij\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        let initialTree = try #require(
+            MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion).get()
+        )
+        session.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: initialTree,
+                index: MarkdownSourceIndex(
+                    source: document.text,
+                    sourceVersion: document.sourceVersion
+                )
+            ),
+            tree: initialTree
+        )
+        session.setMode(.wysiwyg)
+        let host = EditorHostView.HostCoordinator(
+            document: document,
+            session: session,
+            placementController: ImagePlacementController(),
+            actionRouter: EditorActionRouter()
+        )
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        host.buildEditors(in: root)
+        host.applyMode(.wysiwyg, focus: false)
+        host.wysiwygText?.setSelectedRange(NSRange(location: 4, length: 0))
+
+        let replacementSource = "short\n"
+        let replacementTree = try #require(
+            MarkdownParser.parse(
+                replacementSource,
+                sourceVersion: document.sourceVersion
+            ).get()
+        )
+        session.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: replacementTree,
+                index: MarkdownSourceIndex(
+                    source: replacementSource,
+                    sourceVersion: document.sourceVersion
+                )
+            ),
+            tree: replacementTree
+        )
+        let current = try #require(session.presentation)
+        let remapped = session.wysiwygModeState.selection
+
+        host.applyMode(.wysiwyg, focus: false)
+
+        #expect(session.wysiwygModeState.selection == remapped)
+        #expect(session.wysiwygModeState.selection?.range.revision.snapshotID == current.id)
+    }
+
     // Verifies: REQ-060/082 — captured WYSIWYG intent is source-domain and immutable.
     @Test func addImageResolvesCapturedIntentToSourceRange() {
         let document = MarkdownDocument()

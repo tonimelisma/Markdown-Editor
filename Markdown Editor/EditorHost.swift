@@ -76,8 +76,10 @@ struct EditorHostView: NSViewRepresentable {
         host.placementController = placementController
         host.actionRouter = actionRouter
         host.syncDocumentBindings()
-        host.applyMode(session.mode, focus: false)
+        // Apply the newest presentation before accepting native coordinates as
+        // belonging to it. The previous TextKit storage still owns the old snapshot.
         host.refreshVisibleEditor()
+        host.applyMode(session.mode, focus: false)
     }
 
     @MainActor
@@ -208,16 +210,18 @@ struct EditorHostView: NSViewRepresentable {
                 }
             }
             if wysiwygScroll.isHidden == false {
-                let affinity: SelectionAffinity =
-                    wysiwygText.selectionAffinity == .upstream ? .upstream : .downstream
-                let revision = session.presentation?.projectionRevision ?? ProjectionRevision(value: 0)
-                session.updateWYSIWYGModeState {
-                    $0.selection = ProjectionSelection(
-                        utf16: wysiwygText.selectedRange(),
-                        revision: revision,
-                        affinity: affinity
-                    )
-                    $0.scrollOffset = wysiwygScroll.contentView.bounds.origin
+                if let presentation = session.presentation,
+                   wysiwygCoordinator?.hasAppliedSnapshot(presentation.id) == true {
+                    let affinity: SelectionAffinity =
+                        wysiwygText.selectionAffinity == .upstream ? .upstream : .downstream
+                    session.updateWYSIWYGModeState {
+                        $0.selection = ProjectionSelection(
+                            utf16: wysiwygText.selectedRange(),
+                            revision: presentation.projectionRevision,
+                            affinity: affinity
+                        )
+                        $0.scrollOffset = wysiwygScroll.contentView.bounds.origin
+                    }
                 }
             }
             let showSource = (mode == .source)
