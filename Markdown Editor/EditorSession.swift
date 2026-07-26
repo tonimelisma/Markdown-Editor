@@ -120,6 +120,8 @@ final class EditorSession: ObservableObject {
 
     /// Test/hook: install an already-built projection without waiting on the async parse path.
     func installProjectionForTesting(_ model: MarkdownProjectionModel, tree: MarkdownTree) {
+        operationGeneration &+= 1
+        parseTask?.cancel()
         let snapshot = PresentationSnapshot.from(
             model: model,
             id: snapshotIDs.make(),
