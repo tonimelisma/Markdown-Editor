@@ -43,9 +43,9 @@ struct MarkdownDocumentTests {
         }
     }
 
-    // Verifies: REQ-014 — autosave in place is enabled.
+    // Verifies: REQ-014 — autosave in place is enabled for production.
     @Test func autosavesInPlace() {
-        #expect(MarkdownDocument.autosavesInPlace == true)
+        #expect(MarkdownDocument.autosavesInPlaceForProduction == true)
     }
 
     // Verifies: REQ-013 — document owns undo manager used by transactions.

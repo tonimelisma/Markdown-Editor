@@ -27,6 +27,10 @@ protocol DocumentActionInterface: AnyObject {
     @MainActor @discardableResult
     func commitSourceEdit(_ edit: SourceEdit) -> SourceEditResult
 
+    /// Content-validated mutation entry (REQ-016). Prefer this for new call sites.
+    @MainActor @discardableResult
+    func commitSourceMutation(_ mutation: SourceMutation) -> SourceEditResult
+
     /// Preferred selection after a programmatic commit (e.g. image insert).
     @MainActor var pendingSelection: NSRange? { get set }
 

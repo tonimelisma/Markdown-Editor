@@ -99,7 +99,7 @@ Source keeps highlighting at every document size (debounce + off-main + version 
 Correction requirements: REQ-048–REQ-049. Approved design:
 [PLAN-0007](plans/0007-cor03-formal-gfm-strikethrough-exactness.md).
 
-## COR-04 · NSDocument migration — `[build]` 🟠 Correction required
+## COR-04 · NSDocument migration — `[build]` ✅ Done
 
 Replaced `DocumentGroup`/`FileDocument` with one `NSDocument` that owns canonical source,
 version, URL/location generation, Save completion, transactions, and undo. Source behavior and
@@ -108,9 +108,9 @@ COR-02 storage remain; view-derived document/commit seams are gone.
 Approved requirements: REQ-013–REQ-019. Implemented design:
 [PLAN-0008](plans/0008-cor04-nsdocument-migration.md).
 
-Post-merge review found that REQ-016's undo closure captures a historical expected version and
-REQ-018 does not compile under Swift 6 complete concurrency. COR-05 retains `NSDocument` and
-replaces these internals.
+Post-merge review found that REQ-016's undo closure captured a historical expected version and
+REQ-018 did not compile under Swift 6 complete concurrency. Those defects are corrected by
+[COR-05](#cor-05--source-integrity-and-swift-6--build--done).
 
 ## INC-04 · WYSIWYG mode — `[build]` 🟠 Correction required
 
@@ -144,13 +144,15 @@ Approved correction research and program:
 [ADR-0013](decisions/0013-source-backed-rich-projection-and-semantic-edits.md), and
 [PLAN-0010](plans/0010-inc04-correction-program.md).
 
-## COR-05 · Source integrity and Swift 6 — `[build]` ⚪ Planned
+## COR-05 · Source integrity and Swift 6 — `[build]` ✅ Done
 
-Replace stale-version undo with content-validated dynamic history patches, establish one canonical
-mutation path and explicit grouping, replace unsafe byte-snapshot isolation, and enable Swift 6
-complete concurrency without warnings.
+Replaced stale-version undo with content-validated dynamic `HistoryPatch` history, established one
+canonical `SourceMutation` path with explicit typing/discrete grouping, replaced unsafe
+byte-snapshot isolation with `DocumentIOText` (`Synchronization.Mutex`), added privacy-safe
+`EditorTrace` for mutation/history events, and enabled Swift 6 complete concurrency.
 
 Requirements: REQ-011, REQ-016, REQ-018, REQ-083, REQ-088–REQ-089.
+Approved design: [PLAN-0010](plans/0010-inc04-correction-program.md) §5.
 
 ## COR-06 · Exact projection and semantic edits — `[build]` ⚪ Planned
 

@@ -10,8 +10,8 @@ import UniformTypeIdentifiers
 ///
 /// Prefer this helper over `UTType.markdown` — newer SDKs also declare that name and make
 /// a same-named extension ambiguous.
-enum MarkdownContentType {
-    static let identifier = "net.daringfireball.markdown"
+nonisolated enum MarkdownContentType {
+    nonisolated static let identifier = "net.daringfireball.markdown"
 
     nonisolated static var utType: UTType {
         UTType(importedAs: identifier)

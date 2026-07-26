@@ -30,6 +30,8 @@ nonisolated enum SourceEditRefusal: Error, Sendable, Equatable {
     case staleVersion
     case invalidRange
     case conflict
+    /// Current text at the target range does not match the mutation/patch expectation.
+    case contentMismatch
 }
 
 /// UTF-16 selection to apply after a committed edit.

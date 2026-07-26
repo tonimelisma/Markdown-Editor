@@ -93,7 +93,7 @@ extension MarkdownProjectionModel {
     /// Build a delimiter-free projection from a parsed tree + source index.
     ///
     /// // REQ-054–056/055/087: unsupported/HTML → literal fallback; mapping failures → literal.
-    static func build(
+    nonisolated static func build(
         tree: MarkdownTree,
         index: MarkdownSourceIndex
     ) -> MarkdownProjectionModel {
@@ -105,7 +105,7 @@ extension MarkdownProjectionModel {
 
 // MARK: - Builder
 
-private struct ProjectionBuilder {
+private nonisolated struct ProjectionBuilder {
     let index: MarkdownSourceIndex
     let sourceVersion: UInt64
 
