@@ -177,6 +177,42 @@ struct AcceptedEditTransactionTests {
         #expect(doc.text == "\\*&amp;entity;&lt;hi\n")
     }
 
+    // Verifies: REQ-084/091/092; ARC-005/008 — literal encoding reads complete
+    // neighboring graphemes and never interprets a UTF-16 surrogate as a scalar.
+    @Test func literalInsertionBesideNonBMPCharactersIsExact() {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("😀x\n")
+        let session = EditorSession()
+        session.attach(document: doc)
+        let tree = MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get()!
+        let model = MarkdownProjectionModel.build(
+            tree: tree,
+            index: MarkdownSourceIndex(source: doc.text, sourceVersion: doc.sourceVersion)
+        )
+        session.installProjectionForTesting(model, tree: tree)
+
+        for location in [2, 0] {
+            let current = session.presentation!
+            let result = session.perform(
+                .insertText("*"),
+                selection: .projection(
+                    ProjectionSelection(
+                        utf16: NSRange(location: location, length: 0),
+                        revision: current.projectionRevision
+                    )
+                ),
+                expectedSourceRevision: SourceRevision(value: doc.sourceVersion)
+            )
+            guard case .accepted = result else {
+                Issue.record("literal insertion at \(location) refused: \(result)")
+                return
+            }
+        }
+
+        #expect(doc.text == "\\*😀\\*x\n")
+        #expect(session.presentation?.renderedString == "*😀*x\n")
+    }
+
     // Verifies: REQ-080/091/092; ARC-005/008 — table typing encodes only the
     // inserted fragment while the atomic transaction preserves the complete cell.
     @Test func tableLiteralInsertionPreservesCellAndAdvancesPresentation() throws {

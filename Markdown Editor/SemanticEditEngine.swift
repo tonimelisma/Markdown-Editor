@@ -315,17 +315,16 @@ nonisolated enum SemanticEditEngine {
     private static func precedingCharacter(snapshot: SourceSnapshot, range: NSRange) -> Character? {
         guard range.location > 0 else { return nil }
         let ns = snapshot.text as NSString
-        let idx = range.location - 1
-        let scalar = ns.character(at: idx)
-        return Character(UnicodeScalar(scalar)!)
+        let composed = ns.rangeOfComposedCharacterSequence(at: range.location - 1)
+        return ns.substring(with: composed).first
     }
 
     private static func followingCharacter(snapshot: SourceSnapshot, range: NSRange) -> Character? {
         let ns = snapshot.text as NSString
         let idx = NSMaxRange(range)
         guard idx < ns.length else { return nil }
-        let scalar = ns.character(at: idx)
-        return Character(UnicodeScalar(scalar)!)
+        let composed = ns.rangeOfComposedCharacterSequence(at: idx)
+        return ns.substring(with: composed).first
     }
 
     private static func isAtLineStart(snapshot: SourceSnapshot, location: Int) -> Bool {
