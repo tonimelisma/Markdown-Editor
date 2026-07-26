@@ -187,6 +187,10 @@ struct WYSIWYGTextView: NSViewRepresentable {
             }
         }
 
+        func hasAppliedSnapshot(_ id: PresentationSnapshot.ID) -> Bool {
+            appliedSnapshotID == id
+        }
+
         func textView(
             _ textView: NSTextView,
             shouldChangeTextIn affectedCharRange: NSRange,
@@ -427,7 +431,10 @@ final class MarkdownWYSIWYGTextView: NSTextView {
                 return
             }
             guard let session,
-                  let presentation = session.presentation else {
+                  let presentation = session.presentation,
+                  let capturedSnapshotID = captured.snapshotID,
+                  presentation.id == capturedSnapshotID,
+                  adapterCoordinator?.hasAppliedSnapshot(capturedSnapshotID) == true else {
                 input.cancel()
                 performNativeUnmark()
                 (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
@@ -499,7 +506,10 @@ final class MarkdownWYSIWYGTextView: NSTextView {
         }
 
         guard let session,
-              let presentation = session.presentation else {
+              let presentation = session.presentation,
+              let capturedSnapshotID = captured.snapshotID,
+              presentation.id == capturedSnapshotID,
+              adapterCoordinator?.hasAppliedSnapshot(capturedSnapshotID) == true else {
             input.cancel()
             return
         }

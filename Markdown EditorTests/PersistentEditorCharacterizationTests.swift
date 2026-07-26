@@ -167,7 +167,8 @@ struct PersistentEditorCharacterizationTests {
         coord.input.beginMarkedText(
             sourceVersion: document.sourceVersion,
             sourceRange: NSRange(location: 3, length: 0),
-            marked: NSRange(location: 3, length: 1)
+            marked: NSRange(location: 3, length: 1),
+            snapshotID: session.presentation?.id
         )
         coord.input.allowingMarkedText = true
         let allowed = coord.textView(
@@ -215,7 +216,8 @@ struct PersistentEditorCharacterizationTests {
         coord.input.beginMarkedText(
             sourceVersion: document.sourceVersion,
             sourceRange: NSRange(location: 2, length: 0),
-            marked: NSRange(location: 2, length: 1)
+            marked: NSRange(location: 2, length: 1),
+            snapshotID: session.presentation?.id
         )
         let versionBefore = document.sourceVersion
         textView.insertText("日", replacementRange: NSRange(location: NSNotFound, length: 0))
@@ -227,6 +229,55 @@ struct PersistentEditorCharacterizationTests {
         #expect(document.sourceVersion == versionBefore + 1)
         #expect(document.text.contains("日"))
         #expect((textView.string as NSString).contains("日"))
+    }
+
+    // Verifies: REQ-084/091; ARC-004/005 — an IME range captured from one
+    // presentation is never relabeled with a different snapshot identity.
+    @Test func compositionRefusesWhenCapturedSnapshotWasReplaced() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("ab")
+        let session = EditorSession()
+        session.attach(document: document)
+        let tree = MarkdownParser.parse(
+            document.text,
+            sourceVersion: document.sourceVersion
+        ).get()!
+        session.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: tree,
+                index: MarkdownSourceIndex(
+                    source: document.text,
+                    sourceVersion: document.sourceVersion
+                )
+            ),
+            tree: tree
+        )
+        let coordinator = WYSIWYGTextView.Coordinator(
+            document: document,
+            session: session,
+            placementController: ImagePlacementController()
+        )
+        let textView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
+        textView.delegate = coordinator
+        textView.inputCoordinator = coordinator.input
+        textView.adapterCoordinator = coordinator
+        textView.documentActions = document
+        textView.session = session
+        coordinator.textView = textView
+        coordinator.applyProjectionIfNeeded(force: true)
+
+        coordinator.input.beginMarkedText(
+            sourceVersion: document.sourceVersion,
+            sourceRange: NSRange(location: 2, length: 0),
+            marked: NSRange(location: 2, length: 1),
+            snapshotID: PresentationSnapshot.ID(value: UInt64.max)
+        )
+        let version = document.sourceVersion
+        textView.insertText("日", replacementRange: NSRange(location: NSNotFound, length: 0))
+
+        #expect(document.sourceVersion == version)
+        #expect(document.text == "ab")
+        #expect(!coordinator.input.composition.isComposing)
     }
 
     // Verifies: REQ-086 — a one-shot session restoration is applied by the persistent host.
