@@ -14,7 +14,7 @@ nonisolated enum SemanticPlannerGate {
         range: NSRange,
         replacement: String,
         action: String,
-        postcondition: (MarkdownTree) -> Bool
+        postcondition: (MarkdownTree, String) -> Bool
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
         guard range.location >= 0, NSMaxRange(range) <= ns.length else {
@@ -25,7 +25,7 @@ nonisolated enum SemanticPlannerGate {
         case .failure:
             return .refused(.ambiguousSelection)
         case .success(let tree):
-            guard postcondition(tree) else {
+            guard postcondition(tree, newText) else {
                 return .refused(.ambiguousSelection)
             }
         }
@@ -61,10 +61,7 @@ nonisolated enum InlineEditPlanner {
                     range: range,
                     replacement: inner,
                     action: action
-                ) { tree in
-                    // Unwrapped: the selected span should not be solely that kind at root text.
-                    true
-                }
+                ) { _, _ in true }
             }
             let beforeStart = range.location >= open.count
             if beforeStart {
@@ -82,19 +79,21 @@ nonisolated enum InlineEditPlanner {
                             range: expanded,
                             replacement: selected,
                             action: action
-                        ) { _ in true }
+                        ) { _, _ in true }
                     }
                 }
             }
         }
         let (open, close) = delimiters.first { open, _ in !selected.contains(open) } ?? delimiters[0]
+        let replacement = open + selected + close
+        let cover = NSRange(location: range.location, length: (replacement as NSString).length)
         return SemanticPlannerGate.commitIfValid(
             snapshot: snapshot,
             range: range,
-            replacement: open + selected + close,
+            replacement: replacement,
             action: action
-        ) { tree in
-            contains(tree.root, where: { expectsKind($0.kind) })
+        ) { tree, newText in
+            containsKind(tree, source: newText, covering: cover, where: expectsKind)
         }
     }
 
@@ -102,13 +101,18 @@ nonisolated enum InlineEditPlanner {
         let selected = (snapshot.text as NSString).substring(with: range)
         var ticks = "`"
         while selected.contains(ticks) { ticks += "`" }
+        let replacement = ticks + selected + ticks
+        let cover = NSRange(location: range.location, length: (replacement as NSString).length)
         return SemanticPlannerGate.commitIfValid(
             snapshot: snapshot,
             range: range,
-            replacement: ticks + selected + ticks,
+            replacement: replacement,
             action: "Inline Code"
-        ) { tree in
-            contains(tree.root) { if case .code = $0.kind { return true }; return false }
+        ) { tree, newText in
+            containsKind(tree, source: newText, covering: cover) { kind in
+                if case .code = kind { return true }
+                return false
+            }
         }
     }
 }
@@ -119,7 +123,7 @@ nonisolated enum BlockEditPlanner {
         return transformLine(snapshot: snapshot, range: range, action: "Heading") { content, hadNewline in
             let stripped = stripSameLineBlockChrome(content)
             return prefix + stripped + (hadNewline ? "\n" : "")
-        } postcondition: { tree in
+        } postcondition: { tree, _ in
             contains(tree.root) {
                 if case .heading(let l) = $0.kind { return l == level }
                 return false
@@ -130,7 +134,7 @@ nonisolated enum BlockEditPlanner {
     static func setParagraph(snapshot: SourceSnapshot, range: NSRange) -> SemanticEditResult {
         transformLine(snapshot: snapshot, range: range, action: "Paragraph") { content, hadNewline in
             stripSameLineBlockChrome(content) + (hadNewline ? "\n" : "")
-        } postcondition: { _ in true }
+        } postcondition: { _, _ in true }
     }
 
     static func toggleCodeFence(snapshot: SourceSnapshot, range: NSRange) -> SemanticEditResult {
@@ -149,7 +153,7 @@ nonisolated enum BlockEditPlanner {
             range: line,
             replacement: replacement,
             action: "Code Block"
-        ) { tree in
+        ) { tree, _ in
             contains(tree.root) { if case .codeBlock = $0.kind { return true }; return false }
         }
     }
@@ -159,7 +163,7 @@ nonisolated enum BlockEditPlanner {
         range: NSRange,
         action: String,
         transform: (String, Bool) -> String,
-        postcondition: @escaping (MarkdownTree) -> Bool
+        postcondition: @escaping (MarkdownTree, String) -> Bool
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
         let line = ns.lineRange(for: range)
@@ -202,7 +206,7 @@ nonisolated enum ListEditPlanner {
             range: line,
             replacement: replacement,
             action: action
-        ) { _ in true }
+        ) { _, _ in true }
     }
 
     static func toggleBlockQuote(snapshot: SourceSnapshot, range: NSRange) -> SemanticEditResult {
@@ -222,7 +226,7 @@ nonisolated enum ListEditPlanner {
             range: line,
             replacement: replacement,
             action: "Quote"
-        ) { _ in true }
+        ) { _, _ in true }
     }
 }
 
@@ -243,18 +247,23 @@ nonisolated enum LinkEditPlanner {
                     range: range,
                     replacement: text,
                     action: "Remove Link"
-                ) { _ in true }
+                ) { _, _ in true }
             }
             return .refused(.ambiguousSelection)
         }
         let label = selected.isEmpty ? destination : selected
+        let replacement = "[\(label)](\(destination))"
+        let cover = NSRange(location: range.location, length: (replacement as NSString).length)
         return SemanticPlannerGate.commitIfValid(
             snapshot: snapshot,
             range: range,
-            replacement: "[\(label)](\(destination))",
+            replacement: replacement,
             action: "Link"
-        ) { tree in
-            contains(tree.root) { if case .link = $0.kind { return true }; return false }
+        ) { tree, newText in
+            containsKind(tree, source: newText, covering: cover) { kind in
+                if case .link = kind { return true }
+                return false
+            }
         }
     }
 }
@@ -266,6 +275,11 @@ nonisolated enum TableCellEditPlanner {
         nodeID: MarkdownNodeID,
         text: String
     ) -> SemanticEditResult {
+        // Unescaped pipes / newlines change GFM table structure — refuse rather than accept
+        // a vacuous postcondition (node IDs are unstable across reparse).
+        if text.contains("|") || text.contains("\n") || text.contains("\r") {
+            return .refused(.ambiguousSelection)
+        }
         guard let tree, let node = findNode(id: nodeID, in: tree.root) else {
             return .refused(.mappingFailure)
         }
@@ -276,13 +290,24 @@ nonisolated enum TableCellEditPlanner {
         guard case .success(let sourceRange) = index.utf16Range(for: node.position) else {
             return .refused(.mappingFailure)
         }
+        let beforeTables = countTables(in: tree.root)
+        let beforeCells = countTableCells(in: tree.root)
         return SemanticPlannerGate.commitIfValid(
             snapshot: snapshot,
             range: sourceRange,
             replacement: text,
             action: "Edit Cell"
-        ) { newTree in
-            findNode(id: nodeID, in: newTree.root) != nil || true
+        ) { newTree, newText in
+            guard countTables(in: newTree.root) == beforeTables,
+                  countTableCells(in: newTree.root) == beforeCells else {
+                return false
+            }
+            // The replacement must appear as some cell's plain content at the edited span.
+            let cover = NSRange(location: sourceRange.location, length: (text as NSString).length)
+            return containsKind(newTree, source: newText, covering: cover) { kind in
+                if case .tableCell = kind { return true }
+                return false
+            }
         }
     }
 }
@@ -327,6 +352,48 @@ private func stripMatchingListPrefix(_ line: String, matching prefix: String) ->
 private func contains(_ node: MarkdownNode, where predicate: (MarkdownNode) -> Bool) -> Bool {
     if predicate(node) { return true }
     return node.children.contains { contains($0, where: predicate) }
+}
+
+private func containsKind(
+    _ tree: MarkdownTree,
+    source: String,
+    covering range: NSRange,
+    where expectsKind: (MarkdownNodeKind) -> Bool
+) -> Bool {
+    let index = MarkdownSourceIndex(source: source, sourceVersion: tree.sourceVersion)
+    func walk(_ node: MarkdownNode) -> Bool {
+        if expectsKind(node.kind),
+           case .success(let nodeRange) = index.utf16Range(for: node.position),
+           rangesOverlapOrTouch(nodeRange, range) {
+            return true
+        }
+        return node.children.contains(where: walk)
+    }
+    return walk(tree.root)
+}
+
+/// Non-empty ranges use intersection; a zero-length range (e.g. cleared table cell) matches
+/// when the caret point lies inside or on the boundary of the other range.
+private func rangesOverlapOrTouch(_ a: NSRange, _ b: NSRange) -> Bool {
+    if a.length == 0 {
+        return b.location <= a.location && a.location <= NSMaxRange(b)
+    }
+    if b.length == 0 {
+        return a.location <= b.location && b.location <= NSMaxRange(a)
+    }
+    return NSIntersectionRange(a, b).length > 0
+}
+
+private func countTables(in node: MarkdownNode) -> Int {
+    let selfCount: Int
+    if case .table = node.kind { selfCount = 1 } else { selfCount = 0 }
+    return selfCount + node.children.reduce(0) { $0 + countTables(in: $1) }
+}
+
+private func countTableCells(in node: MarkdownNode) -> Int {
+    let selfCount: Int
+    if case .tableCell = node.kind { selfCount = 1 } else { selfCount = 0 }
+    return selfCount + node.children.reduce(0) { $0 + countTableCells(in: $1) }
 }
 
 private func findNode(id: MarkdownNodeID, in node: MarkdownNode) -> MarkdownNode? {

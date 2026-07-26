@@ -16,6 +16,7 @@ nonisolated enum EditorMode: String, Sendable, Equatable, CaseIterable {
 nonisolated struct ModeViewState: Sendable, Equatable {
     var selection: NSRange
     var scrollOffset: CGPoint
+    var affinity: SelectionAffinity = .downstream
 }
 
 /// Window-scoped session owning derived/transient editor state — not serialized source.
@@ -77,6 +78,13 @@ final class EditorSession: ObservableObject {
         self.tree = tree
         self.acceptedSourceVersion = model.sourceVersion
         imageCache.trace = document?.trace
+    }
+
+    /// Test/hook: drop derived projection so pending-selection wait paths can be exercised.
+    func clearProjectionForTesting() {
+        projection = nil
+        tree = nil
+        acceptedSourceVersion = 0
     }
 
     private func traceModeToggle(toSource: Bool) {
@@ -176,12 +184,12 @@ final class EditorSession: ObservableObject {
         guard let document else { return }
         // REQ-082: capture window-scoped insertion intent before async picker work.
         let domain: EditorCoordinateDomain = mode == .source ? .source : .wysiwyg
-        let range = mode == .source ? sourceViewState.selection : wysiwygViewState.selection
+        let viewState = mode == .source ? sourceViewState : wysiwygViewState
         let intent = EditorSelectionIntent(
             domain: domain,
             sourceVersion: document.sourceVersion,
-            range: range,
-            affinity: .downstream
+            range: viewState.selection,
+            affinity: viewState.affinity
         )
         actionRouter?.captureImageInsertionIntent(intent)
 

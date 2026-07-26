@@ -111,6 +111,8 @@ struct MarkdownTextView: NSViewRepresentable {
         var isProgrammaticUpdate = false
         /// Gates SwiftUI string sync while a native keystroke commit is in flight (REQ-016).
         var isNativeEditInFlight = false
+        /// When true, the next `shouldChangeTextIn` commit uses a discrete undo group (paste).
+        var preferDiscreteGrouping = false
         private var version = 0
         private var task: Task<Void, Never>?
 
@@ -136,6 +138,8 @@ struct MarkdownTextView: NSViewRepresentable {
             } else {
                 return false
             }
+            let discrete = preferDiscreteGrouping
+            preferDiscreteGrouping = false
             let selectionBefore = SourceSelection(range: document.activeSelection)
             let afterLocation = affectedCharRange.location + (replacement as NSString).length
             let mutation = SourceMutation(
@@ -145,8 +149,8 @@ struct MarkdownTextView: NSViewRepresentable {
                 replacement: replacement,
                 selectionBefore: selectionBefore,
                 selectionAfter: SourceSelection(range: NSRange(location: afterLocation, length: 0)),
-                actionName: "Typing",
-                grouping: .typing
+                actionName: discrete ? "Paste" : "Typing",
+                grouping: discrete ? .discrete : .typing
             )
             switch document.commitSourceMutation(mutation) {
             case .committed(let selection):
@@ -175,6 +179,7 @@ struct MarkdownTextView: NSViewRepresentable {
             if let session {
                 var state = session.sourceViewState
                 state.selection = range
+                state.affinity = textView.selectionAffinity == .upstream ? .upstream : .downstream
                 session.sourceViewState = state
             }
         }
@@ -277,8 +282,11 @@ final class MarkdownSourceTextView: NSTextView {
             // REQ-059: prefer plain-text representation even when RTF/HTML is present.
             if let plain = PastePolicy.plainText(from: .general) {
                 let range = selectedRange()
+                // Paste must not coalesce into the open typing undo group (REQ-016).
+                (delegate as? MarkdownTextView.Coordinator)?.preferDiscreteGrouping = true
                 insertText(plain, replacementRange: range)
             } else {
+                (delegate as? MarkdownTextView.Coordinator)?.preferDiscreteGrouping = true
                 super.pasteAsPlainText(sender)
             }
         }

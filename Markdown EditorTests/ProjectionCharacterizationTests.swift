@@ -157,6 +157,142 @@ struct ProjectionCharacterizationTests {
         #expect(before.contains("a") || before.contains("|"))
     }
 
+    // Verifies: review — empty table-cell clear must not fail the postcondition.
+    @Test func tableCellClearEmptyTextIsAccepted() {
+        let source = "| a | b |\n| - | - |\n| c | d |\n"
+        guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: 1) else {
+            Issue.record("parse failed")
+            return
+        }
+        let model = build(source, tree: tree)
+        guard let cell = model.tables.first?.cells.last else {
+            Issue.record("missing cell")
+            return
+        }
+        let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
+        let result = SemanticEditEngine.apply(
+            command: .replaceTableCell(nodeID: cell.nodeID, text: ""),
+            selection: SemanticSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
+            snapshot: snapshot,
+            projection: model,
+            tree: tree
+        )
+        guard case .transaction(let edit, _) = result else {
+            Issue.record("expected empty cell clear, got \(result)")
+            return
+        }
+        #expect(edit.replacement.isEmpty)
+    }
+
+    // Verifies: review — pipe/newline cell edits refuse rather than vacuous postcondition.
+    @Test func tableCellEditRefusesStructuralBreakers() {
+        let source = "| a | b |\n| - | - |\n| c | d |\n"
+        guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: 1) else {
+            Issue.record("parse failed")
+            return
+        }
+        let model = build(source, tree: tree)
+        let cell = model.tables.first?.cells.last
+        guard let cell else {
+            Issue.record("missing cell")
+            return
+        }
+        let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
+        let pipe = SemanticEditEngine.apply(
+            command: .replaceTableCell(nodeID: cell.nodeID, text: "x|y"),
+            selection: SemanticSelection(mode: .wysiwyg, utf16Range: cell.utf16Range, sourceVersion: 1),
+            snapshot: snapshot,
+            projection: model,
+            tree: tree
+        )
+        guard case .refused = pipe else {
+            Issue.record("expected refusal for pipe, got \(pipe)")
+            return
+        }
+    }
+
+    // Verifies: review — inline wrap postcondition requires a matching node at the edited span.
+    @Test func inlineWrapPostconditionRequiresNodeAtEditedSpan() {
+        let snapshot = SourceSnapshot(
+            text: "**already** plain\n",
+            sourceVersion: 1,
+            locationGeneration: 0,
+            fileURL: nil
+        )
+        // Wrapping "plain" must succeed because a strong node covers that span after edit.
+        let ok = InlineEditPlanner.wrap(
+            snapshot: snapshot,
+            range: NSRange(location: 12, length: 5),
+            delimiters: [("**", "**"), ("__", "__")],
+            action: "Bold"
+        ) { kind in
+            if case .strong = kind { return true }
+            return false
+        }
+        guard case .transaction = ok else {
+            Issue.record("expected wrap of plain text, got \(ok)")
+            return
+        }
+    }
+
+    // Verifies: review — ordered markers increment; caret after marker maps after source marker.
+    @Test func orderedMarkersIncrementAndTrailingCaretMapsAfterMarker() throws {
+        let source = "1. a\n2. b\n"
+        let tree = try parse(source)
+        let model = build(source, tree: tree)
+        #expect(model.listMarkers.map(\.text) == ["1. ", "2. "])
+        // Caret at end of first marker in projection.
+        guard let first = model.listMarkers.first else {
+            Issue.record("missing marker")
+            return
+        }
+        let afterMarker = NSRange(location: NSMaxRange(first.utf16Range), length: 0)
+        guard case .exact(let sourceCaret) = model.coordinateMap.sourceRange(
+            forProjection: afterMarker,
+            affinity: .downstream
+        ) else {
+            Issue.record("expected exact caret map after marker")
+            return
+        }
+        // Source after "1. " is offset 3.
+        #expect(sourceCaret.location == 3)
+        try expectOracle(model, source: source)
+    }
+
+    // Verifies: review — inline code content source excludes backticks.
+    @Test func inlineCodeContentSourceExcludesBackticks() throws {
+        let source = "a `xy` b\n"
+        let tree = try parse(source)
+        let model = build(source, tree: tree)
+        let rendered = model.renderedString as NSString
+        let proj = rendered.range(of: "xy")
+        #expect(proj.location != NSNotFound)
+        guard case .exact(let sourceRange) = model.coordinateMap.sourceRange(forProjection: proj) else {
+            Issue.record("expected exact map for code literal")
+            return
+        }
+        #expect((source as NSString).substring(with: sourceRange) == "xy")
+        #expect(sourceRange.length == 2)
+        try expectOracle(model, source: source)
+    }
+
+    // Verifies: review — non-empty selection may cross synthetic paragraph breaks.
+    @Test func selectionAcrossParagraphBreakMapsContiguousSource() throws {
+        let source = "one\n\ntwo\n"
+        let tree = try parse(source)
+        let model = build(source, tree: tree)
+        let rendered = model.renderedString as NSString
+        let start = rendered.range(of: "one").location
+        let end = NSMaxRange(rendered.range(of: "two"))
+        let cross = NSRange(location: start, length: end - start)
+        guard case .exact(let sourceRange) = model.coordinateMap.sourceRange(forProjection: cross) else {
+            Issue.record("expected bridged mapping across synthetic break")
+            return
+        }
+        #expect(sourceRange.length > 0)
+        try expectOracle(model, source: source)
+    }
+
     // Verifies: REQ-090 — parse+index+projection p95 < 100ms at 100k UTF-16 off-main.
     // PLAN-0010 requires optimized builds for this gate; Debug is skipped.
     @Test func parseIndexProjectionP95Under100msAt100k() async throws {

@@ -111,6 +111,12 @@ final class LocalImageByteCache {
         let locationGeneration: UInt64
         let modificationTime: TimeInterval
         let displayEdge: Int
+        /// Content identity — path+mtime alone can collide when a file is replaced in place
+        /// without a timestamp change, or when mtime lookup returns nil.
+        let contentType: String
+        let pixelWidth: Int
+        let pixelHeight: Int
+        let byteCost: Int
     }
 
     private struct Entry {
@@ -126,13 +132,21 @@ final class LocalImageByteCache {
         path: String,
         locationGeneration: UInt64,
         modification: Date?,
+        contentType: String,
+        pixelWidth: Int,
+        pixelHeight: Int,
+        byteCost: Int,
         displayEdge: Int = Int(LocalImageDecoder.maxDisplayEdge)
     ) -> CGImage? {
         let key = Key(
             path: path,
             locationGeneration: locationGeneration,
             modificationTime: modification?.timeIntervalSinceReferenceDate ?? 0,
-            displayEdge: displayEdge
+            displayEdge: displayEdge,
+            contentType: contentType,
+            pixelWidth: pixelWidth,
+            pixelHeight: pixelHeight,
+            byteCost: byteCost
         )
         guard let entry = map[key] else { return nil }
         if let idx = order.firstIndex(of: key) {
@@ -148,13 +162,20 @@ final class LocalImageByteCache {
         path: String,
         locationGeneration: UInt64,
         modification: Date?,
+        contentType: String,
+        pixelWidth: Int,
+        pixelHeight: Int,
         displayEdge: Int = Int(LocalImageDecoder.maxDisplayEdge)
     ) {
         let key = Key(
             path: path,
             locationGeneration: locationGeneration,
             modificationTime: modification?.timeIntervalSinceReferenceDate ?? 0,
-            displayEdge: displayEdge
+            displayEdge: displayEdge,
+            contentType: contentType,
+            pixelWidth: pixelWidth,
+            pixelHeight: pixelHeight,
+            byteCost: cost
         )
         if let old = map[key] {
             totalBytes -= old.cost

@@ -58,11 +58,11 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
                 switch insertion {
                 case .refuse:
                     return .refused(.uneditableSynthetic)
-                case .atSourceLocation(let loc):
-                    // Selecting only a synthetic unit with an insertion policy is ambiguous for
-                    // a non-empty selection unless the selection is entirely synthetic markers
-                    // that collapse to a caret — refuse non-empty synthetic coverage.
-                    return .refused(.uneditableSynthetic)
+                case .atSourceLocation, .atSourceBoundaries:
+                    // Bridge coverage only. Non-empty synthetic-only selections must still refuse
+                    // (do not invent a source span from an insertion policy alone). Source-backed
+                    // endpoints on either side already define the contiguous mapped range.
+                    break
                 }
             case .uneditable:
                 return .refused(.unsupported)
@@ -163,6 +163,9 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
                     switch insertion {
                     case .atSourceLocation(let loc):
                         return .exact(NSRange(location: loc, length: 0))
+                    case .atSourceBoundaries(let before, let after):
+                        let loc = affinity == .upstream ? before : after
+                        return .exact(NSRange(location: loc, length: 0))
                     case .refuse:
                         return .refused(.uneditableSynthetic)
                     }
@@ -205,8 +208,18 @@ nonisolated struct ProjectionCoordinateMap: Sendable {
                     return .exact(NSRange(location: NSMaxRange(projection), length: 0))
                 }
             case .synthetic(let projection, _, let insertion):
-                if case .atSourceLocation(let loc) = insertion, loc == location {
+                switch insertion {
+                case .atSourceLocation(let loc) where loc == location:
                     return .exact(NSRange(location: projection.location, length: 0))
+                case .atSourceBoundaries(let before, let after):
+                    if before == location {
+                        return .exact(NSRange(location: projection.location, length: 0))
+                    }
+                    if after == location {
+                        return .exact(NSRange(location: NSMaxRange(projection), length: 0))
+                    }
+                default:
+                    break
                 }
             case .uneditable:
                 continue
@@ -245,8 +258,11 @@ private extension ProjectionSegment {
         case .source(_, _, let before, _): return before
         case .literalFallback(_, let source): return source.location
         case .synthetic(_, _, let insertion):
-            if case .atSourceLocation(let loc) = insertion { return loc }
-            return 0
+            switch insertion {
+            case .atSourceLocation(let loc): return loc
+            case .atSourceBoundaries(let before, _): return before
+            case .refuse: return 0
+            }
         case .uneditable: return 0
         }
     }
@@ -256,8 +272,11 @@ private extension ProjectionSegment {
         case .source(_, _, _, let after): return after
         case .literalFallback(_, let source): return NSMaxRange(source)
         case .synthetic(_, _, let insertion):
-            if case .atSourceLocation(let loc) = insertion { return loc }
-            return 0
+            switch insertion {
+            case .atSourceLocation(let loc): return loc
+            case .atSourceBoundaries(_, let after): return after
+            case .refuse: return 0
+            }
         case .uneditable: return 0
         }
     }

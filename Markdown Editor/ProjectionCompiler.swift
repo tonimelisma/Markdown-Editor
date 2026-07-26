@@ -67,8 +67,14 @@ private nonisolated struct CompilerBuilder {
             }
 
         case .list(let info):
-            for child in node.children {
-                emitListItem(child, info: info, styleStack: styleStack, nesting: listNesting)
+            for (itemIndex, child) in node.children.enumerated() {
+                emitListItem(
+                    child,
+                    info: info,
+                    styleStack: styleStack,
+                    nesting: listNesting,
+                    itemIndex: itemIndex
+                )
             }
 
         case .item:
@@ -147,7 +153,8 @@ private nonisolated struct CompilerBuilder {
         _ node: MarkdownNode,
         info: MarkdownListInfo,
         styleStack: [ProjectionStyleTag],
-        nesting: Int
+        nesting: Int,
+        itemIndex: Int
     ) {
         guard case .item(let taskChecked) = node.kind else {
             emit(node, styleStack: styleStack, listNesting: nesting)
@@ -160,10 +167,23 @@ private nonisolated struct CompilerBuilder {
             markerText = markerGlyph(info.marker) + " "
         case .ordered(let start, let delimiter):
             let delim = delimiter == .period ? "." : ")"
-            markerText = "\(start)\(delim) "
+            // REQ / review: each item shows start + index, not the list start alone.
+            markerText = "\(start + itemIndex)\(delim) "
         }
 
-        let insertAt = sourceUTF16(of: node)?.location ?? 0
+        let itemStart = sourceUTF16(of: node)?.location ?? 0
+        // Trailing caret after the visible marker maps after the concrete source marker.
+        let afterMarker: Int
+        if let firstChild = node.children.first(where: {
+            switch $0.kind {
+            case .list: return false
+            default: return true
+            }
+        }), let childStart = sourceUTF16(of: firstChild)?.location {
+            afterMarker = childStart
+        } else {
+            afterMarker = itemStart + (markerText as NSString).length
+        }
         let markerStart = utf16Length
         pieces.append(markerText)
         let markerUTF16 = (markerText as NSString).length
@@ -173,7 +193,7 @@ private nonisolated struct CompilerBuilder {
             .synthetic(
                 projection: markerRange,
                 kind: .listMarker(text: markerText, nesting: nesting),
-                insertion: .atSourceLocation(insertAt)
+                insertion: .atSourceBoundaries(before: itemStart, after: afterMarker)
             )
         )
         listMarkers.append(
@@ -410,20 +430,21 @@ private nonisolated struct CompilerBuilder {
     }
 
     /// Map rendered leaf text to the exact source slice of that text when possible.
+    ///
+    /// Inline/fenced code and HTML nodes' positions include delimiters; the projection
+    /// carries only the literal, so we must pinch `full` down to the rendered content.
     func resolveContentSource(node: MarkdownNode, rendered: String, full: NSRange) -> NSRange {
         switch node.kind {
         case .text:
             return full
-        case .code, .htmlInline, .htmlBlock, .codeBlock, .unsupported:
-            return full
         default:
             break
         }
-        // For wrapper nodes that still emit leaf text via children, `full` is the child span.
+        // Exact match (no delimiters in the node span).
         if case .success(let slice) = map.substring(utf16: full), slice == rendered {
             return full
         }
-        // Search for rendered text inside the full node span (delimiter wrappers).
+        // Search for rendered text inside the full node span (backticks, fences, wrappers).
         if full.location != NSNotFound, full.length > 0,
            case .success(let slice) = map.substring(utf16: full),
            let r = slice.range(of: rendered) {

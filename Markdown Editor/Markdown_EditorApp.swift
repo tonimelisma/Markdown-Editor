@@ -93,10 +93,15 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        // Returning false here still allows applicationShouldOpenUntitledFile → true
-        // to open an untitled document on normal launch; under tests both refuse.
+        // Implementing this delegate method makes the app responsible for creating
+        // the untitled document — returning true alone does not open one.
         if Self.isRunningUnitTests { return false }
-        return true
+        do {
+            _ = try NSDocumentController.shared.openUntitledDocumentAndDisplay(true)
+            return true
+        } catch {
+            return false
+        }
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
