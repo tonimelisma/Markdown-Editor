@@ -109,32 +109,47 @@ nonisolated enum SemanticEditEngine {
             )
 
         case .toggleBold:
-            return wrapInline(snapshot, range: range, delimiters: [("**", "**"), ("__", "__")], action: "Bold")
+            return InlineEditPlanner.wrap(
+                snapshot: snapshot,
+                range: range,
+                delimiters: [("**", "**"), ("__", "__")],
+                action: "Bold"
+            ) { if case .strong = $0 { return true }; return false }
         case .toggleItalic:
-            return wrapInline(snapshot, range: range, delimiters: [("*", "*"), ("_", "_")], action: "Italic")
+            return InlineEditPlanner.wrap(
+                snapshot: snapshot,
+                range: range,
+                delimiters: [("*", "*"), ("_", "_")],
+                action: "Italic"
+            ) { if case .emphasis = $0 { return true }; return false }
         case .toggleStrikethrough:
-            return wrapInline(snapshot, range: range, delimiters: [("~~", "~~")], action: "Strikethrough")
+            return InlineEditPlanner.wrap(
+                snapshot: snapshot,
+                range: range,
+                delimiters: [("~~", "~~")],
+                action: "Strikethrough"
+            ) { if case .strikethrough = $0 { return true }; return false }
         case .toggleInlineCode:
-            return wrapCode(snapshot, range: range)
+            return InlineEditPlanner.wrapCode(snapshot: snapshot, range: range)
 
         case .setHeading(let level):
-            return setBlockPrefix(snapshot, range: range, prefix: String(repeating: "#", count: max(1, min(level, 6))) + " ", action: "Heading")
+            return BlockEditPlanner.setHeading(snapshot: snapshot, range: range, level: level)
         case .setParagraph:
-            return stripBlockPrefix(snapshot, range: range, action: "Paragraph")
+            return BlockEditPlanner.setParagraph(snapshot: snapshot, range: range)
 
         case .toggleUnorderedList:
-            return toggleLinePrefix(snapshot, range: range, prefix: "- ", action: "Unordered List")
+            return ListEditPlanner.toggle(snapshot: snapshot, range: range, prefix: "- ", action: "Unordered List")
         case .toggleOrderedList:
-            return toggleLinePrefix(snapshot, range: range, prefix: "1. ", action: "Ordered List")
+            return ListEditPlanner.toggle(snapshot: snapshot, range: range, prefix: "1. ", action: "Ordered List")
         case .toggleTaskList:
-            return toggleLinePrefix(snapshot, range: range, prefix: "- [ ] ", action: "Task List")
+            return ListEditPlanner.toggle(snapshot: snapshot, range: range, prefix: "- [ ] ", action: "Task List")
         case .toggleBlockQuote:
-            return toggleLinePrefix(snapshot, range: range, prefix: "> ", action: "Quote")
+            return ListEditPlanner.toggleBlockQuote(snapshot: snapshot, range: range)
         case .toggleCodeBlock:
-            return toggleCodeFence(snapshot, range: range)
+            return BlockEditPlanner.toggleCodeFence(snapshot: snapshot, range: range)
 
         case .setLink(let destination):
-            return setLinkSource(snapshot, range: range, destination: destination)
+            return LinkEditPlanner.setLink(snapshot: snapshot, range: range, destination: destination)
 
         case .insertImageMarkdown(let markdown):
             return commit(snapshot, range: range, replacement: markdown, action: "Insert Image")
@@ -162,7 +177,12 @@ nonisolated enum SemanticEditEngine {
             return toggleTaskMarker(snapshot: snapshot, tree: tree, nodeID: nodeID)
 
         case .replaceTableCell(let nodeID, let text):
-            return replaceNodeLiteral(snapshot: snapshot, tree: tree, nodeID: nodeID, replacement: text, action: "Edit Cell")
+            return TableCellEditPlanner.replace(
+                snapshot: snapshot,
+                tree: tree,
+                nodeID: nodeID,
+                text: text
+            )
 
         case .insertImageMarkdown(let markdown):
             guard let sourceRange = mapProjectionSelectionToSource(selection.utf16Range, projection: projection) else {
@@ -227,178 +247,16 @@ nonisolated enum SemanticEditEngine {
         return .transaction(edit, postEditSelection: selection)
     }
 
-    private static func wrapInline(
-        _ snapshot: SourceSnapshot,
-        range: NSRange,
-        delimiters: [(String, String)],
-        action: String
-    ) -> SemanticEditResult {
-        let ns = snapshot.text as NSString
-        let selected = ns.substring(with: range)
-        for (open, close) in delimiters {
-            // Unwrap if already wrapped with this delimiter.
-            if selected.hasPrefix(open), selected.hasSuffix(close), selected.count >= open.count + close.count {
-                let inner = String(selected.dropFirst(open.count).dropLast(close.count))
-                return commit(snapshot, range: range, replacement: inner, action: action)
-            }
-            // Prefer existing surrounding delimiters.
-            let beforeStart = range.location >= open.count
-            if beforeStart {
-                let before = ns.substring(with: NSRange(location: range.location - open.count, length: open.count))
-                let afterLoc = NSMaxRange(range)
-                if afterLoc + close.count <= ns.length {
-                    let after = ns.substring(with: NSRange(location: afterLoc, length: close.count))
-                    if before == open && after == close {
-                        let expanded = NSRange(location: range.location - open.count, length: range.length + open.count + close.count)
-                        return commit(snapshot, range: expanded, replacement: selected, action: action)
-                    }
-                }
-            }
-        }
-        // Choose a delimiter that does not conflict with content.
-        let (open, close) = delimiters.first { open, _ in !selected.contains(open) } ?? delimiters[0]
-        return commit(snapshot, range: range, replacement: open + selected + close, action: action)
-    }
-
-    private static func wrapCode(_ snapshot: SourceSnapshot, range: NSRange) -> SemanticEditResult {
-        let selected = (snapshot.text as NSString).substring(with: range)
-        var ticks = "`"
-        while selected.contains(ticks) {
-            ticks += "`"
-        }
-        return commit(snapshot, range: range, replacement: ticks + selected + ticks, action: "Inline Code")
-    }
-
-    private static func lineRange(in text: NSString, containing range: NSRange) -> NSRange {
-        text.lineRange(for: range)
-    }
-
-    private static func setBlockPrefix(
-        _ snapshot: SourceSnapshot,
-        range: NSRange,
-        prefix: String,
-        action: String
-    ) -> SemanticEditResult {
-        let ns = snapshot.text as NSString
-        let line = lineRange(in: ns, containing: range)
-        var content = ns.substring(with: line)
-        let hadNewline = content.hasSuffix("\n")
-        if hadNewline { content = String(content.dropLast()) }
-        let stripped = stripKnownBlockPrefixes(content)
-        let replacement = prefix + stripped + (hadNewline ? "\n" : "")
-        return commit(snapshot, range: line, replacement: replacement, action: action)
-    }
-
-    private static func stripBlockPrefix(
-        _ snapshot: SourceSnapshot,
-        range: NSRange,
-        action: String
-    ) -> SemanticEditResult {
-        let ns = snapshot.text as NSString
-        let line = lineRange(in: ns, containing: range)
-        var content = ns.substring(with: line)
-        let hadNewline = content.hasSuffix("\n")
-        if hadNewline { content = String(content.dropLast()) }
-        let stripped = stripKnownBlockPrefixes(content)
-        let replacement = stripped + (hadNewline ? "\n" : "")
-        return commit(snapshot, range: line, replacement: replacement, action: action)
-    }
-
-    private static func toggleLinePrefix(
-        _ snapshot: SourceSnapshot,
-        range: NSRange,
-        prefix: String,
-        action: String
-    ) -> SemanticEditResult {
-        let ns = snapshot.text as NSString
-        let line = lineRange(in: ns, containing: range)
-        var content = ns.substring(with: line)
-        let hadNewline = content.hasSuffix("\n")
-        if hadNewline { content = String(content.dropLast()) }
-        let stripped = stripKnownBlockPrefixes(content)
-        let replacement: String
-        if content.hasPrefix(prefix) {
-            replacement = stripped + (hadNewline ? "\n" : "")
-        } else {
-            replacement = prefix + stripped + (hadNewline ? "\n" : "")
-        }
-        return commit(snapshot, range: line, replacement: replacement, action: action)
-    }
-
-    private static func toggleCodeFence(_ snapshot: SourceSnapshot, range: NSRange) -> SemanticEditResult {
-        let ns = snapshot.text as NSString
-        let line = lineRange(in: ns, containing: range)
-        let content = ns.substring(with: line)
-        if content.hasPrefix("```") {
-            return .refused(.ambiguousSelection)
-        }
-        var body = content
-        let hadNewline = body.hasSuffix("\n")
-        if hadNewline { body = String(body.dropLast()) }
-        let replacement = "```\n" + body + "\n```" + (hadNewline ? "\n" : "")
-        return commit(snapshot, range: line, replacement: replacement, action: "Code Block")
-    }
-
-    private static func setLinkSource(
-        _ snapshot: SourceSnapshot,
-        range: NSRange,
-        destination: String?
-    ) -> SemanticEditResult {
-        let ns = snapshot.text as NSString
-        let selected = ns.substring(with: range)
-        guard let destination else {
-            // Remove link if selection looks like [text](url)
-            if selected.hasPrefix("["), let close = selected.firstIndex(of: "]"),
-               selected[selected.index(after: close)...].hasPrefix("("), selected.hasSuffix(")") {
-                let text = String(selected[selected.index(after: selected.startIndex)..<close])
-                return commit(snapshot, range: range, replacement: text, action: "Remove Link")
-            }
-            return .refused(.ambiguousSelection)
-        }
-        let label = selected.isEmpty ? destination : selected
-        return commit(snapshot, range: range, replacement: "[\(label)](\(destination))", action: "Link")
-    }
-
-    private static func stripKnownBlockPrefixes(_ line: String) -> String {
-        var s = line
-        while true {
-            if s.hasPrefix("> ") {
-                s = String(s.dropFirst(2))
-                continue
-            }
-            if let match = s.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
-                s = String(s[match.upperBound...])
-                continue
-            }
-            if s.hasPrefix("- [ ] ") || s.hasPrefix("- [x] ") || s.hasPrefix("- [X] ") {
-                s = String(s.dropFirst(6))
-                continue
-            }
-            if s.hasPrefix("- ") || s.hasPrefix("* ") || s.hasPrefix("+ ") {
-                s = String(s.dropFirst(2))
-                continue
-            }
-            if let match = s.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) {
-                s = String(s[match.upperBound...])
-                continue
-            }
-            break
-        }
-        return s
-    }
-
     private static func mapProjectionSelectionToSource(
         _ range: NSRange,
         projection: MarkdownProjectionModel
     ) -> NSRange? {
-        let anchors = projection.sourceAnchors
-        guard !anchors.isEmpty else { return nil }
-        let startIdx = max(0, min(range.location, anchors.count - 1))
-        let endIdx = max(0, min(NSMaxRange(range), anchors.count - 1))
-        let start = anchors[startIdx]
-        let end = anchors[endIdx]
-        guard start >= 0, end >= start else { return nil }
-        return NSRange(location: start, length: end - start)
+        switch projection.coordinateMap.sourceRange(forProjection: range) {
+        case .exact(let mapped):
+            return mapped
+        case .refused:
+            return nil
+        }
     }
 
     private static func toggleTaskMarker(
@@ -424,31 +282,25 @@ nonisolated enum SemanticEditEngine {
                 .replacingOccurrences(of: "[x]", with: "[ ]")
                 .replacingOccurrences(of: "[X]", with: "[ ]")
         } else {
-            // Prefer replacing the first unchecked marker.
             if let r = slice.range(of: "[ ]") {
                 replacement = slice.replacingCharacters(in: r, with: "[x]")
             } else {
                 return .refused(.ambiguousSelection)
             }
         }
-        return commit(snapshot, range: sourceRange, replacement: replacement, action: "Toggle Task")
-    }
-
-    private static func replaceNodeLiteral(
-        snapshot: SourceSnapshot,
-        tree: MarkdownTree?,
-        nodeID: MarkdownNodeID,
-        replacement: String,
-        action: String
-    ) -> SemanticEditResult {
-        guard let tree, let node = findNode(id: nodeID, in: tree.root) else {
-            return .refused(.mappingFailure)
+        return SemanticPlannerGate.commitIfValid(
+            snapshot: snapshot,
+            range: sourceRange,
+            replacement: replacement,
+            action: "Toggle Task"
+        ) { newTree in
+            guard let item = findNode(id: nodeID, in: newTree.root),
+                  case .item(let newChecked) = item.kind else {
+                // Node IDs are per-parse; accept flipped marker text instead.
+                return replacement.contains("[x]") || replacement.contains("[X]") || replacement.contains("[ ]")
+            }
+            return newChecked != checked
         }
-        let index = MarkdownSourceIndex(source: snapshot.text, sourceVersion: snapshot.sourceVersion)
-        guard case .success(let sourceRange) = index.utf16Range(for: node.position) else {
-            return .refused(.mappingFailure)
-        }
-        return commit(snapshot, range: sourceRange, replacement: replacement, action: action)
     }
 
     private static func findNode(id: MarkdownNodeID, in node: MarkdownNode) -> MarkdownNode? {
