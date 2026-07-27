@@ -49,25 +49,86 @@ struct DiagnosticLogTests {
         #expect(DiagnosticValue.symbol(.setLink).jsonFragment == "\"setLink\"")
     }
 
-    // Verifies: REQ-089 — no `EditorTraceEvent` maps onto a payload carrying free text.
+    // Verifies: REQ-089; ARC-016 — every event name in the vocabulary is reachable from a
+    // mapping whose payload fields are numbers, booleans, or closed symbols, and every
+    // emitted line survives JSON parsing.
     @Test func everyTraceEventMapsToSymbolicPayload() {
         let events: [EditorTraceEvent] = [
+            .mutationRequested(id: UUID(), revision: 1, location: 0, length: 1, replacementLength: 2),
+            .mutationCommitted(id: UUID(), newRevision: 2, location: 0, length: 1, replacementLength: 2),
             .mutationRefused(id: UUID(), reason: .contentMismatch),
+            .undoRegistered(actionNameLength: 6, groupingTyping: true),
+            .historyApplied(direction: .undo, newRevision: 3, location: 0, length: 1),
+            .historyRefused(direction: .redo, reason: .conflict),
+            .parseStarted(sourceVersion: 1, utf16Count: 10),
+            .parseCompleted(sourceVersion: 1),
+            .parseCancelled(sourceVersion: 1),
+            .modeToggle(toSource: true),
+            .compositionBegan(sourceVersion: 1),
+            .compositionCommitted(sourceVersion: 1, replacementLength: 2),
+            .compositionCancelled,
+            .compositionRefusedStale,
+            .imageCacheStore(cost: 10, totalBytes: 20),
+            .loadApplicationStale(token: 1, currentRevision: 2),
             .editRouted(context: .wysiwyg, groupingTyping: true, planner: PlannerKind(.toggleBold)),
+            .mappingResult(accepted: true, domain: .projection),
+            .presentationInstalled(snapshotID: 1, sourceRevision: 1, provisional: false),
+            .presentationTransition(from: 1, to: 2, sourceRevision: 2, durationNanos: 5),
+            .reconciliationScheduled(sourceRevision: 1, generation: 1),
+            .reconciliationDiscarded(sourceRevision: 1, reason: .identityMismatch),
+            .reconciliationApplied(snapshotID: 1, sourceRevision: 1, generation: 1, durationNanos: 5),
             .editRefused(category: .refusal(.crossCell)),
             .editRefused(category: .invalidPresentationTransition),
-            .reconciliationDiscarded(sourceRevision: 3, reason: .identityMismatch),
+            .availabilityChanged(editable: true, sourceRevision: 1),
+            .updateOrigin(.modeRestoration),
+            .documentOpened(utf16Count: 8),
+            .documentClosed(sourceRevision: 4),
+            .hostUpdateEnded(durationNanos: 5, updatesInWindow: 1),
+            .hostUpdateStorm(updatesInWindow: 500),
             .viewReconciliationViolation(kind: .publication),
             .mainActorStall(millis: 1_400)
         ]
+
+        var covered = Set<DiagnosticEventName>()
         for event in events {
             let mapped = JSONLinesEditorTrace.map(event)
-            for field in mapped.data {
-                if case .symbol(let symbol) = field.value {
-                    #expect(DiagnosticSymbol.allCases.contains(symbol))
-                }
-            }
+            covered.insert(mapped.name)
+            let record = DiagnosticRecord(
+                wallClock: Date(),
+                uptimeSeconds: 0,
+                sequence: 1,
+                level: mapped.level,
+                category: mapped.category,
+                event: mapped.name,
+                document: 1,
+                data: mapped.data
+            )
+            let decoded = object(record.jsonLine)
+            #expect(decoded != nil, "mapped record is not valid JSON: \(record.jsonLine)")
         }
+
+        // Only the log's own lifecycle events are produced outside the trace mapping.
+        let logOwned: Set<DiagnosticEventName> = [.runStart, .runEnd, .repeated, .sizeLimitReached]
+        let unreachable = Set(DiagnosticEventName.allCases).subtracting(covered).subtracting(logOwned)
+        #expect(unreachable.isEmpty, "unmapped event names: \(unreachable.map(\.rawValue).sorted())")
+    }
+
+    // Verifies: REQ-095 — the run header survives a hostile runtime version string, which is
+    // the only non-literal text anywhere in the format.
+    @Test func runHeaderEscapesHostileVersionStrings() {
+        let header = DiagnosticRunHeader(
+            runID: "abc",
+            startedAt: Date(timeIntervalSince1970: 0),
+            hostKind: .production,
+            shortVersion: "1.0 \"beta\"",
+            buildVersion: "back\\slash",
+            osVersion: "Version 27.0 \"X\"",
+            processID: 42
+        )
+        let decoded = object(header.jsonLine)
+        let run = decoded?["run"] as? [String: Any]
+        #expect(run?["version"] as? String == "1.0 \"beta\"")
+        #expect(run?["os"] as? String == "Version 27.0 \"X\"")
     }
 
     // Verifies: REQ-095 — the first record identifies the run, including whether it is
@@ -144,6 +205,26 @@ struct DiagnosticLogTests {
         #expect(summaries.count == 1)
         let suppressed = burst - emitted
         #expect(summaries.first?.contains("\"count\":\(suppressed)") == true)
+    }
+
+    // Verifies: REQ-095 — per-file size is bounded, and reaching the cap is recorded as a
+    // well-formed record rather than a hand-written fragment that would break the schema.
+    @Test func fileSizeCapIsBoundedAndRecorded() async {
+        let directory = makeTemporaryDirectory()
+        let log = DiagnosticLog(directory: directory, hostKind: .unitTest)
+        let sink = DiagnosticFileSink(url: log.fileURL, byteLimit: 200)
+        // Fill past a deliberately tiny cap.
+        var reachedCap = false
+        for index in 0..<50 where !reachedCap {
+            reachedCap = await sink.append(["{\"seq\":\(index)}"])
+        }
+        #expect(reachedCap)
+
+        let written = (try? String(contentsOf: log.fileURL, encoding: .utf8)) ?? ""
+        #expect(written.utf8.count <= 200)
+        for line in written.split(separator: "\n") {
+            #expect(object(String(line)) != nil)
+        }
     }
 
     // Verifies: REQ-095 — retention keeps the newest runs and removes the oldest.

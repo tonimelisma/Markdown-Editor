@@ -59,11 +59,13 @@ struct ReconciliationInvariantTests {
         _ host: EditorHostView.HostCoordinator,
         _ session: EditorSession
     ) {
+        let started = DispatchTime.now().uptimeNanoseconds
         session.withViewReconciliation {
             host.syncDocumentBindings()
             host.refreshVisibleEditor()
             host.applyModeIfChanged(session.mode)
         }
+        host.noteHostUpdate(durationNanos: DispatchTime.now().uptimeNanoseconds &- started)
     }
 
     // Verifies: REQ-094; ARC-015 — reconciling an unchanged mode mutates no session state.
@@ -155,8 +157,8 @@ struct ReconciliationInvariantTests {
         #expect(session.wysiwygModeState.selection?.range.utf16 == NSRange(location: 2, length: 3))
     }
 
-    // Verifies: REQ-096 — a session publication during reconciliation is reported as a fault.
-    @Test func reentrantPublicationRecordsFault() {
+    // Verifies: REQ-096 — capturing live AppKit state during reconciliation is a fault.
+    @Test func liveStateCaptureDuringReconciliationRecordsFault() {
         let document = MarkdownDocument()
         let trace = InMemoryEditorTrace()
         document.trace = trace
@@ -208,5 +210,120 @@ struct ReconciliationInvariantTests {
         session.setMode(.source)
         host.applyModeIfChanged(.source)
         #expect(host.sourceText?.selectedRange() == NSRange(location: 3, length: 2))
+    }
+
+    // Verifies: REQ-096 — publishing observed state during reconciliation is a fault. This
+    // covers the `objectWillChange` observer, which the live-capture test does not reach now
+    // that mode state is unpublished.
+    @Test func reentrantPublicationRecordsFault() {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("# Hello\n")
+        let session = EditorSession()
+        session.trapsOnReconciliationViolation = false
+        session.attach(document: document)
+        trace.reset()
+
+        session.withViewReconciliation {
+            // `mode` is published, so this is exactly the illegal direction of flow.
+            session.setMode(.source)
+        }
+
+        #expect(session.reconciliationViolationCount >= 1)
+        let violations = trace.eventsMatching {
+            if case .viewReconciliationViolation(let kind) = $0 { return kind == .publication }
+            return false
+        }
+        #expect(!violations.isEmpty)
+    }
+
+    // Verifies: REQ-096 — a sustained host-update rate reaches the trace as a fault through
+    // the production coordinator, not merely through the meter in isolation.
+    @Test func hostUpdateStormRecordsFault() {
+        let (document, session, host, _) = makeHost()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+
+        for _ in 0...(HostUpdateMeter.stormThreshold + 5) {
+            reconcile(host, session)
+        }
+
+        let storms = trace.eventsMatching {
+            if case .hostUpdateStorm = $0 { return true }
+            return false
+        }
+        #expect(storms.count == 1)
+        #expect(session.reconciliationViolationCount == 0)
+    }
+
+    // Verifies: REQ-094 — replacing source storage keeps the visible caret and the session
+    // selection that toolbar commands act on in agreement.
+    // Fails without the restore in `refreshVisibleEditor`: reverting collapses the caret to
+    // the end of the new storage while the session still reports the old range.
+    @Test func sourceStorageRefreshKeepsCaretAndSessionSelectionInAgreement() {
+        let (document, session, host, _) = makeHost(text: "abcdefghij\n")
+        session.setMode(.source)
+        host.applyModeIfChanged(.source)
+
+        host.sourceText?.setSelectedRange(NSRange(location: 4, length: 2))
+        #expect(session.sourceModeState.selection.range.utf16 == NSRange(location: 4, length: 2))
+
+        document.installTextForTesting("abcdefghij klmnop\n")
+        reconcile(host, session)
+
+        #expect(host.sourceText?.string == document.text)
+        #expect(host.sourceText?.selectedRange() == session.sourceModeState.selection.range.utf16)
+    }
+
+    // Verifies: REQ-096 — a blocked main actor is reported while it is still blocked, not
+    // only once it recovers. Without the threshold race in `probeOnce` only one report
+    // arrives, and only after recovery.
+    @Test func watchdogReportsStallWhileStillBlocked() async {
+        let reported = ReportBox()
+        let blocker = Task { @MainActor in
+            // Occupy the main actor past the probe threshold. The blocking sleep lives in a
+            // synchronous function so it genuinely holds the actor rather than suspending.
+            occupyMainActor(seconds: 0.4)
+        }
+        await MainActorWatchdog.probeOnce(thresholdMillis: 100) { millis in
+            reported.append(millis)
+        }
+        await blocker.value
+
+        let values = await reported.awaitingCount(2)
+        #expect(values.count == 2, "expected an immediate stall report and a recovery duration")
+        #expect(values.first == 100)
+        #expect((values.last ?? 0) >= 100)
+    }
+}
+
+/// Blocks the main actor for real, so the watchdog observes an unresponsive actor.
+@MainActor
+func occupyMainActor(seconds: TimeInterval) {
+    Thread.sleep(forTimeInterval: seconds)
+}
+
+/// Collects watchdog reports from a background isolation domain.
+///
+/// Reports arrive synchronously from a non-isolated context, so delivery into the actor is
+/// itself asynchronous; `awaitingCount` waits for them rather than sampling a race.
+actor ReportBox {
+    private(set) var values: [UInt64] = []
+
+    nonisolated func append(_ value: UInt64) {
+        Task { await self.store(value) }
+    }
+
+    private func store(_ value: UInt64) {
+        values.append(value)
+    }
+
+    func awaitingCount(_ target: Int, timeoutSeconds: Double = 2) async -> [UInt64] {
+        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(timeoutSeconds * 1_000_000_000)
+        while values.count < target, DispatchTime.now().uptimeNanoseconds < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return values
     }
 }

@@ -5,26 +5,47 @@
 
 import Foundation
 
+/// One-shot completion flag observable from another isolation domain.
+///
+/// // REQ-088: actor isolation rather than a lock plus an unchecked-Sendable opt-out.
+actor WatchdogProbeFlag {
+    private var completed = false
+
+    func markCompleted() {
+        completed = true
+    }
+
+    var isCompleted: Bool {
+        completed
+    }
+}
+
 /// Detects an unresponsive main actor from a background task.
 ///
-/// // REQ-096: a stall is measured by timing a hop onto the main actor. The record is written
-/// // when the hop completes, so the duration of a recovered stall is exact. A main actor that
-/// // never recovers produces no record — that case is a crash-report concern, not a log concern.
-/// // The editor-host update meter, not this watchdog, is what catches a busy main actor.
+/// // REQ-096: a hop onto the main actor is raced against the threshold. If the threshold
+/// // elapses first the fault is recorded immediately, while the main actor is still stalled,
+/// // so a stall that never recovers is still reported. A second record carries the measured
+/// // duration once the hop finally lands.
+/// //
+/// // This watchdog catches a *blocked* main actor. A *busy* main actor — a render loop
+/// // burning a core while still servicing hops — is caught by the host update meter instead.
 @MainActor
 final class MainActorWatchdog {
     static let defaultInterval: Duration = .seconds(1)
     static let defaultThresholdMillis: UInt64 = 1_000
 
+    /// Report sink. Invoked from a background task, so it must be safe off the main actor.
+    typealias Report = @Sendable (UInt64) -> Void
+
     private var task: Task<Void, Never>?
     private let interval: Duration
     private let thresholdMillis: UInt64
-    private let report: @MainActor (UInt64) -> Void
+    private let report: Report
 
     init(
         interval: Duration = MainActorWatchdog.defaultInterval,
         thresholdMillis: UInt64 = MainActorWatchdog.defaultThresholdMillis,
-        report: @escaping @MainActor (UInt64) -> Void
+        report: @escaping Report
     ) {
         self.interval = interval
         self.thresholdMillis = thresholdMillis
@@ -40,15 +61,24 @@ final class MainActorWatchdog {
             while !Task.isCancelled {
                 try? await Task.sleep(for: interval)
                 if Task.isCancelled { return }
-                let start = DispatchTime.now().uptimeNanoseconds
-                let elapsedMillis = await MainActor.run {
-                    (DispatchTime.now().uptimeNanoseconds &- start) / 1_000_000
-                }
-                if elapsedMillis >= thresholdMillis {
-                    await MainActor.run { report(elapsedMillis) }
-                }
+                await Self.probeOnce(thresholdMillis: thresholdMillis, report: report)
             }
         }
+    }
+
+    /// Times one hop onto the main actor. Exposed so tests can drive a single probe.
+    static func probeOnce(thresholdMillis: UInt64, report: Report) async {
+        let started = DispatchTime.now().uptimeNanoseconds
+        let flag = WatchdogProbeFlag()
+        let probe = Task<Void, Never> { @MainActor in
+            await flag.markCompleted()
+        }
+        try? await Task.sleep(for: .milliseconds(Int(thresholdMillis)))
+        guard await flag.isCompleted == false else { return }
+        // Still stalled: report now rather than only on recovery.
+        report(thresholdMillis)
+        await probe.value
+        report((DispatchTime.now().uptimeNanoseconds &- started) / 1_000_000)
     }
 
     func stop() {

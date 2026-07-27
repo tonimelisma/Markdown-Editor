@@ -92,13 +92,17 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         _ = documentController
         guard !Self.isRunningUnitTests else { return }
         ensureOpenRecentMenuItem()
+        // The report fires from a background task precisely because the main actor may be
+        // stalled, so the record is queued rather than awaited.
         let watchdog = MainActorWatchdog { millis in
-            DiagnosticLog.shared?.record(
-                .mainActorStall,
-                level: .fault,
-                category: .lifecycle,
-                data: [(.millis, .uint(millis))]
-            )
+            Task { @MainActor in
+                DiagnosticLog.shared?.record(
+                    .mainActorStall,
+                    level: .fault,
+                    category: .lifecycle,
+                    data: [(.millis, .uint(millis))]
+                )
+            }
         }
         watchdog.start()
         self.watchdog = watchdog

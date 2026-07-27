@@ -252,7 +252,9 @@ struct EditorHostView: NSViewRepresentable {
             wysiwygCoordinator?.document = document
             wysiwygCoordinator?.session = session
             placementController.attach(actions: document)
-            placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
+            // The document URL is driven by ContentView's `onChange(of:)` hooks. Calling it
+            // here too can publish `placementController.alert` from inside reconciliation —
+            // the same illegal direction of flow as ARC-015, on a different observed object.
         }
 
         /// Applies a mode only when it actually changed.
@@ -320,6 +322,16 @@ struct EditorHostView: NSViewRepresentable {
                     coord.withOrigin(.programmaticPresentation) {
                         text.string = document.text
                         coord.highlight()
+                        // Replacing storage collapses the native caret. Re-apply the session's
+                        // selection so the visible caret and `sourceModeState.selection` — which
+                        // toolbar commands act on — cannot diverge after a load or revert.
+                        // Reading session state here is allowed; writing it would not be
+                        // (REQ-094; ARC-015).
+                        let length = (document.text as NSString).length
+                        let wanted = session.sourceModeState.selection.range.utf16
+                        let location = min(max(0, wanted.location), length)
+                        let extent = min(max(0, wanted.length), max(0, length - location))
+                        text.setSelectedRange(NSRange(location: location, length: extent))
                     }
                 }
             } else {

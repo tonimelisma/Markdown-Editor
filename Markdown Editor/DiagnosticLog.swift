@@ -28,20 +28,46 @@ nonisolated struct DiagnosticRunHeader: Sendable, Equatable {
     let osVersion: String
     let processID: Int32
 
+    /// // REQ-095: encoded rather than interpolated. `osVersion` and the bundle versions are
+    /// // runtime strings, so a quote or backslash in any of them would otherwise make the one
+    /// // record that identifies the run unparseable.
     var jsonLine: String {
-        let run = [
-            "\"id\":\"\(runID)\"",
-            "\"host\":\"\(hostKind.rawValue)\"",
-            "\"version\":\"\(shortVersion)\"",
-            "\"build\":\"\(buildVersion)\"",
-            "\"os\":\"\(osVersion)\"",
-            "\"pid\":\(processID)"
-        ].joined(separator: ",")
-        return "{\"v\":\(Self.schemaVersion)"
-            + ",\"ev\":\"\(DiagnosticEventName.runStart.rawValue)\""
-            + ",\"t\":\"\(DiagnosticTimestamp.iso8601Milliseconds(startedAt))\""
-            + ",\"seq\":0"
-            + ",\"run\":{\(run)}}"
+        struct Payload: Encodable {
+            struct Run: Encodable {
+                let id: String
+                let host: String
+                let version: String
+                let build: String
+                let os: String
+                let pid: Int32
+            }
+            let v: Int
+            let ev: String
+            let t: String
+            let seq: Int
+            let run: Run
+        }
+        let payload = Payload(
+            v: Self.schemaVersion,
+            ev: DiagnosticEventName.runStart.rawValue,
+            t: DiagnosticTimestamp.iso8601Milliseconds(startedAt),
+            seq: 0,
+            run: Payload.Run(
+                id: runID,
+                host: hostKind.rawValue,
+                version: shortVersion,
+                build: buildVersion,
+                os: osVersion,
+                pid: processID
+            )
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        guard let data = try? encoder.encode(payload),
+              let line = String(data: data, encoding: .utf8) else {
+            return "{\"v\":\(Self.schemaVersion),\"ev\":\"\(DiagnosticEventName.runStart.rawValue)\",\"seq\":0}"
+        }
+        return line
     }
 }
 
@@ -61,30 +87,33 @@ actor DiagnosticFileSink {
         self.byteLimit = byteLimit
     }
 
-    func append(_ lines: [String]) {
-        guard !truncated, !lines.isEmpty else { return }
+    /// Appends lines and reports whether the size cap was reached during this batch.
+    @discardableResult
+    func append(_ lines: [String]) -> Bool {
+        guard !truncated, !lines.isEmpty else { return false }
         if handle == nil {
             FileManager.default.createFile(atPath: url.path, contents: nil)
             handle = try? FileHandle(forWritingTo: url)
         }
-        guard let handle else { return }
+        guard let handle else { return false }
         var payload = Data()
         for line in lines {
             guard let encoded = (line + "\n").data(using: .utf8) else { continue }
             if bytesWritten + payload.count + encoded.count > byteLimit {
                 truncated = true
-                let notice = "{\"ev\":\"\(DiagnosticEventName.retentionPruned.rawValue)\""
-                    + ",\"data\":{\"\(DiagnosticField.reason.rawValue)\":\"sizeLimit\"}}\n"
-                if let noticeData = notice.data(using: .utf8) {
-                    payload.append(noticeData)
-                }
                 break
             }
             payload.append(encoded)
         }
-        guard !payload.isEmpty else { return }
-        try? handle.write(contentsOf: payload)
-        bytesWritten += payload.count
+        if !payload.isEmpty {
+            try? handle.write(contentsOf: payload)
+            bytesWritten += payload.count
+        }
+        return truncated
+    }
+
+    var isTruncated: Bool {
+        truncated
     }
 
     func close() {
@@ -120,6 +149,8 @@ final class DiagnosticLog {
     private var flushTask: Task<Void, Never>?
     private var timerTask: Task<Void, Never>?
     private var closed = false
+    private var sizeLimitRecorded = false
+    private var suddenTerminationDisabled = false
 
     /// Rate-collapse bookkeeping keyed by event name.
     private struct RepeatWindow {
@@ -150,28 +181,40 @@ final class DiagnosticLog {
         fileURL = directory.appendingPathComponent(
             "run-\(DiagnosticTimestamp.compactUTC(startedAt))-\(runID).jsonl"
         )
+        // ARC-Q06: enumerating and deleting old runs is file I/O and does not belong on the
+        // main actor. Only the directory creation above stays, because `fileURL` depends on it.
+        let pruneDirectory = directory
+        let keep = Self.maximumRetainedRuns
+        Task.detached(priority: .utility) {
+            Self.pruneRuns(in: pruneDirectory, keeping: keep)
+        }
         sink = DiagnosticFileSink(url: fileURL, byteLimit: Self.maximumFileBytes)
         startUptimeNanos = DispatchTime.now().uptimeNanoseconds
         // A document app with no dirty documents is eligible for sudden termination: the process
         // is killed without `applicationWillTerminate`, so the terminating record never lands and
         // every clean exit is indistinguishable from a crash. Hold it off until the log closes.
         ProcessInfo.processInfo.disableSuddenTermination()
+        suddenTerminationDisabled = true
         buffer.append(header.jsonLine)
-        Self.pruneRuns(in: directory, keeping: Self.maximumRetainedRuns)
         startFlushTimer()
     }
 
-    /// Default production location: `~/Library/Logs/Markdown Editor/`.
-    static func defaultDirectory() -> URL {
+    /// Production location: `~/Library/Logs/Markdown Editor/`. Test runs get their own
+    /// subdirectory so a `xcodebuild test` cannot prune a user's production evidence.
+    static func defaultDirectory(hostKind: DiagnosticHostKind = .production) -> URL {
         let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library")
-        return base.appendingPathComponent("Logs").appendingPathComponent(directoryName)
+        let root = base.appendingPathComponent("Logs").appendingPathComponent(directoryName)
+        switch hostKind {
+        case .production: return root
+        case .unitTest: return root.appendingPathComponent("UnitTests")
+        }
     }
 
     @discardableResult
     static func startShared(hostKind: DiagnosticHostKind) -> DiagnosticLog {
         if let shared { return shared }
-        let log = DiagnosticLog(directory: defaultDirectory(), hostKind: hostKind)
+        let log = DiagnosticLog(directory: defaultDirectory(hostKind: hostKind), hostKind: hostKind)
         shared = log
         return log
     }
@@ -192,8 +235,9 @@ final class DiagnosticLog {
         guard !closed else { return }
         let uptime = Double(DispatchTime.now().uptimeNanoseconds - startUptimeNanos) / 1_000_000_000
 
-        // REQ-096: a defect firing every run-loop pass must produce bounded evidence.
-        if let collapsed = collapse(event, at: uptime) {
+        // REQ-096: a defect firing every run-loop pass must produce bounded evidence — but a
+        // fault is the evidence, so it is never collapsed away.
+        if level < .error, let collapsed = collapse(event, at: uptime) {
             switch collapsed {
             case .suppress:
                 return
@@ -293,10 +337,25 @@ final class DiagnosticLog {
         // `finishSynchronously` is blocking the main thread, and the terminal flush would
         // deadlock against its own appender.
         let previous = flushTask
-        flushTask = Task.detached {
+        flushTask = Task.detached { [weak self] in
             await previous?.value
-            await sink.append(batch)
+            let truncated = await sink.append(batch)
+            if truncated {
+                await MainActor.run { self?.noteSizeLimitReached() }
+            }
         }
+    }
+
+    /// Records the cap once, as a well-formed record rather than a hand-written fragment.
+    private func noteSizeLimitReached() {
+        guard !sizeLimitRecorded, !closed else { return }
+        sizeLimitRecorded = true
+        record(
+            .sizeLimitReached,
+            level: .warn,
+            category: .diagnostics,
+            data: [(.totalBytes, .int(Self.maximumFileBytes))]
+        )
     }
 
     /// Writes the terminating record so a reader can distinguish a clean exit from a crash.
@@ -319,12 +378,27 @@ final class DiagnosticLog {
         timerTask?.cancel()
         timerTask = nil
         flush()
-        ProcessInfo.processInfo.enableSuddenTermination()
         let sink = self.sink
         let previous = flushTask
-        flushTask = Task.detached {
+        flushTask = Task.detached { [weak self] in
             await previous?.value
             await sink.close()
+            // Only now is the terminating record durable; re-enabling any earlier would let
+            // the process be killed before `runEnd` reaches the file.
+            await MainActor.run { self?.allowSuddenTermination() }
+        }
+    }
+
+    /// Balances the `disableSuddenTermination` taken in `init`, exactly once.
+    private func allowSuddenTermination() {
+        guard suddenTerminationDisabled else { return }
+        suddenTerminationDisabled = false
+        ProcessInfo.processInfo.enableSuddenTermination()
+    }
+
+    deinit {
+        if suddenTerminationDisabled {
+            ProcessInfo.processInfo.enableSuddenTermination()
         }
     }
 

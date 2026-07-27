@@ -119,10 +119,8 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
 
 /// Closed vocabulary of payload field names.
 nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
-    case affinityUpstream
     case count
     case cost
-    case depth
     case direction
     case domain
     case durationNanos
@@ -142,7 +140,6 @@ nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
     case provisional
     case reason
     case replacementLength
-    case retainedRuns
     case revision
     case snapshot
     case sourceRevision
@@ -158,7 +155,7 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
     case runStart
     case runEnd
     case repeated
-    case retentionPruned
+    case sizeLimitReached
 
     // document
     case documentOpened

@@ -84,18 +84,24 @@ final class EditorSession: ObservableObject {
         return body()
     }
 
+    #if DEBUG
     /// Test seam: the suite that provokes a violation on purpose disables the debug trap.
-    /// Production and every other test keep it, so an ARC-015 regression fails immediately.
+    /// Every other test and every debug run keeps it, so an ARC-015 regression fails
+    /// immediately. `assertionFailure` is already a no-op in release, so this exists only
+    /// where the assertion does.
     var trapsOnReconciliationViolation = true
+    #endif
 
     private func reportReconciliationViolation(_ kind: ReconciliationViolation) {
         reconciliationViolationCount &+= 1
         document?.trace?.record(.viewReconciliationViolation(kind: kind))
+        #if DEBUG
         if trapsOnReconciliationViolation {
             assertionFailure(
                 "ARC-015 counterexample: \(kind) during editor-host view reconciliation"
             )
         }
+        #endif
     }
 
     init() {
@@ -211,7 +217,7 @@ final class EditorSession: ObservableObject {
     }
 
     func requestSelectionRestoration(_ selection: SourceSelection) {
-        sourceModeState.selection = selection
+        updateSourceModeState { $0.selection = selection }
         guard mode == .wysiwyg,
               let presentation,
               case .exact(let projected) = presentation.coordinateMap.projectionRange(
@@ -486,7 +492,7 @@ final class EditorSession: ObservableObject {
             )
             switch document.commitSourceMutation(edit.sourceMutation) {
             case .committed:
-                sourceModeState.selection = edit.sourceSelectionAfter
+                updateSourceModeState { $0.selection = edit.sourceSelectionAfter }
                 if let transition = edit.presentationTransition {
                     updateOrigin.with(.programmaticPresentation) {
                         installPresentation(transition.nextSnapshot, tree: authoritativeTree, provisional: true)
