@@ -59,6 +59,7 @@ Every mutable fact has exactly one owner.
 | Marked text/IME composition | transient native input | active `NSTextView`, coordinated by session | one composition |
 | Image-placement selection | immutable operation intent | placement operation | one operation |
 | Decoded image cache | derived bounded cache | `LocalImageCache` | replaceable |
+| Diagnostic run record | derived append-only evidence | `DiagnosticLog` | one file per application run |
 | Asset files | external ordinary files | user/filesystem | persistent outside app state |
 
 Rules:
@@ -68,6 +69,12 @@ Rules:
   domain enum, or compatibility selection model.
 - The document never stores projection-domain selections.
 - A view may report native state; it does not become the authoritative owner of session state.
+- Ownership and publication are separate concerns. Session state is published to SwiftUI only
+  when a view body renders it. Selection, affinity, scroll offset, the authoritative tree, and
+  the one-shot selection instruction are session-owned and unpublished; mode, presentation
+  snapshot, and resolved images are session-owned and published.
+- Publishing state that no view renders is forbidden: it invalidates the view graph for a fact
+  the graph does not consume.
 - A parser result is never canonical and may be discarded without data loss.
 - Presented WYSIWYG text and its coordinate map are one indivisible snapshot with one revision.
 
@@ -172,6 +179,14 @@ fenced-code representation is editable only when its inverse is proven.
 
 - Both TextKit 1 editors exist for the window lifetime. Mode changes alter visibility and focus;
   they do not recreate views or rewrite source.
+- View reconciliation is a pure reader of session state. `updateNSView` rebinds references,
+  applies a newer presentation snapshot, restores a pending one-shot selection, and applies a
+  mode change. It publishes nothing and captures no live AppKit state.
+- Applying a mode is driven by an actual mode change, not by reconciliation. Reconciling an
+  unchanged mode performs no work and mutates no session state.
+- Live native selection, affinity, and scroll offset enter the session only from real AppKit
+  event callbacks — selection-change and bounds-change notifications — and only under
+  `nativeUserInput` origin. Programmatic restoration never writes back.
 - WYSIWYG is enabled only when its presentation snapshot matches current source/location state.
   Otherwise it is visibly unavailable until a current snapshot exists; stale rich content is
   never editable.
@@ -234,7 +249,33 @@ Paste, drag-and-drop, and Add Image create immutable claims and enter one transa
 The shared `assets/` directory is not app-owned. Symlinks, aliases, packages, non-regular sources,
 symlinked destinations, and path escape are rejected.
 
-## 11. Quality scenarios
+## 11. Instrumentation and diagnostics
+
+Instrumentation is local evidence, not telemetry. Nothing is transmitted. Records are written to
+ordinary files the user owns and can read, delete, or ignore.
+
+- One JSON Lines file per application run under `~/Library/Logs/Markdown Editor/`. Line-oriented
+  so a truncated or crashed run stays parseable.
+- The first record identifies the run: schema version, run identifier, build, commit, host kind
+  (`production` or `unitTest`), OS version, and process identifier. A final record marks clean
+  termination, so a reader distinguishes a crash from an orderly exit.
+- Every record carries wall-clock time, monotonic seconds since launch, a strictly increasing
+  sequence number, a level, a category, an event name, and a flat payload.
+- Payload values are a closed type admitting integers, doubles, booleans, and code-defined
+  symbols. There is no string case. Recording document text, replacement text, selected text, a
+  URL, a description, a filename, or a path is not prevented by review — it is unrepresentable.
+- Documents appear as opaque per-run handles, never as names or paths.
+- Repeated events collapse into a counted summary above a rate threshold, so a defect that fires
+  every run-loop pass produces bounded evidence instead of an unbounded file.
+- Records buffer on the main actor and flush on a background serial queue; the editing path never
+  performs synchronous file I/O. Faults flush immediately.
+- Retained runs and per-file size are bounded; the oldest runs are removed first.
+- A background watchdog detects an unresponsive main actor. Reconciliation instrumentation
+  detects host update storms and any session publication during view reconciliation.
+
+There is no second instrumentation route. `os_log` is not used for editor events.
+
+## 12. Quality scenarios
 
 | ID | Scenario and measure |
 |---|---|
@@ -247,9 +288,10 @@ symlinked destinations, and path escape are rejected.
 | ARC-Q07 | Every supported presentation atom satisfies the oracle; every unsupported, cross-cell, mixed-domain, or unprovable selection refuses without mutation. |
 | ARC-Q08 | Mode changes preserve each mode's logical selection/affinity/scroll and never change source. |
 | ARC-Q09 | File-backed PNG/JPEG/GIF/HEIC/HEIF fixtures retain exact bytes and metadata; display decoding creates no intermediate JPEG or PNG. |
-| ARC-Q10 | Instrumentation proves routing, revision, result, refusal class, and timing without document content, selected content, URLs, descriptions, or complete paths. |
+| ARC-Q10 | Instrumentation proves routing, revision, result, refusal class, and timing, and cannot represent document content, selected content, URLs, descriptions, filenames, or paths. |
+| ARC-Q11 | Opening a document and leaving the window idle performs a bounded number of editor-host view updates and settles; sustained reconciliation without user input is a reported fault. |
 
-## 12. Architectural invariants and proof
+## 13. Architectural invariants and proof
 
 | ID | Invariant | Required proof |
 |---|---|---|
@@ -267,8 +309,10 @@ symlinked destinations, and path escape are rejected.
 | ARC-012 | Image entry points share one exact-copy, contained, non-destructive transaction. | route tests; filesystem adversarial suite |
 | ARC-013 | Programmatic view updates cannot masquerade as user input or alter undo grouping. | explicit origin type; callback tests |
 | ARC-014 | No production or verification claim depends on manual or UI testing. | target/source conformance check |
+| ARC-015 | Editor-host view reconciliation publishes no session change and captures no live AppKit state; unrendered session state is never published. | reconciliation re-entrancy counter; zero-mutation and zero-publication host update tests |
+| ARC-016 | Diagnostic payloads cannot represent document content, URLs, descriptions, filenames, or paths. | closed payload value type without a string case; encoder tests |
 
-## 13. Architecture change gate
+## 14. Architecture change gate
 
 An implementation plan may conform to this architecture; it may not silently redefine it.
 
@@ -285,10 +329,13 @@ Changing an `ARC-###` invariant requires, before production code:
 There are no architectural compatibility shims, indefinite migrations, exceptions, or
 supersession documents. The working tree states current truth; Git records history.
 
-## 14. Current risks
+## 15. Current risks
 
 - Concrete inverse mapping remains the hardest part of delimiter-free WYSIWYG editing.
 - AppKit delegate callbacks are reentrant and include programmatic selection notifications.
+- `@Published` invalidates on assignment, not on change. A write to observed session state from
+  inside view reconciliation is self-sustaining and presents as sustained CPU use rather than a
+  hang; only the re-entrancy counter and host-update instrumentation make it visible.
 - Tables combine presentation structure with escape-sensitive source spelling.
 - cmark semantic literals may normalize source spelling; source positions plus a concrete decoder
   are required before claiming editability.
@@ -297,7 +344,7 @@ supersession documents. The working tree states current truth; Git records histo
 - Image placement interacts with external files and asynchronous providers; containment and
   identity-pinned rollback remain mandatory.
 
-## 15. Glossary
+## 16. Glossary
 
 - **Accepted edit:** a fully validated operation whose source mutation commits.
 - **Authoritative reconciliation:** a full parse/index/projection built from canonical source and

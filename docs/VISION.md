@@ -23,7 +23,9 @@ In priority order:
 3. **Interoperable output.** Generated text follows a named, executable Markdown specification
    rather than an undocumented house dialect.
 4. **No surprises.** Standard macOS document and editing behavior works as expected.
-5. **Local and private.** Core editing is offline, account-free, and telemetry-free.
+5. **Local and private.** Core editing is offline, account-free, and telemetry-free. Diagnostics
+   are written only to ordinary local log files the user owns, contain no document content, and
+   are never transmitted; any future sharing of them is a manual, per-file user action.
 6. **Safe companion files.** Adding an image never overwrites, moves, alters, or deletes the
    source image or unrelated files.
 7. **Fast and light.** Editing remains responsive with a small dependency and memory footprint.
@@ -105,6 +107,7 @@ command or second image pipeline.
 ## Non-goals
 
 - Notes library, graph, backlinks, proprietary sync, collaboration, account, or telemetry.
+- Automatic, background, or consent-free transmission of diagnostic logs.
 - Cross-platform application; the files themselves remain cross-tool.
 - A claim that loose Markdown plus `assets/` forms an atomic package.
 - Automatic asset garbage collection or remote-image downloading.
