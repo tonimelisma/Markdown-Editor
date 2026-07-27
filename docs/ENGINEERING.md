@@ -256,9 +256,10 @@ ordinary files the user owns and can read, delete, or ignore.
 
 - One JSON Lines file per application run under `~/Library/Logs/Markdown Editor/`. Line-oriented
   so a truncated or crashed run stays parseable.
-- The first record identifies the run: schema version, run identifier, build, commit, host kind
-  (`production` or `unitTest`), OS version, and process identifier. A final record marks clean
-  termination, so a reader distinguishes a crash from an orderly exit.
+- The first record identifies the run: schema version, run identifier, build, host kind
+  (`production` or `unitTest`), OS version, and process identifier. Its fields are fixed process
+  facts, so the closed payload value type below does not constrain them. A final record marks
+  clean termination, so a reader distinguishes a crash from an orderly exit.
 - Every record carries wall-clock time, monotonic seconds since launch, a strictly increasing
   sequence number, a level, a category, an event name, and a flat payload.
 - Payload values are a closed type admitting integers, doubles, booleans, and code-defined
@@ -270,8 +271,11 @@ ordinary files the user owns and can read, delete, or ignore.
 - Records buffer on the main actor and flush on a background serial queue; the editing path never
   performs synchronous file I/O. Faults flush immediately.
 - Retained runs and per-file size are bounded; the oldest runs are removed first.
-- A background watchdog detects an unresponsive main actor. Reconciliation instrumentation
-  detects host update storms and any session publication during view reconciliation.
+- A background watchdog times a hop onto the main actor and records the exact duration of a
+  recovered stall. A main actor that never recovers is a crash-report concern, not a log concern.
+- Reconciliation instrumentation records any session publication during view reconciliation, and
+  the host-update meter reports a sustained update rate — the signature of a self-feeding loop,
+  which presents as high CPU rather than as a hang.
 
 There is no second instrumentation route. `os_log` is not used for editor events.
 

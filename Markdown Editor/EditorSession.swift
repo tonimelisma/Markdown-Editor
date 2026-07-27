@@ -32,13 +32,17 @@ nonisolated struct PendingSelectionRestoration: Sendable, Equatable {
 /// // REQ-052/053/058/083/085/086/091/093: typed mode state; revisioned presentation; sync edits.
 @MainActor
 final class EditorSession: ObservableObject {
+    // REQ-094; ARC-015: publication follows rendering, not ownership. Only `mode`,
+    // `presentation`, and `resolvedImages` are read from a SwiftUI view body and therefore
+    // drive reconciliation. The remaining state is session-owned (ARC-002) but unpublished:
+    // publishing it would invalidate the view graph for a fact the graph never consumes.
     @Published private(set) var mode: EditorMode = .wysiwyg
     @Published private(set) var presentation: PresentationSnapshot?
-    @Published private(set) var authoritativeTree: MarkdownTree?
-    @Published private(set) var sourceModeState = SourceModeState()
-    @Published private(set) var wysiwygModeState = WYSIWYGModeState()
     @Published private(set) var resolvedImages: [MarkdownNodeID: NSImage] = [:]
-    @Published private(set) var pendingSelectionRestoration: PendingSelectionRestoration?
+    private(set) var authoritativeTree: MarkdownTree?
+    private(set) var sourceModeState = SourceModeState()
+    private(set) var wysiwygModeState = WYSIWYGModeState()
+    private(set) var pendingSelectionRestoration: PendingSelectionRestoration?
 
     let imageCache = LocalImageCache()
     let updateOrigin = EditorUpdateOriginScope()
@@ -55,7 +59,55 @@ final class EditorSession: ObservableObject {
     private weak var document: MarkdownDocument?
     private var parseTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
+    private var publicationObserver: AnyCancellable?
     private var operationGeneration: UInt64 = 0
+
+    // MARK: - View reconciliation scope (REQ-094/096; ARC-015)
+
+    /// Depth of the SwiftUI reconciliation currently running over the editor host.
+    private(set) var viewReconciliationDepth = 0
+
+    /// Number of mode-state mutations performed. A reconciliation must not advance it.
+    private(set) var modeStateMutationCount: UInt64 = 0
+
+    /// Violations observed while reconciling — publications and live-state captures.
+    private(set) var reconciliationViolationCount: UInt64 = 0
+
+    /// Brackets one editor-host reconciliation.
+    ///
+    /// Any publication or mode-state mutation inside the bracket is an ARC-015 counterexample:
+    /// it re-dirties the view being reconciled, and because `@Published` invalidates on
+    /// assignment rather than on change, the resulting update loop never settles.
+    func withViewReconciliation<T>(_ body: () -> T) -> T {
+        viewReconciliationDepth += 1
+        defer { viewReconciliationDepth -= 1 }
+        return body()
+    }
+
+    /// Test seam: the suite that provokes a violation on purpose disables the debug trap.
+    /// Production and every other test keep it, so an ARC-015 regression fails immediately.
+    var trapsOnReconciliationViolation = true
+
+    private func reportReconciliationViolation(_ kind: ReconciliationViolation) {
+        reconciliationViolationCount &+= 1
+        document?.trace?.record(.viewReconciliationViolation(kind: kind))
+        if trapsOnReconciliationViolation {
+            assertionFailure(
+                "ARC-015 counterexample: \(kind) during editor-host view reconciliation"
+            )
+        }
+    }
+
+    init() {
+        // ObservableObjectPublisher is not isolated; every mutation of this type is main-actor
+        // bound, so observing it under `assumeIsolated` is exact rather than optimistic.
+        publicationObserver = objectWillChange.sink { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.viewReconciliationDepth > 0 else { return }
+                self.reportReconciliationViolation(.publication)
+            }
+        }
+    }
 
     func attach(document: MarkdownDocument) {
         self.document = document
@@ -107,15 +159,25 @@ final class EditorSession: ObservableObject {
     }
 
     func updateSourceModeState(_ mutate: (inout SourceModeState) -> Void) {
+        noteModeStateMutation()
         var state = sourceModeState
         mutate(&state)
         sourceModeState = state
     }
 
     func updateWYSIWYGModeState(_ mutate: (inout WYSIWYGModeState) -> Void) {
+        noteModeStateMutation()
         var state = wysiwygModeState
         mutate(&state)
         wysiwygModeState = state
+    }
+
+    /// // REQ-094; ARC-015: mode state records real editor events, never reconciliation.
+    private func noteModeStateMutation() {
+        modeStateMutationCount &+= 1
+        if viewReconciliationDepth > 0 {
+            reportReconciliationViolation(.liveStateCapture)
+        }
     }
 
     /// Test/hook: install an already-built projection without waiting on the async parse path.
@@ -278,7 +340,7 @@ final class EditorSession: ObservableObject {
                     guard self.document?.sourceVersion == snapshot.sourceVersion,
                           self.operationGeneration == generation else {
                         self.document?.trace?.record(
-                            .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: "stale")
+                            .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .stale)
                         )
                         return
                     }
@@ -291,7 +353,7 @@ final class EditorSession: ObservableObject {
                         }
                     }
                     self.document?.trace?.record(
-                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: "parseFailure")
+                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .parseFailure)
                     )
                 }
                 return
@@ -300,7 +362,7 @@ final class EditorSession: ObservableObject {
             if case .failure = ProjectionOracle.validate(model: model, sourceUTF16Count: (snapshot.text as NSString).length) {
                 await MainActor.run {
                     self?.document?.trace?.record(
-                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: "oracle")
+                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .oracleModel)
                     )
                 }
                 return
@@ -328,7 +390,7 @@ final class EditorSession: ObservableObject {
                       self.document?.locationGeneration == snapshot.locationGeneration,
                       self.operationGeneration == generation else {
                     self.document?.trace?.record(
-                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: "identityMismatch")
+                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .identityMismatch)
                     )
                     return
                 }
@@ -341,7 +403,7 @@ final class EditorSession: ObservableObject {
                 )
                 if case .failure = ProjectionOracle.validate(snapshot: authoritative) {
                     self.document?.trace?.record(
-                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: "oracleSnapshot")
+                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .oracleSnapshot)
                     )
                     return
                 }
@@ -411,15 +473,15 @@ final class EditorSession: ObservableObject {
                       transition.selectionAfter.range.revision.snapshotID == transition.nextSnapshot.id,
                       edit.projectionSelectionAfter?.range.revision.snapshotID == transition.nextSnapshot.id
                 else {
-                    document.trace?.record(.editRefused(category: "invalidPresentationTransition"))
+                    document.trace?.record(.editRefused(category: .invalidPresentationTransition))
                     return .refused(.unprovable)
                 }
             }
             document.trace?.record(
                 .editRouted(
-                    context: mode == .wysiwyg ? "wysiwyg" : "source",
+                    context: mode,
                     groupingTyping: edit.sourceMutation.grouping == .typing,
-                    planner: edit.sourceMutation.actionName
+                    planner: PlannerKind(command)
                 )
             )
             switch document.commitSourceMutation(edit.sourceMutation) {
@@ -452,9 +514,7 @@ final class EditorSession: ObservableObject {
                 }
             }
         case .refused(let refusal):
-            document.trace?.record(
-                .editRefused(category: String(describing: refusal))
-            )
+            document.trace?.record(.editRefused(category: .refusal(refusal)))
             return .refused(refusal)
         }
     }

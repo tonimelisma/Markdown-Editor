@@ -8,75 +8,11 @@ import SwiftUI
 
 /// TextKit 1 WYSIWYG adapter — delimiter-free rich storage; edits become source transactions.
 ///
+/// Namespace for the WYSIWYG coordinator. `EditorHostView` owns the persistent text views
+/// (REQ-052/086), so this type carries no `NSViewRepresentable` conformance.
+///
 /// // REQ-052/054–059/078–084/086: rich projection host; tasks/links; plain paste; accessibility.
-struct WYSIWYGTextView: NSViewRepresentable {
-    @ObservedObject var document: MarkdownDocument
-    @ObservedObject var session: EditorSession
-    var placementController: ImagePlacementController
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(document: document, session: session, placementController: placementController)
-    }
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let textView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
-        textView.delegate = context.coordinator
-        textView.inputCoordinator = context.coordinator.input
-        textView.adapterCoordinator = context.coordinator
-        textView.session = session
-        textView.documentActions = document
-        textView.placementController = placementController
-        textView.isRichText = true
-        textView.allowsUndo = false
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticTextReplacementEnabled = false
-        textView.usesFindBar = true
-        textView.isIncrementalSearchingEnabled = true
-        textView.textContainerInset = NSSize(width: 8, height: 8)
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.widthTracksTextView = true
-        textView.setAccessibilityLabel("Markdown WYSIWYG")
-        // REQ-079: allow link clicks — all URLs open via injected opener (no scheme allowlist).
-        textView.isEditable = true
-        textView.isSelectable = true
-
-        var dragTypes: [NSPasteboard.PasteboardType] = [.fileURL, .png, .tiff]
-        dragTypes.append(contentsOf: FilePromiseBridge.readableDraggedTypes)
-        textView.registerForDraggedTypes(dragTypes)
-
-        let scroll = NSScrollView()
-        scroll.hasVerticalScroller = true
-        scroll.documentView = textView
-        context.coordinator.textView = textView
-        context.coordinator.scrollView = scroll
-        context.coordinator.applyProjectionIfNeeded(force: true)
-        return scroll
-    }
-
-    func updateNSView(_ nsView: NSScrollView, context: Context) {
-        context.coordinator.document = document
-        context.coordinator.session = session
-        guard let textView = nsView.documentView as? MarkdownWYSIWYGTextView else { return }
-        textView.session = session
-        textView.documentActions = document
-        textView.placementController = placementController
-        textView.inputCoordinator = context.coordinator.input
-        textView.adapterCoordinator = context.coordinator
-        context.coordinator.applyProjectionIfNeeded(force: false)
-        if let restoration = session.consumePendingSelectionRestoration(),
-           session.mode == .wysiwyg,
-           case .projection = restoration.domain {
-            session.updateOrigin.with(.selectionRestoration) {
-                if let projected = restoration.projectionSelection {
-                    textView.setSelectedRange(projected.range.utf16)
-                }
-            }
-        }
-    }
-
+enum WYSIWYGTextView {
     /// Pure IME gate used by the text view — marked text stays transient until commit.
     ///
     /// // REQ-084: composition commits once; stale refuses.
@@ -295,6 +231,10 @@ struct WYSIWYGTextView: NSViewRepresentable {
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView else { return }
+            // REQ-094; ARC-013/015: a programmatic set is restoring a value the session already
+            // holds. Writing it back turns restoration into a state change and, when the set
+            // happens during reconciliation, into a self-feeding update loop.
+            guard session.updateOrigin.current == .nativeUserInput else { return }
             let range = textView.selectedRange()
             if let presentation = session.presentation,
                case .editable(let id) = session.wysiwygModeState.availability,
@@ -311,10 +251,8 @@ struct WYSIWYGTextView: NSViewRepresentable {
                     )
                 }
             }
-            // Close typing groups only on real native caret moves.
-            if session.updateOrigin.current == .nativeUserInput {
-                document.closeTypingUndoGroup()
-            }
+            // Close typing groups on real native caret moves.
+            document.closeTypingUndoGroup()
         }
 
         func performTaskToggle(nodeID: MarkdownNodeID) {

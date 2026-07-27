@@ -74,6 +74,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         publishedFileURL = nil
         undoManager?.groupsByEvent = false
         attachUndoCheckpointObserverIfNeeded()
+        // REQ-095: production instrumentation is wired at construction. Before COR-10 the
+        // `trace` property was never assigned outside tests, so shipping builds produced no
+        // diagnostics at all.
+        if let log = DiagnosticLog.shared {
+            trace = JSONLinesEditorTrace(log: log)
+        }
     }
 
     /// Production always autosaves in place (REQ-014).
@@ -89,6 +95,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     override func makeWindowControllers() {
         undoManager?.groupsByEvent = false
         attachUndoCheckpointObserverIfNeeded()
+        trace?.record(.documentOpened(utf16Count: (text as NSString).length))
         let contentView = ContentView(document: self)
         let hosting = NSHostingController(rootView: contentView)
         let window = NSWindow(contentViewController: hosting)
@@ -287,6 +294,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     }
 
     override func close() {
+        trace?.record(.documentClosed(sourceRevision: sourceVersion))
         detachUndoCheckpointObserver()
         super.close()
     }
