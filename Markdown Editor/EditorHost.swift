@@ -69,21 +69,29 @@ struct EditorHostView: NSViewRepresentable {
         return root
     }
 
+    /// // REQ-094; ARC-015: a pure reader. Rebind references, apply a newer presentation,
+    /// // restore a pending one-shot selection, and apply a mode change — nothing else.
+    /// // Publishing session state here would re-dirty the view being reconciled, and because
+    /// // `@Published` invalidates on assignment rather than on change, the loop never settles.
     func updateNSView(_ nsView: NSView, context: Context) {
         let host = context.coordinator
-        host.document = document
-        host.session = session
-        host.placementController = placementController
-        host.actionRouter = actionRouter
-        host.syncDocumentBindings()
-        // Apply the newest presentation before accepting native coordinates as
-        // belonging to it. The previous TextKit storage still owns the old snapshot.
-        host.refreshVisibleEditor()
-        host.applyMode(session.mode, focus: false)
+        let started = DispatchTime.now().uptimeNanoseconds
+        session.withViewReconciliation {
+            host.document = document
+            host.session = session
+            host.placementController = placementController
+            host.actionRouter = actionRouter
+            host.syncDocumentBindings()
+            // Apply the newest presentation before accepting native coordinates as
+            // belonging to it. The previous TextKit storage still owns the old snapshot.
+            host.refreshVisibleEditor()
+            host.applyModeIfChanged(session.mode)
+        }
+        host.noteHostUpdate(durationNanos: DispatchTime.now().uptimeNanoseconds &- started)
     }
 
     @MainActor
-    final class HostCoordinator {
+    final class HostCoordinator: NSObject {
         var document: MarkdownDocument
         var session: EditorSession
         var placementController: ImagePlacementController
@@ -98,6 +106,9 @@ struct EditorHostView: NSViewRepresentable {
 
         /// Last mode applied to visibility — used to transfer focus on toggle.
         private var lastAppliedMode: EditorMode?
+
+        /// Rolling host-update rate (REQ-096; ARC-Q11).
+        private let updateMeter = HostUpdateMeter()
 
         /// Stable identities for characterization tests.
         var sourceViewIdentity: ObjectIdentifier? {
@@ -117,6 +128,57 @@ struct EditorHostView: NSViewRepresentable {
             self.session = session
             self.placementController = placementController
             self.actionRouter = actionRouter
+            super.init()
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        /// Records one completed host update and reports a sustained storm.
+        ///
+        /// // REQ-096; ARC-Q11: an idle document settles. Sustained reconciliation without user
+        /// // input is the signature of a self-feeding update loop and is reported as a fault.
+        func noteHostUpdate(durationNanos: UInt64) {
+            let sample = updateMeter.record(durationNanos: durationNanos)
+            document.trace?.record(
+                .hostUpdateEnded(
+                    durationNanos: sample.durationNanos,
+                    updatesInWindow: sample.updatesInWindow
+                )
+            )
+            if sample.crossedStormThreshold {
+                document.trace?.record(.hostUpdateStorm(updatesInWindow: sample.updatesInWindow))
+            }
+        }
+
+        /// Records live scroll position from the clip view's own bounds notification.
+        ///
+        /// // REQ-086/094; ARC-015: scroll enters the session from a real AppKit event, never
+        /// // from view reconciliation, and never while a programmatic origin is in scope.
+        @objc
+        private func clipViewBoundsDidChange(_ notification: Notification) {
+            guard session.updateOrigin.current == .nativeUserInput else { return }
+            guard session.viewReconciliationDepth == 0 else { return }
+            guard let clipView = notification.object as? NSClipView else { return }
+            let origin = clipView.bounds.origin
+            if clipView === sourceScroll?.contentView {
+                guard session.sourceModeState.scrollOffset != origin else { return }
+                session.updateSourceModeState { $0.scrollOffset = origin }
+            } else if clipView === wysiwygScroll?.contentView {
+                guard session.wysiwygModeState.scrollOffset != origin else { return }
+                session.updateWYSIWYGModeState { $0.scrollOffset = origin }
+            }
+        }
+
+        private func observeScrollBounds(_ scrollView: NSScrollView) {
+            scrollView.contentView.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(clipViewBoundsDidChange(_:)),
+                name: NSView.boundsDidChangeNotification,
+                object: scrollView.contentView
+            )
         }
 
         func buildEditors(in root: NSView) {
@@ -168,6 +230,8 @@ struct EditorHostView: NSViewRepresentable {
             wysiwygScroll = wScroll
             sourceText = sText
             wysiwygText = wText
+            observeScrollBounds(sScroll)
+            observeScrollBounds(wScroll)
             placementController.attach(actions: document)
             placementController.updateDocumentURL(document.fileURL)
 
@@ -188,7 +252,19 @@ struct EditorHostView: NSViewRepresentable {
             wysiwygCoordinator?.document = document
             wysiwygCoordinator?.session = session
             placementController.attach(actions: document)
-            placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
+            // The document URL is driven by ContentView's `onChange(of:)` hooks. Calling it
+            // here too can publish `placementController.alert` from inside reconciliation —
+            // the same illegal direction of flow as ARC-015, on a different observed object.
+        }
+
+        /// Applies a mode only when it actually changed.
+        ///
+        /// // REQ-094; ARC-015: reconciling an unchanged mode performs no work and mutates no
+        /// // session state. Visibility, focus, and restoration are consequences of a real mode
+        /// // change, not of the view graph running an update pass.
+        func applyModeIfChanged(_ mode: EditorMode) {
+            guard lastAppliedMode != mode else { return }
+            applyMode(mode, focus: false)
         }
 
         func applyMode(_ mode: EditorMode, focus: Bool) {
@@ -200,30 +276,10 @@ struct EditorHostView: NSViewRepresentable {
                 || firstResponder === wysiwygText
                 || firstResponder === sourceScroll
                 || firstResponder === wysiwygScroll
-            if sourceScroll.isHidden == false {
-                session.updateSourceModeState {
-                    $0.selection = SourceSelection(
-                        utf16: sourceText.selectedRange(),
-                        affinity: sourceText.selectionAffinity == .upstream ? .upstream : .downstream
-                    )
-                    $0.scrollOffset = sourceScroll.contentView.bounds.origin
-                }
-            }
-            if wysiwygScroll.isHidden == false {
-                if let presentation = session.presentation,
-                   wysiwygCoordinator?.hasAppliedSnapshot(presentation.id) == true {
-                    let affinity: SelectionAffinity =
-                        wysiwygText.selectionAffinity == .upstream ? .upstream : .downstream
-                    session.updateWYSIWYGModeState {
-                        $0.selection = ProjectionSelection(
-                            utf16: wysiwygText.selectedRange(),
-                            revision: presentation.projectionRevision,
-                            affinity: affinity
-                        )
-                        $0.scrollOffset = wysiwygScroll.contentView.bounds.origin
-                    }
-                }
-            }
+            // The outgoing mode's selection and scroll are already current: selection arrives
+            // from `textViewDidChangeSelection` and scroll from the clip view's bounds
+            // notification, both of which are real AppKit events. Capturing them here instead
+            // would write session state from inside view reconciliation (ARC-015).
             let showSource = (mode == .source)
             sourceScroll.isHidden = !showSource
             wysiwygScroll.isHidden = showSource
@@ -266,6 +322,16 @@ struct EditorHostView: NSViewRepresentable {
                     coord.withOrigin(.programmaticPresentation) {
                         text.string = document.text
                         coord.highlight()
+                        // Replacing storage collapses the native caret. Re-apply the session's
+                        // selection so the visible caret and `sourceModeState.selection` — which
+                        // toolbar commands act on — cannot diverge after a load or revert.
+                        // Reading session state here is allowed; writing it would not be
+                        // (REQ-094; ARC-015).
+                        let length = (document.text as NSString).length
+                        let wanted = session.sourceModeState.selection.range.utf16
+                        let location = min(max(0, wanted.location), length)
+                        let extent = min(max(0, wanted.length), max(0, length - location))
+                        text.setSelectedRange(NSRange(location: location, length: extent))
                     }
                 }
             } else {

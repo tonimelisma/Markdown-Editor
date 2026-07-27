@@ -4,11 +4,153 @@
 //
 
 import Foundation
-import OSLog
+
+/// Why a reconciliation-scope rule was broken.
+///
+/// // REQ-094/096; ARC-015.
+nonisolated enum ReconciliationViolation: Sendable, Equatable {
+    /// Observed session state was published while the view graph was reconciling it.
+    case publication
+    /// Live native selection, affinity, or scroll was captured during reconciliation.
+    case liveStateCapture
+
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .publication: return .publication
+        case .liveStateCapture: return .liveStateCapture
+        }
+    }
+}
+
+/// Why an authoritative reconciliation result was dropped.
+nonisolated enum ReconciliationDiscardReason: Sendable, Equatable {
+    case stale
+    case parseFailure
+    case oracleModel
+    case oracleSnapshot
+    case identityMismatch
+
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .stale: return .stale
+        case .parseFailure: return .parseFailure
+        case .oracleModel: return .oracleModel
+        case .oracleSnapshot: return .oracleSnapshot
+        case .identityMismatch: return .identityMismatch
+        }
+    }
+}
+
+/// Coordinate domain a mapping was attempted in.
+nonisolated enum MappingDomain: Sendable, Equatable {
+    case source
+    case projection
+
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .source: return .source
+        case .projection: return .projection
+        }
+    }
+}
+
+/// Which planner handled an accepted edit. Derived from the command, never from an action name.
+///
+/// // REQ-089; ARC-016: `SourceMutation.actionName` is a user-facing undo title and is never
+/// // recorded; only its length appears, as it already does for undo registration.
+nonisolated enum PlannerKind: Sendable, Equatable {
+    case insertText
+    case deleteBackward
+    case toggleBold
+    case toggleItalic
+    case toggleStrikethrough
+    case toggleInlineCode
+    case setParagraph
+    case setHeading
+    case toggleOrderedList
+    case toggleUnorderedList
+    case toggleTaskList
+    case toggleBlockQuote
+    case toggleCodeBlock
+    case setLink
+    case toggleTask
+    case replaceTableCell
+    case insertImageMarkdown
+
+    init(_ command: SemanticCommand) {
+        switch command {
+        case .insertText: self = .insertText
+        case .deleteBackward: self = .deleteBackward
+        case .toggleBold: self = .toggleBold
+        case .toggleItalic: self = .toggleItalic
+        case .toggleStrikethrough: self = .toggleStrikethrough
+        case .toggleInlineCode: self = .toggleInlineCode
+        case .setParagraph: self = .setParagraph
+        case .setHeading: self = .setHeading
+        case .toggleOrderedList: self = .toggleOrderedList
+        case .toggleUnorderedList: self = .toggleUnorderedList
+        case .toggleTaskList: self = .toggleTaskList
+        case .toggleBlockQuote: self = .toggleBlockQuote
+        case .toggleCodeBlock: self = .toggleCodeBlock
+        case .setLink: self = .setLink
+        case .toggleTask: self = .toggleTask
+        case .replaceTableCell: self = .replaceTableCell
+        case .insertImageMarkdown: self = .insertImageMarkdown
+        }
+    }
+
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .insertText: return .insertText
+        case .deleteBackward: return .deleteBackward
+        case .toggleBold: return .toggleBold
+        case .toggleItalic: return .toggleItalic
+        case .toggleStrikethrough: return .toggleStrikethrough
+        case .toggleInlineCode: return .toggleInlineCode
+        case .setParagraph: return .setParagraph
+        case .setHeading: return .setHeading
+        case .toggleOrderedList: return .toggleOrderedList
+        case .toggleUnorderedList: return .toggleUnorderedList
+        case .toggleTaskList: return .toggleTaskList
+        case .toggleBlockQuote: return .toggleBlockQuote
+        case .toggleCodeBlock: return .toggleCodeBlock
+        case .setLink: return .setLink
+        case .toggleTask: return .toggleTask
+        case .replaceTableCell: return .replaceTableCell
+        case .insertImageMarkdown: return .insertImageMarkdown
+        }
+    }
+}
+
+/// Category of a refused editor edit, including transition-proof failures.
+nonisolated enum EditRefusalCategory: Sendable, Equatable {
+    case refusal(EditRefusal)
+    case invalidPresentationTransition
+
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .invalidPresentationTransition: return .invalidPresentationTransition
+        case .refusal(let refusal):
+            switch refusal {
+            case .staleVersion: return .staleVersion
+            case .stalePresentation: return .stalePresentation
+            case .ambiguousSelection: return .ambiguousSelection
+            case .unsupportedCommand: return .unsupportedCommand
+            case .mappingFailure: return .mappingFailure
+            case .invalidRange: return .invalidRange
+            case .unavailable: return .unavailable
+            case .mixedDomain: return .mixedDomain
+            case .crossCell: return .crossCell
+            case .unprovable: return .unprovable
+            }
+        }
+    }
+}
 
 /// Privacy-safe editor instrumentation events — identifiers and numeric metadata only.
 ///
-/// // REQ-089: no source text, replacement text, selected text, URL strings, or complete paths.
+/// // REQ-089; ARC-016: no associated value is a `String`. Document text, replacement text,
+/// // selected text, URLs, descriptions, filenames, and paths are unrepresentable here.
 nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case mutationRequested(id: UUID, revision: UInt64, location: Int, length: Int, replacementLength: Int)
     case mutationCommitted(id: UUID, newRevision: UInt64, location: Int, length: Int, replacementLength: Int)
@@ -26,21 +168,69 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case compositionRefusedStale
     case imageCacheStore(cost: Int, totalBytes: Int)
     case loadApplicationStale(token: UInt64, currentRevision: UInt64)
-    case editRouted(context: String, groupingTyping: Bool, planner: String)
-    case mappingResult(accepted: Bool, domain: String)
+    case editRouted(context: EditorMode, groupingTyping: Bool, planner: PlannerKind)
+    case mappingResult(accepted: Bool, domain: MappingDomain)
     case presentationInstalled(snapshotID: UInt64, sourceRevision: UInt64, provisional: Bool)
     case presentationTransition(from: UInt64, to: UInt64, sourceRevision: UInt64, durationNanos: UInt64)
     case reconciliationScheduled(sourceRevision: UInt64, generation: UInt64)
-    case reconciliationDiscarded(sourceRevision: UInt64, reason: String)
+    case reconciliationDiscarded(sourceRevision: UInt64, reason: ReconciliationDiscardReason)
     case reconciliationApplied(snapshotID: UInt64, sourceRevision: UInt64, generation: UInt64, durationNanos: UInt64)
-    case editRefused(category: String)
+    case editRefused(category: EditRefusalCategory)
     case availabilityChanged(editable: Bool, sourceRevision: UInt64)
     case updateOrigin(EditorUpdateOrigin)
+    case documentOpened(utf16Count: Int)
+    case documentClosed(sourceRevision: UInt64)
+
+    // View-update integrity (REQ-094/096; ARC-015).
+    case hostUpdateEnded(durationNanos: UInt64, updatesInWindow: Int)
+    case hostUpdateStorm(updatesInWindow: Int)
+    case viewReconciliationViolation(kind: ReconciliationViolation)
+    case mainActorStall(millis: UInt64)
 }
 
-nonisolated enum HistoryDirection: String, Sendable, Equatable {
+nonisolated enum HistoryDirection: Sendable, Equatable {
     case undo
     case redo
+
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .undo: return .undo
+        case .redo: return .redo
+        }
+    }
+}
+
+extension SourceEditRefusal {
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .staleVersion: return .staleVersion
+        case .invalidRange: return .invalidRange
+        case .conflict: return .conflict
+        case .contentMismatch: return .contentMismatch
+        }
+    }
+}
+
+extension EditorMode {
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .source: return .source
+        case .wysiwyg: return .wysiwyg
+        }
+    }
+}
+
+extension EditorUpdateOrigin {
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .nativeUserInput: return .nativeUserInput
+        case .programmaticPresentation: return .programmaticPresentation
+        case .selectionRestoration: return .selectionRestoration
+        case .modeRestoration: return .modeRestoration
+        case .history: return .history
+        case .composition: return .composition
+        }
+    }
 }
 
 /// Sink for privacy-safe editor events.
@@ -64,68 +254,5 @@ final class InMemoryEditorTrace: EditorTraceSink {
 
     func eventsMatching(_ predicate: (EditorTraceEvent) -> Bool) -> [EditorTraceEvent] {
         events.filter(predicate)
-    }
-}
-
-/// Production OSLog sink — privacy-safe signposts / fault summaries only.
-@MainActor
-final class OSLogEditorTrace: EditorTraceSink {
-    private let logger = Logger(subsystem: "net.daringfireball.markdown-editor", category: "EditorTrace")
-
-    func record(_ event: EditorTraceEvent) {
-        switch event {
-        case .mutationRequested(let id, let revision, let location, let length, let replacementLength):
-            logger.debug("mutationRequested id=\(id.uuidString, privacy: .public) rev=\(revision) loc=\(location) len=\(length) replLen=\(replacementLength)")
-        case .mutationCommitted(let id, let newRevision, let location, let length, let replacementLength):
-            logger.debug("mutationCommitted id=\(id.uuidString, privacy: .public) rev=\(newRevision) loc=\(location) len=\(length) replLen=\(replacementLength)")
-        case .mutationRefused(let id, let reason):
-            logger.fault("mutationRefused id=\(id.uuidString, privacy: .public) reason=\(String(describing: reason), privacy: .public)")
-        case .undoRegistered(let actionNameLength, let groupingTyping):
-            logger.debug("undoRegistered nameLen=\(actionNameLength) typing=\(groupingTyping)")
-        case .historyApplied(let direction, let newRevision, let location, let length):
-            logger.debug("historyApplied \(direction.rawValue, privacy: .public) rev=\(newRevision) loc=\(location) len=\(length)")
-        case .historyRefused(let direction, let reason):
-            logger.fault("historyRefused \(direction.rawValue, privacy: .public) reason=\(String(describing: reason), privacy: .public)")
-        case .parseStarted(let sourceVersion, let utf16Count):
-            logger.debug("parseStarted rev=\(sourceVersion) utf16=\(utf16Count)")
-        case .parseCompleted(let sourceVersion):
-            logger.debug("parseCompleted rev=\(sourceVersion)")
-        case .parseCancelled(let sourceVersion):
-            logger.debug("parseCancelled rev=\(sourceVersion)")
-        case .modeToggle(let toSource):
-            logger.debug("modeToggle toSource=\(toSource)")
-        case .compositionBegan(let sourceVersion):
-            logger.debug("compositionBegan rev=\(sourceVersion)")
-        case .compositionCommitted(let sourceVersion, let replacementLength):
-            logger.debug("compositionCommitted rev=\(sourceVersion) replLen=\(replacementLength)")
-        case .compositionCancelled:
-            logger.debug("compositionCancelled")
-        case .compositionRefusedStale:
-            logger.fault("compositionRefusedStale")
-        case .imageCacheStore(let cost, let totalBytes):
-            logger.debug("imageCacheStore cost=\(cost) total=\(totalBytes)")
-        case .loadApplicationStale(let token, let currentRevision):
-            logger.fault("loadApplicationStale token=\(token) rev=\(currentRevision)")
-        case .editRouted(let context, let groupingTyping, let planner):
-            logger.debug("editRouted context=\(context, privacy: .public) typing=\(groupingTyping) planner=\(planner, privacy: .public)")
-        case .mappingResult(let accepted, let domain):
-            logger.debug("mappingResult accepted=\(accepted) domain=\(domain, privacy: .public)")
-        case .presentationInstalled(let snapshotID, let sourceRevision, let provisional):
-            logger.debug("presentationInstalled id=\(snapshotID) rev=\(sourceRevision) provisional=\(provisional)")
-        case .presentationTransition(let from, let to, let sourceRevision, let durationNanos):
-            logger.debug("presentationTransition from=\(from) to=\(to) rev=\(sourceRevision) ns=\(durationNanos)")
-        case .reconciliationScheduled(let sourceRevision, let generation):
-            logger.debug("reconciliationScheduled rev=\(sourceRevision) gen=\(generation)")
-        case .reconciliationDiscarded(let sourceRevision, let reason):
-            logger.debug("reconciliationDiscarded rev=\(sourceRevision) reason=\(reason, privacy: .public)")
-        case .reconciliationApplied(let snapshotID, let sourceRevision, let generation, let durationNanos):
-            logger.debug("reconciliationApplied id=\(snapshotID) rev=\(sourceRevision) gen=\(generation) ns=\(durationNanos)")
-        case .editRefused(let category):
-            logger.debug("editRefused category=\(category, privacy: .public)")
-        case .availabilityChanged(let editable, let sourceRevision):
-            logger.debug("availabilityChanged editable=\(editable) rev=\(sourceRevision)")
-        case .updateOrigin(let origin):
-            logger.debug("updateOrigin \(String(describing: origin), privacy: .public)")
-        }
     }
 }

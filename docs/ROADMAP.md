@@ -20,18 +20,12 @@ The application currently includes:
 - exact-copy PNG/JPEG/GIF/HEIC/HEIF placement into a shared sibling `assets/` directory;
 - Swift 6 complete concurrency and privacy-safe editor instrumentation;
 - session-owned typed mode state, revisioned presentation snapshots, synchronous accepted-edit
-  transitions, serialized `NSDocument` I/O, and immutable image-placement intent.
+  transitions, serialized `NSDocument` I/O, and immutable image-placement intent;
+- publication-free editor-host view reconciliation, and local per-run JSON Lines diagnostics
+  whose payloads cannot represent document content.
 
 The exact delivered/correction status of each behavior is recorded in
 [REQUIREMENTS.md](REQUIREMENTS.md).
-
-## Active
-
-🔵 **COR-10 — publication-free reconciliation and JSON Lines diagnostics.** Opening a document
-spins the SwiftUI view graph at 100% CPU because the editor host writes observed session state
-during its own reconciliation. Corrects the ownership/publication boundary and adds the local
-per-run JSON Lines diagnostics that would have made the defect self-reporting.
-Plan: [cor-10-reconciliation-and-diagnostics.md](plans/cor-10-reconciliation-and-diagnostics.md).
 
 ## Post-MVP backlog
 

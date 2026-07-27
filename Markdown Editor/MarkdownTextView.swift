@@ -8,82 +8,10 @@ import AppKit
 
 // REQ-010/011/012/040/046/060–077: live-styled source editor with paste/drop image placement.
 // REQ-016: reports exact SourceEdit transactions; document owns undo.
-struct MarkdownTextView: NSViewRepresentable {
-    @ObservedObject var document: MarkdownDocument
-    var placementController: ImagePlacementController
-    var session: EditorSession?
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(document: document, placementController: placementController, session: session)
-    }
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let textView = MarkdownSourceTextView(usingTextLayoutManager: false)
-        textView.delegate = context.coordinator
-        textView.placementController = placementController
-        textView.documentActions = document
-        textView.isRichText = false
-        // Document owns undo; text view routes UndoManager to the document (REQ-011/016).
-        textView.allowsUndo = false
-        textView.font = context.coordinator.theme.baseFont
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticTextReplacementEnabled = false
-        textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.usesFindBar = true                         // REQ-046
-        textView.isIncrementalSearchingEnabled = true
-        textView.textContainerInset = NSSize(width: 8, height: 8)
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.widthTracksTextView = true
-        textView.string = document.text
-        // REQ-060: register all file-promise drag types AppKit may deliver.
-        var dragTypes: [NSPasteboard.PasteboardType] = [.fileURL, .png, .tiff]
-        dragTypes.append(contentsOf: FilePromiseBridge.readableDraggedTypes)
-        textView.registerForDraggedTypes(dragTypes)
-        textView.setAccessibilityLabel("Markdown source")
-
-        let scroll = NSScrollView()
-        scroll.hasVerticalScroller = true
-        scroll.documentView = textView
-
-        context.coordinator.session = session
-        context.coordinator.textView = textView
-        placementController.attach(actions: document)
-        placementController.updateDocumentURL(document.fileURL)
-        context.coordinator.highlight()
-        return scroll
-    }
-
-    func updateNSView(_ nsView: NSScrollView, context: Context) {
-        guard let textView = nsView.documentView as? MarkdownSourceTextView else { return }
-        context.coordinator.document = document
-        context.coordinator.session = session
-        textView.placementController = placementController
-        textView.documentActions = document
-        textView.documentURL = document.fileURL
-        placementController.attach(actions: document)
-        placementController.updateDocumentURL(document.fileURL)
-
-        if context.coordinator.nativeStorageState == .awaitingTextDidChange {
-            // Native keystroke owns storage application until textDidChange clears the gate.
-            return
-        }
-
-        if textView.string != document.text {
-            let selected = session?.sourceModeState.selection.range.utf16 ?? textView.selectedRange()
-            context.coordinator.withOrigin(.programmaticPresentation) {
-                textView.string = document.text
-                let length = (document.text as NSString).length
-                if selected.location >= 0, NSMaxRange(selected) <= length {
-                    textView.setSelectedRange(selected)
-                }
-            }
-            context.coordinator.highlight()
-        }
-    }
-
+//
+// Namespace for the source coordinator. `EditorHostView` owns the persistent text views
+// (REQ-052/086), so this type carries no `NSViewRepresentable` conformance.
+enum MarkdownTextView {
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         enum NativeStorageState {
@@ -178,18 +106,19 @@ struct MarkdownTextView: NSViewRepresentable {
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView else { return }
+            // REQ-094; ARC-013/015: programmatic restoration re-reports a value the session
+            // already holds. Writing it back makes reconciliation a state change.
+            guard currentOrigin == .nativeUserInput else { return }
             let range = textView.selectedRange()
             // Close typing groups on caret moves; skip selection churn from in-flight typing.
-            if currentOrigin == .nativeUserInput, nativeStorageState == .idle {
+            if nativeStorageState == .idle {
                 document.closeTypingUndoGroup()
             }
-            if let session {
-                session.updateSourceModeState { state in
-                    state.selection = SourceSelection(
-                        utf16: range,
-                        affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
-                    )
-                }
+            session?.updateSourceModeState { state in
+                state.selection = SourceSelection(
+                    utf16: range,
+                    affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
+                )
             }
         }
 

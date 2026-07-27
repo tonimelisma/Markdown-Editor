@@ -74,8 +74,16 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    /// Detects an unresponsive main actor for the process lifetime (REQ-096).
+    private var watchdog: MainActorWatchdog?
+
     override init() {
         // First NSDocumentController subclass instance becomes the shared controller.
+        // REQ-095: the run log must exist before the first document is constructed, because
+        // each document wires its trace sink at init.
+        DiagnosticLog.startShared(
+            hostKind: Self.isRunningUnitTests ? .unitTest : .production
+        )
         documentController = MarkdownDocumentController()
         super.init()
     }
@@ -84,6 +92,26 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         _ = documentController
         guard !Self.isRunningUnitTests else { return }
         ensureOpenRecentMenuItem()
+        // The report fires from a background task precisely because the main actor may be
+        // stalled, so the record is queued rather than awaited.
+        let watchdog = MainActorWatchdog { millis in
+            Task { @MainActor in
+                DiagnosticLog.shared?.record(
+                    .mainActorStall,
+                    level: .fault,
+                    category: .lifecycle,
+                    data: [(.millis, .uint(millis))]
+                )
+            }
+        }
+        watchdog.start()
+        self.watchdog = watchdog
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        watchdog?.stop()
+        // REQ-095: the terminating record distinguishes a clean exit from a crash.
+        DiagnosticLog.shared?.finishSynchronously()
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {

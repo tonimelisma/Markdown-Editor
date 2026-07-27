@@ -256,9 +256,10 @@ ordinary files the user owns and can read, delete, or ignore.
 
 - One JSON Lines file per application run under `~/Library/Logs/Markdown Editor/`. Line-oriented
   so a truncated or crashed run stays parseable.
-- The first record identifies the run: schema version, run identifier, build, commit, host kind
-  (`production` or `unitTest`), OS version, and process identifier. A final record marks clean
-  termination, so a reader distinguishes a crash from an orderly exit.
+- The first record identifies the run: schema version, run identifier, build, host kind
+  (`production` or `unitTest`), OS version, and process identifier. Its fields are fixed process
+  facts, so the closed payload value type below does not constrain them. A final record marks
+  clean termination, so a reader distinguishes a crash from an orderly exit.
 - Every record carries wall-clock time, monotonic seconds since launch, a strictly increasing
   sequence number, a level, a category, an event name, and a flat payload.
 - Payload values are a closed type admitting integers, doubles, booleans, and code-defined
@@ -266,12 +267,18 @@ ordinary files the user owns and can read, delete, or ignore.
   URL, a description, a filename, or a path is not prevented by review — it is unrepresentable.
 - Documents appear as opaque per-run handles, never as names or paths.
 - Repeated events collapse into a counted summary above a rate threshold, so a defect that fires
-  every run-loop pass produces bounded evidence instead of an unbounded file.
-- Records buffer on the main actor and flush on a background serial queue; the editing path never
-  performs synchronous file I/O. Faults flush immediately.
+  every run-loop pass produces bounded evidence instead of an unbounded file. Faults are never
+  collapsed: they are the evidence.
+- Records buffer on the main actor and are appended by a serialized actor off the main actor;
+  the editing path never performs synchronous file I/O, and record order is preserved. Faults
+  flush immediately, and the terminating record is made durable before the process may exit.
 - Retained runs and per-file size are bounded; the oldest runs are removed first.
-- A background watchdog detects an unresponsive main actor. Reconciliation instrumentation
-  detects host update storms and any session publication during view reconciliation.
+- A background watchdog races a hop onto the main actor against a one-second threshold. A stall
+  is recorded while it is still in progress, so an unrecovered stall is reported too; a second
+  record carries the measured duration once the hop lands.
+- Reconciliation instrumentation records any session publication during view reconciliation, and
+  the host-update meter reports a sustained update rate — the signature of a self-feeding loop,
+  which presents as high CPU rather than as a hang.
 
 There is no second instrumentation route. `os_log` is not used for editor events.
 
