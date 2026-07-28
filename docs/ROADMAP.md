@@ -22,19 +22,20 @@ The application currently includes:
 - session-owned typed mode state, revisioned presentation snapshots, synchronous accepted-edit
   transitions, serialized `NSDocument` I/O, and immutable image-placement intent;
 - publication-free editor-host view reconciliation, and local per-run JSON Lines diagnostics
-  whose payloads cannot represent document content.
+  whose payloads cannot represent document content;
+- a hermetic diagnostics-directory override and process-level smoke verification
+  (`Scripts/smoke-test.sh`) that a non-UI, structured-log-only exception to §4 permits.
 
 The exact delivered/correction status of each behavior is recorded in
 [REQUIREMENTS.md](REQUIREMENTS.md).
 
 ## Active: instrumentation completion and cleanup
 
-Six approved, not-yet-implemented increments (COR-11 … COR-16), in dependency order. Each is a
+Five approved, not-yet-implemented increments (COR-12 … COR-16), in dependency order. Each is a
 separate branch/PR/review/merge; docs are reconciled and each plan file is deleted as its
-increment is implemented.
+increment is implemented. COR-11 is delivered — see the foundation list above.
 
-- 🔵 [COR-11 — hermetic diagnostics directory and process smoke verification](plans/cor-11-diagnostics-smoke.md)
-- ⚪ [COR-12 — complete the trace vocabulary](plans/cor-12-trace-vocabulary.md)
+- 🔵 [COR-12 — complete the trace vocabulary](plans/cor-12-trace-vocabulary.md)
 - ⚪ [COR-13 — document save/load/revert outcome instrumentation](plans/cor-13-document-io-instrumentation.md)
 - ⚪ [COR-14 — image placement and asset filesystem instrumentation](plans/cor-14-image-placement-instrumentation.md)
 - ⚪ [COR-15 — production performance sampling](plans/cor-15-performance-sampling.md)

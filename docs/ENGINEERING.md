@@ -279,8 +279,20 @@ ordinary files the user owns and can read, delete, or ignore.
 - Reconciliation instrumentation records any session publication during view reconciliation, and
   the host-update meter reports a sustained update rate — the signature of a self-feeding loop,
   which presents as high CPU rather than as a hang.
+- A `MARKDOWN_EDITOR_DIAGNOSTICS_DIR` environment variable overrides the diagnostics directory,
+  so process-level smoke verification writes to a hermetic location instead of the user's own
+  production or unit-test directory.
 
 There is no second instrumentation route. `os_log` is not used for editor events.
+
+**Process-level smoke verification (`ARC-Q12`):** `Scripts/smoke-test.sh` launches the built
+application directly (bypassing Launch Services) on `Scripts/Fixtures/smoke-basic.md` with
+`--diagnostic-smoke-exit` and the diagnostics-directory override, then asserts only on the
+structured JSON Lines records the run produces — sequence order, a `documentOpened` record, a
+bounded `hostUpdateEnded` count (the livelock guard; a healthy run settles at 2), no `error`/
+`fault` record, and a terminating `runEnd` record. It never drives, reads, or asserts on the UI.
+This is the narrow, explicit exception described in `CLAUDE.md` §4; it does not replace or excuse
+any other automated proof.
 
 ## 12. Quality scenarios
 
@@ -297,6 +309,7 @@ There is no second instrumentation route. `os_log` is not used for editor events
 | ARC-Q09 | File-backed PNG/JPEG/GIF/HEIC/HEIF fixtures retain exact bytes and metadata; display decoding creates no intermediate JPEG or PNG. |
 | ARC-Q10 | Instrumentation proves routing, revision, result, refusal class, and timing, and cannot represent document content, selected content, URLs, descriptions, filenames, or paths. |
 | ARC-Q11 | Opening a document and leaving the window idle performs a bounded number of editor-host view updates and settles; sustained reconciliation without user input is a reported fault. |
+| ARC-Q12 | Launching the built application on a fixture document produces a parseable run log whose host-update count is bounded, contains no fault, and ends with a clean-exit record. |
 
 ## 13. Architectural invariants and proof
 

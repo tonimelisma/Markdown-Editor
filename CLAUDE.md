@@ -135,6 +135,11 @@ For docs/config only: commit and push directly on `main`, then run stale-work sw
   automation. Direct construction of AppKit components is allowed.
 - “Inherent” applies only when a standard framework supplies the behavior without custom
   interception, or source inspection proves an absence such as no networking.
+- **Narrow exception — process-level smoke verification (`ARC-Q12`):** launching the built
+  application on a fixture and asserting only on structured diagnostic records it writes is
+  permitted. It must not drive, read, or assert on any user interface, must not use screen
+  automation or accessibility inspection, and must not be the sole proof of any requirement.
+  XCUITest and screen automation remain forbidden.
 
 A green existing suite is not proof of a new claim. Tests must fail for the relevant defective
 behavior before the fix or otherwise discriminate the required invariant.

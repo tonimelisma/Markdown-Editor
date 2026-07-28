@@ -201,7 +201,17 @@ final class DiagnosticLog {
 
     /// Production location: `~/Library/Logs/Markdown Editor/`. Test runs get their own
     /// subdirectory so a `xcodebuild test` cannot prune a user's production evidence.
-    static func defaultDirectory(hostKind: DiagnosticHostKind = .production) -> URL {
+    ///
+    /// // REQ-097: an explicit `MARKDOWN_EDITOR_DIAGNOSTICS_DIR` override takes priority over
+    /// // both branches below, so process-level smoke verification gets a hermetic directory
+    /// // that cannot read, prune, or pollute the user's own diagnostics.
+    static func defaultDirectory(
+        hostKind: DiagnosticHostKind = .production,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL {
+        if let override = environment["MARKDOWN_EDITOR_DIAGNOSTICS_DIR"], !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
         let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library")
         let root = base.appendingPathComponent("Logs").appendingPathComponent(directoryName)
