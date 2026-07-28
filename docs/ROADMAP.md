@@ -27,6 +27,19 @@ The application currently includes:
 The exact delivered/correction status of each behavior is recorded in
 [REQUIREMENTS.md](REQUIREMENTS.md).
 
+## Active: instrumentation completion and cleanup
+
+Six approved, not-yet-implemented increments (COR-11 … COR-16), in dependency order. Each is a
+separate branch/PR/review/merge; docs are reconciled and each plan file is deleted as its
+increment is implemented.
+
+- 🔵 [COR-11 — hermetic diagnostics directory and process smoke verification](plans/cor-11-diagnostics-smoke.md)
+- ⚪ [COR-12 — complete the trace vocabulary](plans/cor-12-trace-vocabulary.md)
+- ⚪ [COR-13 — document save/load/revert outcome instrumentation](plans/cor-13-document-io-instrumentation.md)
+- ⚪ [COR-14 — image placement and asset filesystem instrumentation](plans/cor-14-image-placement-instrumentation.md)
+- ⚪ [COR-15 — production performance sampling](plans/cor-15-performance-sampling.md)
+- ⚪ [COR-16 — naming and layering cleanup](plans/cor-16-naming-layering-cleanup.md)
+
 ## Post-MVP backlog
 
 These are ideas, not commitments. Each requires research, explicit requirements, and approval.
