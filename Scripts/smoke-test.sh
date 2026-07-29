@@ -1,6 +1,8 @@
 #!/bin/bash
 # REQ-098: process-level smoke verification. Launches the built application on a fixture and
 # asserts only on structured diagnostic records it writes — no UI is driven, read, or asserted on.
+# Not -e: the polling loops below check exit conditions explicitly rather than aborting on the
+# first non-zero probe (e.g. `kill -0` on a still-running process).
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
