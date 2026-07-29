@@ -264,4 +264,30 @@ struct DiagnosticLogTests {
         // Documents appear as opaque handles, never as names or paths.
         #expect(opened.first?.contains("\"doc\":1") == true)
     }
+
+    // Verifies: REQ-097 — an explicit override directory takes priority over both the
+    // production and unit-test defaults, so verification runs cannot touch the user's own log
+    // directory.
+    @Test func diagnosticsDirectoryHonoursEnvironmentOverride() {
+        let override = makeTemporaryDirectory().path
+        let productionResolved = DiagnosticLog.defaultDirectory(
+            hostKind: .production,
+            environment: ["MARKDOWN_EDITOR_DIAGNOSTICS_DIR": override]
+        )
+        let unitTestResolved = DiagnosticLog.defaultDirectory(
+            hostKind: .unitTest,
+            environment: ["MARKDOWN_EDITOR_DIAGNOSTICS_DIR": override]
+        )
+        #expect(productionResolved.path == override)
+        #expect(unitTestResolved.path == override)
+
+        let withoutOverride = DiagnosticLog.defaultDirectory(hostKind: .production, environment: [:])
+        #expect(withoutOverride.path != override)
+
+        let emptyOverride = DiagnosticLog.defaultDirectory(
+            hostKind: .production,
+            environment: ["MARKDOWN_EDITOR_DIAGNOSTICS_DIR": ""]
+        )
+        #expect(emptyOverride.path == withoutOverride.path)
+    }
 }
