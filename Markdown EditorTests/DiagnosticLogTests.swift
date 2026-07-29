@@ -83,8 +83,7 @@ struct DiagnosticLogTests {
             .documentClosed(sourceRevision: 4),
             .hostUpdateEnded(durationNanos: 5, updatesInWindow: 1),
             .hostUpdateStorm(updatesInWindow: 500),
-            .viewReconciliationViolation(kind: .publication),
-            .mainActorStall(millis: 1_400)
+            .viewReconciliationViolation(kind: .publication)
         ]
 
         var covered = Set<DiagnosticEventName>()
@@ -105,8 +104,13 @@ struct DiagnosticLogTests {
             #expect(decoded != nil, "mapped record is not valid JSON: \(record.jsonLine)")
         }
 
-        // Only the log's own lifecycle events are produced outside the trace mapping.
-        let logOwned: Set<DiagnosticEventName> = [.runStart, .runEnd, .repeated, .sizeLimitReached]
+        // Produced outside the EditorTraceEvent mapping: the log's own lifecycle events, plus
+        // mainActorStall, which the app delegate's watchdog records directly through
+        // DiagnosticLog (COR-12; documented in ENGINEERING.md §11) since it observes a
+        // process-level condition with no document or EditorTraceSink in scope.
+        let logOwned: Set<DiagnosticEventName> = [
+            .runStart, .runEnd, .repeated, .sizeLimitReached, .mainActorStall
+        ]
         let unreachable = Set(DiagnosticEventName.allCases).subtracting(covered).subtracting(logOwned)
         #expect(unreachable.isEmpty, "unmapped event names: \(unreachable.map(\.rawValue).sorted())")
     }

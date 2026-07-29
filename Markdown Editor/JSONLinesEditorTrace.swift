@@ -183,10 +183,6 @@ final class JSONLinesEditorTrace: EditorTraceSink {
             return Mapped(name: .viewReconciliationViolation, level: .fault, category: .viewUpdate, data: [
                 (.kind, .symbol(kind.symbol))
             ])
-        case .mainActorStall(let millis):
-            return Mapped(name: .mainActorStall, level: .fault, category: .lifecycle, data: [
-                (.millis, .uint(millis))
-            ])
         }
     }
 }

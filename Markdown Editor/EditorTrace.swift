@@ -170,7 +170,6 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case hostUpdateEnded(durationNanos: UInt64, updatesInWindow: Int)
     case hostUpdateStorm(updatesInWindow: Int)
     case viewReconciliationViolation(kind: ReconciliationViolation)
-    case mainActorStall(millis: UInt64)
 }
 
 nonisolated enum HistoryDirection: Sendable, Equatable {

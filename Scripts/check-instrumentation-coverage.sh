@@ -12,7 +12,13 @@ cases="$(printf '%s\n' "$block" | rg -o '^    case (\w+)' -r '$1')"
 
 while IFS= read -r name; do
     [[ -z "$name" ]] && continue
-    hits="$(rg -l "\.$name\(|\.$name\b" 'Markdown Editor' \
+    # Anchored on "trace?.record(" / "trace.record(", not a bare "."$name substring: every real
+    # EditorTraceSink.record call site in this codebase is made through a property literally
+    # named `trace`, which is the one thing that reliably distinguishes it from an unrelated
+    # same-named DiagnosticEventName/DiagnosticLog.record call (DiagnosticLog.shared?.record(...)
+    # is not reached via a `trace` property). A bare substring match would report a case as
+    # "covered" merely because some other symbol happens to share its name.
+    hits="$(rg -Uo "trace\??\.record\(\s*\.$name(\(|\b)" 'Markdown Editor' \
         --glob '!EditorTrace.swift' --glob '!JSONLinesEditorTrace.swift' || true)"
     if [[ -z "$hits" ]]; then
         printf 'instrumentation-coverage: event never recorded: %s\n' "$name" >&2
