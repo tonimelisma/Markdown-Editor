@@ -26,19 +26,20 @@ The application currently includes:
 - a hermetic diagnostics-directory override and process-level smoke verification
   (`Scripts/smoke-test.sh`) that a non-UI, structured-log-only exception to §4 permits;
   a complete `EditorTraceEvent` vocabulary with `Scripts/check-instrumentation-coverage.sh`
-  guarding against a future unrecorded event.
+  guarding against a future unrecorded event; document load/save/revert outcome instrumentation
+  recorded once through the single AppKit save override every save path routes through.
 
 The exact delivered/correction status of each behavior is recorded in
 [REQUIREMENTS.md](REQUIREMENTS.md).
 
 ## Active: instrumentation completion and cleanup
 
-Four approved, not-yet-implemented increments (COR-13 … COR-16), in dependency order. Each is a
+Three approved, not-yet-implemented increments (COR-14 … COR-16), in dependency order. Each is a
 separate branch/PR/review/merge; docs are reconciled and each plan file is deleted as its
-increment is implemented. COR-11 and COR-12 are delivered — see the foundation list above.
+increment is implemented. COR-11, COR-12, and COR-13 are delivered — see the foundation list
+above.
 
-- 🔵 [COR-13 — document save/load/revert outcome instrumentation](plans/cor-13-document-io-instrumentation.md)
-- ⚪ [COR-14 — image placement and asset filesystem instrumentation](plans/cor-14-image-placement-instrumentation.md)
+- 🔵 [COR-14 — image placement and asset filesystem instrumentation](plans/cor-14-image-placement-instrumentation.md)
 - ⚪ [COR-15 — production performance sampling](plans/cor-15-performance-sampling.md)
 - ⚪ [COR-16 — naming and layering cleanup](plans/cor-16-naming-layering-cleanup.md)
 

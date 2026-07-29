@@ -41,6 +41,29 @@ nonisolated enum ReconciliationDiscardReason: Sendable, Equatable {
     }
 }
 
+/// Why a document load, save, or revert did not complete.
+///
+/// // REQ-100: deliberately minimal. `MarkdownDocumentData.init(data:)` has exactly one content
+/// // throw site (invalid UTF-8); `fileUnreadable` covers a failure reading the URL itself
+/// // (removed, permission denied) before any content ever reaches that decode step. AppKit's
+/// // save completion reports only a success/failure boolean with no underlying reason — it
+/// // does not distinguish a genuine write failure from the user cancelling a Save panel, the
+/// // same limitation `ImagePlacementEvent.saveCancelledOrFailed` already accepts elsewhere in
+/// // this codebase. Do not add a case this code cannot actually produce.
+nonisolated enum DocumentIOFailure: Sendable, Equatable {
+    case invalidUTF8
+    case fileUnreadable
+    case saveFailedOrCancelled
+
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .invalidUTF8: return .invalidUTF8
+        case .fileUnreadable: return .fileUnreadable
+        case .saveFailedOrCancelled: return .saveFailedOrCancelled
+        }
+    }
+}
+
 /// Which planner handled an accepted edit. Derived from the command, never from an action name.
 ///
 /// // REQ-089; ARC-016: `SourceMutation.actionName` is a user-facing undo title and is never
@@ -165,6 +188,12 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case updateOrigin(EditorUpdateOrigin)
     case documentOpened(utf16Count: Int)
     case documentClosed(sourceRevision: UInt64)
+    case documentLoaded(utf16Count: Int, sourceRevision: UInt64)
+    case documentLoadFailed(reason: DocumentIOFailure)
+    case documentSaveStarted(utf16Count: Int)
+    case documentSaveSucceeded(utf16Count: Int, sourceRevision: UInt64, durationNanos: UInt64)
+    case documentSaveFailed(reason: DocumentIOFailure)
+    case documentReverted(sourceRevision: UInt64, utf16Count: Int)
 
     // View-update integrity (REQ-094/096; ARC-015).
     case hostUpdateEnded(durationNanos: UInt64, updatesInWindow: Int)

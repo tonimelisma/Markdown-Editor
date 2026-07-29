@@ -159,6 +159,12 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
     // document
     case documentOpened
     case documentClosed
+    case documentLoaded
+    case documentLoadFailed
+    case documentSaveStarted
+    case documentSaveSucceeded
+    case documentSaveFailed
+    case documentReverted
     case mutationRequested
     case mutationCommitted
     case mutationRefused

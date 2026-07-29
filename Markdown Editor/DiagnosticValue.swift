@@ -59,6 +59,11 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case conflict
     case contentMismatch
 
+    // Document I/O failures
+    case invalidUTF8
+    case fileUnreadable
+    case saveFailedOrCancelled
+
     // Semantic-edit refusals
     case stalePresentation
     case ambiguousSelection

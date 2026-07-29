@@ -59,6 +59,17 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// is treated as the expected outcome of operation-scoped Save (no generation bump).
     private var expectingUntitledSaveURL = false
 
+    /// REQ-100: true once the Data-based `read(from:ofType:)` has run during the current
+    /// URL-based read attempt — see the URL-based override for why this exists.
+    private var didReachDataRead = false
+
+    /// REQ-100: incremented every time `recordSaveOutcome` records anything. `saveDocument()`
+    /// compares this before/after to detect a save that never reached `save(to:ofType:for:
+    /// completionHandler:)` at all — the destination was never determined, e.g. the user
+    /// cancelled the Save panel for an untitled document — so that outcome is not silently
+    /// unrecorded merely because it took a different AppKit path than a write that was attempted.
+    private var saveOutcomeSequence: UInt64 = 0
+
     /// Open typing undo group (MutationGrouping.typing coalescing).
     private var typingGroupOpen = false
     private var undoCheckpointObserver: NSObjectProtocol?
@@ -108,15 +119,90 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         addWindowController(controller)
     }
 
+    // REQ-100: the one override AppKit routes every save through — manual Save, Save As,
+    // autosave-in-place, and the delegate-based DocumentSaveBridge path this app's own
+    // operation-scoped saveDocument() uses — verified empirically (both real call paths land
+    // here, on the main thread) rather than assumed, since neither is documented as the sole
+    // entry point. Recording once here, rather than in saveDocument(), avoids double-counting
+    // a save that reaches AppKit through either route.
+    override func save(
+        to url: URL,
+        ofType typeName: String,
+        for saveOperation: NSDocument.SaveOperationType,
+        completionHandler: @escaping (Error?) -> Void
+    ) {
+        let utf16Count = (text as NSString).length
+        trace?.record(.documentSaveStarted(utf16Count: utf16Count))
+        let start = DispatchTime.now().uptimeNanoseconds
+        super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
+            self?.recordSaveOutcome(error: error, utf16Count: utf16Count, startUptimeNanos: start)
+            completionHandler(error)
+        }
+    }
+
+    /// REQ-100: extracted so the outcome→trace mapping is directly testable without driving a
+    /// genuine AppKit save failure — provoking one deterministically and quickly in a headless
+    /// test host proved unreliable (AppKit's own save-error recovery flow can block for tens of
+    /// seconds). The integration this wraps (`super.save` actually reaching this completion) is
+    /// unchanged production code, verified by construction — every save path in this app,
+    /// including the delegate-based DocumentSaveBridge this app's own operation-scoped
+    /// saveDocument() uses, routes through this override.
+    func recordSaveOutcome(error: Error?, utf16Count: Int, startUptimeNanos: UInt64) {
+        saveOutcomeSequence &+= 1
+        if error != nil {
+            trace?.record(.documentSaveFailed(reason: .saveFailedOrCancelled))
+        } else {
+            let durationNanos = DispatchTime.now().uptimeNanoseconds - startUptimeNanos
+            trace?.record(
+                .documentSaveSucceeded(
+                    utf16Count: utf16Count,
+                    sourceRevision: sourceVersion,
+                    durationNanos: durationNanos
+                )
+            )
+        }
+    }
+
+    // REQ-100: AppKit calls this URL-based override first; its default implementation reads the
+    // URL into Data and only then calls the Data-based override below. A failure reading the
+    // URL itself — file removed, unreadable, permission denied — never reaches that override,
+    // so without this, REQ-100 would go unrecorded for exactly the load failures a user most
+    // needs a diagnostic for. `didReachDataRead` distinguishes that case from a content-decode
+    // failure, which the Data-based override below already records — otherwise this would
+    // double-record every invalid-UTF-8 failure too, since that error also propagates up
+    // through this method.
+    nonisolated override func read(from url: URL, ofType typeName: String) throws {
+        MainActor.assumeIsolated { self.didReachDataRead = false }
+        do {
+            try super.read(from: url, ofType: typeName)
+        } catch {
+            MainActor.assumeIsolated {
+                guard !self.didReachDataRead else { return }
+                self.trace?.record(.documentLoadFailed(reason: .fileUnreadable))
+            }
+            throw error
+        }
+    }
+
     // REQ-015/018; ARC-011: AppKit's default serialized read — assert main thread, install canonically.
+    // REQ-100: the only throw site is invalid UTF-8; record it before rethrowing so NSDocument's
+    // own error presentation is unchanged.
     nonisolated override func read(from data: Data, ofType typeName: String) throws {
         precondition(
             Thread.isMainThread,
             "ARC-011 counterexample: NSDocument read invoked off-main while canConcurrentlyReadDocuments remains false"
         )
-        let decoded = try MarkdownDocumentData(data: data)
-        MainActor.assumeIsolated {
-            self.installLoadedText(decoded.text)
+        MainActor.assumeIsolated { self.didReachDataRead = true }
+        do {
+            let decoded = try MarkdownDocumentData(data: data)
+            MainActor.assumeIsolated {
+                self.installLoadedText(decoded.text)
+            }
+        } catch {
+            MainActor.assumeIsolated {
+                self.trace?.record(.documentLoadFailed(reason: .invalidUTF8))
+            }
+            throw error
         }
     }
 
@@ -280,15 +366,28 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         applyHistoryPatch(patch, direction: direction)
     }
 
-    // REQ-017: operation-scoped Save without view hierarchy discovery.
+    // REQ-017/100: operation-scoped Save without view hierarchy discovery; record the outcome.
+    // REQ-100: save outcome is recorded once, universally, in the save(to:ofType:for:
+    // completionHandler:) override below — not here — since this method's default bridge
+    // (NSDocumentSavingAdapter → DocumentSaveBridge → save(withDelegate:didSave:contextInfo:))
+    // is verified to route through that same override, and a test-injected saveExecutorOverride
+    // bypasses AppKit's save machinery entirely, so there is nothing honest to record here.
     func saveDocument() async -> Bool {
         if fileURL == nil {
             expectingUntitledSaveURL = true
         }
+        let sequenceBefore = saveOutcomeSequence
         let bridge: DocumentSaving = saveExecutorOverride ?? NSDocumentSavingAdapter(document: self)
         let ok = await bridge.saveDocument()
         if !ok {
             expectingUntitledSaveURL = false
+            // REQ-100: save(to:ofType:for:completionHandler:) already recorded this outcome
+            // unless the destination was never determined at all (e.g. the user cancelled the
+            // Save panel for an untitled document) — that path never reaches the override, so
+            // record it here instead of leaving it silently unrecorded.
+            if saveOutcomeSequence == sequenceBefore {
+                trace?.record(.documentSaveFailed(reason: .saveFailedOrCancelled))
+            }
         }
         return ok
     }
@@ -313,8 +412,15 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     }
 
     /// Canonical load path used by serialized `read(from:ofType:)`.
+    ///
+    /// // REQ-100: `sourceVersion == 0` reliably distinguishes the very first content
+    /// // installation (a freshly constructed document instance, never yet loaded) from a
+    /// // revert (this same instance already loaded once, so its version already advanced) —
+    /// // unlike `fileURL`, which NSDocument's own opening machinery may already have set
+    /// // before `read(from:ofType:)` runs even on the first load.
     private func installLoadedText(_ value: String) {
         closeTypingGroupIfNeeded()
+        let isInitialLoad = sourceVersion == 0
         text = value
         // A revision identifies source content for this document's entire lifetime.
         // Loads/reverts therefore advance it just like edits; identities are never reused.
@@ -323,6 +429,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         activeTrackingGeneration = nil
         undoManager?.removeAllActions()
         updateChangeCount(.changeCleared)
+        let utf16Count = (value as NSString).length
+        if isInitialLoad {
+            trace?.record(.documentLoaded(utf16Count: utf16Count, sourceRevision: sourceVersion))
+        } else {
+            trace?.record(.documentReverted(sourceRevision: sourceVersion, utf16Count: utf16Count))
+        }
     }
 
     // MARK: - Private mutation / history
