@@ -72,7 +72,6 @@ struct MarkdownDocumentTests {
         #expect(await doc.saveDocument() == false)
     }
 
-
     // Verifies: REQ-019 — URL change advances location generation; untitled-save path does not.
     @Test func locationGenerationAdvancesOnURLChangeButNotUntitledSave() async {
         let doc = MarkdownDocument()

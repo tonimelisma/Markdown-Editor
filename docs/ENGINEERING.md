@@ -213,12 +213,25 @@ fenced-code representation is editable only when its inverse is proven.
   main-thread contract and snapshots canonical document data inside the main-actor boundary.
 - A failed executor assertion is an architecture counterexample, not permission to restore a
   long-lived mirrored source.
-- `save(to:ofType:for:completionHandler:)` is the one AppKit override every save path in this app
-  routes through — manual Save, Save As, autosave-in-place, and the delegate-based
+- `save(to:ofType:for:completionHandler:)` is the AppKit override every save that determines a
+  destination routes through — manual Save, Save As, autosave-in-place, and the delegate-based
   `DocumentSaveBridge` this app's own operation-scoped `saveDocument()` uses — verified
-  empirically rather than assumed, and confirmed to run on the main actor. It is the sole place
-  save outcome (REQ-100) is recorded, so a save reaching AppKit through either route is recorded
-  exactly once.
+  empirically rather than assumed, and confirmed to run on the main actor. It is where save
+  outcome (REQ-100) is recorded for that case. `saveDocument()` separately detects and records
+  a save that never reaches it at all — the user cancelling the Save panel for an untitled
+  document through this app's own bridge — by comparing a sequence counter before/after.
+- **Known gap:** the stock, unoverridden `save(_:)` selector Cmd+S invokes decides whether to
+  show a Save panel and calls `runModalSavePanel(for:delegate:didSave:contextInfo:)` before ever
+  reaching `save(to:ofType:for:completionHandler:)`. Cancelling that panel for an untitled
+  document through the plain Cmd+S/File-menu path (as opposed to this app's own `saveDocument()`
+  bridge) is therefore not currently recorded. Closing this fully would mean overriding
+  `runModalSavePanel` itself — deeper, unresearched AppKit surface than this increment's
+  approved scope covers, and a heavier proof burden. This is a narrower gap than it may sound:
+  a cancelled save is a deliberate user choice, not a failure needing a diagnostic.
+- Reading a URL that itself cannot be read — file removed, unreadable, permission denied — is
+  recorded by the URL-based `read(from:ofType:)` override, distinct from the Data-based
+  override's invalid-UTF-8 content failure; a private flag distinguishes the two so a content
+  failure (which the Data-based override already records) is never double-recorded.
 - Background work receives immutable `Sendable` value snapshots only.
 - Background work never captures a mutable document or AppKit object.
 - Results publish on the main actor only after complete source revision, location generation, and

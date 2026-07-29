@@ -291,10 +291,71 @@ struct DiagnosticLogTests {
         #expect(failed.first?.contains("\"reason\":\"invalidUTF8\"") == true)
     }
 
-    // Verifies: REQ-100 — a save failure is recorded at error level. Drives a genuine failure
-    // through the real save(to:ofType:for:completionHandler:) override (a saveExecutorOverride
-    // stub would bypass that override entirely) by pointing fileURL at a parent directory that
-    // does not exist, so the underlying write fails for a real, verifiable reason.
+    // Verifies: REQ-100 — a failure reading the URL itself (never reaching the Data-based
+    // override at all) is still recorded, distinctly from an invalid-UTF-8 content failure.
+    @Test func documentLoadFailureForUnreadableURLIsRecorded() async {
+        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
+        let document = MarkdownDocument()
+        document.trace = JSONLinesEditorTrace(log: log)
+        let nonexistent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("no-such-file-\(UUID().uuidString).md")
+
+        #expect(throws: (any Error).self) {
+            try document.read(from: nonexistent, ofType: MarkdownContentType.identifier)
+        }
+
+        let recorded = await lines(of: log)
+        let failed = recorded.filter { $0.contains("\"ev\":\"documentLoadFailed\"") }
+        #expect(failed.count == 1)
+        #expect(failed.first?.contains("\"reason\":\"fileUnreadable\"") == true)
+    }
+
+    // Verifies: REQ-100 — a real, valid file still reaches the Data-based override normally
+    // through the URL-based override (no failure recorded on the healthy path).
+    @Test func documentLoadThroughURLRecordsNoFailure() async throws {
+        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
+        let document = MarkdownDocument()
+        document.trace = JSONLinesEditorTrace(log: log)
+        let url = makeTemporaryDirectory().appendingPathComponent("valid.md")
+        try Data("# Hello\n".utf8).write(to: url)
+
+        try document.read(from: url, ofType: MarkdownContentType.identifier)
+
+        let recorded = await lines(of: log)
+        #expect(recorded.filter { $0.contains("\"ev\":\"documentLoadFailed\"") }.isEmpty)
+        #expect(recorded.filter { $0.contains("\"ev\":\"documentLoaded\"") }.count == 1)
+    }
+
+    // Verifies: REQ-100 — a save whose destination was never determined (the Save-panel-cancel
+    // case: DocumentSaveBridge reports failure without save(to:ofType:for:completionHandler:)
+    // ever firing) is still recorded, not silently dropped because it took a different path
+    // than a write that was actually attempted.
+    @Test func documentSaveCancelledBeforeDestinationIsRecorded() async {
+        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
+        let document = MarkdownDocument()
+        document.trace = JSONLinesEditorTrace(log: log)
+        document.installTextForTesting("# Hello\n")
+
+        final class NeverReachesSaveOverride: DocumentSaving {
+            func saveDocument() async -> Bool { false }
+        }
+        document.saveExecutorOverride = NeverReachesSaveOverride()
+        let ok = await document.saveDocument()
+        #expect(ok == false)
+
+        let recorded = await lines(of: log)
+        let failed = recorded.filter { $0.contains("\"ev\":\"documentSaveFailed\"") }
+        #expect(failed.count == 1)
+    }
+
+    // Verifies: REQ-100 — a save failure reaching save(to:ofType:for:completionHandler:) is
+    // recorded at error level. Tests recordSaveOutcome directly with a synthetic error rather
+    // than provoking a genuine AppKit save failure: two earlier attempts (a nonexistent parent
+    // directory, then a permission-denied directory) each took 30+ seconds or hung outright in
+    // a headless test host, apparently due to AppKit's own save-error recovery flow. The real
+    // integration is exercised by documentIOTraceOmitsPaths (a genuine successful save) and by
+    // documentSaveCancelledBeforeDestinationIsRecorded (the one failure path that is fast and
+    // deterministic to drive for real).
     @Test func documentSaveFailureIsRecorded() async {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
         let document = MarkdownDocument()

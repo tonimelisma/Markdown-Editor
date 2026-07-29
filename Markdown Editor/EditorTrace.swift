@@ -43,19 +43,22 @@ nonisolated enum ReconciliationDiscardReason: Sendable, Equatable {
 
 /// Why a document load, save, or revert did not complete.
 ///
-/// // REQ-100: deliberately minimal. `MarkdownDocumentData.init(data:)` has exactly one throw
-/// // site (invalid UTF-8), and `NSDocument.save(withDelegate:didSave:contextInfo:)` reports
-/// // only a success/failure boolean with no underlying reason — AppKit does not distinguish a
-/// // genuine write failure from the user cancelling a Save panel through this callback, the
+/// // REQ-100: deliberately minimal. `MarkdownDocumentData.init(data:)` has exactly one content
+/// // throw site (invalid UTF-8); `fileUnreadable` covers a failure reading the URL itself
+/// // (removed, permission denied) before any content ever reaches that decode step. AppKit's
+/// // save completion reports only a success/failure boolean with no underlying reason — it
+/// // does not distinguish a genuine write failure from the user cancelling a Save panel, the
 /// // same limitation `ImagePlacementEvent.saveCancelledOrFailed` already accepts elsewhere in
 /// // this codebase. Do not add a case this code cannot actually produce.
 nonisolated enum DocumentIOFailure: Sendable, Equatable {
     case invalidUTF8
+    case fileUnreadable
     case saveFailedOrCancelled
 
     var symbol: DiagnosticSymbol {
         switch self {
         case .invalidUTF8: return .invalidUTF8
+        case .fileUnreadable: return .fileUnreadable
         case .saveFailedOrCancelled: return .saveFailedOrCancelled
         }
     }

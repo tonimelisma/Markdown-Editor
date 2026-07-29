@@ -59,6 +59,17 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// is treated as the expected outcome of operation-scoped Save (no generation bump).
     private var expectingUntitledSaveURL = false
 
+    /// REQ-100: true once the Data-based `read(from:ofType:)` has run during the current
+    /// URL-based read attempt — see the URL-based override for why this exists.
+    private var didReachDataRead = false
+
+    /// REQ-100: incremented every time `recordSaveOutcome` records anything. `saveDocument()`
+    /// compares this before/after to detect a save that never reached `save(to:ofType:for:
+    /// completionHandler:)` at all — the destination was never determined, e.g. the user
+    /// cancelled the Save panel for an untitled document — so that outcome is not silently
+    /// unrecorded merely because it took a different AppKit path than a write that was attempted.
+    private var saveOutcomeSequence: UInt64 = 0
+
     /// Open typing undo group (MutationGrouping.typing coalescing).
     private var typingGroupOpen = false
     private var undoCheckpointObserver: NSObjectProtocol?
@@ -137,6 +148,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// including the delegate-based DocumentSaveBridge this app's own operation-scoped
     /// saveDocument() uses, routes through this override.
     func recordSaveOutcome(error: Error?, utf16Count: Int, startUptimeNanos: UInt64) {
+        saveOutcomeSequence &+= 1
         if error != nil {
             trace?.record(.documentSaveFailed(reason: .saveFailedOrCancelled))
         } else {
@@ -151,6 +163,27 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         }
     }
 
+    // REQ-100: AppKit calls this URL-based override first; its default implementation reads the
+    // URL into Data and only then calls the Data-based override below. A failure reading the
+    // URL itself — file removed, unreadable, permission denied — never reaches that override,
+    // so without this, REQ-100 would go unrecorded for exactly the load failures a user most
+    // needs a diagnostic for. `didReachDataRead` distinguishes that case from a content-decode
+    // failure, which the Data-based override below already records — otherwise this would
+    // double-record every invalid-UTF-8 failure too, since that error also propagates up
+    // through this method.
+    nonisolated override func read(from url: URL, ofType typeName: String) throws {
+        MainActor.assumeIsolated { self.didReachDataRead = false }
+        do {
+            try super.read(from: url, ofType: typeName)
+        } catch {
+            MainActor.assumeIsolated {
+                guard !self.didReachDataRead else { return }
+                self.trace?.record(.documentLoadFailed(reason: .fileUnreadable))
+            }
+            throw error
+        }
+    }
+
     // REQ-015/018; ARC-011: AppKit's default serialized read — assert main thread, install canonically.
     // REQ-100: the only throw site is invalid UTF-8; record it before rethrowing so NSDocument's
     // own error presentation is unchanged.
@@ -159,6 +192,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             Thread.isMainThread,
             "ARC-011 counterexample: NSDocument read invoked off-main while canConcurrentlyReadDocuments remains false"
         )
+        MainActor.assumeIsolated { self.didReachDataRead = true }
         do {
             let decoded = try MarkdownDocumentData(data: data)
             MainActor.assumeIsolated {
@@ -342,10 +376,18 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         if fileURL == nil {
             expectingUntitledSaveURL = true
         }
+        let sequenceBefore = saveOutcomeSequence
         let bridge: DocumentSaving = saveExecutorOverride ?? NSDocumentSavingAdapter(document: self)
         let ok = await bridge.saveDocument()
         if !ok {
             expectingUntitledSaveURL = false
+            // REQ-100: save(to:ofType:for:completionHandler:) already recorded this outcome
+            // unless the destination was never determined at all (e.g. the user cancelled the
+            // Save panel for an untitled document) — that path never reaches the override, so
+            // record it here instead of leaving it silently unrecorded.
+            if saveOutcomeSequence == sequenceBefore {
+                trace?.record(.documentSaveFailed(reason: .saveFailedOrCancelled))
+            }
         }
         return ok
     }
