@@ -65,6 +65,15 @@ if kill -0 "$app_pid" 2>/dev/null; then
     kill "$app_pid" 2>/dev/null
     exit 1
 fi
+# The process has already exited by now, so `wait` reaps it and returns its real exit status
+# immediately rather than blocking — a crash during NSApp.terminate/teardown must fail the smoke
+# run even if the JSON assertions below would otherwise pass on a runEnd record written earlier.
+wait "$app_pid"
+app_exit_code=$?
+if [[ "$app_exit_code" -ne 0 ]]; then
+    echo "smoke: app exited with status $app_exit_code" >&2
+    exit 1
+fi
 launch_end=$(date +%s)
 echo "smoke: launch→exit took $((launch_end - launch_start))s"
 
@@ -79,7 +88,11 @@ header = records[0]
 assert header["v"] == 1, "unexpected schema version"
 assert header["run"]["host"] == "production", f"expected production host, got {header['run'].get('host')}"
 seqs = [r["seq"] for r in records[1:]]
-assert seqs == sorted(seqs), "sequence numbers out of order"
+# Strict comparison, not "seqs == sorted(seqs)": sorting a list with duplicate values leaves it
+# unchanged, so that comparison would not catch a logging regression that repeats a sequence
+# number, despite the header record's contract being *strictly* increasing.
+for previous, current in zip(seqs, seqs[1:]):
+    assert current > previous, f"sequence numbers not strictly increasing: {previous} then {current}"
 assert any(r["ev"] == "documentOpened" for r in records), "document never opened"
 # A storm above the log's own rate-collapse threshold stops emitting individual
 # hostUpdateEnded records and reports the suppressed remainder as one "repeated" summary
