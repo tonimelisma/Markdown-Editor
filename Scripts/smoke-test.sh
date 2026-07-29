@@ -94,6 +94,9 @@ seqs = [r["seq"] for r in records[1:]]
 for previous, current in zip(seqs, seqs[1:]):
     assert current > previous, f"sequence numbers not strictly increasing: {previous} then {current}"
 assert any(r["ev"] == "documentOpened" for r in records), "document never opened"
+# REQ-100: exactly one successful file load, never more, for a fixture opened exactly once.
+loaded = [r for r in records if r["ev"] == "documentLoaded"]
+assert len(loaded) == 1, f"expected exactly one documentLoaded, got {len(loaded)}"
 # A storm above the log's own rate-collapse threshold stops emitting individual
 # hostUpdateEnded records and reports the suppressed remainder as one "repeated" summary
 # (ev == "repeated", of == "hostUpdateEnded", data.count == suppressed). Counting only direct

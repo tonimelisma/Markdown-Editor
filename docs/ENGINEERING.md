@@ -213,6 +213,12 @@ fenced-code representation is editable only when its inverse is proven.
   main-thread contract and snapshots canonical document data inside the main-actor boundary.
 - A failed executor assertion is an architecture counterexample, not permission to restore a
   long-lived mirrored source.
+- `save(to:ofType:for:completionHandler:)` is the one AppKit override every save path in this app
+  routes through — manual Save, Save As, autosave-in-place, and the delegate-based
+  `DocumentSaveBridge` this app's own operation-scoped `saveDocument()` uses — verified
+  empirically rather than assumed, and confirmed to run on the main actor. It is the sole place
+  save outcome (REQ-100) is recorded, so a save reaching AppKit through either route is recorded
+  exactly once.
 - Background work receives immutable `Sendable` value snapshots only.
 - Background work never captures a mutable document or AppKit object.
 - Results publish on the main actor only after complete source revision, location generation, and

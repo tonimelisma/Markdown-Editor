@@ -169,6 +169,34 @@ final class JSONLinesEditorTrace: EditorTraceSink {
             return Mapped(name: .documentClosed, level: .info, category: .document, data: [
                 (.revision, .uint(sourceRevision))
             ])
+        case .documentLoaded(let utf16Count, let sourceRevision):
+            return Mapped(name: .documentLoaded, level: .info, category: .document, data: [
+                (.utf16Count, .int(utf16Count)),
+                (.sourceRevision, .uint(sourceRevision))
+            ])
+        case .documentLoadFailed(let reason):
+            return Mapped(name: .documentLoadFailed, level: .error, category: .document, data: [
+                (.reason, .symbol(reason.symbol))
+            ])
+        case .documentSaveStarted(let utf16Count):
+            return Mapped(name: .documentSaveStarted, level: .debug, category: .document, data: [
+                (.utf16Count, .int(utf16Count))
+            ])
+        case .documentSaveSucceeded(let utf16Count, let sourceRevision, let durationNanos):
+            return Mapped(name: .documentSaveSucceeded, level: .info, category: .document, data: [
+                (.utf16Count, .int(utf16Count)),
+                (.sourceRevision, .uint(sourceRevision)),
+                (.durationNanos, .uint(durationNanos))
+            ])
+        case .documentSaveFailed(let reason):
+            return Mapped(name: .documentSaveFailed, level: .error, category: .document, data: [
+                (.reason, .symbol(reason.symbol))
+            ])
+        case .documentReverted(let sourceRevision, let utf16Count):
+            return Mapped(name: .documentReverted, level: .info, category: .document, data: [
+                (.sourceRevision, .uint(sourceRevision)),
+                (.utf16Count, .int(utf16Count))
+            ])
         case .hostUpdateEnded(let durationNanos, let updatesInWindow):
             return Mapped(name: .hostUpdateEnded, level: .debug, category: .viewUpdate, data: [
                 (.durationNanos, .uint(durationNanos)),

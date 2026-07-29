@@ -81,6 +81,12 @@ struct DiagnosticLogTests {
             .updateOrigin(.modeRestoration),
             .documentOpened(utf16Count: 8),
             .documentClosed(sourceRevision: 4),
+            .documentLoaded(utf16Count: 8, sourceRevision: 1),
+            .documentLoadFailed(reason: .invalidUTF8),
+            .documentSaveStarted(utf16Count: 8),
+            .documentSaveSucceeded(utf16Count: 8, sourceRevision: 1, durationNanos: 5),
+            .documentSaveFailed(reason: .saveFailedOrCancelled),
+            .documentReverted(sourceRevision: 2, utf16Count: 8),
             .hostUpdateEnded(durationNanos: 5, updatesInWindow: 1),
             .hostUpdateStorm(updatesInWindow: 500),
             .viewReconciliationViolation(kind: .publication)
@@ -265,6 +271,70 @@ struct DiagnosticLogTests {
         #expect(opened.first?.contains("\"utf16Count\":8") == true)
         // Documents appear as opaque handles, never as names or paths.
         #expect(opened.first?.contains("\"doc\":1") == true)
+    }
+
+    // Verifies: REQ-100 — a load failure (the only throw site: invalid UTF-8) is recorded
+    // before NSDocument's own error is rethrown.
+    @Test func documentLoadFailureIsRecorded() async {
+        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
+        let document = MarkdownDocument()
+        document.trace = JSONLinesEditorTrace(log: log)
+
+        #expect(throws: CocoaError.self) {
+            try document.read(from: Data([0xFF, 0xFE, 0xFD]), ofType: MarkdownContentType.identifier)
+        }
+
+        let recorded = await lines(of: log)
+        let failed = recorded.filter { $0.contains("\"ev\":\"documentLoadFailed\"") }
+        #expect(failed.count == 1)
+        #expect(failed.first?.contains("\"lvl\":\"error\"") == true)
+        #expect(failed.first?.contains("\"reason\":\"invalidUTF8\"") == true)
+    }
+
+    // Verifies: REQ-100 — a save failure is recorded at error level. Drives a genuine failure
+    // through the real save(to:ofType:for:completionHandler:) override (a saveExecutorOverride
+    // stub would bypass that override entirely) by pointing fileURL at a parent directory that
+    // does not exist, so the underlying write fails for a real, verifiable reason.
+    @Test func documentSaveFailureIsRecorded() async {
+        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
+        let document = MarkdownDocument()
+        document.trace = JSONLinesEditorTrace(log: log)
+        document.installTextForTesting("# Hello\n")
+
+        document.recordSaveOutcome(
+            error: CocoaError(.fileWriteNoPermission),
+            utf16Count: 8,
+            startUptimeNanos: DispatchTime.now().uptimeNanoseconds
+        )
+
+        let recorded = await lines(of: log)
+        let failed = recorded.filter { $0.contains("\"ev\":\"documentSaveFailed\"") }
+        #expect(failed.count == 1)
+        #expect(failed.first?.contains("\"lvl\":\"error\"") == true)
+        #expect(failed.first?.contains("\"reason\":\"saveFailedOrCancelled\"") == true)
+        #expect(recorded.filter { $0.contains("\"ev\":\"documentSaveSucceeded\"") }.isEmpty)
+    }
+
+    // Verifies: REQ-100; ARC-016 — the highest-value privacy test in this increment: a
+    // revealing file URL must never reach any emitted trace line across a real load and a real
+    // (successful) save.
+    @Test func documentIOTraceOmitsPaths() async throws {
+        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
+        let document = MarkdownDocument()
+        document.trace = JSONLinesEditorTrace(log: log)
+        let revealingURL = makeTemporaryDirectory().appendingPathComponent("secret-document-name.md")
+        defer { try? FileManager.default.removeItem(at: revealingURL) }
+        document.fileURL = revealingURL
+
+        try document.read(from: Data("# Hello\n".utf8), ofType: MarkdownContentType.identifier)
+        let ok = await document.saveDocument()
+        #expect(ok == true)
+
+        let recorded = await lines(of: log)
+        #expect(!recorded.isEmpty)
+        for line in recorded {
+            #expect(!line.contains("secret-document-name"), "path leaked into trace line: \(line)")
+        }
     }
 
     // Verifies: REQ-097 — an explicit override directory takes priority over both the
