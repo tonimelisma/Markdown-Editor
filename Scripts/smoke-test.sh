@@ -108,6 +108,14 @@ host_updates = direct_updates + collapsed_updates
 assert host_updates <= threshold, f"host did not settle: {host_updates} updates (threshold {threshold})"
 faults = [r for r in records if r.get("lvl") in ("error", "fault")]
 assert not faults, f"faults recorded: {[r['ev'] for r in faults]}"
+# REQ-099: the fixture opens with no matching projection yet, so WYSIWYG must announce becoming
+# editable once the first parse completes — this is the transition availabilityChanged exists to
+# report, and it has a real production call site only as of COR-12.
+became_editable = any(
+    r["ev"] == "availabilityChanged" and r.get("data", {}).get("editable") is True
+    for r in records
+)
+assert became_editable, "WYSIWYG never announced becoming editable"
 assert records[-1]["ev"] == "runEnd", "no clean-exit record"
 print(f"smoke: PASS ({len(records)} records, {host_updates} host updates)")
 PYEOF

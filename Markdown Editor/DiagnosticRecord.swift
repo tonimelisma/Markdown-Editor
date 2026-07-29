@@ -122,7 +122,6 @@ nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
     case count
     case cost
     case direction
-    case domain
     case durationNanos
     case editable
     case fromSnapshot
@@ -166,7 +165,6 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
     case undoRegistered
     case historyApplied
     case historyRefused
-    case loadApplicationStale
 
     // projection / session
     case parseStarted
@@ -178,7 +176,6 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
     case reconciliationDiscarded
     case reconciliationApplied
     case availabilityChanged
-    case mappingResult
 
     // edit
     case editRouted

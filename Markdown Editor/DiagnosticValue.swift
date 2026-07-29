@@ -37,10 +37,9 @@ nonisolated enum DiagnosticValue: Sendable, Equatable {
 ///
 /// // REQ-089; ARC-016: every case is a compile-time literal written by this project.
 nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
-    // Editor modes and domains
+    // Editor modes
     case source
     case wysiwyg
-    case projection
 
     // Update origins
     case nativeUserInput

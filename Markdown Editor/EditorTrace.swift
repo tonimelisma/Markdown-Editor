@@ -41,19 +41,6 @@ nonisolated enum ReconciliationDiscardReason: Sendable, Equatable {
     }
 }
 
-/// Coordinate domain a mapping was attempted in.
-nonisolated enum MappingDomain: Sendable, Equatable {
-    case source
-    case projection
-
-    var symbol: DiagnosticSymbol {
-        switch self {
-        case .source: return .source
-        case .projection: return .projection
-        }
-    }
-}
-
 /// Which planner handled an accepted edit. Derived from the command, never from an action name.
 ///
 /// // REQ-089; ARC-016: `SourceMutation.actionName` is a user-facing undo title and is never
@@ -167,9 +154,7 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case compositionCancelled
     case compositionRefusedStale
     case imageCacheStore(cost: Int, totalBytes: Int)
-    case loadApplicationStale(token: UInt64, currentRevision: UInt64)
     case editRouted(context: EditorMode, groupingTyping: Bool, planner: PlannerKind)
-    case mappingResult(accepted: Bool, domain: MappingDomain)
     case presentationInstalled(snapshotID: UInt64, sourceRevision: UInt64, provisional: Bool)
     case presentationTransition(from: UInt64, to: UInt64, sourceRevision: UInt64, durationNanos: UInt64)
     case reconciliationScheduled(sourceRevision: UInt64, generation: UInt64)

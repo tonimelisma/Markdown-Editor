@@ -182,7 +182,7 @@ how delivered behavior is verified. Current architecture is in
 | REQ-096 | IF session state is published or live native state is captured during editor-host reconciliation, the editor-host update rate exceeds its sustained threshold, or the main actor does not respond within one second, THEN the system shall record a fault diagnostic identifying the condition, and shall collapse repeated non-fault events into a counted summary. | COR-10 | Done | `EditorSession.reportReconciliationViolation`; `HostUpdateMeter`; `MainActorWatchdog.probeOnce` | `reentrantPublicationRecordsFault`; `liveStateCaptureDuringReconciliationRecordsFault`; `hostUpdateStormRecordsFault`; `hostUpdateStormCrossesThresholdOnce`; `watchdogReportsStallWhileStillBlocked`; `repeatedEventsCollapseWithCount` |
 | REQ-097 | The system shall write diagnostics to a directory named by the `MARKDOWN_EDITOR_DIAGNOSTICS_DIR` environment variable when it is set, so verification runs cannot read, prune, or pollute the user's production diagnostics. | COR-11 | Done | `DiagnosticLog.defaultDirectory(hostKind:environment:)` | test `diagnosticsDirectoryHonoursEnvironmentOverride` |
 | REQ-098 | WHEN process-level smoke verification runs, the system shall open a fixture document, settle within a bounded number of editor-host view updates, record no `error` or `fault` diagnostic, and write a terminating record. | COR-11 | Done | `MarkdownAppDelegate.isSmokeRun`/`smokeFixtureURL`; `Scripts/smoke-test.sh` | `Scripts/smoke-test.sh` (process-level smoke verification per `CLAUDE.md` §4 carve-out); rehearsed failing at a lowered threshold |
-| REQ-099 | The system shall define no instrumentation event that is never recorded, so that the event vocabulary is an accurate description of what a run can report. | COR-12 | Planned | — | — |
+| REQ-099 | The system shall define no instrumentation event that is never recorded, so that the event vocabulary is an accurate description of what a run can report. | COR-12 | Done | `EditorSession.scheduleParse`/`updateWYSIWYGModeState`; `Scripts/check-instrumentation-coverage.sh` | `availabilityChangedRecordsOnlyOnTransition`; `Scripts/check-instrumentation-coverage.sh` (structural, rehearsed failing on a deliberately unwired event); smoke test asserts `availabilityChanged` |
 | REQ-100 | The system shall record the outcome of every document load, save, autosave, and revert, including failures, without recording file names, paths, or contents. | COR-13 | Planned | — | — |
 | REQ-101 | The system shall record image-placement phase transitions, claim counts, byte counts, and typed failures for every paste, drag-and-drop, and Add Image operation, without recording file names, paths, providers, or image data. | COR-14 | Planned | — | — |
 | REQ-102 | WHEN the system presents a failure or warning to the user, it shall record a matching diagnostic at `error` or `warn` level. | COR-14 | Planned | — | — |
@@ -194,7 +194,7 @@ how delivered behavior is verified. Current architecture is in
 table creation/structural controls, image sizing syntax, transcoding, metadata stripping, remote
 images, automatic asset cleanup, and asset-aware Save Copy.
 
-*Planned:* REQ-099–REQ-103, instrumentation completion and smoke verification
-(`docs/plans/cor-12-trace-vocabulary.md` … `docs/plans/cor-15-performance-sampling.md`).
+*Planned:* REQ-100–REQ-103, instrumentation completion and smoke verification
+(`docs/plans/cor-13-document-io-instrumentation.md` … `docs/plans/cor-15-performance-sampling.md`).
 
 *Next free IDs: REQ-008 (A), REQ-023 (C), REQ-033 (D), REQ-104 (concurrency/evidence).*
