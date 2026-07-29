@@ -112,21 +112,11 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 (.cost, .int(cost)),
                 (.totalBytes, .int(totalBytes))
             ])
-        case .loadApplicationStale(let token, let currentRevision):
-            return Mapped(name: .loadApplicationStale, level: .error, category: .document, data: [
-                (.generation, .uint(token)),
-                (.revision, .uint(currentRevision))
-            ])
         case .editRouted(let context, let groupingTyping, let planner):
             return Mapped(name: .editRouted, level: .debug, category: .edit, data: [
                 (.mode, .symbol(context.symbol)),
                 (.grouping, .bool(groupingTyping)),
                 (.planner, .symbol(planner.symbol))
-            ])
-        case .mappingResult(let accepted, let domain):
-            return Mapped(name: .mappingResult, level: .debug, category: .projection, data: [
-                (.editable, .bool(accepted)),
-                (.domain, .symbol(domain.symbol))
             ])
         case .presentationInstalled(let snapshotID, let sourceRevision, let provisional):
             return Mapped(name: .presentationInstalled, level: .debug, category: .projection, data: [
@@ -192,10 +182,6 @@ final class JSONLinesEditorTrace: EditorTraceSink {
         case .viewReconciliationViolation(let kind):
             return Mapped(name: .viewReconciliationViolation, level: .fault, category: .viewUpdate, data: [
                 (.kind, .symbol(kind.symbol))
-            ])
-        case .mainActorStall(let millis):
-            return Mapped(name: .mainActorStall, level: .fault, category: .lifecycle, data: [
-                (.millis, .uint(millis))
             ])
         }
     }

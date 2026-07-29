@@ -54,6 +54,9 @@ There is no ADR system and no documentation archive.
   invalidates material findings.
 - Historical rationale, completed plans, and displaced architecture remain available through Git.
 - Run `Scripts/check-documentation-authority.sh` before every commit.
+- Run `Scripts/check-instrumentation-coverage.sh` before every commit that touches
+  `EditorTraceEvent`: every case must have a real production call site outside
+  `EditorTrace.swift`/`JSONLinesEditorTrace.swift`, or it is deleted in the same change.
 
 ## 3. Increment lifecycle
 
@@ -79,7 +82,7 @@ There is no ADR system and no documentation archive.
 5. Delete displaced production paths; no compatibility shim remains.
 6. Reconcile requirement status/anchors and ROADMAP on the branch.
 7. Delete the implemented plan on the branch.
-8. Run documentation-authority and architecture-conformance gates.
+8. Run documentation-authority, instrumentation-coverage, and architecture-conformance gates.
 9. Open a PR and obtain separate-agent code review.
 10. Triage review comments, squash-merge, and clean every artifact created by the unit.
 

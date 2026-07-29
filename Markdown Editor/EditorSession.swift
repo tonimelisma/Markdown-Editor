@@ -174,8 +174,19 @@ final class EditorSession: ObservableObject {
     func updateWYSIWYGModeState(_ mutate: (inout WYSIWYGModeState) -> Void) {
         noteModeStateMutation()
         var state = wysiwygModeState
+        let before = state.availability
         mutate(&state)
         wysiwygModeState = state
+        // REQ-099: "WYSIWYG went read-only and I don't know why" has, until now, had no log
+        // line. Record the transition, not the state, and only when it actually changes —
+        // this runs on every mode-state mutation, most of which do not touch availability.
+        if state.availability != before {
+            let editable: Bool
+            if case .editable = state.availability { editable = true } else { editable = false }
+            document?.trace?.record(
+                .availabilityChanged(editable: editable, sourceRevision: document?.sourceVersion ?? 0)
+            )
+        }
     }
 
     /// // REQ-094; ARC-015: mode state records real editor events, never reconciliation.
@@ -334,12 +345,28 @@ final class EditorSession: ObservableObject {
         document.trace?.record(
             .reconciliationScheduled(sourceRevision: snapshot.sourceVersion, generation: generation)
         )
+        // REQ-099: recorded here, synchronously alongside reconciliationScheduled, rather than
+        // at the top of the detached task below — this is already a MainActor call site, so
+        // recording "off-main parse is starting" costs no extra hop on this frequent path.
+        document.trace?.record(
+            .parseStarted(sourceVersion: snapshot.sourceVersion, utf16Count: (snapshot.text as NSString).length)
+        )
         let reconciliationStart = DispatchTime.now().uptimeNanoseconds
         parseTask = Task.detached(priority: .userInitiated) { [weak self] in
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                await MainActor.run {
+                    self?.document?.trace?.record(.parseCancelled(sourceVersion: snapshot.sourceVersion))
+                }
+                return
+            }
             let index = MarkdownSourceIndex(source: snapshot.text, sourceVersion: snapshot.sourceVersion)
             let parseResult = MarkdownParser.parse(snapshot.text, sourceVersion: snapshot.sourceVersion)
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                await MainActor.run {
+                    self?.document?.trace?.record(.parseCancelled(sourceVersion: snapshot.sourceVersion))
+                }
+                return
+            }
             guard case .success(let tree) = parseResult else {
                 await MainActor.run {
                     guard let self else { return }
@@ -364,6 +391,12 @@ final class EditorSession: ObservableObject {
                 }
                 return
             }
+            // REQ-099: the raw parser step itself succeeded — a fact independent of whether the
+            // projection model or snapshot it produces later passes oracle validation or is
+            // discarded as stale.
+            await MainActor.run {
+                self?.document?.trace?.record(.parseCompleted(sourceVersion: snapshot.sourceVersion))
+            }
             let model = MarkdownProjectionModel.build(tree: tree, index: index)
             if case .failure = ProjectionOracle.validate(model: model, sourceUTF16Count: (snapshot.text as NSString).length) {
                 await MainActor.run {
@@ -373,7 +406,12 @@ final class EditorSession: ObservableObject {
                 }
                 return
             }
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                await MainActor.run {
+                    self?.document?.trace?.record(.parseCancelled(sourceVersion: snapshot.sourceVersion))
+                }
+                return
+            }
 
             var descriptors: [LocalImageDescriptor] = []
             for attachment in model.attachments {

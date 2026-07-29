@@ -275,7 +275,11 @@ ordinary files the user owns and can read, delete, or ignore.
 - Retained runs and per-file size are bounded; the oldest runs are removed first.
 - A background watchdog races a hop onto the main actor against a one-second threshold. A stall
   is recorded while it is still in progress, so an unrecovered stall is reported too; a second
-  record carries the measured duration once the hop lands.
+  record carries the measured duration once the hop lands. It records directly through
+  `DiagnosticLog`, not through `EditorTraceEvent`: the watchdog is a process-level condition with
+  no document to attribute it to, observed from a background closure with no `EditorTraceSink`
+  in scope, so routing it through the per-document trace would not change what it can honestly
+  report.
 - Reconciliation instrumentation records any session publication during view reconciliation, and
   the host-update meter reports a sustained update rate — the signature of a self-feeding loop,
   which presents as high CPU rather than as a hang.

@@ -296,6 +296,29 @@ struct ReconciliationInvariantTests {
         #expect(values.first == 100)
         #expect((values.last ?? 0) >= 100)
     }
+
+    // Verifies: REQ-099 — "WYSIWYG went read-only and I don't know why" must have a log line,
+    // but only the transition, not every mode-state mutation that leaves availability unchanged.
+    @Test func availabilityChangedRecordsOnlyOnTransition() {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("# Hello\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        trace.reset()
+
+        let snapshotID = PresentationSnapshot.ID(value: 1)
+        session.updateWYSIWYGModeState { $0.availability = .editable(snapshotID) }
+        session.updateWYSIWYGModeState { $0.availability = .editable(snapshotID) }
+        session.updateWYSIWYGModeState { $0.scrollOffset = CGPoint(x: 0, y: 10) }
+
+        let transitions = trace.eventsMatching {
+            if case .availabilityChanged = $0 { return true }
+            return false
+        }
+        #expect(transitions == [.availabilityChanged(editable: true, sourceRevision: document.sourceVersion)])
+    }
 }
 
 /// Blocks the main actor for real, so the watchdog observes an unresponsive actor.
