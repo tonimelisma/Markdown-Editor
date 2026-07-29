@@ -165,16 +165,20 @@ Every code increment receives a separate-agent review against VISION, ENGINEERIN
 and its approved plan before merge. Spawn the reviewer automatically. Doc-only changes do not
 require a separate review.
 
-Before squash merge:
+Before every squash merge — not only the first PR of a session, every one:
 
 1. Rebase if `main` advanced.
-2. Review the last 10 PRs and their comments.
-3. For each unclaimed actionable comment:
-   - reply `to fix`;
-   - design and implement the root-cause correction;
-   - keep that correction in one commit; and
-   - reply with the fixing commit SHA.
-4. Merge only after every comment is resolved.
+2. Review the last 10 PRs on GitHub (not just the PR being merged) and their comments.
+3. For each unclaimed actionable comment found anywhere in that review:
+   - reply to claim it (e.g. `to fix`), so another pass does not duplicate the work;
+   - design and implement the root-cause correction — no band-aids;
+   - keep that correction in one commit as part of the PR being merged; and
+   - reply on that same comment with the fixing commit SHA.
+4. Merge only after every comment found in the sweep is resolved.
+5. After the merge lands on `main`, return to each comment claimed in step 3 and post a
+   follow-up reply confirming it is fixed on `main` (name the merge commit). A comment is not
+   closed out until this confirmation is posted — the fixing commit alone is not enough, since
+   it lived on a branch until the merge.
 
 ## 7. Stale-work sweep
 
