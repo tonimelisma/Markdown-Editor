@@ -81,7 +81,17 @@ assert header["run"]["host"] == "production", f"expected production host, got {h
 seqs = [r["seq"] for r in records[1:]]
 assert seqs == sorted(seqs), "sequence numbers out of order"
 assert any(r["ev"] == "documentOpened" for r in records), "document never opened"
-host_updates = sum(1 for r in records if r["ev"] == "hostUpdateEnded")
+# A storm above the log's own rate-collapse threshold stops emitting individual
+# hostUpdateEnded records and reports the suppressed remainder as one "repeated" summary
+# (ev == "repeated", of == "hostUpdateEnded", data.count == suppressed). Counting only direct
+# records would let a real storm hide behind the collapse and pass this bounded-update check.
+direct_updates = sum(1 for r in records if r["ev"] == "hostUpdateEnded")
+collapsed_updates = sum(
+    r.get("data", {}).get("count", 0)
+    for r in records
+    if r["ev"] == "repeated" and r.get("of") == "hostUpdateEnded"
+)
+host_updates = direct_updates + collapsed_updates
 assert host_updates <= threshold, f"host did not settle: {host_updates} updates (threshold {threshold})"
 faults = [r for r in records if r.get("lvl") in ("error", "fault")]
 assert not faults, f"faults recorded: {[r['ev'] for r in faults]}"

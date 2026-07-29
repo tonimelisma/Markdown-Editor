@@ -83,9 +83,16 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
     /// The fixture path passed as a plain positional argument alongside the smoke-exit flag.
     /// Launching the built binary directly bypasses Launch Services, so this app must open the
     /// fixture itself rather than rely on `application(_:open:)`.
+    ///
+    /// Matched by existing-file rather than "does not start with a dash": AppKit's `-Key Value`
+    /// user-default argument pairs (e.g. `-ApplePersistenceIgnoreState YES`, used to veto window
+    /// restoration for this run) put a bare, non-dash-prefixed value token in `arguments` too, so
+    /// a dash-based filter would misidentify that token as the fixture path.
     nonisolated static var smokeFixtureURL: URL? {
         let args = ProcessInfo.processInfo.arguments.dropFirst()
-        guard let path = args.first(where: { !$0.hasPrefix("--") }) else { return nil }
+        guard let path = args.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
+            return nil
+        }
         return URL(fileURLWithPath: path)
     }
 
@@ -93,6 +100,17 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
     private var watchdog: MainActorWatchdog?
 
     override init() {
+        // REQ-098: veto window-state restoration for a smoke run before AppKit acts on it.
+        // `applicationSupportsSecureRestorableState` only selects secure vs. legacy *encoding*;
+        // it does not disable restoration, so a window saved by a prior Debug run could still be
+        // restored alongside the fixture and change the host-update count this run asserts on.
+        // `ApplePersistenceIgnoreState` is the actual veto AppKit checks, and setting it this
+        // early — before `super.init()` and before AppKit's own launch/restoration sequencing —
+        // makes the veto a property of the app itself rather than of how it happens to be
+        // invoked.
+        if Self.isSmokeRun {
+            UserDefaults.standard.set(true, forKey: "ApplePersistenceIgnoreState")
+        }
         // First NSDocumentController subclass instance becomes the shared controller.
         // REQ-095: the run log must exist before the first document is constructed, because
         // each document wires its trace sink at init.
@@ -166,8 +184,9 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         if Self.isRunningUnitTests { return false }
-        // REQ-098: a smoke run must not restore windows left over from a prior manual run of
-        // the same Debug build — that would change the document/host-update count it asserts on.
+        // Note: this selects secure vs. legacy state *encoding* only; it does not itself
+        // disable restoration. The actual smoke-run veto is `ApplePersistenceIgnoreState`,
+        // set in `init()` before AppKit's launch/restoration sequencing begins.
         if Self.isSmokeRun { return false }
         return true
     }
