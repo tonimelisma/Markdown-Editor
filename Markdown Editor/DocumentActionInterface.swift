@@ -27,7 +27,7 @@ protocol DocumentActionInterface: AnyObject {
     @MainActor func requestSelectionRestoration(_ selection: SourceSelection)
 
     /// Operation-scoped Save (REQ-017). Does not walk the view hierarchy.
-    @MainActor func saveDocument() async -> Bool
+    @MainActor func saveDocument() async -> DocumentSaveOutcome
 
     @MainActor var documentUndoManager: UndoManager? { get }
 

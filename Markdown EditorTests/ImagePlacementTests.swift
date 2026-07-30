@@ -598,6 +598,38 @@ struct ImagePlacementControllerLifecycleTests {
         #expect(failed == [.imagePlacementFailed(reason: .busy, phase: .awaitingSave)])
     }
 
+    // Verifies: REQ-101 — Codex PR #24 finding: an unsuccessful operation-scoped Save is a
+    // failure, not a cancellation. The placement log therefore records the .saveFailed reason
+    // before its terminal reset, and the user receives the failure-specific route.
+    @Test @MainActor func untitledSaveFailureIsRecordedAsPlacementFailure() async {
+        final class FailedSave: DocumentSaving {
+            func saveDocument() async -> DocumentSaveOutcome { .failed }
+        }
+
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let controller = ImagePlacementController()
+        controller.attach(actions: document)
+        controller.trace = trace
+        controller.saveBridgeOverride = FailedSave()
+
+        controller.handleImageAction(
+            intent: ImagePlacementIntent(
+                target: targetForCurrentState(document),
+                claims: [.bitmapData(Data([0x89]), providerName: "x.png", declaredType: .png)]
+            ),
+            documentURL: nil
+        )
+        await waitUntilIdle(controller)
+
+        #expect(trace.eventsMatching {
+            if case .imagePlacementFailed = $0 { return true }
+            return false
+        } == [.imagePlacementFailed(reason: .saveFailed, phase: .awaitingSave)])
+        #expect(controller.alert == .error(ImagePlacementError.saveFailed.userMessage))
+    }
+
     // Verifies: REQ-019/075 — first URL after untitled Save must not bump document location generation.
     @Test @MainActor func untitledSaveURLDoesNotBumpGenerationForActiveTransaction() async {
         let doc = MarkdownDocument()
@@ -620,13 +652,13 @@ struct ImagePlacementControllerLifecycleTests {
                 self.doc = doc
                 self.url = url
             }
-            func saveDocument() async -> Bool {
+            func saveDocument() async -> DocumentSaveOutcome {
                 doc.fileURL = url
-                return true
+                return .succeeded
             }
         }
         doc.saveExecutorOverride = AssigningSave(doc: doc, url: url)
-        #expect(await doc.saveDocument() == true)
+        #expect(await doc.saveDocument() == .succeeded)
         controller.updateDocumentURL(doc.fileURL)
         #expect(doc.locationGeneration == genBefore)
         #expect(controller.documentLocationGenerationForTesting == genBefore)

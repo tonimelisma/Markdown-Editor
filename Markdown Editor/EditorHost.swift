@@ -29,9 +29,16 @@ final class EditorActionRouter: ObservableObject {
 
     func handleAddImageClaims(_ claims: [ImageClaim]) {
         guard let placement, let document else { return }
+        guard !claims.isEmpty else {
+            pendingImageTarget = nil
+            return
+        }
         guard let target = pendingImageTarget,
               target.sourceRevision.value == document.sourceVersion,
               target.locationGeneration == document.locationGeneration else {
+            // REQ-101: the picker returned known claims, but the source-domain intent is no
+            // longer exact. Refuse without mutation while leaving an actionable diagnostic.
+            placement.recordRejectedImageAction(claimCount: claims.count, reason: .parentChanged)
             pendingImageTarget = nil
             return
         }

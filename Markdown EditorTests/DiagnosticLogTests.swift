@@ -364,11 +364,11 @@ struct DiagnosticLogTests {
         document.installTextForTesting("# Hello\n")
 
         final class NeverReachesSaveOverride: DocumentSaving {
-            func saveDocument() async -> Bool { false }
+            func saveDocument() async -> DocumentSaveOutcome { .cancelled }
         }
         document.saveExecutorOverride = NeverReachesSaveOverride()
-        let ok = await document.saveDocument()
-        #expect(ok == false)
+        let outcome = await document.saveDocument()
+        #expect(outcome == .cancelled)
 
         let recorded = await lines(of: log)
         let failed = recorded.filter { $0.contains("\"ev\":\"documentSaveFailed\"") }
@@ -415,8 +415,8 @@ struct DiagnosticLogTests {
         document.fileURL = revealingURL
 
         try document.read(from: Data("# Hello\n".utf8), ofType: MarkdownContentType.identifier)
-        let ok = await document.saveDocument()
-        #expect(ok == true)
+        let outcome = await document.saveDocument()
+        #expect(outcome == .succeeded)
 
         let recorded = await lines(of: log)
         #expect(!recorded.isEmpty)

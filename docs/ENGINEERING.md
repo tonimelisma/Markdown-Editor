@@ -299,7 +299,12 @@ can also roll back internally, before ever throwing back to the controller, when
 in a multi-image batch fails after an earlier one already published — that path throws
 `PartialPublishRollback` (the removed count plus the classified failure) specifically so the
 controller can still record `imagePlacementRolledBack` for a rollback it did not itself drive.
-`assetDirectoryPublished` is distinct from `imagePlacementCommitted`: files can be published to
+An Add Image picker result whose immutable target no longer matches current source or location
+records its known claim count and a `parentChanged` failure without mutating placement state.
+`DocumentSaveOutcome` preserves successful, cancelled, and failed operation-scoped Save results;
+an untitled-save failure takes the ordinary `.saveFailed` placement-failure route rather than
+being represented as a cancellation. `assetDirectoryPublished` is distinct from
+`imagePlacementCommitted`: files can be published to
 `assets/` and then still be rolled back or the transaction cancelled before the source mutation
 commits (a parent-changed race, or the tracked insertion point changing), so the two milestones
 are not always both reached.

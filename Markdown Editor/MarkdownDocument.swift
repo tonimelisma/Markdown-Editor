@@ -388,29 +388,34 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     }
 
     // REQ-017/100: operation-scoped Save without view hierarchy discovery; record the outcome.
-    // REQ-100: save outcome is recorded once, universally, in the save(to:ofType:for:
-    // completionHandler:) override below — not here — since this method's default bridge
-    // (NSDocumentSavingAdapter → DocumentSaveBridge → save(withDelegate:didSave:contextInfo:))
-    // is verified to route through that same override, and a test-injected saveExecutorOverride
-    // bypasses AppKit's save machinery entirely, so there is nothing honest to record here.
-    func saveDocument() async -> Bool {
+    // The AppKit bridge reports only a Boolean. A false completion that reached our save override
+    // is a failed write; one that never reached it is a cancelled untitled Save panel.
+    func saveDocument() async -> DocumentSaveOutcome {
         if fileURL == nil {
             expectingUntitledSaveURL = true
         }
         let sequenceBefore = saveOutcomeSequence
-        let bridge: DocumentSaving = saveExecutorOverride ?? NSDocumentSavingAdapter(document: self)
-        let ok = await bridge.saveDocument()
-        if !ok {
-            expectingUntitledSaveURL = false
-            // REQ-100: save(to:ofType:for:completionHandler:) already recorded this outcome
-            // unless the destination was never determined at all (e.g. the user cancelled the
-            // Save panel for an untitled document) — that path never reaches the override, so
-            // record it here instead of leaving it silently unrecorded.
-            if saveOutcomeSequence == sequenceBefore {
+        if let saveExecutorOverride {
+            let outcome = await saveExecutorOverride.saveDocument()
+            if outcome != .succeeded {
+                expectingUntitledSaveURL = false
+                // Test and controlled-operation adapters bypass AppKit's save override, so they
+                // must still leave the same privacy-safe document-I/O evidence as that path.
                 trace?.record(.documentSaveFailed(reason: .saveFailedOrCancelled))
             }
+            return outcome
         }
-        return ok
+        let didSave = await DocumentSaveBridge.save(self)
+        if !didSave {
+            expectingUntitledSaveURL = false
+            guard saveOutcomeSequence == sequenceBefore else { return .failed }
+            // REQ-100: cancellation never reaches save(to:ofType:for:completionHandler:), so
+            // record its closed-enum document-I/O failure shape here while returning its more
+            // precise operation outcome to callers such as image placement.
+            trace?.record(.documentSaveFailed(reason: .saveFailedOrCancelled))
+            return .cancelled
+        }
+        return .succeeded
     }
 
     override func close() {

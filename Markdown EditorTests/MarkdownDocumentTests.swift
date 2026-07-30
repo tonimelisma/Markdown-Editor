@@ -60,16 +60,16 @@ struct MarkdownDocumentTests {
         let doc = MarkdownDocument()
 
         final class FakeSave: DocumentSaving {
-            var result: Bool
-            init(_ result: Bool) { self.result = result }
-            func saveDocument() async -> Bool { result }
+            var result: DocumentSaveOutcome
+            init(_ result: DocumentSaveOutcome) { self.result = result }
+            func saveDocument() async -> DocumentSaveOutcome { result }
         }
 
-        doc.saveExecutorOverride = FakeSave(true)
-        #expect(await doc.saveDocument() == true)
+        doc.saveExecutorOverride = FakeSave(.succeeded)
+        #expect(await doc.saveDocument() == .succeeded)
 
-        doc.saveExecutorOverride = FakeSave(false)
-        #expect(await doc.saveDocument() == false)
+        doc.saveExecutorOverride = FakeSave(.cancelled)
+        #expect(await doc.saveDocument() == .cancelled)
     }
 
     // Verifies: REQ-019 — URL change advances location generation; untitled-save path does not.
@@ -92,14 +92,14 @@ struct MarkdownDocumentTests {
                 self.doc = doc
                 self.url = url
             }
-            func saveDocument() async -> Bool {
+            func saveDocument() async -> DocumentSaveOutcome {
                 doc.fileURL = url
-                return true
+                return .succeeded
             }
         }
 
         doc.saveExecutorOverride = AssigningSave(doc: doc, url: url1)
-        #expect(await doc.saveDocument() == true)
+        #expect(await doc.saveDocument() == .succeeded)
         #expect(doc.fileURL == url1)
         #expect(doc.locationGeneration == 0) // untitled → first URL via Save
 
@@ -134,11 +134,11 @@ struct DocumentActionInterfaceTests {
     @Test func saveGoesThroughInterfaceNotViewLookup() async {
         let doc = MarkdownDocument()
         final class FakeSave: DocumentSaving {
-            func saveDocument() async -> Bool { true }
+            func saveDocument() async -> DocumentSaveOutcome { .succeeded }
         }
         doc.saveExecutorOverride = FakeSave()
         let actions: DocumentActionInterface = doc
-        #expect(await actions.saveDocument() == true)
+        #expect(await actions.saveDocument() == .succeeded)
     }
 
     // Verifies: REQ-019 — placement tracking lives on the interface.
