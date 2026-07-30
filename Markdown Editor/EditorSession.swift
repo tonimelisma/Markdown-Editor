@@ -57,6 +57,7 @@ final class EditorSession: ObservableObject {
     var pickImages: (() async -> [URL])?
 
     private weak var document: MarkdownDocument?
+    private var performanceSampler: PerformanceSampler?
     private var parseTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
     private var publicationObserver: AnyCancellable?
@@ -117,6 +118,7 @@ final class EditorSession: ObservableObject {
 
     func attach(document: MarkdownDocument) {
         self.document = document
+        performanceSampler = PerformanceSampler(trace: document.trace)
         updateOrigin.didChange = { [weak document] origin in
             document?.trace?.record(.updateOrigin(origin))
         }
@@ -141,6 +143,10 @@ final class EditorSession: ObservableObject {
             }
             .store(in: &cancellables)
         scheduleParse()
+    }
+
+    func recordPerformance(_ metric: PerformanceSampler.Metric, durationNanos: UInt64) {
+        performanceSampler?.record(metric, durationNanos: durationNanos)
     }
 
     private func invalidateDerivedState() {
@@ -477,12 +483,14 @@ final class EditorSession: ObservableObject {
                 } else {
                     self.installPresentation(authoritative, tree: tree, provisional: false)
                 }
+                let duration = DispatchTime.now().uptimeNanoseconds - reconciliationStart
+                self.performanceSampler?.record(.reconciliation, durationNanos: duration)
                 self.document?.trace?.record(
                     .reconciliationApplied(
                         snapshotID: authoritative.id.value,
                         sourceRevision: authoritative.sourceRevision.value,
                         generation: generation,
-                        durationNanos: DispatchTime.now().uptimeNanoseconds - reconciliationStart
+                        durationNanos: duration
                     )
                 )
             }
@@ -507,6 +515,7 @@ final class EditorSession: ObservableObject {
             grouping: grouping
         )
         let planningStart = DispatchTime.now().uptimeNanoseconds
+        defer { performanceSampler?.record(.keystrokeTranslation, durationNanos: DispatchTime.now().uptimeNanoseconds - planningStart) }
         let outcome = SemanticEditEngine.plan(
             request,
             snapshot: snapshot,

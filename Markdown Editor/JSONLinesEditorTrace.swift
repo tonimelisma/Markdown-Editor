@@ -252,6 +252,15 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 (.level, .symbol(severity.symbol)),
                 (.reason, .symbol(reason.symbol))
             ])
+        case .performanceSummary(let metric, let count, let p50Nanos, let p95Nanos, let maxNanos):
+            return Mapped(name: .performanceSummary, level: .info, category: .session, data: [
+                (.mode, .symbol(metric.symbol)), (.count, .int(count)), (.p50Nanos, .uint(p50Nanos)),
+                (.p95Nanos, .uint(p95Nanos)), (.maxNanos, .uint(maxNanos))
+            ])
+        case .budgetExceeded(let metric, let p95Nanos, let budgetNanos):
+            return Mapped(name: .budgetExceeded, level: .warn, category: .session, data: [
+                (.mode, .symbol(metric.symbol)), (.p95Nanos, .uint(p95Nanos)), (.budgetNanos, .uint(budgetNanos))
+            ])
         }
     }
 }

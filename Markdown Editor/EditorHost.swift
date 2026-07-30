@@ -275,6 +275,8 @@ struct EditorHostView: NSViewRepresentable {
         }
 
         func applyMode(_ mode: EditorMode, focus: Bool) {
+            let performanceStart = DispatchTime.now().uptimeNanoseconds
+            defer { session.recordPerformance(.modeToggle, durationNanos: DispatchTime.now().uptimeNanoseconds - performanceStart) }
             guard let sourceScroll, let wysiwygScroll, let sourceText, let wysiwygText else { return }
             let modeChanged = lastAppliedMode != nil && lastAppliedMode != mode
             let firstResponder = sourceText.window?.firstResponder

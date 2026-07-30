@@ -249,6 +249,8 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case imagePlacementRolledBack(removedFileCount: Int)
     case assetDirectoryPublished(fileCount: Int, totalBytes: Int)
     case userAlertPresented(severity: AlertSeverity, reason: AlertReason)
+    case performanceSummary(metric: PerformanceSampler.Metric, count: Int, p50Nanos: UInt64, p95Nanos: UInt64, maxNanos: UInt64)
+    case budgetExceeded(metric: PerformanceSampler.Metric, p95Nanos: UInt64, budgetNanos: UInt64)
 }
 
 nonisolated enum HistoryDirection: Sendable, Equatable {
@@ -329,6 +331,16 @@ extension ImagePlacementError {
         case .promiseTimedOut: return .promiseTimedOut
         case .nonRegularSource: return .nonRegularSource
         case .parentChanged: return .parentChanged
+        }
+    }
+}
+
+extension PerformanceSampler.Metric {
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .keystrokeTranslation: return .keystrokeTranslation
+        case .modeToggle: return .modeToggle
+        case .reconciliation: return .reconciliation
         }
     }
 }

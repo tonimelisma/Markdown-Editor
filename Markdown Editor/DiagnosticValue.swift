@@ -131,6 +131,9 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case promiseTimedOut
     case nonRegularSource
     case parentChanged
+    case keystrokeTranslation
+    case modeToggle
+    case reconciliation
 
     // Alert reasons with no natural ImagePlacementError equivalent
     case noInsertionTarget
