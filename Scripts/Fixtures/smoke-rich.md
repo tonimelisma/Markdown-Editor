@@ -1,52 +1,29 @@
-# Smoke fixture — rich
+# Rich fixture
 
-Used only by `Scripts/smoke-screenshot.sh` for a one-time visual sanity screenshot alongside
-process-level instrumentation. Not a functional parser or projection test fixture — those live
-in `Markdown EditorTests`.
+Smoke-screenshot-only fixture, compacted to fit the app's 720×560 default window with no
+scrolling — see `Scripts/smoke-screenshot.sh` and `docs/ENGINEERING.md`'s ARC-Q13 entry for why:
+every construct below must appear in the one screenshot this fixture exists to produce.
 
-## Text formatting
-
-Plain text with **bold**, *italic*, ***bold italic***, ~~strikethrough~~, and `inline code`.
-
-## Links and images
-
-A [link to an example](https://example.com) and a local image:
+**Bold**, *italic*, ~~strikethrough~~, `inline code`. A [link](https://example.com) and image:
 
 ![sample image](assets/sample.png)
 
-## Lists
-
-- Unordered item one
-- Unordered item two
+- Unordered item
   - Nested item
+1. Ordered item
+- [x] Done
+- [ ] Open
 
-1. Ordered item one
-2. Ordered item two
-
-- [x] Completed task
-- [ ] Open task
-
-## Quote and code block
-
-> A blockquote spanning
-> two lines.
+> A blockquote.
 
 ```swift
-func greet(_ name: String) -> String {
-    "Hello, \(name)!"
-}
+func greet(_ name: String) -> String { "Hello, \(name)!" }
 ```
-
-## Table
 
 | Construct | Supported |
 |---|---|
 | Tables | yes |
-| Task lists | yes |
-| Strikethrough | yes |
 
 ---
 
-Raw HTML shows literally, unformatted: <div>not executed</div>
-
-Thematic break above; end of fixture.
+Raw HTML, literal: <div>not executed</div>
