@@ -13,6 +13,29 @@ import Foundation
 @MainActor
 struct DiagnosticLogTests {
 
+    @Test func samplerComputesPercentilesFromKnownDistribution() {
+        let sampler = PerformanceSampler(trace: nil)
+        for value in 1...100 { sampler.record(.keystrokeTranslation, durationNanos: UInt64(value)) }
+        #expect(sampler.drainSummaries() == [.init(metric: .keystrokeTranslation, count: 100, p50: 50, p95: 95, max: 100)])
+    }
+
+    @Test func budgetExceededIsRecordedWhenP95OverBudget() {
+        let trace = InMemoryEditorTrace()
+        let sampler = PerformanceSampler(trace: trace)
+        sampler.record(.modeToggle, durationNanos: 20_000_000)
+        sampler.flush()
+        #expect(trace.events.contains(.budgetExceeded(metric: .modeToggle, p95Nanos: 20_000_000, budgetNanos: 16_000_000)))
+    }
+
+    @Test func performanceSummaryOmitsPerEventTimings() {
+        let trace = InMemoryEditorTrace()
+        let sampler = PerformanceSampler(trace: trace)
+        sampler.record(.reconciliation, durationNanos: 1)
+        #expect(trace.events.isEmpty)
+        sampler.flush()
+        #expect(trace.events.count == 1)
+    }
+
     private func makeTemporaryDirectory() -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("diagnostics-\(UUID().uuidString)")
@@ -97,6 +120,8 @@ struct DiagnosticLogTests {
             .imagePlacementRolledBack(removedFileCount: 1),
             .assetDirectoryPublished(fileCount: 1, totalBytes: 100),
             .userAlertPresented(severity: .error, reason: .placement(.busy))
+            , .performanceSummary(metric: .keystrokeTranslation, count: 2, p50Nanos: 3, p95Nanos: 4, maxNanos: 5)
+            , .budgetExceeded(metric: .modeToggle, p95Nanos: 17, budgetNanos: 16)
         ]
 
         var covered = Set<DiagnosticEventName>()

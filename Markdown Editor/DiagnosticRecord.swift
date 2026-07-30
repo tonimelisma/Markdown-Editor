@@ -136,12 +136,16 @@ nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
     case location
     case millis
     case mode
+    case maxNanos
     case nameLength
     case origin
     case phase
     case planner
+    case p50Nanos
+    case p95Nanos
     case provisional
     case reason
+    case budgetNanos
     case removedFileCount
     case replacementLength
     case revision
@@ -210,6 +214,8 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
     case imagePlacementRolledBack
     case assetDirectoryPublished
     case userAlertPresented
+    case performanceSummary
+    case budgetExceeded
 
     // view update
     case hostUpdateEnded

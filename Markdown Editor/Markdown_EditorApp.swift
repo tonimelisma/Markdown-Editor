@@ -151,6 +151,7 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
             // exit cleanly so the smoke script can assert on the terminating record.
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(2))
+                flushPerformanceSamplingAtRunEnd()
                 DiagnosticLog.shared?.finishSynchronously()
                 NSApp.terminate(nil)
             }
@@ -158,6 +159,7 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        flushPerformanceSamplingAtRunEnd()
         watchdog?.stop()
         // REQ-095: the terminating record distinguishes a clean exit from a crash.
         DiagnosticLog.shared?.finishSynchronously()
