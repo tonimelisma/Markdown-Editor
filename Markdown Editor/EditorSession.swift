@@ -53,8 +53,7 @@ final class EditorSession: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
-    /// Injected image picker for “Add Image…” (tests inject results).
-    var pickImages: (() async -> [URL])?
+    var imagePicker: (any ImagePicking)?
 
     private weak var document: MarkdownDocument?
     private var performanceSampler: PerformanceSampler?
@@ -633,30 +632,11 @@ final class EditorSession: ObservableObject {
         }
         actionRouter?.captureImagePlacementTarget(target)
 
-        let urls: [URL]
-        if let pickImages {
-            urls = await pickImages()
-        } else {
-            urls = await Self.presentOpenPanel()
-        }
+        guard let imagePicker else { return }
+        let urls = await imagePicker.pickImages()
         guard !urls.isEmpty else { return }
         let claims = urls.map { ImageClaim.fileURL($0, providerName: $0.lastPathComponent, declaredType: nil) }
         actionRouter?.handleAddImageClaims(claims)
     }
 
-    private static func presentOpenPanel() async -> [URL] {
-        await withCheckedContinuation { continuation in
-            let panel = NSOpenPanel()
-            panel.allowsMultipleSelection = true
-            panel.canChooseDirectories = false
-            panel.allowedContentTypes = [.png, .jpeg, .gif, .heic, .heif]
-            panel.begin { response in
-                if response == .OK {
-                    continuation.resume(returning: panel.urls)
-                } else {
-                    continuation.resume(returning: [])
-                }
-            }
-        }
-    }
 }

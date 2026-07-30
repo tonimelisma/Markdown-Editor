@@ -108,8 +108,8 @@ struct EditorHostView: NSViewRepresentable {
         var wysiwygScroll: NSScrollView?
         var sourceText: MarkdownSourceTextView?
         var wysiwygText: MarkdownWYSIWYGTextView?
-        var sourceCoordinator: MarkdownTextView.Coordinator?
-        var wysiwygCoordinator: WYSIWYGTextView.Coordinator?
+        var sourceCoordinator: SourceEditor.Coordinator?
+        var wysiwygCoordinator: WYSIWYGEditor.Coordinator?
 
         /// Last mode applied to visibility — used to transfer focus on toggle.
         private var lastAppliedMode: EditorMode?
@@ -189,12 +189,12 @@ struct EditorHostView: NSViewRepresentable {
         }
 
         func buildEditors(in root: NSView) {
-            sourceCoordinator = MarkdownTextView.Coordinator(
+            sourceCoordinator = SourceEditor.Coordinator(
                 document: document,
                 placementController: placementController,
                 session: session
             )
-            wysiwygCoordinator = WYSIWYGTextView.Coordinator(
+            wysiwygCoordinator = WYSIWYGEditor.Coordinator(
                 document: document,
                 session: session,
                 placementController: placementController

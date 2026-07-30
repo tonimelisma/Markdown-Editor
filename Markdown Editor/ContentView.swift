@@ -45,6 +45,7 @@ struct ContentView: View {
             placementController.trace = document.trace
             placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
             session.attach(document: document)
+            session.imagePicker = OpenPanelImagePicker()
             actionRouter.placement = placementController
             actionRouter.document = document
             actionRouter.session = session

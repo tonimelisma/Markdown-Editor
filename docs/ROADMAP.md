@@ -42,12 +42,8 @@ The exact delivered/correction status of each behavior is recorded in
 
 ## Active: instrumentation completion and cleanup
 
-One approved, not-yet-implemented increment (COR-16), in dependency order. Each is a
-separate branch/PR/review/merge; docs are reconciled and each plan file is deleted as its
-increment is implemented. COR-11, COR-12, COR-13, and COR-14 are delivered — see the foundation
-list above.
-
-- 🔵 [COR-16 — naming and layering cleanup](plans/cor-16-naming-layering-cleanup.md)
+Instrumentation completion and cleanup are delivered. COR-11 through COR-16 are complete; their
+current behavior lives in code and the synchronized current specifications.
 
 ## Post-MVP backlog
 
