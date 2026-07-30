@@ -174,17 +174,25 @@ final class EditorSession: ObservableObject {
     func updateWYSIWYGModeState(_ mutate: (inout WYSIWYGModeState) -> Void) {
         noteModeStateMutation()
         var state = wysiwygModeState
-        let before = state.availability
+        func isEditable(_ availability: WYSIWYGAvailability) -> Bool {
+            if case .editable = availability { return true }
+            return false
+        }
+        let editableBefore = isEditable(state.availability)
         mutate(&state)
         wysiwygModeState = state
         // REQ-099: "WYSIWYG went read-only and I don't know why" has, until now, had no log
-        // line. Record the transition, not the state, and only when it actually changes —
-        // this runs on every mode-state mutation, most of which do not touch availability.
-        if state.availability != before {
-            let editable: Bool
-            if case .editable = state.availability { editable = true } else { editable = false }
+        // line. Record the transition, not the state, and only when editability itself
+        // changes — comparing the whole WYSIWYGAvailability enum (as an earlier version of
+        // this code did) is wrong: .editable carries a PresentationSnapshot.ID that changes
+        // on every ordinary reconciliation while the editor stays editable, and
+        // .waitingForCurrentProjection carries a SourceRevision that changes on every
+        // keystroke while the editor stays unavailable — either would report a spurious
+        // transition on nearly every keystroke.
+        let editableAfter = isEditable(state.availability)
+        if editableAfter != editableBefore {
             document?.trace?.record(
-                .availabilityChanged(editable: editable, sourceRevision: document?.sourceVersion ?? 0)
+                .availabilityChanged(editable: editableAfter, sourceRevision: document?.sourceVersion ?? 0)
             )
         }
     }

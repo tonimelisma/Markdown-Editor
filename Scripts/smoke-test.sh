@@ -35,8 +35,14 @@ fi
 
 echo "smoke: launching…"
 launch_start=$(date +%s)
+# -ApplePersistenceIgnoreState YES: a process argument, parsed into NSUserDefaults' argument
+# domain, which outranks the persistent (on-disk) domain and is never written to disk. Neither
+# in-process alternative is safe: UserDefaults.set(forKey:) persists to disk and would disable
+# window restoration for every future ordinary launch (Debug/Release share one bundle
+# identifier); UserDefaults.register(defaults:) registers into the lowest-priority domain and is
+# silently overridden if the persistent domain already holds any explicit value for this key.
 MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$logdir" \
-    "$binary" --diagnostic-smoke-exit "$fixture" &
+    "$binary" -ApplePersistenceIgnoreState YES --diagnostic-smoke-exit "$fixture" &
 app_pid=$!
 
 # Poll for the run file rather than sleeping a fixed amount.

@@ -100,17 +100,20 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
     private var watchdog: MainActorWatchdog?
 
     override init() {
-        // REQ-098: veto window-state restoration for a smoke run before AppKit acts on it.
+        // REQ-098: window-state restoration is vetoed for smoke runs by Scripts/smoke-test.sh
+        // passing `-ApplePersistenceIgnoreState YES` as a process argument, not by app code.
         // `applicationSupportsSecureRestorableState` only selects secure vs. legacy *encoding*;
-        // it does not disable restoration, so a window saved by a prior Debug run could still be
-        // restored alongside the fixture and change the host-update count this run asserts on.
-        // `ApplePersistenceIgnoreState` is the actual veto AppKit checks, and setting it this
-        // early — before `super.init()` and before AppKit's own launch/restoration sequencing —
-        // makes the veto a property of the app itself rather than of how it happens to be
-        // invoked.
-        if Self.isSmokeRun {
-            UserDefaults.standard.set(true, forKey: "ApplePersistenceIgnoreState")
-        }
+        // it does not disable restoration. Two in-process alternatives were tried and rejected:
+        // `UserDefaults.standard.set(forKey:)` persists to the on-disk preferences domain, and
+        // since Debug and Release share one bundle identifier, that would silently disable
+        // window restoration for every future ordinary launch of the real app, not just this
+        // verification run (confirmed — it already had). `register(defaults:)` avoids that, but
+        // registers into the lowest-priority domain: if the persistent domain already holds any
+        // explicit value for this key (from a prior toggle, on any machine), the veto is
+        // silently overridden and restoration proceeds anyway. A `-Key Value` process argument
+        // is parsed into the argument domain, which outranks the persistent domain, is never
+        // written to disk, and cannot be shadowed by any prior on-disk state.
+
         // First NSDocumentController subclass instance becomes the shared controller.
         // REQ-095: the run log must exist before the first document is constructed, because
         // each document wires its trace sink at init.

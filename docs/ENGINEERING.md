@@ -232,6 +232,14 @@ fenced-code representation is editable only when its inverse is proven.
   recorded by the URL-based `read(from:ofType:)` override, distinct from the Data-based
   override's invalid-UTF-8 content failure; a private flag distinguishes the two so a content
   failure (which the Data-based override already records) is never double-recorded.
+- A document's own history of "has `read(from:ofType:)` ever run on this instance" cannot
+  distinguish an initial load from a revert in one specific case: a document saved for the
+  first time while still untouched (Save never advances `sourceVersion`) and then reverted is,
+  from that instance's own perspective, its first-ever read too. `revert(toContentsOf:ofType:)`
+  is NSDocument's dedicated entry point for "Revert to Saved" — distinct from the initial-open
+  path — and is overridden solely to flag that an in-flight read is a revert regardless of
+  instance history. Unlike the `nonisolated` read/data overrides, this one is main-actor-isolated
+  in the current SDK; it needs no `MainActor.assumeIsolated` hop.
 - Background work receives immutable `Sendable` value snapshots only.
 - Background work never captures a mutable document or AppKit object.
 - Results publish on the main actor only after complete source revision, location generation, and
