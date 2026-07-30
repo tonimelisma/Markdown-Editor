@@ -29,7 +29,8 @@ A design that preserves content by silently creating a second canonical represen
 The app is a native Swift 6 macOS document application:
 
 - `NSDocument` owns each open Markdown document.
-- SwiftUI owns application composition and toolbar presentation.
+- SwiftUI owns document-content composition. A window-scoped native AppKit command surface owns
+  the menu and `NSToolbar` presentation.
 - Narrow AppKit adapters host two persistent TextKit 1 `NSTextView` editors.
 - Source mode uses literal Markdown plus an independent lexical highlighter.
 - WYSIWYG uses attributed rendered content compiled from pinned direct cmark-gfm semantics and
@@ -46,7 +47,7 @@ serialization, web contenteditable, and duplicate image pipelines are not part o
 Every mutable fact has exactly one owner.
 
 | State | Kind | Sole owner | Persistence |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Markdown bytes/text | canonical | `MarkdownDocument` | file |
 | Source revision | canonical ordering token | `MarkdownDocument` | process lifetime |
 | File URL/location generation | canonical document identity | `MarkdownDocument` | document session |
@@ -91,8 +92,10 @@ Source and projection coordinates are different domains and must be unmixable in
   accepted merely because two numeric revisions happen to match.
 
 A presentation snapshot identity covers all content needed to edit it: source revision, rendered
-string, attributes/attachments, segment map, structural metadata, and relevant location
-generation. Partial replacement is forbidden.
+string, semantic inline and block spans, resolved attributes/attachments, segment map, structural
+metadata, typography identity, and relevant location generation. A snapshot is always complete.
+The TextKit adapter may apply a validated local `PresentationPatch`; it may never treat that patch
+as an independently authoritative partial snapshot.
 
 ## 5. Edit transaction
 
@@ -116,8 +119,9 @@ An accepted WYSIWYG edit is a synchronous atomic transition:
    - `AcceptedEdit { sourceMutation, presentationTransition, selectionAfter }`, or
    - a typed refusal with no mutation.
 4. For an accepted edit, the document commits the source mutation once.
-5. Before the input callback returns, the session applies the matching presentation transition
-   and selection. The next keystroke therefore targets the new source and presentation revisions.
+5. Before the input callback returns, the session derives and applies the matching attributed
+   `PresentationPatch`, advances the complete presentation snapshot, and restores selection. The
+   next keystroke therefore targets the new source and presentation revisions.
 6. An off-main authoritative parse/projection is scheduled.
 7. Reconciliation may replace the provisional snapshot only if its complete input identity still
    matches current state.
@@ -175,7 +179,61 @@ fenced-code representation is editable only when its inverse is proven.
 - source postconditions after semantic edits; and
 - refusal for every unsupported or mixed case.
 
-## 7. Native editor integration
+## 7. Typography and block presentation
+
+`ProjectionCompiler` emits Markdown semantics and exact coordinates; it does not choose AppKit
+fonts, colors, paragraph styles, or geometry. `AttributedPresentationBuilder` combines one
+complete semantic presentation with immutable `MarkdownTypography` tokens on the main actor.
+`TextStorageApplier` applies either an initial complete presentation or one validated
+`PresentationPatch`.
+
+The default `MarkdownTypography` is:
+
+| Token | Default |
+| --- | --- |
+| Body | system font, 15 pt, regular |
+| Body line height | approximately 1.35× |
+| Reading measure | maximum 720 pt, centered when wider |
+| Content inset | minimum 28 pt horizontal and 20 pt vertical |
+| Paragraph spacing | 0.7 em after an ordinary paragraph |
+| H1 | 30 pt semibold; 1.0 em before and 0.35 em after |
+| H2 | 24 pt semibold; 0.9 em before and 0.3 em after |
+| H3 | 20 pt semibold with heading spacing |
+| H4 | 17 pt semibold with heading spacing |
+| H5 | 15 pt semibold with heading spacing |
+| H6 | 13 pt semibold, secondary label color, with heading spacing |
+| List nesting | 24 pt per level with a hanging marker |
+| Blockquote | 3 pt leading rule and 16–18 pt content inset |
+| Inline code | monospaced at approximately 0.93 em with adaptive subtle background |
+| Code block | monospaced, padded adaptive block with paragraph separation |
+| Thematic break | one-pixel separator across the available reading measure |
+
+Rules:
+
+- A cmark `softBreak` emits a presentation space in the same paragraph. A cmark `lineBreak` emits
+  a distinct hard-line-break atom and a visible newline. A paragraph boundary remains a semantic
+  block boundary and receives paragraph spacing.
+- Paragraph spacing and heading spacing are `NSParagraphStyle` attributes. Synthetic extra
+  newline characters are not inserted merely to create visual spacing.
+- List marker, body, continuation lines, nested children, and task controls share explicit block
+  metadata. A task checkbox replaces the ordinary bullet. Nesting changes indentation, never
+  source spelling.
+- Blockquotes have an inset and leading rule. Color is supplementary and cannot be their only
+  distinction.
+- Code blocks use block geometry and padding. Inline code remains inline; neither treatment
+  changes source or edit coordinates.
+- Tables size to their contents within the reading measure. They do not expand solely to fill the
+  viewport. Header emphasis and borders use adaptive system colors.
+- Images preserve aspect ratio and fit the reading measure. Missing images use an intentional
+  labeled placeholder rather than an unrelated generic file icon.
+- Raw HTML remains non-executing literal text with a muted monospaced treatment.
+- A full attributed-storage replacement is permitted for initial load, recovery, and an explicit
+  typography/theme change. An ordinary accepted local edit applies one validated attributed
+  patch and must not rebuild or replace the entire text storage.
+- Typography is derived and replaceable. It never enters canonical source, source history,
+  coordinate meaning, or serialization.
+
+## 8. Native editor integration
 
 - Both TextKit 1 editors exist for the window lifetime. Mode changes alter visibility and focus;
   they do not recreate views or rewrite source.
@@ -200,7 +258,20 @@ fenced-code representation is editable only when its inverse is proven.
 - Native plain-text paste, spelling, Find, keyboard input, selection, and accessibility remain
   available. There are no UI-test dependencies.
 
-## 8. Document and concurrency model
+### Native command surface
+
+- A window-scoped command model is the sole route for semantic formatting availability and
+  execution. The menu bar and `NSToolbar` are presentations of that model.
+- Every toolbar command has a menu equivalent. Standard shortcuts include Command-B for bold,
+  Command-I for italic, and Command-K for link editing.
+- Toolbar items validate against the active window, mode, exact typed selection, and current
+  source/presentation revision. Unsafe commands are disabled or refuse atomically through the
+  same command route.
+- The toolbar uses native overflow and never compresses labels into ambiguous ellipses inside the
+  document content area.
+- Link editing is a window-attached sheet. Application-modal formatting alerts are forbidden.
+
+## 9. Document and concurrency model
 
 - `MarkdownDocument` is main-actor-owned mutable state.
 - AppKit's default serialized `NSDocument` read/write behavior is used. The app does not maintain
@@ -244,10 +315,15 @@ fenced-code representation is editable only when its inverse is proven.
 - Background work never captures a mutable document or AppKit object.
 - Results publish on the main actor only after complete source revision, location generation, and
   operation identity checks.
-- Cancellation is an optimization; identity checks are the correctness boundary.
+- Identity checks remain the correctness boundary. Cancellation and coalescing are additionally
+  required to prevent obsolete work from consuming unbounded time ahead of the latest revision.
+- One latest-generation parse scheduler owns parse demand. At most one parse occupies cmark's
+  process-wide critical section, and at most the newest pending revision remains queued.
+- A parse task rechecks cancellation after acquiring the parser lock and before copying source or
+  entering cmark. A superseded waiter performs no parse.
 - Swift 6 complete concurrency warnings are failures, including warnings in tests.
 
-## 9. Undo and selection
+## 10. Undo and selection
 
 - All source changes use one document-owned mutation route.
 - Typing coalesces until a real boundary: user selection change, mode change, focus/action
@@ -260,7 +336,7 @@ fenced-code representation is editable only when its inverse is proven.
   restoration.
 - Asset files are not part of text undo.
 
-## 10. Image placement
+## 11. Image placement
 
 Paste, drag-and-drop, and Add Image create immutable claims and enter one transaction:
 
@@ -275,6 +351,22 @@ Paste, drag-and-drop, and Add Image create immutable claims and enter one transa
 
 The shared `assets/` directory is not app-owned. Symlinks, aliases, packages, non-regular sources,
 symlinked destinations, and path escape are rejected.
+
+Displaying a referenced image is also resource-bounded before bulk input work:
+
+- inspect file identity and stat metadata before reading;
+- reject an encoded file larger than 256 MiB before mapping, hashing, or decoding it;
+- inspect type and pixel metadata without eager full-image caching;
+- hash accepted content off-main for cache identity;
+- create only a bounded display representation; and
+- keep decoded display cache cost at or below 64 MiB.
+
+Encoded-file bytes, source pixel dimensions, and decoded-cache cost are distinct limits and
+distinct performance measurements. Opening Markdown cannot map or hash an arbitrarily large file
+merely because its relative destination appears in source.
+
+Referenced-asset analysis derives from the canonical cmark tree and concrete source index. There
+is no regex or line-oriented second Markdown parser for deciding which assets are referenced.
 
 **Instrumentation (REQ-101/102; ARC-017):** every phase transition, claim count, byte count, and
 typed failure is recorded through `EditorTraceEvent`, reusing the existing closed
@@ -309,7 +401,7 @@ being represented as a cancellation. `assetDirectoryPublished` is distinct from
 commits (a parent-changed race, or the tracked insertion point changing), so the two milestones
 are not always both reached.
 
-## 11. Instrumentation and diagnostics
+## 12. Instrumentation and diagnostics
 
 Instrumentation is local evidence, not telemetry. Nothing is transmitted. Records are written to
 ordinary files the user owns and can read, delete, or ignore.
@@ -329,17 +421,15 @@ ordinary files the user owns and can read, delete, or ignore.
 - Repeated events collapse into a counted summary above a rate threshold, so a defect that fires
   every run-loop pass produces bounded evidence instead of an unbounded file. Faults are never
   collapsed: they are the evidence.
-- Records buffer on the main actor and are appended by a serialized actor off the main actor;
-  the editing path never performs synchronous file I/O, and record order is preserved. Faults
-  flush immediately, and the terminating record is made durable before the process may exit.
+- Ordinary editor records buffer without synchronous file I/O and are appended by one serialized
+  sink actor; record order is preserved. A process-level fault has a non-main route to that same
+  sink, so reporting a main-actor stall never depends on the stalled actor. Faults flush
+  immediately, and the terminating record is made durable before the process may exit.
 - Retained runs and per-file size are bounded; the oldest runs are removed first.
-- A background watchdog races a hop onto the main actor against a one-second threshold. A stall
-  is recorded while it is still in progress, so an unrecovered stall is reported too; a second
-  record carries the measured duration once the hop lands. It records directly through
-  `DiagnosticLog`, not through `EditorTraceEvent`: the watchdog is a process-level condition with
-  no document to attribute it to, observed from a background closure with no `EditorTraceSink`
-  in scope, so routing it through the per-document trace would not change what it can honestly
-  report.
+- A background watchdog races a hop onto the main actor against a one-second threshold. The
+  threshold crossing is written through the non-main process route while the stall is still in
+  progress, including when it never recovers. A recovery record carries the measured duration
+  once the hop lands. Both records use the same diagnostic sink and schema.
 - Reconciliation instrumentation records any session publication during view reconciliation, and
   the host-update meter reports a sustained update rate — the signature of a self-feeding loop,
   which presents as high CPU rather than as a hang.
@@ -348,6 +438,28 @@ ordinary files the user owns and can read, delete, or ignore.
   production or unit-test directory.
 
 There is no second instrumentation route. `os_log` is not used for editor events.
+
+Performance sampling is explicitly lifetime-owned:
+
+- each attached `EditorSession` owns one sampler;
+- the sampler owns bounded samples and its periodic timer;
+- detach/invalidation stops the timer, flushes once, and unregisters the sampler;
+- the run coordinator weakly observes only live samplers for terminal flush; and
+- no global collection strongly retains a session or sampler.
+
+Metric names describe their actual boundaries:
+
+- `nativeInputCallback`: native replacement delegate entry through source commit, attributed
+  patch application, and selection restoration;
+- `modeTransition`: requested mode change through visibility, focus, and selection restoration;
+- `parseProjection`: parser, source index, and semantic projection only;
+- `imageResolution`: inspection, hashing, thumbnail decode, and cache lookup; and
+- `authoritativeApplication`: main-actor application of a completed authoritative result.
+
+Every Release performance proof records configuration, corpus identity, warmups, sample count,
+median, p95, and failures. Zero executed samples is a failing proof, never a skipped success.
+Terminal diagnostic close signals durability immediately after the sink closes; re-enabling
+sudden termination on the main actor is not part of the synchronous durability wait.
 
 **Process-level smoke verification (`ARC-Q12`):** `Scripts/smoke-test.sh` launches the built
 application directly (bypassing Launch Services) on `Scripts/Fixtures/smoke-basic.md` with
@@ -383,15 +495,15 @@ genuine application diagnostic failure by the error text, not by exit code alone
 state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 `Scripts/smoke-test.sh`, for the same reason.
 
-## 12. Quality scenarios
+## 13. Quality scenarios
 
 | ID | Scenario and measure |
-|---|---|
+| --- | --- |
 | ARC-Q01 | Given a current editable WYSIWYG snapshot, 100 consecutive accepted insertions appear exactly once and in order; zero are refused merely because authoritative parsing is pending. |
 | ARC-Q02 | A WYSIWYG edit either advances source and presentation together before return or changes neither. No observable state contains new source with an editable old projection. |
 | ARC-Q03 | A stale parse, projection, image decode, load, or placement result performs zero state applications. |
 | ARC-Q04 | Opening and saving without edits preserves the byte fixtures exactly, including empty, BOM, CRLF, and Unicode cases; invalid UTF-8 refuses. |
-| ARC-Q05 | On the approved 100,000 UTF-16 corpus in Release: keystroke translation p95 <8 ms, mode toggle p95 <16 ms, off-main parse/index/projection p95 <100 ms. |
+| ARC-Q05 | On the approved 100,000 UTF-16 corpus in Release: complete native-input callback p95 <8 ms, complete mode transition p95 <16 ms, and off-main parse/index/semantic-projection p95 <100 ms; every gate proves a nonzero sample count. |
 | ARC-Q06 | Parser, source-index, projection compilation, image inspection/decode, hashing, and file I/O do not execute on the main actor. |
 | ARC-Q07 | Every supported presentation atom satisfies the oracle; every unsupported, cross-cell, mixed-domain, or unprovable selection refuses without mutation. |
 | ARC-Q08 | Mode changes preserve each mode's logical selection/affinity/scroll and never change source. |
@@ -400,11 +512,18 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-Q11 | Opening a document and leaving the window idle performs a bounded number of editor-host view updates and settles; sustained reconciliation without user input is a reported fault. |
 | ARC-Q12 | Launching the built application on a fixture document produces a parseable run log whose host-update count is bounded, contains no fault, and ends with a clean-exit record. |
 | ARC-Q13 | Launching the built application on a rich fixture, capturing exactly one screenshot of only its own on-screen window, and closing it produces the same clean, bounded run log as ARC-Q12, plus one image containing no on-screen content outside that window. |
+| ARC-Q14 | Constructed attributed presentation proves the approved body, heading, paragraph, list, quote, code, table, thematic-break, image, and raw-HTML semantic styles in Light and Dark appearance without changing the rendered string or source. |
+| ARC-Q15 | At narrow, default, and wide constructed TextKit container widths, the reading measure/insets, hanging list indentation, nested depth, block spacing, and image bounds satisfy the approved typography tokens without clipped content. |
+| ARC-Q16 | One ordinary accepted WYSIWYG insertion performs one bounded attributed-storage edit and no full-storage replacement; initial load, recovery, and explicit typography change remain the only full-replacement routes. |
+| ARC-Q17 | Releasing or detaching 100 editor sessions leaves zero live sampler timers; a main-actor stall writes its threshold record before recovery; terminal close completes without waiting on a main-actor hop. |
+| ARC-Q18 | Given many revisions while one parse holds the parser lock, only the running revision and newest pending revision may enter parsing; all older pending revisions are discarded before source copy/cmark work. |
+| ARC-Q19 | A referenced regular image above 256 MiB is rejected before full read, mapping, hashing, or decode, while accepted images retain the 64 MiB decoded-cache bound. |
+| ARC-Q20 | Every semantic formatting action has one window-scoped command route, matching menu and toolbar presentation, shared validation, and no application-modal formatting dialog. |
 
-## 13. Architectural invariants and proof
+## 14. Architectural invariants and proof
 
 | ID | Invariant | Required proof |
-|---|---|---|
+| --- | --- | --- |
 | ARC-001 | One canonical source, revision, URL generation, and undo owner: `MarkdownDocument`. | type/API inspection; document transaction tests |
 | ARC-002 | One session-owned typed state per editor mode; no parallel compatibility state. | compiler types; documentation/source conformance check |
 | ARC-003 | Presented string, attributes, structure, coordinate map, and revision form one snapshot. | snapshot construction API; oracle |
@@ -422,8 +541,15 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-015 | Editor-host view reconciliation publishes no session change and captures no live AppKit state; unrendered session state is never published. | reconciliation re-entrancy counter; zero-mutation and zero-publication host update tests |
 | ARC-016 | Diagnostic payloads cannot represent document content, URLs, descriptions, filenames, or paths. | closed payload value type without a string case; encoder tests |
 | ARC-017 | Every user-visible failure or warning alert has a corresponding diagnostic record. | `alert` is `private(set)`; `presentAlert(_:reason:)` is its only assignment route (compiler-enforced); structural conformance test |
+| ARC-018 | Typography is derived from semantic inline/block presentation plus immutable tokens and never changes canonical source, history, or coordinate meaning. | attributed-presentation semantic tests; source-before/after equality |
+| ARC-019 | An ordinary accepted WYSIWYG edit applies one validated attributed patch and performs no full-storage replacement. | instrumented `NSTextStorage` component test; native-input performance corpus |
+| ARC-020 | Performance samples are lifetime-owned, bounded, honestly named, and include every synchronous operation claimed by their boundary. | sampler lifetime tests; nonzero Release evidence; boundary-spy tests |
+| ARC-021 | A main-actor stall can be made durable without scheduling the report onto the main actor, and terminal durability never waits on a main-actor hop. | blocked-main component test; bounded terminal-close test |
+| ARC-022 | Superseded pending parses do not enter source-copy/cmark work after the parser lock becomes available. | deterministic scheduler/lock test with controlled generations |
+| ARC-023 | Image display rejects over-limit encoded files before bulk read/hash/decode and derives references from the canonical parse tree. | file-operation spy; over-limit sparse-file test; scanner deletion gate |
+| ARC-024 | Menu and native toolbar are presentations of one window-scoped command model with shared validation. | command-router tests; menu/toolbar construction inspection |
 
-## 14. Architecture change gate
+## 15. Architecture change gate
 
 An implementation plan may conform to this architecture; it may not silently redefine it.
 
@@ -440,7 +566,7 @@ Changing an `ARC-###` invariant requires, before production code:
 There are no architectural compatibility shims, indefinite migrations, exceptions, or
 supersession documents. The working tree states current truth; Git records history.
 
-## 15. Current risks
+## 16. Current risks
 
 - Concrete inverse mapping remains the hardest part of delimiter-free WYSIWYG editing.
 - AppKit delegate callbacks are reentrant and include programmatic selection notifications.
@@ -451,11 +577,17 @@ supersession documents. The working tree states current truth; Git records histo
 - cmark semantic literals may normalize source spelling; source positions plus a concrete decoder
   are required before claiming editability.
 - Full projection compilation is fast enough off-main but not an acceptable dependency between
-  consecutive keystrokes.
+  consecutive keystrokes. Complete attributed-storage replacement is likewise forbidden on the
+  ordinary local-edit path.
+- Native `NSTextTable` currently keeps the WYSIWYG editor on the TextKit 1 compatibility path. A
+  TextKit 2 migration requires a separate table, attachment, selection, IME, and performance POC.
+- Dense semantic typography makes patch boundaries more demanding: a local source edit can change
+  paragraph or list structure beyond the replaced characters, so the patch planner must expand
+  to the smallest complete affected semantic blocks and otherwise choose explicit recovery.
 - Image placement interacts with external files and asynchronous providers; containment and
   identity-pinned rollback remain mandatory.
 
-## 16. Glossary
+## 17. Glossary
 
 - **Accepted edit:** a fully validated operation whose source mutation commits.
 - **Authoritative reconciliation:** a full parse/index/projection built from canonical source and
@@ -466,6 +598,10 @@ supersession documents. The working tree states current truth; Git records histo
   coordinate map, and revision.
 - **Presentation transition:** a synchronous exact update that keeps WYSIWYG editable immediately
   after an accepted edit.
+- **Presentation patch:** a validated attributed replacement derived from two complete snapshots;
+  it is an application instruction, never partial authority.
+- **Semantic block:** a projection-level paragraph, heading, list item, quote, code block, table,
+  thematic break, image block, or literal fallback carrying layout meaning but no AppKit objects.
 - **Projection:** delimiter-free rendered representation derived from Markdown source.
 - **Refusal:** a typed no-mutation outcome returned before any partial source or view change.
 - **Source mutation:** one exact, versioned UTF-16 replacement owned by the document.

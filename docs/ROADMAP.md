@@ -15,7 +15,7 @@ The application currently includes:
 - live-styled literal Source mode;
 - formal GFM 0.29 parsing through pinned direct cmark-gfm;
 - persistent Source and WYSIWYG TextKit 1 editors with a visible mode toggle;
-- delimiter-free formatted WYSIWYG presentation and semantic formatting toolbar;
+- delimiter-free editable WYSIWYG presentation and semantic formatting commands;
 - task, link, table-cell, image-display, and image-placement interactions;
 - exact-copy PNG/JPEG/GIF/HEIC/HEIF placement into a shared sibling `assets/` directory;
 - Swift 6 complete concurrency and privacy-safe editor instrumentation;
@@ -29,21 +29,45 @@ The application currently includes:
   guarding against a future unrecorded event; document load and revert outcome instrumentation,
   and save-outcome instrumentation covering every save that determines a destination plus this
   app's own untitled-save bridge — a plain Cmd+S/Save-As panel cancellation is a known,
-  documented gap (see `ENGINEERING.md` §8);
+  documented gap (see `ENGINEERING.md` §9);
   process-level screenshot verification (`Scripts/smoke-screenshot.sh`) capturing one
   window-only screenshot of a rich fixture as mandatory visual-review evidence at the close of
-  every app-code increment, alongside the same structured diagnostic checks `smoke-test.sh`
-  performs; image-placement phase/claim/byte/failure instrumentation and one compiler-enforced
+  every app-code increment; image-placement phase/claim/byte/failure instrumentation and one compiler-enforced
   route for every user-visible alert (`ImagePlacementController.presentAlert`), so a presented
   failure or warning can never be absent from the run log.
 
 The exact delivered/correction status of each behavior is recorded in
 [REQUIREMENTS.md](REQUIREMENTS.md).
 
-## Active: instrumentation completion and cleanup
+## Active: editor foundation rewrite
 
-Instrumentation completion and cleanup are delivered. COR-11 through COR-16 are complete; their
-current behavior lives in code and the synchronized current specifications.
+The July whole-repository review found that the source/projection ownership model remains sound,
+but typography, TextKit application, Release proof, diagnostic lifetime, background scheduling,
+resource bounds, and native command presentation do not satisfy the approved architecture.
+Affected requirements are marked `Correction`; new approved behavior is `Planned`.
+
+Delivery order:
+
+1. 🔵 **[COR-18 — Restore the proof floor](plans/cor-18-proof-floor.md).** Make Debug and Release tests compile and execute,
+   land the shared smoke verifier and typography-rich fixture, and prove nonzero performance
+   samples.
+2. ⚪ **[COR-19 — Diagnostic lifetime and shutdown](plans/cor-19-diagnostic-lifetime-and-shutdown.md).** Remove sampler/timer retention, make an
+   unrecovered main-actor stall durable off-main, and remove the terminal main-actor self-wait.
+3. ⚪ **[INC-05 — Semantic presentation and typography](plans/inc-05-semantic-presentation-and-typography.md).** Introduce semantic block presentation
+   and the approved native editorial typography, including correct soft/hard/paragraph breaks,
+   block spacing, lists, tasks, quotes, code, tables, images, separators, and literal HTML.
+4. ⚪ **[COR-20 — Incremental TextKit application and honest latency](plans/cor-20-incremental-textkit-and-latency.md).** Apply validated attributed
+   patches for ordinary edits and measure the complete native input callback.
+5. ⚪ **[COR-21 — Latest-work scheduling and resource bounds](plans/cor-21-latest-work-and-resource-bounds.md).** Coalesce pending parses, reject
+   oversized encoded images before bulk work, and derive asset references from the canonical
+   parse tree.
+6. ⚪ **[INC-06 — Native command surface](plans/inc-06-native-command-surface.md).** Replace the document-embedded toolbar with one
+   window-scoped command model, native toolbar, menu parity, shared validation, shortcuts, and a
+   link-edit sheet.
+7. ⚪ **[COR-22 — Conformance and deletion sweep](plans/cor-22-rewrite-conformance-and-deletion.md).** Delete every displaced route, rerun all
+   architecture proofs, reconcile requirements from evidence, and close the rewrite program.
+
+The exact approved implementation work lives in the corresponding files under `docs/plans/`.
 
 ## Post-MVP backlog
 
@@ -62,5 +86,5 @@ These are ideas, not commitments. Each requires research, explicit requirements,
 - Remote-image download
 - HTML/PDF export
 - Focus mode and typewriter scrolling
-- Themes and typography options
+- Additional themes and user-selectable typography options beyond the approved default
 - Document-outline sidebar

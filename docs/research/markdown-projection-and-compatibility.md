@@ -32,7 +32,7 @@ disabled and exactly table, strikethrough, autolink, task-list, and tag-filter e
 produced:
 
 | Suite | Result |
-|---|---|
+| --- | --- |
 | Complete cmark-gfm bundled specification | 670 passed, 0 failed |
 | Pathological suite | 21 passed, 0 errored, 0 ignored |
 | Official CommonMark 0.31.2 suite | 641 passed, 11 failed |

@@ -2,8 +2,8 @@
 
 - **Authority:** Evidence only; `../ENGINEERING.md` is authoritative.
 - **First researched:** 2026-07-22
-- **Last verified:** 2026-07-25
-- **Environment:** Xcode 27 beta (`27A5228h`), Swift 6.4, macOS 27 SDK, arm64 Apple silicon
+- **Last verified:** 2026-07-30
+- **Environment:** Xcode 27 beta, Swift 6.4, macOS 27 SDK, arm64 Apple silicon
 - **Refresh when:** deployment target, Xcode/SDK, document framework, text engine, or concurrency
   policy changes
 
@@ -57,7 +57,7 @@ Sources:
 - [Apple asynchronous document writes](https://developer.apple.com/documentation/appkit/nsdocument/canasynchronouslywrite(to:oftype:for:))
 - [Apple SwiftUI `Document`](https://developer.apple.com/documentation/swiftui/document)
 
-### TextKit 1 remains the correct native editing substrate
+### TextKit 1 remains the approved substrate for the current rewrite
 
 The TextKit 1 POCs demonstrated:
 
@@ -68,8 +68,18 @@ The TextKit 1 POCs demonstrated:
 - native `NSTextTable`/`NSTextTableBlock`; and
 - main-actor construction of AppKit attributed objects from immutable off-main models.
 
-No measured failure justifies TextKit 2 or a third-party editor. TextKit 2 would not remove the
-hard source/projection inverse-mapping problem.
+No measured failure justifies combining a TextKit migration with the approved typography and
+correctness rewrite. TextKit 2 would not remove the hard source/projection inverse-mapping
+problem. Apple's current `NSTextView` documentation also states that requesting legacy
+`layoutManager` behavior or encountering content not yet supported by TextKit 2, including
+`NSTextTable`, switches the view to TextKit 1 compatibility mode. This application uses
+`NSTextTable`, attachments, exact selection mapping, and synchronous input interception.
+
+Apple directs future TextKit performance and correctness work toward TextKit 2, so TextKit 1 is
+not an indefinite default. A later migration decision requires a bounded real POC proving tables
+or their approved replacement, task/image attachments, IME, selection affinity, Find, spelling,
+accessibility, incremental attributed replacement, and the Release performance corpus without
+compatibility fallback.
 
 `NSTextViewDelegate.shouldChangeTextIn` is the synchronous accept/refuse boundary for native
 replacement. `setSelectedRange` posts selection-change notification even for programmatic
@@ -82,6 +92,8 @@ the input-client contract; canonical source should receive one completed composi
 Sources:
 
 - [Apple `NSTextView`](https://developer.apple.com/documentation/appkit/nstextview)
+- [Apple `NSTextLayoutManager`](https://developer.apple.com/documentation/appkit/nstextlayoutmanager)
+- [WWDC22: What's new in TextKit and text views](https://developer.apple.com/videos/play/wwdc2022/10090/)
 - [Apple `shouldChangeTextIn`](https://developer.apple.com/documentation/appkit/nstextviewdelegate/textview%28_%3Ashouldchangetextin%3Areplacementstring%3A%29)
 - [Apple selection-change notification](https://developer.apple.com/documentation/appkit/nstextview/didchangeselectionnotification)
 - [Apple text input and marked text](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/TextEditing/Tasks/TextViewTask.html)
@@ -110,7 +122,7 @@ Sources:
 Baseline Release measurements from the architecture POC:
 
 | Input | Parse + AST/source map median | p95 | Source index median | p95 |
-|---:|---:|---:|---:|---:|
+| ---: | ---: | ---: | ---: | ---: |
 | 954 bytes | 0.070 ms | 0.094 ms | 0.005 ms | 0.006 ms |
 | 9,964 bytes | 0.686 ms | 0.763 ms | 0.045 ms | 0.046 ms |
 | 99,958 bytes | 4.809 ms | 6.471 ms | 0.347 ms | 0.394 ms |
@@ -119,7 +131,7 @@ Baseline Release measurements from the architecture POC:
 Selected-design follow-up:
 
 | Operation | Median | p95 |
-|---|---:|---:|
+| --- | ---: | ---: |
 | local edit translation | 0.000708 ms | 0.000750 ms |
 | representative attributed-storage application | 0.097 ms | 0.123 ms |
 | 1280×854 HEIC bounded thumbnail decode | 10.900 ms | 12.211 ms |
@@ -144,6 +156,8 @@ cannot be imported by the test bundle.
 ## Durable conclusions
 
 - Keep `NSDocument`, TextKit 1, two persistent editors, and the main-actor AppKit boundary.
+- Keep TextKit 1 for the approved rewrite; gate any later TextKit 2 migration on the explicit POC
+  above.
 - Do not place a full parser round-trip between consecutive keystrokes.
 - Advance exact presentation state synchronously, then reconcile off-main.
 - Treat programmatic callbacks as explicit-origin events.

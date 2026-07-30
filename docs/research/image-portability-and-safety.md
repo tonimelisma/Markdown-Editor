@@ -88,7 +88,7 @@ Read-only `CGImageSource` probes decoded generated PNG/JPEG/GIF/HEIC plus public
 variants while source hashes remained unchanged:
 
 | Fixture | Result |
-|---|---|
+| --- | --- |
 | generated PNG/JPEG/GIF | decoded; bytes unchanged |
 | generated `public.heic` | decoded; bytes unchanged |
 | public 1280×854 HEIC | decoded; bytes unchanged |

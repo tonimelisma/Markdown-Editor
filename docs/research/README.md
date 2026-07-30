@@ -23,3 +23,4 @@ Current evidence:
 - [macOS editor platform](macos-editor-platform.md)
 - [Markdown projection and compatibility](markdown-projection-and-compatibility.md)
 - [Image portability and safety](image-portability-and-safety.md)
+- [Native Markdown typography](native-markdown-typography.md)

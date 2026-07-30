@@ -30,7 +30,7 @@ Code and tests are canonical implementation. The specs are the synchronized curr
 The working tree contains current truth and actionable work; Git is the archive.
 
 | Path | Sole job |
-|---|---|
+| --- | --- |
 | `docs/VISION.md` | Durable product direction, priorities, and product policies |
 | `docs/ENGINEERING.md` | Authoritative current architecture, state ownership, runtime contracts, `ARC-###` invariants, quality scenarios, and risks |
 | `docs/REQUIREMENTS.md` | Current numbered behavior requirements (`REQ-###`) with code/test traceability |

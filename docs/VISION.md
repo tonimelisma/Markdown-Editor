@@ -61,7 +61,9 @@ When objectives conflict:
 - Both editors retain their own selection and scroll position.
 - WYSIWYG text is ordinary visible content. Typing `*`, `_`, `#`, `|`, or another Markdown
   punctuation character inserts that literal character; it does not silently invoke formatting.
-- Formatting is applied through the visible toolbar, native commands, and supported shortcuts.
+- Formatting is applied through native commands exposed consistently in the menu bar, an adaptive
+  window toolbar, and supported shortcuts. The toolbar is a convenience surface, never the only
+  route to a command.
 - Task checkboxes are directly operable. Links are directly clickable and remain editable.
 - Existing GFM tables render and allow cell-content editing. Table creation and structural
   row/column controls are outside the MVP.
@@ -71,6 +73,35 @@ When objectives conflict:
 - Source mode shows literal image syntax such as `![](assets/photo.heic)`. Image rendering belongs
   to WYSIWYG.
 
+## Writing and reading surface
+
+WYSIWYG is a calm native writing and reading surface, not merely Markdown with its punctuation
+removed. Semantic blocks remain recognizable through spacing, hierarchy, indentation, and native
+controls. Typography improves readability without changing source, inventing unsupported
+semantics, or making the document behave like a web page.
+
+- Body text uses a comfortable system-font measure and leading suitable for sustained writing.
+- The reading column is bounded on wide windows and retains generous insets on narrow windows.
+- Paragraphs are separated by paragraph spacing, not by exposing the source's blank delimiter
+  line.
+- A soft source line ending inside one CommonMark paragraph flows as a space. A formal hard break
+  remains a visible line break. A blank line creates a new paragraph.
+- Headings use a restrained native hierarchy with more space before than after, keeping each
+  heading attached to the content it introduces.
+- Lists use hanging indentation; nesting is visually cumulative; a task checkbox replaces rather
+  than accompanies the ordinary list bullet.
+- Blockquotes, code blocks, tables, thematic breaks, images, and literal raw HTML each have a
+  distinct but restrained block treatment that works in Light and Dark appearances.
+- Presentation styling is never serialized into Markdown. Theme or typography changes cannot
+  modify source, selection meaning, undo history, or compatibility.
+- Accessibility meaning does not depend on color, font weight, or visual position alone.
+
+The approved default is an editorial-density surface: 15-point body text, approximately 1.35×
+line height, a reading measure no wider than 720 points, at least 28 points of horizontal inset
+and 20 points of vertical inset, and paragraph spacing of approximately 0.7 em. Exact semantic
+tokens and layout behavior are defined in
+[ENGINEERING.md](ENGINEERING.md#7-typography-and-block-presentation).
+
 ## Markdown compatibility
 
 The MVP dialect is the complete **GitHub Flavored Markdown 0.29-gfm specification**: its bundled
@@ -78,10 +109,11 @@ CommonMark core plus tables, task-list items, strikethrough, extended autolinks,
 filtering. “GFM” means that published specification, not every feature on github.com.
 
 Footnotes, `==highlight==`, superscript, subscript, definition lists, emoji shortcodes, heading
-attributes, and smart-typography transformations are not part of the MVP dialect. Until a named
-dialect profile is explicitly approved, such text is preserved without being presented as
-supported semantics. Formal GFM strikethrough uses `~~double tildes~~`; `~single tildes~` remain
-ordinary text.
+attributes, and source-changing smart-typography transformations are not part of the MVP dialect.
+Typographic presentation of existing Markdown structure is not a source transformation. Until a
+named dialect profile is explicitly approved, unsupported syntax is preserved without being
+presented as supported semantics. Formal GFM strikethrough uses `~~double tildes~~`; `~single
+tildes~` remain ordinary text.
 
 Generated Markdown must pass focused fixtures derived from the named specification. A lexical
 source highlighter is presentation, not proof of parser conformance.
