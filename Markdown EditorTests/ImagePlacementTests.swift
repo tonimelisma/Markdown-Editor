@@ -557,6 +557,47 @@ struct ImagePlacementControllerLifecycleTests {
         #expect(controller.phaseForTesting == .awaitingSave)
     }
 
+    // Verifies: REQ-101 — Codex PR #24 finding: an action rejected before acceptance (the
+    // controller is already busy with a different placement) must still record the attempted
+    // claim count and a typed .busy failure, not just present an alert, and must leave the
+    // already-active placement's phase untouched.
+    @Test @MainActor func busyRejectionIsRecordedWithoutDisturbingActivePlacement() {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let controller = ImagePlacementController()
+        controller.attach(actions: document)
+        controller.trace = trace
+        controller.prepareUntitledPlacementForTesting(claims: [
+            .bitmapData(Data([0x89]), providerName: "first.png", declaredType: .png)
+        ])
+        trace.reset()
+
+        controller.handleImageAction(
+            intent: ImagePlacementIntent(
+                target: targetForCurrentState(document),
+                claims: [
+                    .bitmapData(Data([0x89]), providerName: "second-a.png", declaredType: .png),
+                    .bitmapData(Data([0x89]), providerName: "second-b.png", declaredType: .png),
+                ]
+            ),
+            documentURL: nil
+        )
+
+        #expect(controller.phaseForTesting == .awaitingSave)
+        #expect(controller.alert != nil)
+        let started = trace.eventsMatching {
+            if case .imagePlacementStarted = $0 { return true }
+            return false
+        }
+        #expect(started == [.imagePlacementStarted(claimCount: 2)])
+        let failed = trace.eventsMatching {
+            if case .imagePlacementFailed = $0 { return true }
+            return false
+        }
+        #expect(failed == [.imagePlacementFailed(reason: .busy, phase: .awaitingSave)])
+    }
+
     // Verifies: REQ-019/075 — first URL after untitled Save must not bump document location generation.
     @Test @MainActor func untitledSaveURLDoesNotBumpGenerationForActiveTransaction() async {
         let doc = MarkdownDocument()

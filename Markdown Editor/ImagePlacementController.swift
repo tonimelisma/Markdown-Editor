@@ -99,6 +99,11 @@ final class ImagePlacementController: ObservableObject {
             event: .begin(id),
             actionID: nil
         ) else {
+            // REQ-101: rejected before acceptance — `state` is untouched (the already-active
+            // placement continues undisturbed), so this records the attempt and its typed
+            // outcome directly rather than through `apply`/`fail`, neither of which apply here.
+            trace?.record(.imagePlacementStarted(claimCount: intent.claims.count))
+            trace?.record(.imagePlacementFailed(reason: .busy, phase: state.phase))
             presentAlert(.error(ImagePlacementError.busy.userMessage), reason: .placement(.busy))
             return
         }
@@ -149,6 +154,9 @@ final class ImagePlacementController: ObservableObject {
             event: .begin(id),
             actionID: nil
         ) else {
+            // REQ-101: see the matching branch in handleImageAction above.
+            trace?.record(.imagePlacementStarted(claimCount: receivers.count))
+            trace?.record(.imagePlacementFailed(reason: .busy, phase: state.phase))
             presentAlert(.error(ImagePlacementError.busy.userMessage), reason: .placement(.busy))
             return
         }
