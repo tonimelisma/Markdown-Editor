@@ -325,6 +325,22 @@ bounded `hostUpdateEnded` count (the livelock guard; a healthy run settles at 2)
 This is the narrow, explicit exception described in `CLAUDE.md` §4; it does not replace or excuse
 any other automated proof.
 
+**Process-level screenshot verification (`ARC-Q13`; REQ-104):** `Scripts/smoke-screenshot.sh`
+runs the same shape of process-level smoke verification against a richer fixture
+(`Scripts/Fixtures/smoke-rich.md`, covering headings, emphasis, strikethrough, inline code,
+links, a local image, ordered/unordered/task lists including nesting, blockquotes, a fenced code
+block, a table, a thematic break, and literal raw HTML) and additionally captures exactly one
+screenshot of the application's own on-screen window — never the full screen, which would leak
+whatever else happens to be displayed and is unrelated to this verification. The window is
+located by owner name via `Scripts/find-window-id.swift` (`CGWindowListCopyWindowInfo`, which
+needs no Accessibility permission, only the calling process's own Screen Recording permission)
+and captured with `screencapture -l<windowID>`, which does not require the target application to
+be frontmost or key. The screenshot is mandatory visual-review evidence for the agent and the
+user at the close of every build increment — it is never itself a pass/fail assertion; this
+script's own exit status depends only on the same structured diagnostic records
+`Scripts/smoke-test.sh` checks. Restoration-state veto uses the same `-ApplePersistenceIgnoreState
+YES` process argument as `Scripts/smoke-test.sh`, for the same reason.
+
 ## 12. Quality scenarios
 
 | ID | Scenario and measure |
@@ -341,6 +357,7 @@ any other automated proof.
 | ARC-Q10 | Instrumentation proves routing, revision, result, refusal class, and timing, and cannot represent document content, selected content, URLs, descriptions, filenames, or paths. |
 | ARC-Q11 | Opening a document and leaving the window idle performs a bounded number of editor-host view updates and settles; sustained reconciliation without user input is a reported fault. |
 | ARC-Q12 | Launching the built application on a fixture document produces a parseable run log whose host-update count is bounded, contains no fault, and ends with a clean-exit record. |
+| ARC-Q13 | Launching the built application on a rich fixture, capturing exactly one screenshot of only its own on-screen window, and closing it produces the same clean, bounded run log as ARC-Q12, plus one image containing no on-screen content outside that window. |
 
 ## 13. Architectural invariants and proof
 

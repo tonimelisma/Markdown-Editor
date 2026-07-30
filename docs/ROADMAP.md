@@ -29,7 +29,11 @@ The application currently includes:
   guarding against a future unrecorded event; document load and revert outcome instrumentation,
   and save-outcome instrumentation covering every save that determines a destination plus this
   app's own untitled-save bridge — a plain Cmd+S/Save-As panel cancellation is a known,
-  documented gap (see `ENGINEERING.md` §8).
+  documented gap (see `ENGINEERING.md` §8);
+  process-level screenshot verification (`Scripts/smoke-screenshot.sh`) capturing one
+  window-only screenshot of a rich fixture as mandatory visual-review evidence at the close of
+  every app-code increment, alongside the same structured diagnostic checks `smoke-test.sh`
+  performs.
 
 The exact delivered/correction status of each behavior is recorded in
 [REQUIREMENTS.md](REQUIREMENTS.md).
