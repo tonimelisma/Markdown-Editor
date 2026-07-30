@@ -64,19 +64,43 @@ if [[ -z "$run_file" ]]; then
 fi
 
 # Wait for WYSIWYG to actually finish rendering before screenshotting — not just for the run
-# file to appear — so the screenshot shows the fixture rendered, not an empty/half-drawn window.
+# file to appear. `availabilityChanged(editable: true)` alone is not enough: it is recorded
+# synchronously when session state changes, but EditorHostView.updateNSView applies the
+# projection to TextKit afterward, and the window server composites the actual pixels later
+# still — screenshotting right on the availabilityChanged record risks empty, stale, or
+# partially rendered pixels while every diagnostic assertion still passes. Wait for a
+# hostUpdateEnded record (the host view's own update-pass signal) with a strictly later
+# sequence number, then add a short fixed margin for the window server to composite.
 rendered=0
 for _ in $(seq 1 100); do
-    if grep -q '"ev":"availabilityChanged".*"editable":true' "$run_file" 2>/dev/null; then
+    if python3 - "$run_file" <<'PYEOF'
+import json, sys
+records = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+avail_seq = next(
+    (r["seq"] for r in records
+     if r.get("ev") == "availabilityChanged" and r.get("data", {}).get("editable") is True),
+    None
+)
+if avail_seq is None:
+    sys.exit(1)
+has_later_host_update = any(
+    r.get("ev") == "hostUpdateEnded" and r["seq"] > avail_seq for r in records
+)
+sys.exit(0 if has_later_host_update else 1)
+PYEOF
+    then
         rendered=1
         break
     fi
     sleep 0.05
 done
 if [[ "$rendered" -ne 1 ]]; then
-    echo "smoke-screenshot: WYSIWYG never announced becoming editable in time" >&2
+    echo "smoke-screenshot: WYSIWYG never announced becoming editable (with a host update afterward) in time" >&2
     exit 1
 fi
+# Grace margin for the window server to actually composite the update above onto the screen;
+# the diagnostic records above prove the application applied it, not that pixels are on screen.
+sleep 0.2
 
 window_id=""
 for _ in $(seq 1 40); do

@@ -332,14 +332,23 @@ links, a local image, ordered/unordered/task lists including nesting, blockquote
 block, a table, a thematic break, and literal raw HTML) and additionally captures exactly one
 screenshot of the application's own on-screen window — never the full screen, which would leak
 whatever else happens to be displayed and is unrelated to this verification. The window is
-located by owner name via `Scripts/find-window-id.swift` (`CGWindowListCopyWindowInfo`, which
-needs no Accessibility permission, only the calling process's own Screen Recording permission)
-and captured with `screencapture -l<windowID>`, which does not require the target application to
-be frontmost or key. The screenshot is mandatory visual-review evidence for the agent and the
-user at the close of every build increment — it is never itself a pass/fail assertion; this
-script's own exit status depends only on the same structured diagnostic records
-`Scripts/smoke-test.sh` checks. Restoration-state veto uses the same `-ApplePersistenceIgnoreState
-YES` process argument as `Scripts/smoke-test.sh`, for the same reason.
+located by the exact process ID the script launched via `Scripts/find-window-id.swift`
+(`CGWindowListCopyWindowInfo` matched on `kCGWindowOwnerPID`, which needs no Accessibility
+permission, only the calling process's own Screen Recording permission) — not by owner-name
+substring, which could otherwise select a window belonging to a real document the user already
+had open — and captured with `screencapture -l<windowID>`, which does not require the target
+application to be frontmost or key. Screenshotting waits for a `hostUpdateEnded` record after
+`availabilityChanged` turns editable, plus a short fixed margin, since availability changing is
+a session-state signal that precedes the host view's own update pass and the window server's
+actual compositing. The screenshot is mandatory visual-review evidence for the agent and the
+user at the close of every build increment — it is never itself a pass/fail assertion. This
+script's exit status is not determined solely by the structured diagnostic checks it shares with
+`Scripts/smoke-test.sh`: it also fails earlier, with a distinct error message, if the environment
+cannot support a capture at all (no Screen Recording permission, the window never appears, or
+`screencapture` itself fails) — a caller must distinguish an environment/capture failure from a
+genuine application diagnostic failure by the error text, not by exit code alone. Restoration-
+state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
+`Scripts/smoke-test.sh`, for the same reason.
 
 ## 12. Quality scenarios
 
