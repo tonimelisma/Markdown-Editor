@@ -9,6 +9,7 @@ import Testing
 import AppKit
 import CryptoKit
 import Foundation
+import UniformTypeIdentifiers
 @testable import Markdown_Editor
 
 @MainActor
@@ -459,6 +460,46 @@ struct PersistentEditorCharacterizationTests {
         // Empty claims still run resolve path then return early in placement.
         router.handleAddImageClaims([])
         #expect(router.pendingImageTarget == nil)
+    }
+
+    // Verifies: REQ-101 — Codex PR #24 finding: claims returned by Add Image after the captured
+    // source-domain intent goes stale must be recorded as a typed rejection, not silently
+    // dropped before ImagePlacementController sees them.
+    @Test func staleAddImageClaimsAreRecordedWithoutStartingPlacement() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("Hello")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let placement = ImagePlacementController()
+        placement.attach(actions: document)
+        placement.trace = trace
+        let router = EditorActionRouter()
+        router.document = document
+        router.placement = placement
+        router.captureImagePlacementTarget(
+            ImagePlacementTarget(
+                sourceSelection: SourceSelection(utf16: NSRange(location: 5, length: 0)),
+                sourceRevision: SourceRevision(value: document.sourceVersion),
+                locationGeneration: document.locationGeneration,
+                operationID: UUID()
+            )
+        )
+        document.fileURL = URL(fileURLWithPath: "/tmp/stale-add-image.md")
+
+        router.handleAddImageClaims([
+            .bitmapData(Data([0x89]), providerName: "picked.png", declaredType: .png)
+        ])
+
+        #expect(router.pendingImageTarget == nil)
+        #expect(placement.phaseForTesting == .idle)
+        #expect(trace.eventsMatching {
+            if case .imagePlacementStarted = $0 { return true }
+            return false
+        } == [.imagePlacementStarted(claimCount: 1)])
+        #expect(trace.eventsMatching {
+            if case .imagePlacementFailed = $0 { return true }
+            return false
+        } == [.imagePlacementFailed(reason: .parentChanged, phase: .idle)])
     }
 
     // Verifies: REQ-089 — image cache store emits privacy-safe trace.

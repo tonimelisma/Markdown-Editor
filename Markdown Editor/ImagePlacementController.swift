@@ -198,8 +198,10 @@ final class ImagePlacementController: ObservableObject {
             return
         }
         let bridge: DocumentSaving = saveBridgeOverride ?? DocumentActionSavingAdapter(actions: actions)
-        let ok = await bridge.saveDocument()
-        if !ok {
+        switch await bridge.saveDocument() {
+        case .succeeded:
+            break
+        case .cancelled:
             _ = apply(.saveCancelledOrFailed, id: snapshot.id)
             actions.endPlacementTracking(activeTrackingGeneration)
             pendingSnapshot = nil
@@ -208,6 +210,9 @@ final class ImagePlacementController: ObservableObject {
                 .info("Image action cancelled — document was not saved."),
                 reason: .placement(.saveCancelled)
             )
+            return
+        case .failed:
+            fail(snapshot.id, .saveFailed)
             return
         }
         // Wait for URL via updateDocumentURL; if already present, continue.
@@ -471,6 +476,15 @@ final class ImagePlacementController: ObservableObject {
         presentAlert(.error(error.userMessage), reason: .placement(error))
     }
 
+    /// REQ-101: Add Image may become stale while its picker is open. No placement state was ever
+    /// accepted in that case, so record its known claims and typed rejection without mutating an
+    /// unrelated active operation or presenting a new alert.
+    func recordRejectedImageAction(claimCount: Int, reason: ImagePlacementError) {
+        guard claimCount > 0 else { return }
+        trace?.record(.imagePlacementStarted(claimCount: claimCount))
+        trace?.record(.imagePlacementFailed(reason: reason, phase: state.phase))
+    }
+
     // Test helpers
     var phaseForTesting: ImagePlacementPhase { state.phase }
     var documentLocationGenerationForTesting: UInt64 { documentLocationGeneration }
@@ -496,7 +510,7 @@ final class ImagePlacementController: ObservableObject {
 final class DocumentActionSavingAdapter: DocumentSaving {
     private let actions: DocumentActionInterface
     init(actions: DocumentActionInterface) { self.actions = actions }
-    func saveDocument() async -> Bool {
+    func saveDocument() async -> DocumentSaveOutcome {
         await actions.saveDocument()
     }
 }

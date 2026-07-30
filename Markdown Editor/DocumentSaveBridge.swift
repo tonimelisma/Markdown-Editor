@@ -9,7 +9,16 @@ import AppKit
 
 @MainActor
 protocol DocumentSaving: AnyObject {
-    func saveDocument() async -> Bool
+    func saveDocument() async -> DocumentSaveOutcome
+}
+
+/// REQ-017: an operation-scoped save distinguishes a completed write, user cancellation, and
+/// an attempted save that failed. Callers that need to decide a later operation's outcome must
+/// not collapse those cases into AppKit's completion Boolean.
+nonisolated enum DocumentSaveOutcome: Sendable, Equatable {
+    case succeeded
+    case cancelled
+    case failed
 }
 
 @MainActor
@@ -23,15 +32,6 @@ enum DocumentSaveBridge {
                 contextInfo: nil
             )
         }
-    }
-}
-
-@MainActor
-final class NSDocumentSavingAdapter: DocumentSaving {
-    private let document: NSDocument
-    init(document: NSDocument) { self.document = document }
-    func saveDocument() async -> Bool {
-        await DocumentSaveBridge.save(document)
     }
 }
 
