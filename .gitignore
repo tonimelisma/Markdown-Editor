@@ -13,6 +13,12 @@ build/
 DerivedData/
 *.moved-aside
 
+# Process-level smoke/screenshot verification artifacts (Scripts/smoke-test.sh,
+# Scripts/smoke-screenshot.sh) — local build output and a one-shot visual-review PNG, never
+# committed.
+.smoke-build/
+.smoke-screenshot.png
+
 # Swift Package Manager
 .build/
 .swiftpm/

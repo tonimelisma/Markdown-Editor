@@ -114,7 +114,9 @@ For an app-code increment:
 4. Remove the branch locally/remotely, worktree, WIP, and stashes created by the unit.
 5. Run the stale-work sweep.
 6. Run the documentation-authority check.
-7. Produce the Definition-of-Done report.
+7. Run `Scripts/smoke-screenshot.sh`, review the resulting screenshot for anything that looks
+   wrong, and send it to the user.
+8. Produce the Definition-of-Done report.
 
 For docs/config only: commit and push directly on `main`, then run stale-work sweep and DoD.
 
@@ -143,6 +145,14 @@ For docs/config only: commit and push directly on `main`, then run stale-work sw
   permitted. It must not drive, read, or assert on any user interface, must not use screen
   automation or accessibility inspection, and must not be the sole proof of any requirement.
   XCUITest and screen automation remain forbidden.
+- **Narrow exception — process-level screenshot verification (`ARC-Q13`; REQ-104):** at the close
+  of every app-code increment, capturing exactly one screenshot of the built application's own
+  on-screen window over a rich fixture (`Scripts/smoke-screenshot.sh`) is permitted and required.
+  Passive capture only — it must not click, type, or otherwise drive the UI, and must never
+  capture the full screen (only the application's own window, so no other on-screen content is
+  captured). It is mandatory visual-review evidence for the agent and the user, never the sole or
+  a partial substitute for a requirement's `test`/`inherent` proof. XCUITest and screen automation
+  remain forbidden.
 
 A green existing suite is not proof of a new claim. Tests must fail for the relevant defective
 behavior before the fix or otherwise discriminate the required invariant.

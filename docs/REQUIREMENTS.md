@@ -18,7 +18,12 @@ how delivered behavior is verified. Current architecture is in
 - **Verification kinds (no manual or UI tests, ever):** `test` = automated unit/integration test
   that does not require UI automation · `inherent` = satisfied by construction — either a
   standard framework component provides the behavior (e.g. `NSDocument` provides Versions)
-  or code inspection proves it (e.g. "makes no network calls"). Nothing is verified by hand.
+  or code inspection proves it (e.g. "makes no network calls") · `visual-review` = one
+  screenshot of the application's own window, captured non-interactively at the end of a build
+  increment and reviewed by the agent and the user (`CLAUDE.md` §4). It never drives or asserts
+  on UI and is never a standalone proof — a row citing it always also cites `test` or `inherent`
+  for the same requirement; it exists for human oversight of rendering, not as a pass/fail
+  gate. Nothing is verified by hand.
 - **Forward:** every `Done` requirement records at least one automated test or justified
   construction/framework proof. **Backward:** every `REQ-###` appearing in code/tests exists here.
 
@@ -187,6 +192,7 @@ how delivered behavior is verified. Current architecture is in
 | REQ-101 | The system shall record image-placement phase transitions, claim counts, byte counts, and typed failures for every paste, drag-and-drop, and Add Image operation, without recording file names, paths, providers, or image data. | COR-14 | Planned | — | — |
 | REQ-102 | WHEN the system presents a failure or warning to the user, it shall record a matching diagnostic at `error` or `warn` level. | COR-14 | Planned | — | — |
 | REQ-103 | The system shall record periodic summary statistics for keystroke translation, mode toggle, and reconciliation durations during ordinary use, without recording per-keystroke events. | COR-15 | Planned | — | — |
+| REQ-104 | WHEN a build increment's closing sequence runs, process-level verification shall also capture one screenshot of the application's own window over a fixture exercising a broad range of Markdown constructs, for mandatory human/agent visual review, without capturing any on-screen content outside that window. | COR-17 | Done | `Scripts/find-window-id.swift`; `Scripts/smoke-screenshot.sh`; `Scripts/Fixtures/smoke-rich.md` | test: `Scripts/smoke-screenshot.sh`'s diagnostic assertions (same shape as REQ-098's — sequence order, `documentOpened`, bounded `hostUpdateEnded`, no fault, clean `runEnd`); visual-review: the captured screenshot, reviewed each run; window-specific capture (never full-screen) verified empirically to exclude unrelated on-screen content |
 
 ---
 
@@ -197,4 +203,4 @@ images, automatic asset cleanup, and asset-aware Save Copy.
 *Planned:* REQ-101–REQ-103, instrumentation completion and smoke verification
 (`docs/plans/cor-14-image-placement-instrumentation.md` … `docs/plans/cor-15-performance-sampling.md`).
 
-*Next free IDs: REQ-008 (A), REQ-023 (C), REQ-033 (D), REQ-104 (concurrency/evidence).*
+*Next free IDs: REQ-008 (A), REQ-023 (C), REQ-033 (D), REQ-105 (concurrency/evidence).*
