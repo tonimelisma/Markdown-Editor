@@ -326,6 +326,26 @@ struct DiagnosticLogTests {
         #expect(recorded.filter { $0.contains("\"ev\":\"documentLoaded\"") }.count == 1)
     }
 
+    // Verifies: REQ-100 — a document saved for the first time while still untouched (revision
+    // 0, never yet read from any file) and then reverted is classified as a revert, not a load.
+    // sourceVersion alone cannot distinguish this case (Save never advances it), which is
+    // exactly why isRevertingViaAppKit exists rather than relying on sourceVersion == 0.
+    @Test func revertOfNeverBeforeLoadedDocumentIsClassifiedAsRevert() async throws {
+        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
+        let document = MarkdownDocument()
+        document.trace = JSONLinesEditorTrace(log: log)
+        // The document itself is never loaded from a file before this — it starts blank via
+        // init(), exactly like a real File > New document that was then saved without edits.
+        let url = makeTemporaryDirectory().appendingPathComponent("untouched.md")
+        try Data().write(to: url)
+
+        try document.revert(toContentsOf: url, ofType: MarkdownContentType.identifier)
+
+        let recorded = await lines(of: log)
+        #expect(recorded.filter { $0.contains("\"ev\":\"documentReverted\"") }.count == 1)
+        #expect(recorded.filter { $0.contains("\"ev\":\"documentLoaded\"") }.isEmpty)
+    }
+
     // Verifies: REQ-100 — a save whose destination was never determined (the Save-panel-cancel
     // case: DocumentSaveBridge reports failure without save(to:ofType:for:completionHandler:)
     // ever firing) is still recorded, not silently dropped because it took a different path

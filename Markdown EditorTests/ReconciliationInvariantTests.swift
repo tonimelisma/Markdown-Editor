@@ -308,9 +308,12 @@ struct ReconciliationInvariantTests {
         session.attach(document: document)
         trace.reset()
 
-        let snapshotID = PresentationSnapshot.ID(value: 1)
-        session.updateWYSIWYGModeState { $0.availability = .editable(snapshotID) }
-        session.updateWYSIWYGModeState { $0.availability = .editable(snapshotID) }
+        session.updateWYSIWYGModeState { $0.availability = .editable(PresentationSnapshot.ID(value: 1)) }
+        // Ordinary reconciliation replaces the snapshot ID on every accepted edit while the
+        // editor stays editable — a different ID, not a repeat of the same one, is the actual
+        // production shape a full-enum comparison misclassified as a transition.
+        session.updateWYSIWYGModeState { $0.availability = .editable(PresentationSnapshot.ID(value: 2)) }
+        session.updateWYSIWYGModeState { $0.availability = .editable(PresentationSnapshot.ID(value: 3)) }
         session.updateWYSIWYGModeState { $0.scrollOffset = CGPoint(x: 0, y: 10) }
 
         let transitions = trace.eventsMatching {
@@ -318,6 +321,31 @@ struct ReconciliationInvariantTests {
             return false
         }
         #expect(transitions == [.availabilityChanged(editable: true, sourceRevision: document.sourceVersion)])
+    }
+
+    // Verifies: REQ-099 — advancing the waiting revision while still unavailable is not a
+    // transition either; a full-enum comparison would misclassify this too (false to false).
+    @Test func availabilityChangedIgnoresRevisionAdvanceWhileWaiting() {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("# Hello\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        trace.reset()
+
+        session.updateWYSIWYGModeState {
+            $0.availability = .waitingForCurrentProjection(SourceRevision(value: 1))
+        }
+        session.updateWYSIWYGModeState {
+            $0.availability = .waitingForCurrentProjection(SourceRevision(value: 2))
+        }
+
+        let transitions = trace.eventsMatching {
+            if case .availabilityChanged = $0 { return true }
+            return false
+        }
+        #expect(transitions.isEmpty)
     }
 }
 

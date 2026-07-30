@@ -63,6 +63,19 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// URL-based read attempt — see the URL-based override for why this exists.
     private var didReachDataRead = false
 
+    /// REQ-100: true once `installLoadedText` has completed at least once for this document
+    /// instance. On its own this still misclassifies one edge case: a document saved for the
+    /// first time while still untouched (sourceVersion 0, never yet read from a file) and then
+    /// reverted — that revert is also this instance's first-ever `read(from:ofType:)` call, so
+    /// `hasCompletedInitialLoad` is false there too. `isRevertingViaAppKit` below covers exactly
+    /// that case.
+    private var hasCompletedInitialLoad = false
+
+    /// REQ-100: true while AppKit's dedicated revert entry point is in progress. Distinguishes
+    /// a genuine revert from a first-ever load even when both are, from this instance's own
+    /// history, "the first time read(from:ofType:) ran" — see `hasCompletedInitialLoad`.
+    private var isRevertingViaAppKit = false
+
     /// REQ-100: incremented every time `recordSaveOutcome` records anything. `saveDocument()`
     /// compares this before/after to detect a save that never reached `save(to:ofType:for:
     /// completionHandler:)` at all — the destination was never determined, e.g. the user
@@ -182,6 +195,14 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             }
             throw error
         }
+    }
+
+    // REQ-100: NSDocument's dedicated "Revert to Saved" entry point, distinct from the initial
+    // open path. See isRevertingViaAppKit's declaration for why this override exists.
+    override func revert(toContentsOf url: URL, ofType typeName: String) throws {
+        isRevertingViaAppKit = true
+        defer { isRevertingViaAppKit = false }
+        try super.revert(toContentsOf: url, ofType: typeName)
     }
 
     // REQ-015/018; ARC-011: AppKit's default serialized read — assert main thread, install canonically.
@@ -413,14 +434,17 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     /// Canonical load path used by serialized `read(from:ofType:)`.
     ///
-    /// // REQ-100: `sourceVersion == 0` reliably distinguishes the very first content
-    /// // installation (a freshly constructed document instance, never yet loaded) from a
-    /// // revert (this same instance already loaded once, so its version already advanced) —
-    /// // unlike `fileURL`, which NSDocument's own opening machinery may already have set
-    /// // before `read(from:ofType:)` runs even on the first load.
+    /// // REQ-100: `hasCompletedInitialLoad` — not `sourceVersion == 0` — distinguishes the
+    /// // very first content installation from a revert. `sourceVersion` is not a reliable
+    /// // proxy: a brand-new document saved without any edit reaches Save with sourceVersion
+    /// // still 0 (Save does not itself advance it), so a subsequent revert of that same,
+    /// // still-at-revision-0 document would have been misclassified as an initial load.
+    /// // `fileURL` is not reliable either — NSDocument's own opening machinery may already
+    /// // have set it before `read(from:ofType:)` runs even on the very first load.
     private func installLoadedText(_ value: String) {
         closeTypingGroupIfNeeded()
-        let isInitialLoad = sourceVersion == 0
+        let isInitialLoad = !hasCompletedInitialLoad && !isRevertingViaAppKit
+        hasCompletedInitialLoad = true
         text = value
         // A revision identifies source content for this document's entire lifetime.
         // Loads/reverts therefore advance it just like edits; identities are never reused.

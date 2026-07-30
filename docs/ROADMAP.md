@@ -26,8 +26,10 @@ The application currently includes:
 - a hermetic diagnostics-directory override and process-level smoke verification
   (`Scripts/smoke-test.sh`) that a non-UI, structured-log-only exception to §4 permits;
   a complete `EditorTraceEvent` vocabulary with `Scripts/check-instrumentation-coverage.sh`
-  guarding against a future unrecorded event; document load/save/revert outcome instrumentation
-  recorded once through the single AppKit save override every save path routes through.
+  guarding against a future unrecorded event; document load and revert outcome instrumentation,
+  and save-outcome instrumentation covering every save that determines a destination plus this
+  app's own untitled-save bridge — a plain Cmd+S/Save-As panel cancellation is a known,
+  documented gap (see `ENGINEERING.md` §8).
 
 The exact delivered/correction status of each behavior is recorded in
 [REQUIREMENTS.md](REQUIREMENTS.md).

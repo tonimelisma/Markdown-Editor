@@ -107,9 +107,13 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         // `ApplePersistenceIgnoreState` is the actual veto AppKit checks, and setting it this
         // early — before `super.init()` and before AppKit's own launch/restoration sequencing —
         // makes the veto a property of the app itself rather than of how it happens to be
-        // invoked.
+        // invoked. `register(defaults:)`, not `set(forKey:)`: `register` is volatile and
+        // scoped to this process only. `set` writes to the persistent domain on disk, and
+        // since Debug and Release share one bundle identifier, that write would silently
+        // disable window restoration for every future ordinary launch of the real app, not
+        // just this verification run.
         if Self.isSmokeRun {
-            UserDefaults.standard.set(true, forKey: "ApplePersistenceIgnoreState")
+            UserDefaults.standard.register(defaults: ["ApplePersistenceIgnoreState": true])
         }
         // First NSDocumentController subclass instance becomes the shared controller.
         // REQ-095: the run log must exist before the first document is constructed, because
