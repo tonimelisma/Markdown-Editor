@@ -80,7 +80,11 @@ fi
 
 window_id=""
 for _ in $(seq 1 40); do
-    window_id="$("$tools_dir/find-window-id" "Markdown Editor" 2>/dev/null | head -1)"
+    # Matched by the exact PID this script launched, not by owner-name substring: if the user
+    # already has their own real Markdown Editor window open, a name-only match could select
+    # their document instead of the fixture, capturing unrelated (and potentially private)
+    # content.
+    window_id="$("$tools_dir/find-window-id" "$app_pid" 2>/dev/null | head -1)"
     [[ -n "$window_id" ]] && break
     sleep 0.02
 done
@@ -126,6 +130,11 @@ seqs = [r["seq"] for r in records[1:]]
 for previous, current in zip(seqs, seqs[1:]):
     assert current > previous, f"sequence numbers not strictly increasing: {previous} then {current}"
 assert any(r["ev"] == "documentOpened" for r in records), "document never opened"
+# Same rigor as smoke-test.sh: a fixture loaded more than once is a regression this script
+# claims to catch (it advertises the same structured-diagnostic checks as ARC-Q12), and could
+# also mean the screenshot captured an unintended document state.
+loaded = [r for r in records if r["ev"] == "documentLoaded"]
+assert len(loaded) == 1, f"expected exactly one documentLoaded, got {len(loaded)}"
 direct_updates = sum(1 for r in records if r["ev"] == "hostUpdateEnded")
 collapsed_updates = sum(
     r.get("data", {}).get("count", 0)
