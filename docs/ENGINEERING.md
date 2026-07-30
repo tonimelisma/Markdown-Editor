@@ -276,6 +276,34 @@ Paste, drag-and-drop, and Add Image create immutable claims and enter one transa
 The shared `assets/` directory is not app-owned. Symlinks, aliases, packages, non-regular sources,
 symlinked destinations, and path escape are rejected.
 
+**Instrumentation (REQ-101/102; ARC-017):** every phase transition, claim count, byte count, and
+typed failure is recorded through `EditorTraceEvent`, reusing the existing closed
+`ImagePlacementPhase`/`ImagePlacementEvent`/`ImagePlacementError` vocabulary rather than inventing
+a parallel one. Phase transitions are recorded in exactly one place
+(`ImagePlacementController.apply`, plus the two `.begin` call sites that apply the reducer
+directly), so no call site can add a transition without it being recorded; a terminal reset back
+to idle — after a commit, a cancellation, or a failure — goes through `resetToIdle()`, the sole
+place that resets `state`, rather than assigning a fresh `ImagePlacementState()` inline, so that
+transition is never silently unrecorded either. A failure records `imagePlacementFailed` before
+`resetToIdle()` runs, so the run log shows the reason before the terminal transition it caused,
+not after. `alert` is `private(set)`; `presentAlert(_:reason:)` is the only way to assign it, so
+a presented failure or warning can never be absent from the run log — enforced by the compiler,
+not merely by convention (an attempt to assign `alert` directly from outside
+`ImagePlacementController` fails to compile), and the same conformance test scans inside
+`ImagePlacementController.swift` itself for any assignment other than `presentAlert`'s and
+`dismissAlert`'s own two lines. Rollback is recorded through two routes, both reporting the
+actual number of files removed (not the number of pins attempted): a rollback the controller
+drives itself goes through `ImagePlacementController.rollbackAndRecord`, which reports
+`AssetDirectoryStore.rollback`'s real return count; `AssetDirectoryStore.publishLockedUncoordinated`
+can also roll back internally, before ever throwing back to the controller, when a later artifact
+in a multi-image batch fails after an earlier one already published — that path throws
+`PartialPublishRollback` (the removed count plus the classified failure) specifically so the
+controller can still record `imagePlacementRolledBack` for a rollback it did not itself drive.
+`assetDirectoryPublished` is distinct from `imagePlacementCommitted`: files can be published to
+`assets/` and then still be rolled back or the transaction cancelled before the source mutation
+commits (a parent-changed race, or the tracked insertion point changing), so the two milestones
+are not always both reached.
+
 ## 11. Instrumentation and diagnostics
 
 Instrumentation is local evidence, not telemetry. Nothing is transmitted. Records are written to
@@ -388,6 +416,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-014 | No production or verification claim depends on manual or UI testing. | target/source conformance check |
 | ARC-015 | Editor-host view reconciliation publishes no session change and captures no live AppKit state; unrendered session state is never published. | reconciliation re-entrancy counter; zero-mutation and zero-publication host update tests |
 | ARC-016 | Diagnostic payloads cannot represent document content, URLs, descriptions, filenames, or paths. | closed payload value type without a string case; encoder tests |
+| ARC-017 | Every user-visible failure or warning alert has a corresponding diagnostic record. | `alert` is `private(set)`; `presentAlert(_:reason:)` is its only assignment route (compiler-enforced); structural conformance test |
 
 ## 14. Architecture change gate
 

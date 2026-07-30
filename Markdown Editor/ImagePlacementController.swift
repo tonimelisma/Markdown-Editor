@@ -16,12 +16,24 @@ final class ImagePlacementController: ObservableObject {
         case error(String)
         case warning(String)
         case info(String)
+
+        var severity: AlertSeverity {
+            switch self {
+            case .error: return .error
+            case .warning: return .warning
+            case .info: return .info
+            }
+        }
     }
 
-    @Published var alert: AlertKind?
+    @Published private(set) var alert: AlertKind?
 
     private var state = ImagePlacementState()
     private weak var actions: DocumentActionInterface?
+    /// REQ-101/102; ARC-017. Not exposed on `DocumentActionInterface`: that protocol is an
+    /// editor-neutral document surface, and widening it just for logging is unnecessary when a
+    /// direct sink works — set by the same caller that calls `attach(actions:)`.
+    weak var trace: (any EditorTraceSink)?
     private var lastDocumentParent: URL?
     private var lastDocumentURL: URL?
     private var documentLocationGeneration: UInt64 = 0
@@ -37,6 +49,17 @@ final class ImagePlacementController: ObservableObject {
         self.actions = actions
     }
 
+    /// REQ-102; ARC-017: the only way to raise a user-visible alert, so a presented failure or
+    /// warning can never be absent from the run log. Do not assign `alert` anywhere else.
+    func presentAlert(_ kind: AlertKind, reason: AlertReason) {
+        alert = kind
+        trace?.record(.userAlertPresented(severity: kind.severity, reason: reason))
+    }
+
+    func dismissAlert() {
+        alert = nil
+    }
+
     func updateDocumentURL(_ url: URL?) {
         let newParent = url?.deletingLastPathComponent()
         if let old = lastDocumentParent, let newParent, old != newParent, let actions {
@@ -46,8 +69,11 @@ final class ImagePlacementController: ObservableObject {
                 oldParent: old,
                 newParent: newParent
             ) {
-                alert = .warning(
-                    "This document’s assets/ references no longer resolve after the file was moved. Companion files were not moved automatically."
+                presentAlert(
+                    .warning(
+                        "This document’s assets/ references no longer resolve after the file was moved. Companion files were not moved automatically."
+                    ),
+                    reason: .brokenReferencesAfterMove
                 )
             }
         }
@@ -73,10 +99,17 @@ final class ImagePlacementController: ObservableObject {
             event: .begin(id),
             actionID: nil
         ) else {
-            alert = .error(ImagePlacementError.busy.userMessage)
+            // REQ-101: rejected before acceptance — `state` is untouched (the already-active
+            // placement continues undisturbed), so this records the attempt and its typed
+            // outcome directly rather than through `apply`/`fail`, neither of which apply here.
+            trace?.record(.imagePlacementStarted(claimCount: intent.claims.count))
+            trace?.record(.imagePlacementFailed(reason: .busy, phase: state.phase))
+            presentAlert(.error(ImagePlacementError.busy.userMessage), reason: .placement(.busy))
             return
         }
+        recordPhaseIfChanged(from: state.phase, to: next.phase)
         state = next
+        trace?.record(.imagePlacementStarted(claimCount: intent.claims.count))
         guard let actions else {
             fail(id, .writeFailed)
             return
@@ -121,10 +154,15 @@ final class ImagePlacementController: ObservableObject {
             event: .begin(id),
             actionID: nil
         ) else {
-            alert = .error(ImagePlacementError.busy.userMessage)
+            // REQ-101: see the matching branch in handleImageAction above.
+            trace?.record(.imagePlacementStarted(claimCount: receivers.count))
+            trace?.record(.imagePlacementFailed(reason: .busy, phase: state.phase))
+            presentAlert(.error(ImagePlacementError.busy.userMessage), reason: .placement(.busy))
             return
         }
+        recordPhaseIfChanged(from: state.phase, to: next.phase)
         state = next
+        trace?.record(.imagePlacementStarted(claimCount: receivers.count))
         guard let actions else {
             fail(id, .writeFailed)
             return
@@ -165,8 +203,11 @@ final class ImagePlacementController: ObservableObject {
             _ = apply(.saveCancelledOrFailed, id: snapshot.id)
             actions.endPlacementTracking(activeTrackingGeneration)
             pendingSnapshot = nil
-            state = ImagePlacementState()
-            alert = .info("Image action cancelled — document was not saved.")
+            resetToIdle()
+            presentAlert(
+                .info("Image action cancelled — document was not saved."),
+                reason: .placement(.saveCancelled)
+            )
             return
         }
         // Wait for URL via updateDocumentURL; if already present, continue.
@@ -225,11 +266,26 @@ final class ImagePlacementController: ObservableObject {
         }
     }
 
+    /// REQ-101: routes every rollback through one place so a removal is always recorded, the
+    /// same discipline REQ-102/ARC-017 applies to alerts. Internal, not private: lets tests
+    /// drive a real rollback directly with a genuine `AssetPublishResult` rather than
+    /// orchestrating the precise async timing a full end-to-end `runPlacement` rollback needs.
+    func rollbackAndRecord(_ published: AssetPublishResult) async {
+        let removedCount = await AssetDirectoryStore.rollback(
+            pins: published.createdPins,
+            assetsPath: published.assetsPath,
+            createdAssetsDirectory: published.createdAssetsDirectory,
+            executor: executor
+        )
+        trace?.record(.imagePlacementRolledBack(removedFileCount: removedCount))
+    }
+
     private func runPlacement(
         snapshot: ImageActionSnapshot,
         documentURL: URL,
         promiseStaging: URL? = nil
     ) async {
+        let placementStart = DispatchTime.now().uptimeNanoseconds
         defer {
             if let promiseStaging {
                 try? FileManager.default.removeItem(at: promiseStaging)
@@ -256,16 +312,13 @@ final class ImagePlacementController: ObservableObject {
                 documentURL: documentURL,
                 executor: executor
             )
+            let totalBytes = artifacts.reduce(0) { $0 + $1.byteCount }
+            trace?.record(.assetDirectoryPublished(fileCount: artifacts.count, totalBytes: totalBytes))
 
             // REQ: prove live URL still under same parent before commit.
             let liveURL = actions.sourceSnapshot().fileURL ?? lastDocumentURL
             guard let liveURL else {
-                await AssetDirectoryStore.rollback(
-                    pins: published.createdPins,
-                    assetsPath: published.assetsPath,
-                    createdAssetsDirectory: published.createdAssetsDirectory,
-                    executor: executor
-                )
+                await rollbackAndRecord(published)
                 fail(snapshot.id, .documentMoved)
                 return
             }
@@ -281,23 +334,13 @@ final class ImagePlacementController: ObservableObject {
             let liveGeneration = actions.sourceSnapshot().locationGeneration
             documentLocationGeneration = liveGeneration
             if !sameParent || snapshot.documentLocationGeneration != liveGeneration {
-                await AssetDirectoryStore.rollback(
-                    pins: published.createdPins,
-                    assetsPath: published.assetsPath,
-                    createdAssetsDirectory: published.createdAssetsDirectory,
-                    executor: executor
-                )
+                await rollbackAndRecord(published)
                 fail(snapshot.id, .parentChanged)
                 return
             }
 
             guard apply(.startCommitting, id: snapshot.id) else {
-                await AssetDirectoryStore.rollback(
-                    pins: published.createdPins,
-                    assetsPath: published.assetsPath,
-                    createdAssetsDirectory: published.createdAssetsDirectory,
-                    executor: executor
-                )
+                await rollbackAndRecord(published)
                 return
             }
 
@@ -313,9 +356,12 @@ final class ImagePlacementController: ObservableObject {
                 _ = apply(.cancel, id: snapshot.id)
                 actions.endPlacementTracking(activeTrackingGeneration)
                 pendingSnapshot = nil
-                state = ImagePlacementState()
-                alert = .warning(
-                    "Images were saved to assets/, but the insertion point changed — references were not inserted."
+                resetToIdle()
+                presentAlert(
+                    .warning(
+                        "Images were saved to assets/, but the insertion point changed — references were not inserted."
+                    ),
+                    reason: .insertionPointChangedAfterCommit
                 )
                 return
             }
@@ -331,12 +377,7 @@ final class ImagePlacementController: ObservableObject {
                 actionName: "Insert Image",
                 grouping: .discrete
             ) else {
-                await AssetDirectoryStore.rollback(
-                    pins: published.createdPins,
-                    assetsPath: published.assetsPath,
-                    createdAssetsDirectory: published.createdAssetsDirectory,
-                    executor: executor
-                )
+                await rollbackAndRecord(published)
                 fail(snapshot.id, .writeFailed)
                 return
             }
@@ -352,12 +393,7 @@ final class ImagePlacementController: ObservableObject {
                     actions.requestSelectionRestoration(pending)
                 }
             case .refused:
-                await AssetDirectoryStore.rollback(
-                    pins: published.createdPins,
-                    assetsPath: published.assetsPath,
-                    createdAssetsDirectory: published.createdAssetsDirectory,
-                    executor: executor
-                )
+                await rollbackAndRecord(published)
                 fail(snapshot.id, .writeFailed)
                 return
             }
@@ -368,9 +404,24 @@ final class ImagePlacementController: ObservableObject {
                 }
             }
             _ = apply(.succeed, id: snapshot.id)
+            let committedBytes = artifacts.reduce(0) { $0 + $1.byteCount }
+            trace?.record(
+                .imagePlacementCommitted(
+                    fileCount: published.published.count,
+                    totalBytes: committedBytes,
+                    durationNanos: DispatchTime.now().uptimeNanoseconds - placementStart
+                )
+            )
             actions.endPlacementTracking(activeTrackingGeneration)
             pendingSnapshot = nil
-            state = ImagePlacementState()
+            resetToIdle()
+        } catch let partial as PartialPublishRollback {
+            // REQ-101: the store already rolled back internally (a later artifact in this batch
+            // failed after an earlier one published) — report that outcome the same way a
+            // controller-driven rollback does, then fail with the underlying reason.
+            trace?.record(.imagePlacementRolledBack(removedFileCount: partial.removedFileCount))
+            fail(snapshot.id, partial.underlying)
+            actions.endPlacementTracking(activeTrackingGeneration)
         } catch let error as ImagePlacementError {
             fail(snapshot.id, error)
             actions.endPlacementTracking(activeTrackingGeneration)
@@ -380,21 +431,44 @@ final class ImagePlacementController: ObservableObject {
         }
     }
 
+    /// REQ-101: recorded here, once, so every phase transition reaches the log regardless of
+    /// which call site drives it — including the two `.begin` sites, which apply the reducer
+    /// directly rather than through `apply(_:id:)` below (the reducer's own UUID-gating requires
+    /// `actionID: nil` for `.begin`, which `apply(_:id:)`'s signature does not allow).
+    private func recordPhaseIfChanged(from previous: ImagePlacementPhase, to next: ImagePlacementPhase) {
+        guard next != previous else { return }
+        trace?.record(.imagePlacementPhase(from: previous, to: next))
+    }
+
+    /// REQ-101: every terminal reset to a fresh (idle) `ImagePlacementState` goes through here —
+    /// `state = ImagePlacementState()` directly, without this, is itself an unrecorded phase
+    /// transition (e.g. committed → idle, failed → idle, cancelled → idle), even though the
+    /// transition INTO that terminal phase was recorded via `apply(_:id:)` moments earlier.
+    private func resetToIdle() {
+        recordPhaseIfChanged(from: state.phase, to: .idle)
+        state = ImagePlacementState()
+    }
+
     @discardableResult
     private func apply(_ event: ImagePlacementEvent, id: ImageActionID) -> Bool {
         guard let next = ImagePlacementReducer.reduce(state: state, event: event, actionID: id) else {
             return false
         }
+        recordPhaseIfChanged(from: state.phase, to: next.phase)
         state = next
         return true
     }
 
     private func fail(_ id: ImageActionID, _ error: ImagePlacementError) {
+        let phaseBeforeFailure = state.phase
         _ = apply(.fail(error), id: id)
         actions?.endPlacementTracking(activeTrackingGeneration)
         pendingSnapshot = nil
-        state = ImagePlacementState()
-        alert = .error(error.userMessage)
+        // REQ-101: record why before recording the reset it caused, so the run log reads in
+        // causal order rather than showing the terminal idle transition before its reason.
+        trace?.record(.imagePlacementFailed(reason: error, phase: phaseBeforeFailure))
+        resetToIdle()
+        presentAlert(.error(error.userMessage), reason: .placement(error))
     }
 
     // Test helpers

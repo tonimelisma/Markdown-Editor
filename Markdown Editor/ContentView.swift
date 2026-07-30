@@ -42,6 +42,7 @@ struct ContentView: View {
         }
         .onAppear {
             placementController.attach(actions: document)
+            placementController.trace = document.trace
             placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
             session.attach(document: document)
             actionRouter.placement = placementController
@@ -56,7 +57,7 @@ struct ContentView: View {
             placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
         }
         .alert(alertTitle, isPresented: alertPresented) {
-            Button("OK", role: .cancel) { placementController.alert = nil }
+            Button("OK", role: .cancel) { placementController.dismissAlert() }
         } message: {
             Text(alertMessage)
         }
@@ -65,7 +66,7 @@ struct ContentView: View {
     private var alertPresented: Binding<Bool> {
         Binding(
             get: { placementController.alert != nil },
-            set: { if !$0 { placementController.alert = nil } }
+            set: { if !$0 { placementController.dismissAlert() } }
         )
     }
 

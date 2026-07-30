@@ -331,8 +331,15 @@ struct AssetDirectoryStoreTests {
                 byteCount: 1
             ),
         ]
-        await #expect(throws: (any Error).self) {
+        do {
             _ = try await AssetDirectoryStore.publish(artifacts: artifacts, documentURL: doc)
+            Issue.record("expected publish to throw")
+        } catch let partial as PartialPublishRollback {
+            // REQ-101: the store's own internal rollback (this publish call never reaches
+            // ImagePlacementController) must still report what it actually removed.
+            #expect(partial.removedFileCount == 1)
+        } catch {
+            Issue.record("expected PartialPublishRollback, got \(error)")
         }
         let assets = dir.appendingPathComponent("assets")
         if FileManager.default.fileExists(atPath: assets.path) {
@@ -367,11 +374,12 @@ struct AssetDirectoryStoreTests {
             byteCount: png.count
         )
         let result = try await AssetDirectoryStore.publish(artifacts: [artifact], documentURL: doc)
-        await AssetDirectoryStore.rollback(
+        let removedCount = await AssetDirectoryStore.rollback(
             pins: result.createdPins,
             assetsPath: result.assetsPath,
             createdAssetsDirectory: nil
         )
+        #expect(removedCount == 1)
         #expect(FileManager.default.fileExists(atPath: pre.path))
         #expect(!FileManager.default.fileExists(atPath: result.published[0].destinationURL.path))
     }
@@ -549,6 +557,47 @@ struct ImagePlacementControllerLifecycleTests {
         #expect(controller.phaseForTesting == .awaitingSave)
     }
 
+    // Verifies: REQ-101 — Codex PR #24 finding: an action rejected before acceptance (the
+    // controller is already busy with a different placement) must still record the attempted
+    // claim count and a typed .busy failure, not just present an alert, and must leave the
+    // already-active placement's phase untouched.
+    @Test @MainActor func busyRejectionIsRecordedWithoutDisturbingActivePlacement() {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let controller = ImagePlacementController()
+        controller.attach(actions: document)
+        controller.trace = trace
+        controller.prepareUntitledPlacementForTesting(claims: [
+            .bitmapData(Data([0x89]), providerName: "first.png", declaredType: .png)
+        ])
+        trace.reset()
+
+        controller.handleImageAction(
+            intent: ImagePlacementIntent(
+                target: targetForCurrentState(document),
+                claims: [
+                    .bitmapData(Data([0x89]), providerName: "second-a.png", declaredType: .png),
+                    .bitmapData(Data([0x89]), providerName: "second-b.png", declaredType: .png),
+                ]
+            ),
+            documentURL: nil
+        )
+
+        #expect(controller.phaseForTesting == .awaitingSave)
+        #expect(controller.alert != nil)
+        let started = trace.eventsMatching {
+            if case .imagePlacementStarted = $0 { return true }
+            return false
+        }
+        #expect(started == [.imagePlacementStarted(claimCount: 2)])
+        let failed = trace.eventsMatching {
+            if case .imagePlacementFailed = $0 { return true }
+            return false
+        }
+        #expect(failed == [.imagePlacementFailed(reason: .busy, phase: .awaitingSave)])
+    }
+
     // Verifies: REQ-019/075 — first URL after untitled Save must not bump document location generation.
     @Test @MainActor func untitledSaveURLDoesNotBumpGenerationForActiveTransaction() async {
         let doc = MarkdownDocument()
@@ -581,6 +630,230 @@ struct ImagePlacementControllerLifecycleTests {
         controller.updateDocumentURL(doc.fileURL)
         #expect(doc.locationGeneration == genBefore)
         #expect(controller.documentLocationGenerationForTesting == genBefore)
+    }
+
+    @MainActor
+    private func waitUntilIdle(_ controller: ImagePlacementController, timeoutSeconds: Double = 3) async {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while controller.phaseForTesting != .idle, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    private func targetForCurrentState(_ document: MarkdownDocument) -> ImagePlacementTarget {
+        ImagePlacementTarget(
+            sourceSelection: SourceSelection(utf16: NSRange(location: (document.text as NSString).length, length: 0)),
+            sourceRevision: SourceRevision(value: document.sourceVersion),
+            locationGeneration: document.locationGeneration,
+            operationID: UUID()
+        )
+    }
+
+    // Verifies: REQ-101/102 — a real placement failure (driven through the full
+    // handleImageAction pipeline with a genuinely corrupt file, the same seam
+    // ImageBatchPreflightTests uses) records the typed reason and the phase it failed in.
+    @Test @MainActor func imagePlacementFailureIsRecorded() async throws {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("Some text.")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let docURL = dir.appendingPathComponent("doc.md")
+        try Data("Some text.".utf8).write(to: docURL)
+        document.fileURL = docURL
+
+        let badFile = dir.appendingPathComponent("bad.png")
+        try Data([0x00, 0x01]).write(to: badFile)
+
+        let controller = ImagePlacementController()
+        controller.attach(actions: document)
+        controller.trace = trace
+        controller.handleImageAction(
+            intent: ImagePlacementIntent(
+                target: targetForCurrentState(document),
+                claims: [.fileURL(badFile, providerName: "bad.png", declaredType: .png)]
+            ),
+            documentURL: document.fileURL
+        )
+        await waitUntilIdle(controller)
+
+        let failed = trace.eventsMatching {
+            if case .imagePlacementFailed = $0 { return true }
+            return false
+        }
+        #expect(failed == [.imagePlacementFailed(reason: .unsupportedOrCorrupt, phase: .staging)])
+    }
+
+    // Verifies: REQ-101 — Codex PR #24 finding: a terminal reset (`resetToIdle()`) must itself go
+    // through the instrumented transition route, not a raw `state = ImagePlacementState()`, so
+    // the run log always shows the phase actually returning to idle, not just the failure that
+    // preceded it. Reuses imagePlacementFailureIsRecorded's real corrupt-file pipeline.
+    @Test @MainActor func failureRecordsTerminalTransitionBackToIdle() async throws {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("Some text.")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let docURL = dir.appendingPathComponent("doc.md")
+        try Data("Some text.".utf8).write(to: docURL)
+        document.fileURL = docURL
+
+        let badFile = dir.appendingPathComponent("bad.png")
+        try Data([0x00, 0x01]).write(to: badFile)
+
+        let controller = ImagePlacementController()
+        controller.attach(actions: document)
+        controller.trace = trace
+        controller.handleImageAction(
+            intent: ImagePlacementIntent(
+                target: targetForCurrentState(document),
+                claims: [.fileURL(badFile, providerName: "bad.png", declaredType: .png)]
+            ),
+            documentURL: document.fileURL
+        )
+        await waitUntilIdle(controller)
+
+        let phaseTransitions: [(ImagePlacementPhase, ImagePlacementPhase)] = trace.events.compactMap {
+            if case let .imagePlacementPhase(from, to) = $0 { return (from, to) }
+            return nil
+        }
+        guard let last = phaseTransitions.last else {
+            Issue.record("expected at least one recorded phase transition")
+            return
+        }
+        #expect(last.0 == .failed)
+        #expect(last.1 == .idle)
+
+        let failedIndex = trace.events.firstIndex {
+            if case .imagePlacementFailed = $0 { return true }
+            return false
+        }
+        let idleTransitionIndex = trace.events.firstIndex {
+            if case .imagePlacementPhase(_, .idle) = $0 { return true }
+            return false
+        }
+        let failedIdx = try #require(failedIndex)
+        let idleIdx = try #require(idleTransitionIndex)
+        #expect(failedIdx < idleIdx)
+    }
+
+    // Verifies: REQ-101; ARC-016 — the highest-value privacy test in this increment: a
+    // revealing filename must never reach any emitted trace line across a real, successful
+    // end-to-end placement.
+    @Test @MainActor func imagePlacementTraceOmitsFilenames() async throws {
+        let logDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
+        let log = DiagnosticLog(directory: logDir, hostKind: .unitTest)
+        let document = MarkdownDocument()
+        document.trace = JSONLinesEditorTrace(log: log)
+        document.installTextForTesting("Some text.")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let docURL = dir.appendingPathComponent("doc.md")
+        try Data("Some text.".utf8).write(to: docURL)
+        document.fileURL = docURL
+
+        let png = try makePNGData()
+        let revealingFile = dir.appendingPathComponent("secret-holiday-photo.png")
+        try png.write(to: revealingFile)
+
+        let controller = ImagePlacementController()
+        controller.attach(actions: document)
+        controller.trace = document.trace
+        controller.handleImageAction(
+            intent: ImagePlacementIntent(
+                target: targetForCurrentState(document),
+                claims: [.fileURL(revealingFile, providerName: "secret-holiday-photo.png", declaredType: .png)]
+            ),
+            documentURL: document.fileURL
+        )
+        await waitUntilIdle(controller)
+        #expect(controller.phaseForTesting == .idle)
+
+        await log.drain()
+        let text = (try? String(contentsOf: log.fileURL, encoding: .utf8)) ?? ""
+        #expect(!text.isEmpty)
+        #expect(!text.contains("secret-holiday-photo"))
+        #expect(!text.contains("secret"))
+    }
+
+    // Verifies: REQ-101 — the filesystem adversarial rollback path records the removed count,
+    // using the same real AssetDirectoryStore.publish/rollback fixtures as
+    // rollbackRemovesOnlyPinnedCreatedFiles above.
+    @Test @MainActor func rollbackIsRecorded() async throws {
+        let png = try makePNGData()
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let doc = dir.appendingPathComponent("note.md")
+        try Data().write(to: doc)
+        let staging = dir.appendingPathComponent("stage", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        let staged = staging.appendingPathComponent("x")
+        try png.write(to: staged)
+        let artifact = StagedImageArtifact(
+            stagingURL: staged,
+            providerName: "ok.png",
+            representation: .png,
+            sha256Hex: ImageAssetPolicy.sha256Hex(png),
+            byteCount: png.count
+        )
+        let result = try await AssetDirectoryStore.publish(artifacts: [artifact], documentURL: doc)
+
+        let trace = InMemoryEditorTrace()
+        let controller = ImagePlacementController()
+        controller.trace = trace
+        await controller.rollbackAndRecord(result)
+
+        let removed = trace.eventsMatching {
+            if case .imagePlacementRolledBack = $0 { return true }
+            return false
+        }
+        #expect(removed == [.imagePlacementRolledBack(removedFileCount: 1)])
+    }
+
+    // Verifies: ARC-017 — the only way to raise a user-visible alert is
+    // ImagePlacementController.presentAlert; no other production file may assign `alert` directly.
+    @Test func everyAlertSiteRecordsDiagnostic() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Markdown Editor")
+        let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "swift" }
+        #expect(!files.isEmpty)
+        // `private(set)` only stops assignment from OTHER files — inside
+        // ImagePlacementController.swift itself a future bare `alert = ...` could still bypass
+        // presentAlert/dismissAlert, so that file is scanned for its own two legitimate
+        // assignments rather than excluded outright.
+        let allowedOwnerLines: Set<String> = ["alert = kind", "alert = nil"]
+        for file in files {
+            let contents = try String(contentsOf: file, encoding: .utf8)
+            if file.lastPathComponent == "ImagePlacementController.swift" {
+                for rawLine in contents.split(separator: "\n", omittingEmptySubsequences: false) {
+                    let line = rawLine.trimmingCharacters(in: .whitespaces)
+                    guard line.contains("alert ="), !line.contains("alert ==") else { continue }
+                    #expect(
+                        allowedOwnerLines.contains(line),
+                        "ImagePlacementController.swift assigns alert directly outside presentAlert/dismissAlert: \(line)"
+                    )
+                }
+            } else {
+                // ".alert = ", not a bare "alert = ": the latter also matches unrelated local
+                // variables in other files (e.g. EditorToolbar.swift's `let alert = NSAlert()`).
+                // The leading dot is what distinguishes property access on some placement
+                // controller from an unrelated local declaration.
+                #expect(
+                    !contents.contains(".alert = "),
+                    "\(file.lastPathComponent) assigns alert directly, bypassing presentAlert/dismissAlert"
+                )
+            }
+        }
     }
 }
 

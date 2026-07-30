@@ -89,7 +89,14 @@ struct DiagnosticLogTests {
             .documentReverted(sourceRevision: 2, utf16Count: 8),
             .hostUpdateEnded(durationNanos: 5, updatesInWindow: 1),
             .hostUpdateStorm(updatesInWindow: 500),
-            .viewReconciliationViolation(kind: .publication)
+            .viewReconciliationViolation(kind: .publication),
+            .imagePlacementPhase(from: .idle, to: .accepted),
+            .imagePlacementStarted(claimCount: 1),
+            .imagePlacementCommitted(fileCount: 1, totalBytes: 100, durationNanos: 5),
+            .imagePlacementFailed(reason: .writeFailed, phase: .staging),
+            .imagePlacementRolledBack(removedFileCount: 1),
+            .assetDirectoryPublished(fileCount: 1, totalBytes: 100),
+            .userAlertPresented(severity: .error, reason: .placement(.busy))
         ]
 
         var covered = Set<DiagnosticEventName>()

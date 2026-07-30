@@ -64,6 +64,47 @@ nonisolated enum DocumentIOFailure: Sendable, Equatable {
     }
 }
 
+/// Severity of a user-visible alert. Distinct from `DiagnosticLevel` (which describes how a
+/// record itself should be treated in the log, not what kind of alert produced it).
+nonisolated enum AlertSeverity: Sendable, Equatable {
+    case error
+    case warning
+    case info
+
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .error: return .alertError
+        case .warning: return .alertWarning
+        case .info: return .alertInfo
+        }
+    }
+}
+
+/// Why a user-visible alert was presented (REQ-102; ARC-017).
+///
+/// `.placement` reuses `ImagePlacementError` directly for every alert that already carries one
+/// (busy, save-cancelled-or-failed, and every failure `fail(_:_:)` raises); the remaining cases
+/// cover alert sites that occur before any placement error could exist — pasteboard
+/// classification rejecting content outright, no resolvable insertion target, the
+/// insertion-point-changed-after-commit warning, and the broken-references-after-move warning.
+nonisolated enum AlertReason: Sendable, Equatable {
+    case placement(ImagePlacementError)
+    case noInsertionTarget
+    case pasteboardUnsupportedOrCorrupt
+    case insertionPointChangedAfterCommit
+    case brokenReferencesAfterMove
+
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .placement(let error): return error.symbol
+        case .noInsertionTarget: return .noInsertionTarget
+        case .pasteboardUnsupportedOrCorrupt: return .unsupportedOrCorrupt
+        case .insertionPointChangedAfterCommit: return .insertionPointChanged
+        case .brokenReferencesAfterMove: return .documentMoved
+        }
+    }
+}
+
 /// Which planner handled an accepted edit. Derived from the command, never from an action name.
 ///
 /// // REQ-089; ARC-016: `SourceMutation.actionName` is a user-facing undo title and is never
@@ -199,6 +240,15 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case hostUpdateEnded(durationNanos: UInt64, updatesInWindow: Int)
     case hostUpdateStorm(updatesInWindow: Int)
     case viewReconciliationViolation(kind: ReconciliationViolation)
+
+    // Image placement (REQ-101/102; ARC-017).
+    case imagePlacementPhase(from: ImagePlacementPhase, to: ImagePlacementPhase)
+    case imagePlacementStarted(claimCount: Int)
+    case imagePlacementCommitted(fileCount: Int, totalBytes: Int, durationNanos: UInt64)
+    case imagePlacementFailed(reason: ImagePlacementError, phase: ImagePlacementPhase)
+    case imagePlacementRolledBack(removedFileCount: Int)
+    case assetDirectoryPublished(fileCount: Int, totalBytes: Int)
+    case userAlertPresented(severity: AlertSeverity, reason: AlertReason)
 }
 
 nonisolated enum HistoryDirection: Sendable, Equatable {
@@ -242,6 +292,43 @@ extension EditorUpdateOrigin {
         case .modeRestoration: return .modeRestoration
         case .history: return .history
         case .composition: return .composition
+        }
+    }
+}
+
+extension ImagePlacementPhase {
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .idle: return .idle
+        case .accepted: return .accepted
+        case .receivingPromises: return .receivingPromises
+        case .awaitingSave: return .awaitingSave
+        case .staging: return .staging
+        case .publishing: return .publishing
+        case .committing: return .committing
+        case .committed: return .committed
+        case .cancelled: return .cancelled
+        case .failed: return .failed
+        }
+    }
+}
+
+extension ImagePlacementError {
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .busy: return .busy
+        case .noDocumentURL: return .noDocumentURL
+        case .saveCancelled: return .saveCancelled
+        case .saveFailed: return .saveFailed
+        case .documentMoved: return .documentMoved
+        case .unsafeDestination: return .unsafeDestination
+        case .unsupportedOrCorrupt: return .unsupportedOrCorrupt
+        case .typeMismatch: return .typeMismatch
+        case .writeFailed: return .writeFailed
+        case .promiseFailed: return .promiseFailed
+        case .promiseTimedOut: return .promiseTimedOut
+        case .nonRegularSource: return .nonRegularSource
+        case .parentChanged: return .parentChanged
         }
     }
 }

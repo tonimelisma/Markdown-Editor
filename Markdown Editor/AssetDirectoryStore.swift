@@ -92,6 +92,15 @@ nonisolated final class LeaseHold: @unchecked Sendable {
     }
 }
 
+/// REQ-101: `publishLockedUncoordinated` rolls back earlier successful writes internally and
+/// rethrows before `ImagePlacementController` ever sees the failure — this wraps that outcome so
+/// the caller can still record `imagePlacementRolledBack`, exactly as it does for a rollback it
+/// drives itself via `rollbackAndRecord`.
+nonisolated struct PartialPublishRollback: Error, Sendable {
+    let underlying: ImagePlacementError
+    let removedFileCount: Int
+}
+
 nonisolated enum AssetDirectoryStore {
     static func publish(
         artifacts: [StagedImageArtifact],
@@ -120,22 +129,28 @@ nonisolated enum AssetDirectoryStore {
         }
     }
 
+    /// REQ-101: returns the count of files this call actually removed (not `pins.count`) —
+    /// an adversarial rollback can find a pinned file already gone or identity-mismatched and
+    /// skip it, so the caller's instrumentation must report what happened, not what was attempted.
+    @discardableResult
     static func rollback(
         pins: [CreatedAssetPin],
         assetsPath: String,
         createdAssetsDirectory: FileIdentity?,
         executor: ImageIOExecutor = .shared
-    ) async {
+    ) async -> Int {
         await executor.run {
             let assetsFD = open(assetsPath, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-            guard assetsFD >= 0 else { return }
+            guard assetsFD >= 0 else { return 0 }
             defer { close(assetsFD) }
+            var removedCount = 0
             for pin in pins {
-                _ = try? POSIXFileOps.unlinkChildIfIdentityMatches(
+                let removed = (try? POSIXFileOps.unlinkChildIfIdentityMatches(
                     dirFD: assetsFD,
                     name: pin.filename,
                     expected: pin.identity
-                )
+                )) ?? false
+                if removed { removedCount += 1 }
                 if let pinPath = pin.pinPath {
                     unlink(pinPath)
                 }
@@ -154,6 +169,7 @@ nonisolated enum AssetDirectoryStore {
                     }
                 }
             }
+            return removedCount
         }
     }
 
@@ -274,12 +290,14 @@ nonisolated enum AssetDirectoryStore {
             }
         } catch {
             // REQ-071: roll back only identity-pinned creations from this batch.
+            var removedCount = 0
             for pin in pins {
-                _ = try? POSIXFileOps.unlinkChildIfIdentityMatches(
+                let removed = (try? POSIXFileOps.unlinkChildIfIdentityMatches(
                     dirFD: assetsFD,
                     name: pin.filename,
                     expected: pin.identity
-                )
+                )) ?? false
+                if removed { removedCount += 1 }
                 if let pinPath = pin.pinPath { unlink(pinPath) }
             }
             if let created = createdAssetsIdentity,
@@ -293,7 +311,14 @@ nonisolated enum AssetDirectoryStore {
                     _ = unlinkat(parentFD, "assets", AT_REMOVEDIR)
                 }
             }
-            throw error
+            // REQ-101: this rollback happens before the failure ever reaches the controller, so
+            // wrap it with the outcome the controller needs to record — but only when this batch
+            // actually created something to roll back; an empty batch has nothing to report.
+            guard !pins.isEmpty else { throw error }
+            throw PartialPublishRollback(
+                underlying: (error as? ImagePlacementError) ?? .writeFailed,
+                removedFileCount: removedCount
+            )
         }
 
         return AssetPublishResult(
