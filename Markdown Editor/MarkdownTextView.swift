@@ -224,7 +224,7 @@ final class MarkdownSourceTextView: NSTextView {
             )
             case .fallthroughToNativeText, .unsupported:
             if case .unsupported = classification {
-                placementController?.alert = .error("Unsupported or corrupt image.")
+                placementController?.presentAlert(.error("Unsupported or corrupt image."), reason: .pasteboardUnsupportedOrCorrupt)
                 return
             }
             // REQ-059: prefer plain-text representation even when RTF/HTML is present.
@@ -260,7 +260,7 @@ final class MarkdownSourceTextView: NSTextView {
             return true
         case .fallthroughToNativeText, .unsupported:
             if case .unsupported = classification {
-                placementController?.alert = .error("Unsupported or corrupt image.")
+                placementController?.presentAlert(.error("Unsupported or corrupt image."), reason: .pasteboardUnsupportedOrCorrupt)
                 return true
             }
             return super.performDragOperation(sender)

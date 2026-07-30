@@ -119,11 +119,14 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
 
 /// Closed vocabulary of payload field names.
 nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
-    case count
+    case claimCount
     case cost
+    case count
     case direction
     case durationNanos
     case editable
+    case fileCount
+    case fromPhase
     case fromSnapshot
     case generation
     case grouping
@@ -135,13 +138,16 @@ nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
     case mode
     case nameLength
     case origin
+    case phase
     case planner
     case provisional
     case reason
+    case removedFileCount
     case replacementLength
     case revision
     case snapshot
     case sourceRevision
+    case toPhase
     case totalBytes
     case updatesPerSecond
     case utf16Count
@@ -195,6 +201,15 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
 
     // image
     case imageCacheStore
+
+    // image placement (REQ-101/102; ARC-017)
+    case imagePlacementPhase
+    case imagePlacementStarted
+    case imagePlacementCommitted
+    case imagePlacementFailed
+    case imagePlacementRolledBack
+    case assetDirectoryPublished
+    case userAlertPresented
 
     // view update
     case hostUpdateEnded

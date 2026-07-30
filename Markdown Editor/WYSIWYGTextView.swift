@@ -600,7 +600,7 @@ final class MarkdownWYSIWYGTextView: NSTextView {
         switch classification {
         case .images(let claims):
             guard let target = imagePlacementTarget() else {
-                placementController?.alert = .error("Could not resolve image insertion point.")
+                placementController?.presentAlert(.error("Could not resolve image insertion point."), reason: .noInsertionTarget)
                 return
             }
             placementController?.handleImageAction(
@@ -609,7 +609,7 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             )
         case .fallthroughToNativeText, .unsupported:
             if case .unsupported = classification {
-                placementController?.alert = .error("Unsupported or corrupt image.")
+                placementController?.presentAlert(.error("Unsupported or corrupt image."), reason: .pasteboardUnsupportedOrCorrupt)
                 return
             }
             // REQ-059: always paste plain text even when RTF/HTML are available.
@@ -668,7 +668,7 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             return true
         case .fallthroughToNativeText, .unsupported:
             if case .unsupported = classification {
-                placementController?.alert = .error("Unsupported or corrupt image.")
+                placementController?.presentAlert(.error("Unsupported or corrupt image."), reason: .pasteboardUnsupportedOrCorrupt)
                 return true
             }
             return super.performDragOperation(sender)

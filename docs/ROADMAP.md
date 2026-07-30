@@ -33,20 +33,21 @@ The application currently includes:
   process-level screenshot verification (`Scripts/smoke-screenshot.sh`) capturing one
   window-only screenshot of a rich fixture as mandatory visual-review evidence at the close of
   every app-code increment, alongside the same structured diagnostic checks `smoke-test.sh`
-  performs.
+  performs; image-placement phase/claim/byte/failure instrumentation and one compiler-enforced
+  route for every user-visible alert (`ImagePlacementController.presentAlert`), so a presented
+  failure or warning can never be absent from the run log.
 
 The exact delivered/correction status of each behavior is recorded in
 [REQUIREMENTS.md](REQUIREMENTS.md).
 
 ## Active: instrumentation completion and cleanup
 
-Three approved, not-yet-implemented increments (COR-14 … COR-16), in dependency order. Each is a
+Two approved, not-yet-implemented increments (COR-15 … COR-16), in dependency order. Each is a
 separate branch/PR/review/merge; docs are reconciled and each plan file is deleted as its
-increment is implemented. COR-11, COR-12, and COR-13 are delivered — see the foundation list
-above.
+increment is implemented. COR-11, COR-12, COR-13, and COR-14 are delivered — see the foundation
+list above.
 
-- 🔵 [COR-14 — image placement and asset filesystem instrumentation](plans/cor-14-image-placement-instrumentation.md)
-- ⚪ [COR-15 — production performance sampling](plans/cor-15-performance-sampling.md)
+- 🔵 [COR-15 — production performance sampling](plans/cor-15-performance-sampling.md)
 - ⚪ [COR-16 — naming and layering cleanup](plans/cor-16-naming-layering-cleanup.md)
 
 ## Post-MVP backlog

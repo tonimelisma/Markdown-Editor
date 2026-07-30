@@ -276,6 +276,22 @@ Paste, drag-and-drop, and Add Image create immutable claims and enter one transa
 The shared `assets/` directory is not app-owned. Symlinks, aliases, packages, non-regular sources,
 symlinked destinations, and path escape are rejected.
 
+**Instrumentation (REQ-101/102; ARC-017):** every phase transition, claim count, byte count, and
+typed failure is recorded through `EditorTraceEvent`, reusing the existing closed
+`ImagePlacementPhase`/`ImagePlacementEvent`/`ImagePlacementError` vocabulary rather than inventing
+a parallel one. Phase transitions are recorded in exactly one place
+(`ImagePlacementController.apply`, plus the two `.begin` call sites that apply the reducer
+directly), so no call site can add a transition without it being recorded. `alert` is
+`private(set)`; `presentAlert(_:reason:)` is the only way to assign it, so a presented failure or
+warning can never be absent from the run log — enforced by the compiler, not merely by
+convention (an attempt to assign `alert` directly from outside `ImagePlacementController` fails
+to compile). Rollback is similarly funneled through one method
+(`ImagePlacementController.rollbackAndRecord`) so a removal is always recorded. `assetDirectoryPublished`
+is distinct from `imagePlacementCommitted`: files can be published to `assets/` and then still
+be rolled back or the transaction cancelled before the source mutation commits (a parent-changed
+race, or the tracked insertion point changing), so the two milestones are not always both
+reached.
+
 ## 11. Instrumentation and diagnostics
 
 Instrumentation is local evidence, not telemetry. Nothing is transmitted. Records are written to
@@ -388,6 +404,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-014 | No production or verification claim depends on manual or UI testing. | target/source conformance check |
 | ARC-015 | Editor-host view reconciliation publishes no session change and captures no live AppKit state; unrendered session state is never published. | reconciliation re-entrancy counter; zero-mutation and zero-publication host update tests |
 | ARC-016 | Diagnostic payloads cannot represent document content, URLs, descriptions, filenames, or paths. | closed payload value type without a string case; encoder tests |
+| ARC-017 | Every user-visible failure or warning alert has a corresponding diagnostic record. | `alert` is `private(set)`; `presentAlert(_:reason:)` is its only assignment route (compiler-enforced); structural conformance test |
 
 ## 14. Architecture change gate
 

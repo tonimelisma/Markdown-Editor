@@ -104,4 +104,40 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case toggleTask
     case replaceTableCell
     case insertImageMarkdown
+
+    // Image-placement phases
+    case idle
+    case accepted
+    case receivingPromises
+    case awaitingSave
+    case staging
+    case publishing
+    case committing
+    case committed
+    case cancelled
+    case failed
+
+    // Image-placement errors
+    case busy
+    case noDocumentURL
+    case saveCancelled
+    case saveFailed
+    case documentMoved
+    case unsafeDestination
+    case unsupportedOrCorrupt
+    case typeMismatch
+    case writeFailed
+    case promiseFailed
+    case promiseTimedOut
+    case nonRegularSource
+    case parentChanged
+
+    // Alert reasons with no natural ImagePlacementError equivalent
+    case noInsertionTarget
+    case insertionPointChanged
+
+    // Alert severities
+    case alertError
+    case alertWarning
+    case alertInfo
 }

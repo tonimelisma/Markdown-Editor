@@ -211,6 +211,47 @@ final class JSONLinesEditorTrace: EditorTraceSink {
             return Mapped(name: .viewReconciliationViolation, level: .fault, category: .viewUpdate, data: [
                 (.kind, .symbol(kind.symbol))
             ])
+        case .imagePlacementPhase(let from, let to):
+            return Mapped(name: .imagePlacementPhase, level: .debug, category: .image, data: [
+                (.fromPhase, .symbol(from.symbol)),
+                (.toPhase, .symbol(to.symbol))
+            ])
+        case .imagePlacementStarted(let claimCount):
+            return Mapped(name: .imagePlacementStarted, level: .info, category: .image, data: [
+                (.claimCount, .int(claimCount))
+            ])
+        case .imagePlacementCommitted(let fileCount, let totalBytes, let durationNanos):
+            return Mapped(name: .imagePlacementCommitted, level: .info, category: .image, data: [
+                (.fileCount, .int(fileCount)),
+                (.totalBytes, .int(totalBytes)),
+                (.durationNanos, .uint(durationNanos))
+            ])
+        case .imagePlacementFailed(let reason, let phase):
+            return Mapped(name: .imagePlacementFailed, level: .error, category: .image, data: [
+                (.reason, .symbol(reason.symbol)),
+                (.phase, .symbol(phase.symbol))
+            ])
+        case .imagePlacementRolledBack(let removedFileCount):
+            return Mapped(name: .imagePlacementRolledBack, level: .warn, category: .image, data: [
+                (.removedFileCount, .int(removedFileCount))
+            ])
+        case .assetDirectoryPublished(let fileCount, let totalBytes):
+            return Mapped(name: .assetDirectoryPublished, level: .debug, category: .image, data: [
+                (.fileCount, .int(fileCount)),
+                (.totalBytes, .int(totalBytes))
+            ])
+        case .userAlertPresented(let severity, let reason):
+            let level: DiagnosticLevel = {
+                switch severity {
+                case .error: return .error
+                case .warning: return .warn
+                case .info: return .info
+                }
+            }()
+            return Mapped(name: .userAlertPresented, level: level, category: .image, data: [
+                (.level, .symbol(severity.symbol)),
+                (.reason, .symbol(reason.symbol))
+            ])
         }
     }
 }
