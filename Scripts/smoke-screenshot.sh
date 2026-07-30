@@ -86,6 +86,7 @@ for _ in $(seq 1 40); do
 done
 if [[ -z "$window_id" ]]; then
     echo "smoke-screenshot: could not find the application's on-screen window" >&2
+    echo "smoke-screenshot: if this keeps happening, check that the calling process has Screen Recording permission (System Settings > Privacy & Security > Screen Recording) — CGWindowListCopyWindowInfo returns an empty/incomplete list without it, which reads identically to \"no matching window\"" >&2
     exit 1
 fi
 
