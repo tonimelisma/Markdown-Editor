@@ -1,5 +1,5 @@
 //
-//  WYSIWYGTextView.swift
+//  WYSIWYGEditor.swift
 //  Markdown Editor
 //
 
@@ -12,7 +12,7 @@ import SwiftUI
 /// (REQ-052/086), so this type carries no `NSViewRepresentable` conformance.
 ///
 /// // REQ-052/054–059/078–084/086: rich projection host; tasks/links; plain paste; accessibility.
-enum WYSIWYGTextView {
+enum WYSIWYGEditor {
     /// Pure IME gate used by the text view — marked text stays transient until commit.
     ///
     /// // REQ-084: composition commits once; stale refuses.
@@ -294,8 +294,8 @@ final class MarkdownWYSIWYGTextView: NSTextView {
     weak var session: EditorSession?
     weak var documentActions: DocumentActionInterface?
     weak var placementController: ImagePlacementController?
-    weak var inputCoordinator: WYSIWYGTextView.WYSIWYGInputCoordinator?
-    weak var adapterCoordinator: WYSIWYGTextView.Coordinator?
+    weak var inputCoordinator: WYSIWYGEditor.WYSIWYGInputCoordinator?
+    weak var adapterCoordinator: WYSIWYGEditor.Coordinator?
 
     override var undoManager: UndoManager? {
         documentActions?.documentUndoManager ?? super.undoManager

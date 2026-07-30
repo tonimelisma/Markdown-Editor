@@ -7,6 +7,13 @@ import Foundation
 import CryptoKit
 @testable import Markdown_Editor
 
+@MainActor
+final class TestImagePicker: ImagePicking {
+    let urls: [URL]
+    init(_ urls: [URL]) { self.urls = urls }
+    func pickImages() async -> [URL] { urls }
+}
+
 extension Result {
     func get() -> Success? {
         if case .success(let value) = self { return value }

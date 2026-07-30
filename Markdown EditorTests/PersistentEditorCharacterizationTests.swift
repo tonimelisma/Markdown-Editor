@@ -148,7 +148,7 @@ struct PersistentEditorCharacterizationTests {
 
         var stale = CompositionState()
         stale.begin(sourceVersion: 1, sourceRange: NSRange(location: 0, length: 0), marked: NSRange(location: 0, length: 1))
-        let input = WYSIWYGTextView.WYSIWYGInputCoordinator()
+        let input = WYSIWYGEditor.WYSIWYGInputCoordinator()
         input.composition = stale
         #expect(input.prepareCommit(currentVersion: 2) == false)
         #expect(!input.composition.isComposing)
@@ -162,7 +162,7 @@ struct PersistentEditorCharacterizationTests {
         let session = EditorSession()
         session.attach(document: document)
         let placement = ImagePlacementController()
-        let coord = WYSIWYGTextView.Coordinator(
+        let coord = WYSIWYGEditor.Coordinator(
             document: document,
             session: session,
             placementController: placement
@@ -209,7 +209,7 @@ struct PersistentEditorCharacterizationTests {
         session.installProjectionForTesting(model, tree: tree)
 
         let placement = ImagePlacementController()
-        let coord = WYSIWYGTextView.Coordinator(
+        let coord = WYSIWYGEditor.Coordinator(
             document: document,
             session: session,
             placementController: placement
@@ -263,7 +263,7 @@ struct PersistentEditorCharacterizationTests {
             ),
             tree: tree
         )
-        let coordinator = WYSIWYGTextView.Coordinator(
+        let coordinator = WYSIWYGEditor.Coordinator(
             document: document,
             session: session,
             placementController: ImagePlacementController()
@@ -556,7 +556,7 @@ struct PersistentEditorCharacterizationTests {
         let fixture = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .appendingPathComponent("Fixtures/Images/sample.png")
-        session.pickImages = { [fixture] }
+        session.imagePicker = TestImagePicker([fixture])
         await session.addImages()
         #expect(router.pendingImageTarget == nil)
     }
@@ -582,7 +582,7 @@ struct PersistentEditorCharacterizationTests {
         let fixture = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .appendingPathComponent("Fixtures/Images/sample.png")
-        sessionA.pickImages = { [fixture] }
+        sessionA.imagePicker = TestImagePicker([fixture])
         await sessionA.addImages()
         #expect(docB.text == "")
         #expect(routerB.pendingImageTarget == nil)
@@ -604,7 +604,7 @@ struct PersistentEditorCharacterizationTests {
         textView.session = session
         textView.documentActions = document
         textView.placementController = placement
-        let coord = WYSIWYGTextView.Coordinator(
+        let coord = WYSIWYGEditor.Coordinator(
             document: document,
             session: session,
             placementController: placement

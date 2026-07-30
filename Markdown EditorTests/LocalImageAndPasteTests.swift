@@ -104,7 +104,7 @@ final class LocalImageAndPasteTests: XCTestCase {
         session.actionRouter = router
 
         let fixture = fixturesImagesDirectory().appendingPathComponent("sample.png")
-        session.pickImages = { [fixture] }
+        session.imagePicker = TestImagePicker([fixture])
         await session.addImages()
         // Intent is cleared after handle; placement invoked via window-scoped router.
         XCTAssertNil(router.pendingImageTarget)

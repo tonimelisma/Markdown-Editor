@@ -376,7 +376,7 @@ struct AcceptedEditTransactionTests {
         session.installProjectionForTesting(model, tree: tree)
 
         let placement = ImagePlacementController()
-        let coordinator = WYSIWYGTextView.Coordinator(
+        let coordinator = WYSIWYGEditor.Coordinator(
             document: doc,
             session: session,
             placementController: placement
@@ -414,7 +414,7 @@ struct AcceptedEditTransactionTests {
         )
         session.installProjectionForTesting(model, tree: tree)
 
-        let coordinator = WYSIWYGTextView.Coordinator(
+        let coordinator = WYSIWYGEditor.Coordinator(
             document: doc,
             session: session,
             placementController: ImagePlacementController()
@@ -492,6 +492,13 @@ struct EditorStateOwnershipTests {
         #expect(!sources.contains("ModeViewState"))
         #expect(!sources.contains("sourceViewState"))
         #expect(!sources.contains("wysiwygViewState"))
+    }
+
+    @Test func sessionExposesNoAppKitPresentation() throws {
+        let source = try String(contentsOfFile: #filePath.replacingOccurrences(of: "Markdown EditorTests/AcceptedEditTransactionTests.swift", with: "Markdown Editor/EditorSession.swift"), encoding: .utf8)
+        #expect(!source.contains("NSOpenPanel"))
+        #expect(!source.contains("NSAlert"))
+        #expect(!source.contains("runModal"))
     }
 
     // Verifies: ARC-002/003/013 — displaced architecture routes are absent from production.

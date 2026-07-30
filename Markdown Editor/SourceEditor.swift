@@ -1,5 +1,5 @@
 //
-//  MarkdownTextView.swift
+//  SourceEditor.swift
 //  Markdown Editor
 //
 
@@ -11,7 +11,7 @@ import AppKit
 //
 // Namespace for the source coordinator. `EditorHostView` owns the persistent text views
 // (REQ-052/086), so this type carries no `NSViewRepresentable` conformance.
-enum MarkdownTextView {
+enum SourceEditor {
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         enum NativeStorageState {
@@ -231,10 +231,10 @@ final class MarkdownSourceTextView: NSTextView {
             if let plain = PastePolicy.plainText(from: .general) {
                 let range = selectedRange()
                 // Paste must not coalesce into the open typing undo group (REQ-016).
-                (delegate as? MarkdownTextView.Coordinator)?.nextNativeGrouping = .discrete
+                (delegate as? SourceEditor.Coordinator)?.nextNativeGrouping = .discrete
                 insertText(plain, replacementRange: range)
             } else {
-                (delegate as? MarkdownTextView.Coordinator)?.nextNativeGrouping = .discrete
+                (delegate as? SourceEditor.Coordinator)?.nextNativeGrouping = .discrete
                 super.pasteAsPlainText(sender)
             }
         }
