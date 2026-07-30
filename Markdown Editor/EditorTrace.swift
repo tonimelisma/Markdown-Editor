@@ -199,6 +199,15 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case hostUpdateEnded(durationNanos: UInt64, updatesInWindow: Int)
     case hostUpdateStorm(updatesInWindow: Int)
     case viewReconciliationViolation(kind: ReconciliationViolation)
+
+    // Image placement (REQ-101/102; ARC-017).
+    case imagePlacementPhase(from: ImagePlacementPhase, to: ImagePlacementPhase)
+    case imagePlacementStarted(claimCount: Int)
+    case imagePlacementCommitted(fileCount: Int, totalBytes: Int, durationNanos: UInt64)
+    case imagePlacementFailed(reason: ImagePlacementError, phase: ImagePlacementPhase)
+    case imagePlacementRolledBack(removedFileCount: Int)
+    case assetDirectoryPublished(fileCount: Int, totalBytes: Int)
+    case userAlertPresented(severity: AlertSeverity, reason: AlertReason)
 }
 
 nonisolated enum HistoryDirection: Sendable, Equatable {
