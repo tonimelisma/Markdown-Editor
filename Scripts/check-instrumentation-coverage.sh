@@ -14,17 +14,18 @@ cases="$(printf '%s\n' "$block" | rg -o '^    case (\w+)' -r '$1')"
 # searching. A raw text scan of the real source would count a call site that exists only in a
 # comment or a string literal (dead reference, never executed) as production coverage — this is
 # the gap a real Swift parser would not have, and the reason for the extra step below.
+#
+# strip-swift-lexical-noise.pl is a small stateful scanner, not a single regex: Swift block
+# comments nest (`/* outer /* inner */ still commented */`), and a non-greedy
+# `s{/\*.*?\*/}{}gs` stops at the first `*/`, leaving the rest of a nested comment — including
+# any fake call site inside it — visible to the search below.
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 while IFS= read -r -d '' file; do
     rel="${file#Markdown Editor/}"
     dest="$scratch/$rel"
     mkdir -p "$(dirname "$dest")"
-    perl -0777 -pe '
-        s{/\*.*?\*/}{}gs;
-        s{//[^\n]*}{}g;
-        s{"(?:[^"\\]|\\.)*"}{""}g;
-    ' "$file" >"$dest"
+    perl "$(dirname "$0")/strip-swift-lexical-noise.pl" <"$file" >"$dest"
 done < <(find 'Markdown Editor' -name '*.swift' \
     ! -name 'EditorTrace.swift' ! -name 'JSONLinesEditorTrace.swift' -print0)
 
