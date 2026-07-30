@@ -118,10 +118,20 @@ if [[ -z "$window_id" ]]; then
     exit 1
 fi
 
-screencapture -x -o -l"$window_id" "$out" || {
-    echo "smoke-screenshot: screencapture failed — the calling process needs Screen Recording permission (System Settings > Privacy & Security > Screen Recording)" >&2
+rm -f "$out"
+screencapture_err="$(screencapture -x -o -l"$window_id" "$out" 2>&1 1>/dev/null)"
+screencapture_status=$?
+# `screencapture` can print a write failure to stderr and still exit 0 (observed when the
+# calling process lacks Screen Recording permission in some environments) — its exit code alone
+# is not proof the file was written, so this checks the file landed on disk with real bytes,
+# not just that the command claimed success.
+if [[ -n "$screencapture_err" ]]; then
+    echo "smoke-screenshot: screencapture reported: $screencapture_err" >&2
+fi
+if [[ "$screencapture_status" -ne 0 || ! -s "$out" ]]; then
+    echo "smoke-screenshot: screencapture did not produce $out — the calling process needs Screen Recording permission (System Settings > Privacy & Security > Screen Recording)" >&2
     exit 1
-}
+fi
 echo "smoke-screenshot: saved $out"
 
 # Wait for the process to exit (bounded), same as smoke-test.sh.

@@ -331,8 +331,15 @@ struct AssetDirectoryStoreTests {
                 byteCount: 1
             ),
         ]
-        await #expect(throws: (any Error).self) {
+        do {
             _ = try await AssetDirectoryStore.publish(artifacts: artifacts, documentURL: doc)
+            Issue.record("expected publish to throw")
+        } catch let partial as PartialPublishRollback {
+            // REQ-101: the store's own internal rollback (this publish call never reaches
+            // ImagePlacementController) must still report what it actually removed.
+            #expect(partial.removedFileCount == 1)
+        } catch {
+            Issue.record("expected PartialPublishRollback, got \(error)")
         }
         let assets = dir.appendingPathComponent("assets")
         if FileManager.default.fileExists(atPath: assets.path) {
@@ -367,11 +374,12 @@ struct AssetDirectoryStoreTests {
             byteCount: png.count
         )
         let result = try await AssetDirectoryStore.publish(artifacts: [artifact], documentURL: doc)
-        await AssetDirectoryStore.rollback(
+        let removedCount = await AssetDirectoryStore.rollback(
             pins: result.createdPins,
             assetsPath: result.assetsPath,
             createdAssetsDirectory: nil
         )
+        #expect(removedCount == 1)
         #expect(FileManager.default.fileExists(atPath: pre.path))
         #expect(!FileManager.default.fileExists(atPath: result.published[0].destinationURL.path))
     }
@@ -637,6 +645,61 @@ struct ImagePlacementControllerLifecycleTests {
         #expect(failed == [.imagePlacementFailed(reason: .unsupportedOrCorrupt, phase: .staging)])
     }
 
+    // Verifies: REQ-101 — Codex PR #24 finding: a terminal reset (`resetToIdle()`) must itself go
+    // through the instrumented transition route, not a raw `state = ImagePlacementState()`, so
+    // the run log always shows the phase actually returning to idle, not just the failure that
+    // preceded it. Reuses imagePlacementFailureIsRecorded's real corrupt-file pipeline.
+    @Test @MainActor func failureRecordsTerminalTransitionBackToIdle() async throws {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("Some text.")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let docURL = dir.appendingPathComponent("doc.md")
+        try Data("Some text.".utf8).write(to: docURL)
+        document.fileURL = docURL
+
+        let badFile = dir.appendingPathComponent("bad.png")
+        try Data([0x00, 0x01]).write(to: badFile)
+
+        let controller = ImagePlacementController()
+        controller.attach(actions: document)
+        controller.trace = trace
+        controller.handleImageAction(
+            intent: ImagePlacementIntent(
+                target: targetForCurrentState(document),
+                claims: [.fileURL(badFile, providerName: "bad.png", declaredType: .png)]
+            ),
+            documentURL: document.fileURL
+        )
+        await waitUntilIdle(controller)
+
+        let phaseTransitions: [(ImagePlacementPhase, ImagePlacementPhase)] = trace.events.compactMap {
+            if case let .imagePlacementPhase(from, to) = $0 { return (from, to) }
+            return nil
+        }
+        guard let last = phaseTransitions.last else {
+            Issue.record("expected at least one recorded phase transition")
+            return
+        }
+        #expect(last.0 == .failed)
+        #expect(last.1 == .idle)
+
+        let failedIndex = trace.events.firstIndex {
+            if case .imagePlacementFailed = $0 { return true }
+            return false
+        }
+        let idleTransitionIndex = trace.events.firstIndex {
+            if case .imagePlacementPhase(_, .idle) = $0 { return true }
+            return false
+        }
+        let failedIdx = try #require(failedIndex)
+        let idleIdx = try #require(idleTransitionIndex)
+        #expect(failedIdx < idleIdx)
+    }
+
     // Verifies: REQ-101; ARC-016 — the highest-value privacy test in this increment: a
     // revealing filename must never reach any emitted trace line across a real, successful
     // end-to-end placement.
@@ -721,18 +784,34 @@ struct ImagePlacementControllerLifecycleTests {
             .deletingLastPathComponent()
             .appendingPathComponent("Markdown Editor")
         let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "swift" && $0.lastPathComponent != "ImagePlacementController.swift" }
+            .filter { $0.pathExtension == "swift" }
         #expect(!files.isEmpty)
+        // `private(set)` only stops assignment from OTHER files — inside
+        // ImagePlacementController.swift itself a future bare `alert = ...` could still bypass
+        // presentAlert/dismissAlert, so that file is scanned for its own two legitimate
+        // assignments rather than excluded outright.
+        let allowedOwnerLines: Set<String> = ["alert = kind", "alert = nil"]
         for file in files {
             let contents = try String(contentsOf: file, encoding: .utf8)
-            // ".alert = ", not a bare "alert = ": the latter also matches unrelated local
-            // variables in other files (e.g. EditorToolbar.swift's `let alert = NSAlert()`).
-            // The leading dot is what distinguishes property access on some placement
-            // controller from an unrelated local declaration.
-            #expect(
-                !contents.contains(".alert = "),
-                "\(file.lastPathComponent) assigns alert directly, bypassing presentAlert/dismissAlert"
-            )
+            if file.lastPathComponent == "ImagePlacementController.swift" {
+                for rawLine in contents.split(separator: "\n", omittingEmptySubsequences: false) {
+                    let line = rawLine.trimmingCharacters(in: .whitespaces)
+                    guard line.contains("alert ="), !line.contains("alert ==") else { continue }
+                    #expect(
+                        allowedOwnerLines.contains(line),
+                        "ImagePlacementController.swift assigns alert directly outside presentAlert/dismissAlert: \(line)"
+                    )
+                }
+            } else {
+                // ".alert = ", not a bare "alert = ": the latter also matches unrelated local
+                // variables in other files (e.g. EditorToolbar.swift's `let alert = NSAlert()`).
+                // The leading dot is what distinguishes property access on some placement
+                // controller from an unrelated local declaration.
+                #expect(
+                    !contents.contains(".alert = "),
+                    "\(file.lastPathComponent) assigns alert directly, bypassing presentAlert/dismissAlert"
+                )
+            }
         }
     }
 }

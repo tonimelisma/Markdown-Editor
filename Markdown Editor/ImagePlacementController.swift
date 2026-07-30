@@ -195,7 +195,7 @@ final class ImagePlacementController: ObservableObject {
             _ = apply(.saveCancelledOrFailed, id: snapshot.id)
             actions.endPlacementTracking(activeTrackingGeneration)
             pendingSnapshot = nil
-            state = ImagePlacementState()
+            resetToIdle()
             presentAlert(
                 .info("Image action cancelled — document was not saved."),
                 reason: .placement(.saveCancelled)
@@ -263,13 +263,13 @@ final class ImagePlacementController: ObservableObject {
     /// drive a real rollback directly with a genuine `AssetPublishResult` rather than
     /// orchestrating the precise async timing a full end-to-end `runPlacement` rollback needs.
     func rollbackAndRecord(_ published: AssetPublishResult) async {
-        await AssetDirectoryStore.rollback(
+        let removedCount = await AssetDirectoryStore.rollback(
             pins: published.createdPins,
             assetsPath: published.assetsPath,
             createdAssetsDirectory: published.createdAssetsDirectory,
             executor: executor
         )
-        trace?.record(.imagePlacementRolledBack(removedFileCount: published.createdPins.count))
+        trace?.record(.imagePlacementRolledBack(removedFileCount: removedCount))
     }
 
     private func runPlacement(
@@ -348,7 +348,7 @@ final class ImagePlacementController: ObservableObject {
                 _ = apply(.cancel, id: snapshot.id)
                 actions.endPlacementTracking(activeTrackingGeneration)
                 pendingSnapshot = nil
-                state = ImagePlacementState()
+                resetToIdle()
                 presentAlert(
                     .warning(
                         "Images were saved to assets/, but the insertion point changed — references were not inserted."
@@ -406,7 +406,14 @@ final class ImagePlacementController: ObservableObject {
             )
             actions.endPlacementTracking(activeTrackingGeneration)
             pendingSnapshot = nil
-            state = ImagePlacementState()
+            resetToIdle()
+        } catch let partial as PartialPublishRollback {
+            // REQ-101: the store already rolled back internally (a later artifact in this batch
+            // failed after an earlier one published) — report that outcome the same way a
+            // controller-driven rollback does, then fail with the underlying reason.
+            trace?.record(.imagePlacementRolledBack(removedFileCount: partial.removedFileCount))
+            fail(snapshot.id, partial.underlying)
+            actions.endPlacementTracking(activeTrackingGeneration)
         } catch let error as ImagePlacementError {
             fail(snapshot.id, error)
             actions.endPlacementTracking(activeTrackingGeneration)
@@ -425,6 +432,15 @@ final class ImagePlacementController: ObservableObject {
         trace?.record(.imagePlacementPhase(from: previous, to: next))
     }
 
+    /// REQ-101: every terminal reset to a fresh (idle) `ImagePlacementState` goes through here —
+    /// `state = ImagePlacementState()` directly, without this, is itself an unrecorded phase
+    /// transition (e.g. committed → idle, failed → idle, cancelled → idle), even though the
+    /// transition INTO that terminal phase was recorded via `apply(_:id:)` moments earlier.
+    private func resetToIdle() {
+        recordPhaseIfChanged(from: state.phase, to: .idle)
+        state = ImagePlacementState()
+    }
+
     @discardableResult
     private func apply(_ event: ImagePlacementEvent, id: ImageActionID) -> Bool {
         guard let next = ImagePlacementReducer.reduce(state: state, event: event, actionID: id) else {
@@ -440,8 +456,10 @@ final class ImagePlacementController: ObservableObject {
         _ = apply(.fail(error), id: id)
         actions?.endPlacementTracking(activeTrackingGeneration)
         pendingSnapshot = nil
-        state = ImagePlacementState()
+        // REQ-101: record why before recording the reset it caused, so the run log reads in
+        // causal order rather than showing the terminal idle transition before its reason.
         trace?.record(.imagePlacementFailed(reason: error, phase: phaseBeforeFailure))
+        resetToIdle()
         presentAlert(.error(error.userMessage), reason: .placement(error))
     }
 
