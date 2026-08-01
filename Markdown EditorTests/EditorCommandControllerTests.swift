@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import Testing
+import XCTest
 @testable import Markdown_Editor
 
 @MainActor
@@ -149,5 +150,53 @@ struct EditorCommandControllerTests {
         func tearDown() {
             session.detach()
         }
+    }
+}
+
+@MainActor
+final class WYSIWYGListCommandRegressionTests: XCTestCase {
+    // Verifies: REQ-058/057/087; ARC-005/007/009 — a current WYSIWYG paragraph selection
+    // reaches the list planner through the same window command controller without a guessed map.
+    func testUnorderedListAcceptsOrdinaryParagraphSelection() throws {
+        let document = MarkdownDocument()
+        document.installTextForTesting("First paragraph.\n\nSecond paragraph.\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        session.setMode(.wysiwyg)
+        defer { session.detach() }
+
+        let tree = try XCTUnwrap(MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion).get())
+        let model = MarkdownProjectionModel.build(
+            tree: tree,
+            index: MarkdownSourceIndex(source: document.text, sourceVersion: document.sourceVersion)
+        )
+        session.installProjectionForTesting(model, tree: tree)
+        let presentation = try XCTUnwrap(session.presentation)
+        session.updateWYSIWYGModeState {
+            $0.selection = ProjectionSelection(
+                utf16: NSRange(location: 0, length: 16),
+                revision: presentation.projectionRevision
+            )
+        }
+        let classification = ProjectionSelectionClassifier.classify(
+            selection: NSRange(location: 0, length: 16),
+            affinity: .downstream,
+            snapshot: presentation
+        )
+        XCTAssertEqual(classification, .identityText(sourceRange: NSRange(location: 0, length: 16)))
+
+        let controller = EditorCommandController()
+        controller.bind(
+            document: document,
+            session: session,
+            actionRouter: EditorActionRouter(),
+            window: nil
+        )
+
+        XCTAssertEqual(controller.perform(.unorderedList), .accepted)
+        XCTAssertEqual(document.text, "- First paragraph.\n\nSecond paragraph.\n")
+        let restored = try XCTUnwrap(session.wysiwygModeState.selection)
+        XCTAssertEqual(restored.range.utf16.length, 0)
+        XCTAssertEqual(restored.range.revision.snapshotID, session.presentation?.id)
     }
 }
