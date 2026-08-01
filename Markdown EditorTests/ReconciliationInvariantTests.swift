@@ -277,6 +277,9 @@ struct ReconciliationInvariantTests {
     // Verifies: REQ-096 — a blocked main actor is reported while it is still blocked, not
     // only once it recovers. Without the threshold race in `probeOnce` only one report
     // arrives, and only after recovery.
+    /// Driven from the main actor so the blocker task is guaranteed to be scheduled behind this
+    /// test's own hold on the actor: the probe starts, releases the actor at its first
+    /// suspension, and the blocker then occupies it for longer than the threshold.
     @Test func watchdogReportsStallWhileStillBlocked() async {
         let reported = ReportBox()
         let blocker = Task { @MainActor in

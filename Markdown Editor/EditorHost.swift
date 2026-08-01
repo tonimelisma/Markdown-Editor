@@ -279,9 +279,20 @@ struct EditorHostView: NSViewRepresentable {
 
         func applyMode(_ mode: EditorMode, focus: Bool) {
             let performanceStart = DispatchTime.now().uptimeNanoseconds
-            defer { session.recordPerformance(.modeTransition, durationNanos: DispatchTime.now().uptimeNanoseconds - performanceStart) }
             guard let sourceScroll, let wysiwygScroll, let sourceText, let wysiwygText else { return }
             let modeChanged = lastAppliedMode != nil && lastAppliedMode != mode
+            // REQ-090/103: only a real mode transition is a mode transition. Initial editor
+            // construction also lands here, and timing it would put view-setup latency into the
+            // 16 ms budget — inflating p95 and able to emit a budget warning for a user who
+            // never switched modes.
+            defer {
+                if modeChanged {
+                    session.recordPerformance(
+                        .modeTransition,
+                        durationNanos: DispatchTime.now().uptimeNanoseconds - performanceStart
+                    )
+                }
+            }
             let firstResponder = sourceText.window?.firstResponder
             let hadEditorFocus =
                 firstResponder === sourceText
