@@ -25,6 +25,14 @@ struct MarkdownTypography {
     nonisolated static let separatorHeight: CGFloat = 14
 
     nonisolated static let headingPointSizes: [CGFloat] = [30, 24, 20, 17, 15, 13]
+    /// Heading spacing in em of the *body* size, H1…H6. More before than after, so a heading
+    /// binds to the content it introduces.
+    nonisolated static let headingSpacingBeforeEm: [CGFloat] = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5]
+    nonisolated static let headingSpacingAfterEm: [CGFloat] = [0.35, 0.3, 0.3, 0.25, 0.25, 0.25]
+    /// Spacing after a non-paragraph block (list item, quote line, image, code block).
+    nonisolated static let blockSpacingEm: CGFloat = 0.35
+    /// Left padding inside the blockquote rule. Rule plus padding is the content inset.
+    nonisolated static let quoteRulePadding: CGFloat = 14
 
     var bodyFont: NSFont { .systemFont(ofSize: Self.bodyPointSize, weight: .regular) }
     var monoFont: NSFont { .monospacedSystemFont(ofSize: Self.bodyPointSize, weight: .regular) }
@@ -44,5 +52,33 @@ struct MarkdownTypography {
         style.paragraphSpacing = Self.bodyPointSize * Self.paragraphSpacingEm
         style.paragraphSpacingBefore = 0
         return style
+    }
+
+    func headingSpacing(for level: Int) -> (before: CGFloat, after: CGFloat) {
+        let index = max(0, min(level - 1, Self.headingSpacingBeforeEm.count - 1))
+        return (
+            Self.bodyPointSize * Self.headingSpacingBeforeEm[index],
+            Self.bodyPointSize * Self.headingSpacingAfterEm[index]
+        )
+    }
+
+    var blockSpacing: CGFloat { Self.bodyPointSize * Self.blockSpacingEm }
+
+    /// One nesting level of the blockquote decoration: an adaptive leading rule plus content
+    /// padding, expressed as a native `NSTextBlock` so AppKit lays out and draws it.
+    func quoteBlock() -> NSTextBlock {
+        let block = NSTextBlock()
+        block.setWidth(Self.quoteRuleWidth, type: .absoluteValueType, for: .border, edge: .minX)
+        block.setWidth(Self.quoteRulePadding, type: .absoluteValueType, for: .padding, edge: .minX)
+        block.setBorderColor(NSColor.separatorColor, for: .minX)
+        return block
+    }
+
+    /// The padded adaptive code-block container.
+    func codeBlock() -> NSTextBlock {
+        let block = NSTextBlock()
+        block.setWidth(Self.codeBlockPadding, type: .absoluteValueType, for: .padding)
+        block.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.18)
+        return block
     }
 }

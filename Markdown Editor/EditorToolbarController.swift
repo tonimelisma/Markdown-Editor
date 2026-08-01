@@ -19,8 +19,10 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
     static let linkIdentifier = NSToolbarItem.Identifier("MarkdownEditor.link")
     static let structureIdentifier = NSToolbarItem.Identifier("MarkdownEditor.structure")
     static let addImageIdentifier = NSToolbarItem.Identifier("MarkdownEditor.addImage")
+    /// Commands the default item set can invoke. The mode item is one segmented control, so it
+    /// carries both mode commands.
     static let defaultCommands: [EditorCommand] = [
-        .wysiwygMode, .paragraph, .bold, .italic, .editLink, .unorderedList, .addImage
+        .wysiwygMode, .sourceMode, .paragraph, .bold, .italic, .editLink, .unorderedList, .addImage
     ]
 
     func install(on window: NSWindow) {

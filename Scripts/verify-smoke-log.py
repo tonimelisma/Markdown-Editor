@@ -9,6 +9,17 @@ import sys
 from pathlib import Path
 
 
+# Mirrors PerformanceSampler.Metric. Kept explicit so a production rename that this file does
+# not follow fails the smoke run instead of quietly matching nothing.
+KNOWN_METRICS = {
+    "nativeInputCallback",
+    "modeTransition",
+    "parseProjection",
+    "imageResolution",
+    "authoritativeApplication",
+}
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("run_file", type=Path)
@@ -92,18 +103,28 @@ def verify(run_file: Path, host_update_threshold: int) -> tuple[int, int]:
         for record in events
     ), "the host never updated after applying the projection"
 
-    reconciliation_summaries = [
-        record
-        for record in events
-        if record["ev"] == "performanceSummary"
-        and record.get("data", {}).get("metric") == "reconciliation"
-    ]
-    assert len(reconciliation_summaries) == 1, (
-        "expected exactly one reconciliation performance summary, "
-        f"got {len(reconciliation_summaries)}"
+    summaries = [record for record in events if record["ev"] == "performanceSummary"]
+    reported_metrics = {
+        record.get("data", {}).get("metric") for record in summaries
+    }
+    unknown_metrics = reported_metrics - KNOWN_METRICS
+    # A renamed production metric must fail here rather than silently satisfying a stale
+    # expectation that no code can emit any more.
+    assert not unknown_metrics, (
+        f"unknown performance metric(s): {sorted(str(m) for m in unknown_metrics)}"
     )
-    assert reconciliation_summaries[0].get("data", {}).get("count", 0) >= 1, (
-        "reconciliation performance summary contains no samples"
+
+    parse_summaries = [
+        record
+        for record in summaries
+        if record.get("data", {}).get("metric") == "parseProjection"
+    ]
+    assert len(parse_summaries) == 1, (
+        "expected exactly one parseProjection performance summary, "
+        f"got {len(parse_summaries)}"
+    )
+    assert parse_summaries[0].get("data", {}).get("count", 0) >= 1, (
+        "parseProjection performance summary contains no samples"
     )
 
     faults = [

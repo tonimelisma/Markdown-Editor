@@ -10,5 +10,4 @@ import AppKit
 struct AttributedPresentation {
     let attributed: NSAttributedString
     let attachmentNodes: [Int: MarkdownNodeID]
-    let decorations: [PresentationDecoration]
 }

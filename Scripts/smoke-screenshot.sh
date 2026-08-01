@@ -55,6 +55,10 @@ if [[ ! -x "$binary" ]]; then
 fi
 
 echo "smoke-screenshot: launching…"
+# An instrumented build writes its coverage profile to the working directory unless told
+# otherwise, which would drop default.profraw into the repository. Redirect it into the
+# temporary log directory rather than adding an ignore rule for an avoidable artifact.
+LLVM_PROFILE_FILE="$logdir/smoke-%p.profraw" \
 MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$logdir" \
     "$binary" -ApplePersistenceIgnoreState YES --diagnostic-smoke-exit "$fixture" &
 app_pid=$!

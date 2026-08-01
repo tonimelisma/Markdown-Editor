@@ -13,6 +13,7 @@ cases=(
     "two-documents.jsonl|one document handle"
     "no-reconciliation.jsonl|reconciliationApplied"
     "no-performance-samples.jsonl|no samples"
+    "unknown-metric.jsonl|unknown performance metric"
     "fault.jsonl|faults recorded"
     "no-run-end.jsonl|clean-exit"
 )

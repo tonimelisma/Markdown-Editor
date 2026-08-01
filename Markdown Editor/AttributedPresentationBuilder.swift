@@ -7,183 +7,241 @@ import AppKit
 
 /// Main-actor conversion of an immutable semantic projection into editable TextKit storage.
 ///
-/// // REQ-105–107; ARC-018/ARC-Q14: semantic blocks determine paragraph geometry and decoration;
-/// source text and coordinate meaning are never changed here.
+/// // REQ-105–107/109; ARC-018/ARC-019/ARC-Q14: semantic blocks determine paragraph geometry and
+/// decoration; source text and coordinate meaning are never changed here. An ordinary accepted
+/// edit builds only the semantic block scope it touches — never the whole document.
 @MainActor
 enum AttributedPresentationBuilder {
+    /// Attributed content for one contiguous slice of a projection, in that projection's own
+    /// coordinates. `range` covers whole semantic blocks, so no paragraph is styled from a
+    /// truncated view of itself.
+    struct Scoped {
+        let range: NSRange
+        let attributed: NSAttributedString
+        /// Attachment locations in *projection* coordinates, not slice-relative ones.
+        let attachmentNodes: [Int: MarkdownNodeID]
+    }
+
     static func build(
         model: MarkdownProjectionModel,
         theme: MarkdownTheme,
         images: [MarkdownNodeID: NSImage] = [:],
-        openURL: ((URL) -> Void)? = nil,
         onTaskPress: ((MarkdownNodeID) -> Void)? = nil
     ) -> AttributedPresentation {
+        let whole = NSRange(location: 0, length: (model.renderedString as NSString).length)
+        let scoped = buildScoped(
+            model: model,
+            theme: theme,
+            images: images,
+            onTaskPress: onTaskPress,
+            scope: whole
+        )
+        return AttributedPresentation(
+            attributed: scoped.attributed,
+            attachmentNodes: scoped.attachmentNodes
+        )
+    }
+
+    /// Expands `range` to the union of every semantic block and table that intersects it, so the
+    /// slice can be styled exactly as it would be inside a complete build.
+    static func blockScope(for range: NSRange, in model: MarkdownProjectionModel) -> NSRange {
+        let length = (model.renderedString as NSString).length
+        var lower = max(0, min(range.location, length))
+        var upper = max(lower, min(NSMaxRange(range), length))
+        for block in model.blocks where intersectsOrTouches(block.projectionRange, range) {
+            lower = min(lower, block.projectionRange.location)
+            upper = max(upper, NSMaxRange(block.projectionRange))
+        }
+        for table in model.tables where intersectsOrTouches(table.utf16Range, range) {
+            lower = min(lower, table.utf16Range.location)
+            upper = max(upper, NSMaxRange(table.utf16Range))
+        }
+        lower = max(0, lower)
+        upper = min(length, upper)
+        return NSRange(location: lower, length: max(0, upper - lower))
+    }
+
+    static func buildScoped(
+        model: MarkdownProjectionModel,
+        theme: MarkdownTheme,
+        images: [MarkdownNodeID: NSImage] = [:],
+        onTaskPress: ((MarkdownNodeID) -> Void)? = nil,
+        scope: NSRange
+    ) -> Scoped {
         let typography = MarkdownTypography()
-        let storage = NSMutableAttributedString(string: model.renderedString)
+        let rendered = model.renderedString as NSString
+        let scope = NSRange(
+            location: max(0, min(scope.location, rendered.length)),
+            length: max(0, min(scope.length, rendered.length - min(scope.location, rendered.length)))
+        )
+        let storage = NSMutableAttributedString(string: rendered.substring(with: scope))
         let full = NSRange(location: 0, length: storage.length)
         if full.length > 0 {
             storage.setAttributes(theme.baseAttributes, range: full)
         }
 
         for run in model.runs {
-            guard run.utf16Range.location >= 0,
-                  NSMaxRange(run.utf16Range) <= storage.length,
-                  run.utf16Range.length > 0 else { continue }
-            var attrs: [NSAttributedString.Key: Any] = theme.baseAttributes
-            for style in run.styles {
-                switch style {
-                case .heading(let level):
-                    attrs.merge([.font: typography.font(for: level)]) { _, new in new }
-                case .emphasis:
-                    attrs[.obliqueness] = 0.15
-                case .strong:
-                    if let font = attrs[.font] as? NSFont {
-                        attrs[.font] = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
-                    }
-                case .strikethrough:
-                    attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
-                case .code:
-                    attrs[.font] = typography.inlineCodeFont()
-                    attrs[.backgroundColor] = NSColor.quaternaryLabelColor.withAlphaComponent(0.18)
-                case .link:
-                    break
-                case .blockQuote:
-                    attrs[.foregroundColor] = NSColor.secondaryLabelColor
-                case .literalFallback:
-                    attrs[.foregroundColor] = NSColor.secondaryLabelColor
-                    attrs[.font] = typography.monoFont
-                }
-            }
-            if let destination = run.linkDestination, let url = URL(string: destination) {
-                attrs[.link] = url
-                attrs[.foregroundColor] = NSColor.linkColor
-                attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
-            }
-            storage.addAttributes(attrs, range: run.utf16Range)
+            guard let local = localRange(run.utf16Range, in: scope), local.length > 0 else { continue }
+            storage.addAttributes(
+                inlineAttributes(for: run, theme: theme, typography: typography),
+                range: local
+            )
         }
 
-        var decorations: [PresentationDecoration] = []
-        // Apply containing blocks first; nested list/quote blocks then refine their own
-        // paragraph geometry instead of being overwritten by an outer block.
+        // Containing blocks first: a nested list or quote then refines its own paragraph geometry
+        // instead of being overwritten by the block that encloses it.
         for block in model.blocks.sorted(by: { $0.projectionRange.length > $1.projectionRange.length }) {
-            guard block.projectionRange.location >= 0,
-                  NSMaxRange(block.projectionRange) <= storage.length,
-                  block.projectionRange.length > 0 else { continue }
-            apply(block: block, to: storage, typography: typography, decorations: &decorations)
+            guard let local = localRange(block.projectionRange, in: scope), local.length > 0 else { continue }
+            apply(block: block, localRange: local, to: storage, typography: typography)
         }
 
         var attachmentNodes: [Int: MarkdownNodeID] = [:]
         for attachment in model.attachments {
-            guard attachment.utf16Location >= 0, attachment.utf16Location < storage.length else { continue }
-            let range = NSRange(location: attachment.utf16Location, length: 1)
-            let nsAttachment = NSTextAttachment()
-            switch attachment.kind {
-            case .task(let checked, let label):
-                let cell = TaskCheckboxAttachmentCell(checked: checked, label: label)
-                let nodeID = attachment.nodeID
-                cell.onPress = { onTaskPress?(nodeID) }
-                nsAttachment.attachmentCell = cell
-            case .image(let destination, let description):
-                if let image = images[attachment.nodeID] {
-                    let cell = ResolvedImageAttachmentCell(image: image, description: description)
-                    nsAttachment.attachmentCell = cell
-                    let maxWidth = MarkdownTypography.maximumReadingMeasure
-                    if image.size.width > maxWidth, image.size.width > 0 {
-                        let scale = maxWidth / image.size.width
-                        nsAttachment.bounds = CGRect(
-                            x: 0,
-                            y: 0,
-                            width: maxWidth,
-                            height: image.size.height * scale
-                        )
-                    }
-                } else {
-                    nsAttachment.attachmentCell = MissingImageAttachmentCell(
-                        text: description.isEmpty ? "Missing image: \(destination)" : description
-                    )
-                }
-            case .thematicBreak:
-                nsAttachment.attachmentCell = ThematicRuleAttachmentCell()
-            }
-            storage.replaceCharacters(in: range, with: NSAttributedString(attachment: nsAttachment))
-            attachmentNodes[attachment.utf16Location] = attachment.nodeID
+            let location = attachment.utf16Location
+            guard location >= scope.location, location < NSMaxRange(scope) else { continue }
+            let local = NSRange(location: location - scope.location, length: 1)
+            guard NSMaxRange(local) <= storage.length else { continue }
+            storage.replaceCharacters(
+                in: local,
+                with: NSAttributedString(
+                    attachment: makeAttachment(attachment, images: images, onTaskPress: onTaskPress)
+                )
+            )
+            attachmentNodes[location] = attachment.nodeID
         }
 
-        for table in model.tables {
-            applyTable(table, to: storage, theme: theme)
+        for table in model.tables where intersectsOrTouches(table.utf16Range, scope) {
+            applyTable(table, to: storage, scope: scope, typography: typography)
         }
 
-        _ = openURL
-        return AttributedPresentation(
-            attributed: storage,
-            attachmentNodes: attachmentNodes,
-            decorations: decorations
-        )
+        return Scoped(range: scope, attributed: storage, attachmentNodes: attachmentNodes)
     }
+
+    // MARK: - Inline
+
+    private static func inlineAttributes(
+        for run: ProjectionRun,
+        theme: MarkdownTheme,
+        typography: MarkdownTypography
+    ) -> [NSAttributedString.Key: Any] {
+        var attrs = theme.baseAttributes
+        // Font traits are collected before the font is resolved, so style order inside the run
+        // cannot decide whether a bold heading keeps its weight.
+        var pointSize = MarkdownTypography.bodyPointSize
+        var headingLevel: Int?
+        var bold = false
+        var italic = false
+        var monospaced = false
+
+        for style in run.styles {
+            switch style {
+            case .heading(let level):
+                headingLevel = level
+                pointSize = typography.font(for: level).pointSize
+            case .strong: bold = true
+            case .emphasis: italic = true
+            case .strikethrough:
+                attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+            case .code:
+                monospaced = true
+                attrs[.backgroundColor] = NSColor.quaternaryLabelColor.withAlphaComponent(0.18)
+            case .link:
+                break
+            case .blockQuote, .literalFallback:
+                attrs[.foregroundColor] = NSColor.secondaryLabelColor
+                if case .literalFallback = style { monospaced = true }
+            }
+        }
+
+        var font: NSFont
+        if monospaced {
+            font = .monospacedSystemFont(
+                ofSize: headingLevel == nil ? pointSize * MarkdownTypography.inlineCodeScale : pointSize,
+                weight: bold ? .semibold : .regular
+            )
+        } else if let headingLevel {
+            font = typography.font(for: headingLevel)
+        } else {
+            font = .systemFont(ofSize: pointSize, weight: bold ? .bold : .regular)
+        }
+        if bold, headingLevel != nil || monospaced {
+            font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
+        }
+        if italic {
+            font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
+        }
+        attrs[.font] = font
+
+        if let destination = run.linkDestination, let url = URL(string: destination) {
+            attrs[.link] = url
+            attrs[.foregroundColor] = NSColor.linkColor
+            attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
+        }
+        return attrs
+    }
+
+    // MARK: - Blocks
 
     private static func apply(
         block: PresentationBlock,
+        localRange range: NSRange,
         to storage: NSMutableAttributedString,
-        typography: MarkdownTypography,
-        decorations: inout [PresentationDecoration]
+        typography: MarkdownTypography
     ) {
-        let range = block.projectionRange
         let style = typography.paragraphStyle()
         switch block.kind {
         case .paragraph:
             break
         case .heading(let level):
-            let before = level == 1 ? typography.bodyFont.pointSize : typography.bodyFont.pointSize * 0.8
-            style.paragraphSpacingBefore = before
-            style.paragraphSpacing = typography.bodyFont.pointSize * 0.35
+            let spacing = typography.headingSpacing(for: level)
+            style.paragraphSpacingBefore = spacing.before
+            style.paragraphSpacing = spacing.after
             storage.addAttribute(.font, value: typography.font(for: level), range: range)
+            if level >= 6 {
+                storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: range)
+            }
         case .listItem(_, let nesting, _):
             let depth = CGFloat(nesting)
             style.firstLineHeadIndent = depth * MarkdownTypography.listIndent
             style.headIndent = (depth + 1) * MarkdownTypography.listIndent
             style.tabStops = [NSTextTab(textAlignment: .left, location: style.headIndent)]
-            style.paragraphSpacing = typography.bodyFont.pointSize * 0.35
+            style.paragraphSpacing = typography.blockSpacing
         case .blockQuote(let depth):
-            let inset = CGFloat(depth) * MarkdownTypography.quoteInset
-            style.firstLineHeadIndent = inset
-            style.headIndent = inset
-            style.paragraphSpacing = typography.bodyFont.pointSize * 0.35
-            decorations.append(PresentationDecoration(range: range, kind: .blockQuoteRule))
+            // The rule and content inset are the block's own geometry, so nesting composes
+            // without a second indentation mechanism disagreeing with it.
+            style.textBlocks = (0..<max(1, depth)).map { _ in typography.quoteBlock() }
+            style.paragraphSpacing = typography.blockSpacing
         case .codeBlock:
-            style.paragraphSpacing = MarkdownTypography.codeBlockPadding
+            style.textBlocks = [typography.codeBlock()]
+            style.paragraphSpacing = typography.blockSpacing
             storage.addAttribute(.font, value: typography.monoFont, range: range)
-            storage.addAttribute(
-                .backgroundColor,
-                value: NSColor.quaternaryLabelColor.withAlphaComponent(0.18),
-                range: range
-            )
-            decorations.append(PresentationDecoration(range: range, kind: .codeBlockBackground))
         case .table, .tableRow, .tableCell:
-            break
+            return
         case .thematicBreak:
             style.paragraphSpacing = 0
-            decorations.append(PresentationDecoration(range: range, kind: .thematicSeparator))
         case .image:
-            style.paragraphSpacing = typography.bodyFont.pointSize * 0.35
+            style.paragraphSpacing = typography.blockSpacing
         case .literalHTML:
             storage.addAttribute(.font, value: typography.monoFont, range: range)
             storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: range)
         }
-        // Paragraph styles are copied per block and installed only after all values are set.
+        // Paragraph styles are copied per block and installed only after all values are set, so
+        // a style already inside storage is never mutated in place.
         storage.addAttribute(.paragraphStyle, value: style.copy() as! NSParagraphStyle, range: range)
     }
 
     private static func applyTable(
         _ table: ProjectionTable,
         to storage: NSMutableAttributedString,
-        theme: MarkdownTheme
+        scope: NSRange,
+        typography: MarkdownTypography
     ) {
         let nsTable = NSTextTable()
         nsTable.numberOfColumns = max(table.columnCount, 1)
         nsTable.layoutAlgorithm = .automatic
         nsTable.collapsesBorders = true
         for cell in table.cells {
-            guard NSMaxRange(cell.utf16Range) <= storage.length, cell.utf16Range.length > 0 else { continue }
+            guard let local = localRange(cell.utf16Range, in: scope), local.length > 0 else { continue }
             let block = NSTextTableBlock(
                 table: nsTable,
                 startingRow: cell.row,
@@ -194,23 +252,74 @@ enum AttributedPresentationBuilder {
             block.setBorderColor(NSColor.separatorColor)
             block.setWidth(0.5, type: .absoluteValueType, for: .border)
             block.setWidth(4, type: .absoluteValueType, for: .padding)
-            let paragraph = NSMutableParagraphStyle()
+            let paragraph = typography.paragraphStyle()
+            paragraph.paragraphSpacing = 0
             paragraph.textBlocks = [block]
             switch cell.alignment {
             case .left, .none: paragraph.alignment = .left
             case .center: paragraph.alignment = .center
             case .right: paragraph.alignment = .right
             }
-            storage.addAttribute(.paragraphStyle, value: paragraph.copy() as! NSParagraphStyle, range: cell.utf16Range)
+            storage.addAttribute(.paragraphStyle, value: paragraph.copy() as! NSParagraphStyle, range: local)
             if cell.isHeader {
                 storage.addAttribute(
                     .font,
                     value: NSFont.systemFont(ofSize: MarkdownTypography.bodyPointSize, weight: .semibold),
-                    range: cell.utf16Range
+                    range: local
                 )
             }
         }
-        _ = theme
+    }
+
+    private static func makeAttachment(
+        _ attachment: ProjectionAttachment,
+        images: [MarkdownNodeID: NSImage],
+        onTaskPress: ((MarkdownNodeID) -> Void)?
+    ) -> NSTextAttachment {
+        let nsAttachment = NSTextAttachment()
+        switch attachment.kind {
+        case .task(let checked, let label):
+            let cell = TaskCheckboxAttachmentCell(checked: checked, label: label)
+            let nodeID = attachment.nodeID
+            cell.onPress = { onTaskPress?(nodeID) }
+            nsAttachment.attachmentCell = cell
+        case .image(let destination, let description):
+            if let image = images[attachment.nodeID] {
+                nsAttachment.attachmentCell = ResolvedImageAttachmentCell(image: image, description: description)
+                let maxWidth = MarkdownTypography.maximumReadingMeasure
+                if image.size.width > maxWidth, image.size.width > 0 {
+                    let scale = maxWidth / image.size.width
+                    nsAttachment.bounds = CGRect(
+                        x: 0,
+                        y: 0,
+                        width: maxWidth,
+                        height: image.size.height * scale
+                    )
+                }
+            } else {
+                nsAttachment.attachmentCell = MissingImageAttachmentCell(
+                    text: description.isEmpty ? "Missing image: \(destination)" : description
+                )
+            }
+        case .thematicBreak:
+            nsAttachment.attachmentCell = ThematicRuleAttachmentCell()
+        }
+        return nsAttachment
+    }
+
+    // MARK: - Range helpers
+
+    private static func intersectsOrTouches(_ range: NSRange, _ other: NSRange) -> Bool {
+        NSIntersectionRange(range, other).length > 0
+            || (other.length == 0 && NSLocationInRange(other.location, range))
+            || (range.length == 0 && NSLocationInRange(range.location, other))
+    }
+
+    /// Clips a projection range into slice-relative coordinates, or nil when it lies outside.
+    private static func localRange(_ range: NSRange, in scope: NSRange) -> NSRange? {
+        let intersection = NSIntersectionRange(range, scope)
+        guard intersection.length > 0 else { return nil }
+        return NSRange(location: intersection.location - scope.location, length: intersection.length)
     }
 }
 
@@ -225,6 +334,18 @@ final class ThematicRuleAttachmentCell: NSTextAttachmentCell {
 
     nonisolated override func cellSize() -> NSSize {
         NSSize(width: MarkdownTypography.maximumReadingMeasure, height: MarkdownTypography.separatorHeight)
+    }
+
+    /// The separator spans the measure actually available, so a window narrower than the maximum
+    /// reading measure gets a separator that fits rather than one that overhangs.
+    nonisolated override func cellFrame(
+        for textContainer: NSTextContainer,
+        proposedLineFragment lineFrag: NSRect,
+        glyphPosition position: NSPoint,
+        characterIndex charIndex: Int
+    ) -> NSRect {
+        let available = min(lineFrag.width, MarkdownTypography.maximumReadingMeasure)
+        return NSRect(x: 0, y: 0, width: max(1, available), height: MarkdownTypography.separatorHeight)
     }
 
     nonisolated override func draw(withFrame cellFrame: NSRect, in controlView: NSView?) {

@@ -42,11 +42,3 @@ protocol DocumentActionInterface: AnyObject {
     /// Close an open typing undo group (selection / mode / discrete boundaries).
     @MainActor func closeTypingUndoGroup()
 }
-
-extension DocumentActionInterface {
-    @MainActor var canonicalAssetReferences: CanonicalAssetReferences {
-        CanonicalAssetReferences(values: [])
-    }
-
-    @MainActor func updateCanonicalAssetReferences(_ references: CanonicalAssetReferences) {}
-}

@@ -48,6 +48,10 @@ launch_start=$(date +%s)
 # window restoration for every future ordinary launch (Debug/Release share one bundle
 # identifier); UserDefaults.register(defaults:) registers into the lowest-priority domain and is
 # silently overridden if the persistent domain already holds any explicit value for this key.
+# An instrumented build writes its coverage profile to the working directory unless told
+# otherwise, which would drop default.profraw into the repository. Redirect it into the
+# temporary log directory rather than adding an ignore rule for an avoidable artifact.
+LLVM_PROFILE_FILE="$logdir/smoke-%p.profraw" \
 MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$logdir" \
     "$binary" -ApplePersistenceIgnoreState YES --diagnostic-smoke-exit "$fixture" &
 app_pid=$!

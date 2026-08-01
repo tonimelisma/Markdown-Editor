@@ -104,7 +104,6 @@ enum WYSIWYGEditor {
                     model: presentation.asProjectionModel,
                     theme: MarkdownTheme(),
                     images: session.resolvedImages,
-                    openURL: session.openURL,
                     onTaskPress: { [weak self] nodeID in
                         self?.performTaskToggle(nodeID: nodeID)
                     }
@@ -203,7 +202,6 @@ enum WYSIWYGEditor {
                 model: transition.nextSnapshot.asProjectionModel,
                 theme: MarkdownTheme(),
                 images: session.resolvedImages,
-                openURL: session.openURL,
                 onTaskPress: { [weak self] nodeID in
                     self?.performTaskToggle(nodeID: nodeID)
                 }

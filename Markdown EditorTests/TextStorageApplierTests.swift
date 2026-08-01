@@ -94,8 +94,7 @@ struct TextStorageApplierTests {
         )
         let built = AttributedPresentation(
             attributed: NSAttributedString(string: "two\n"),
-            attachmentNodes: [:],
-            decorations: []
+            attachmentNodes: [:]
         )
         let patch = try #require(PresentationPatch.make(transition: transition, current: current, builtNext: built))
         let textView = MarkdownWYSIWYGTextView(frame: .zero)

@@ -21,6 +21,25 @@ extension Result {
     }
 }
 
+/// Production Swift sources, for structural gates that prove a displaced route is gone rather
+/// than merely unused. Source inspection is the only available proof of an *absence*.
+func productionSourceFiles() throws -> [URL] {
+    let root = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("Markdown Editor")
+    return try FileManager.default
+        .contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+        .filter { $0.pathExtension == "swift" }
+        .sorted { $0.lastPathComponent < $1.lastPathComponent }
+}
+
+func productionSourceText() throws -> String {
+    try productionSourceFiles()
+        .map { try String(contentsOf: $0, encoding: .utf8) }
+        .joined(separator: "\n")
+}
+
 struct PerformanceEvidence: Equatable, Sendable {
     let warmups: Int
     let samples: [Double]

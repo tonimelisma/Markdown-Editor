@@ -18,28 +18,46 @@ extension FocusedValues {
 
 @MainActor
 struct EditorMenuCommands: Commands {
+    /// Every command the menu bar presents. Mode lives in View, formatting in Format, but both
+    /// are presentations of the one command model — so this list must cover the toolbar's.
     static let commandOrder: [EditorCommand] = [
+        .wysiwygMode, .sourceMode,
         .bold, .italic, .strikethrough, .inlineCode, .editLink, .removeLink, .paragraph,
         .heading(1), .heading(2), .heading(3), .heading(4), .heading(5), .heading(6),
         .unorderedList, .orderedList, .taskList, .blockQuote, .codeBlock, .addImage
     ]
 
+    /// The approved shortcuts. Declared once so menu construction and the conformance test read
+    /// the same table, and so an added shortcut cannot silently shadow a standard AppKit key.
+    static let shortcuts: [EditorCommand: Character] = [
+        .bold: "b",
+        .italic: "i",
+        .editLink: "k"
+    ]
+
     @FocusedValue(\.editorCommandController) private var controller
 
     var body: some Commands {
+        CommandGroup(after: .toolbar) {
+            Button("WYSIWYG Mode") { _ = controller?.perform(.wysiwygMode) }
+                .disabled(!isEnabled(.wysiwygMode))
+            Button("Source Mode") { _ = controller?.perform(.sourceMode) }
+                .disabled(!isEnabled(.sourceMode))
+            Divider()
+        }
         CommandMenu("Format") {
             Button("Bold") { _ = controller?.perform(.bold) }
-                .keyboardShortcut("b")
+                .keyboardShortcut(KeyEquivalent(Self.shortcuts[.bold]!))
                 .disabled(!isEnabled(.bold))
             Button("Italic") { _ = controller?.perform(.italic) }
-                .keyboardShortcut("i")
+                .keyboardShortcut(KeyEquivalent(Self.shortcuts[.italic]!))
                 .disabled(!isEnabled(.italic))
             Button("Strikethrough") { _ = controller?.perform(.strikethrough) }
                 .disabled(!isEnabled(.strikethrough))
             Button("Inline Code") { _ = controller?.perform(.inlineCode) }
                 .disabled(!isEnabled(.inlineCode))
             Button("Edit Link…") { _ = controller?.perform(.editLink) }
-                .keyboardShortcut("k")
+                .keyboardShortcut(KeyEquivalent(Self.shortcuts[.editLink]!))
                 .disabled(!isEnabled(.editLink))
             Button("Remove Link") { _ = controller?.perform(.removeLink) }
                 .disabled(!isEnabled(.removeLink))

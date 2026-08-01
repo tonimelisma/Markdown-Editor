@@ -5,5 +5,5 @@
 {"seq":4,"lvl":"debug","cat":"projection","ev":"reconciliationApplied","doc":1}
 {"seq":5,"lvl":"debug","cat":"viewUpdate","ev":"hostUpdateEnded","doc":1}
 {"seq":6,"lvl":"warn","cat":"diagnostics","ev":"repeated","of":"hostUpdateEnded","data":{"count":25}}
-{"seq":7,"lvl":"info","cat":"session","ev":"performanceSummary","doc":1,"data":{"metric":"reconciliation","count":1}}
+{"seq":7,"lvl":"info","cat":"session","ev":"performanceSummary","doc":1,"data":{"metric":"parseProjection","count":1}}
 {"seq":8,"lvl":"info","cat":"lifecycle","ev":"runEnd"}

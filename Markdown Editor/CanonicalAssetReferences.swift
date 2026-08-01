@@ -33,17 +33,6 @@ nonisolated struct CanonicalAssetReferences: Equatable, Sendable {
         return CanonicalAssetReferences(values: refs)
     }
 
-    static func parse(source: String, sourceVersion: UInt64) -> CanonicalAssetReferences {
-        guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: sourceVersion) else {
-            return CanonicalAssetReferences(values: [])
-        }
-        let model = MarkdownProjectionModel.build(
-            tree: tree,
-            index: MarkdownSourceIndex(source: source, sourceVersion: sourceVersion)
-        )
-        return from(model: model)
-    }
-
     func hasBrokenReferences(
         oldParent: URL,
         newParent: URL,

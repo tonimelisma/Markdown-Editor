@@ -23,6 +23,14 @@ struct EncodedImageResourceTests {
             destination: imageURL.lastPathComponent,
             documentURL: directory.appendingPathComponent("document.md")
         )
-        #expect(result == .failure(.encodedFileTooLarge))
+        // `DecodedImage` carries a `CGImage` and is deliberately not `Equatable`, so the refusal
+        // is compared on the error alone. Without the metadata gate this file decodes to
+        // `.corrupt`, so the assertion discriminates the size check rather than merely observing
+        // that some failure occurred.
+        guard case .failure(let failure) = result else {
+            Issue.record("expected refusal, got a decoded image")
+            return
+        }
+        #expect(failure == .encodedFileTooLarge)
     }
 }
