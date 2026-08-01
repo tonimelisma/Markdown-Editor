@@ -76,6 +76,10 @@ enum WYSIWYGEditor {
         /// newer snapshot needs the text it is patching *from*.
         private var appliedSnapshot: PresentationSnapshot?
         private var appliedSnapshotID: PresentationSnapshot.ID? { appliedSnapshot?.id }
+        /// Resolved images belong to attributed storage, not the semantic snapshot. An
+        /// authoritative result can keep the same semantics while replacing a placeholder with
+        /// a decoded image, so that identity must participate in an attribute refresh.
+        private var appliedImageIdentities: [MarkdownNodeID: ObjectIdentifier] = [:]
         private let textStorageApplier = TextStorageApplier()
 
         init(document: MarkdownDocument, session: EditorSession, placementController: ImagePlacementController) {
@@ -138,6 +142,7 @@ enum WYSIWYGEditor {
                 let built = buildPresentation(presentation)
                 textStorageApplier.applyInitialPresentation(built, to: textView)
                 appliedSnapshot = presentation
+                appliedImageIdentities = imageIdentities(for: presentation)
                 restoreSelection(for: presentation, in: textView, limit: built.attributed.length)
             }
         }
@@ -155,7 +160,8 @@ enum WYSIWYGEditor {
             if applied.renderedString == presentation.renderedString {
                 guard let scope = PresentationPatch.attributeRefreshScope(
                     current: applied,
-                    next: presentation
+                    next: presentation,
+                    imageRefreshLocations: imageRefreshLocations(for: presentation)
                 ) else {
                     return .patchUnprovable
                 }
@@ -175,6 +181,7 @@ enum WYSIWYGEditor {
                 }
                 if refreshed {
                     appliedSnapshot = presentation
+                    appliedImageIdentities = imageIdentities(for: presentation)
                     return nil
                 }
                 return .appliedStorageMismatch
@@ -208,6 +215,7 @@ enum WYSIWYGEditor {
                 return .appliedStorageMismatch
             }
             appliedSnapshot = presentation
+            appliedImageIdentities = imageIdentities(for: presentation)
             // No selection fallback here on purpose. `selection` is nil exactly when the session
             // has no selection belonging to this snapshot — `installPresentation` clears it when
             // it cannot be carried forward — so there is nothing to restore, and a call guarded
@@ -222,6 +230,27 @@ enum WYSIWYGEditor {
                 images: session.resolvedImages,
                 onTaskPress: { [weak self] nodeID in
                     self?.performTaskToggle(nodeID: nodeID)
+                }
+            )
+        }
+
+        private func imageRefreshLocations(for snapshot: PresentationSnapshot) -> Set<Int> {
+            let current = imageIdentities(for: snapshot)
+            return Set(snapshot.attachments.compactMap { attachment in
+                guard case .image = attachment.kind,
+                      appliedImageIdentities[attachment.nodeID] != current[attachment.nodeID]
+                else { return nil }
+                return attachment.utf16Location
+            })
+        }
+
+        private func imageIdentities(for snapshot: PresentationSnapshot) -> [MarkdownNodeID: ObjectIdentifier] {
+            Dictionary(
+                uniqueKeysWithValues: snapshot.attachments.compactMap { attachment in
+                    guard case .image = attachment.kind,
+                          let image = session.resolvedImages[attachment.nodeID]
+                    else { return nil }
+                    return (attachment.nodeID, ObjectIdentifier(image))
                 }
             )
         }
@@ -390,6 +419,7 @@ enum WYSIWYGEditor {
                 textStorageApplier.applyRecoveryPresentation(built, to: textView)
             }
             appliedSnapshot = snapshot
+            appliedImageIdentities = imageIdentities(for: snapshot)
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {

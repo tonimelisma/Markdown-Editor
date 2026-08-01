@@ -278,6 +278,13 @@ final class EditorSession: ObservableObject {
         }
     }
 
+    /// Test hook for the presentation boundary: image resolution is derived state, and tests
+    /// need to prove that a same-text authoritative snapshot refreshes an attachment exactly
+    /// when its resolved display image changes.
+    func installResolvedImagesForTesting(_ images: [MarkdownNodeID: NSImage]) {
+        resolvedImages = images
+    }
+
     func consumePendingSelectionRestoration() -> PendingSelectionRestoration? {
         let value = pendingSelectionRestoration
         pendingSelectionRestoration = nil

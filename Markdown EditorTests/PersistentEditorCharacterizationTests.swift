@@ -529,12 +529,24 @@ struct PersistentEditorCharacterizationTests {
         let trace = InMemoryEditorTrace()
         let cache = LocalImageCache()
         cache.trace = trace
-        #expect(cache.image(for: desc) != nil)
+        let first = try #require(cache.image(for: desc))
+        let sameAssetAtNewRevision = try #require(
+            LocalImageResolver.resolve(
+                destination: "sample.png",
+                documentURL: docURL,
+                nodeID: MarkdownNodeID(rawValue: 2),
+                sourceVersion: 2,
+                locationGeneration: 1
+            ).get()
+        )
+        let second = try #require(cache.image(for: sameAssetAtNewRevision))
+        #expect(first === second, "a cache hit must retain its display-image identity")
         let stores = trace.eventsMatching {
             if case .imageCacheStore = $0 { return true }
             return false
         }
         #expect(!stores.isEmpty)
+        #expect(stores.count == 1)
         if case .imageCacheStore(_, let total) = stores[0] {
             #expect(total <= LocalImageByteCache.maxBytes)
         }

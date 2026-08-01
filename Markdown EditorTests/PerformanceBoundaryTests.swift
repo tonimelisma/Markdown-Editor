@@ -161,6 +161,71 @@ struct PerformanceBoundaryTests {
         #expect(ranges.1 == NSRange(location: 0, length: 0))
     }
 
+    // Verifies: REQ-109 — source-only coordinates and node identities in a distant table do not
+    // make a hidden-delimiter command refresh every intervening block.
+    @Test func sourceOnlyTableChangesDoNotExpandAttributeRefreshScope() throws {
+        let current = try snapshot(
+            source: "**First**\n\n| Name | Value |\n| --- | --- |\n| A | B |\n",
+            id: 1,
+            revision: 1
+        )
+        let next = try snapshot(
+            source: "***First***\n\n| Name | Value |\n| --- | --- |\n| A | B |\n",
+            id: 2,
+            revision: 2
+        )
+        let tableStart = try #require(next.tables.first?.utf16Range.location)
+        let scope = try #require(PresentationPatch.attributeRefreshScope(current: current, next: next))
+
+        #expect(NSMaxRange(scope) <= tableStart)
+    }
+
+    // Verifies: REQ-109 — a decoded image replacing an otherwise identical placeholder expands
+    // the attribute refresh to that attachment without rewriting document characters.
+    @Test func resolvedImageLocationParticipatesInAttributeRefreshScope() throws {
+        let current = try snapshot(source: "![](assets/photo.png)\n", id: 1, revision: 1)
+        let location = try #require(current.attachments.first?.utf16Location)
+        let next = try snapshot(source: "![](assets/photo.png)\n", id: 2, revision: 1)
+        let scope = try #require(
+            PresentationPatch.attributeRefreshScope(
+                current: current,
+                next: next,
+                imageRefreshLocations: [location]
+            )
+        )
+
+        #expect(NSLocationInRange(location, scope))
+    }
+
+    // Verifies: REQ-109 — a decoded image can arrive with unchanged projection text and
+    // semantics. Its attachment block refreshes once; a later reconciliation using the same
+    // bounded-cache image performs no redundant attribute rewrite.
+    @Test func resolvedImageRefreshesItsAttachmentOnlyWhenDisplayIdentityChanges() throws {
+        let harness = try EditorHarness(source: "![](assets/photo.png)\n\nTrailing paragraph.\n")
+        let attachment = try #require(harness.session.presentation?.attachments.first)
+        harness.session.installResolvedImagesForTesting([
+            attachment.nodeID: NSImage(size: NSSize(width: 20, height: 20))
+        ])
+        try harness.installAuthoritativeProjection()
+        harness.storage.resetSpy()
+
+        harness.coordinator.applyProjectionIfNeeded(force: false)
+
+        #expect(harness.storage.fullReplacements == 0)
+        #expect(harness.storage.characterReplacements.isEmpty)
+        #expect(!harness.storage.attributeReplacements.isEmpty)
+        #expect(harness.storage.attributeReplacements.allSatisfy {
+            NSLocationInRange(attachment.utf16Location, $0)
+                && NSMaxRange($0) < (harness.textView.string as NSString).length
+        })
+
+        harness.storage.resetSpy()
+        try harness.installAuthoritativeProjection()
+        harness.coordinator.applyProjectionIfNeeded(force: false)
+
+        #expect(harness.storage.attributeReplacements.isEmpty)
+    }
+
     // Verifies: REQ-109; ARC-Q16 — a formatting command whose rendered text is unchanged (the
     // delimiters are hidden) refreshes attributes and replaces nothing at all.
     @Test func hiddenDelimiterCommandRefreshesAttributesWithoutReplacing() async throws {
@@ -390,6 +455,24 @@ struct PerformanceBoundaryTests {
         #expect(!harness.textView.isEditable, "recovery left a live native-input window")
     }
 
+    private func snapshot(
+        source: String,
+        id: UInt64,
+        revision: UInt64
+    ) throws -> PresentationSnapshot {
+        let index = MarkdownSourceIndex(source: source, sourceVersion: revision)
+        guard let tree = MarkdownParser.parse(source, sourceVersion: revision).get() else {
+            throw NSError(domain: "PerformanceBoundaryTests", code: 1)
+        }
+        let model = MarkdownProjectionModel.build(tree: tree, index: index)
+        return PresentationSnapshot.from(
+            model: model,
+            id: PresentationSnapshot.ID(value: id),
+            locationGeneration: 0,
+            sourceText: source
+        )
+    }
+
     /// A real document, session, and WYSIWYG coordinator over spy-backed storage.
     @MainActor
     final class EditorHarness {
@@ -451,6 +534,18 @@ struct PerformanceBoundaryTests {
                 if current != nil, current == previous { return }
                 previous = current
             }
+        }
+
+        func installAuthoritativeProjection() throws {
+            let source = document.text
+            let index = MarkdownSourceIndex(source: source, sourceVersion: document.sourceVersion)
+            guard let tree = MarkdownParser.parse(source, sourceVersion: document.sourceVersion).get() else {
+                throw NSError(domain: "EditorHarness", code: 1)
+            }
+            session.installProjectionForTesting(
+                MarkdownProjectionModel.build(tree: tree, index: index),
+                tree: tree
+            )
         }
 
         /// Selects a projection range belonging to the current presentation.

@@ -40,7 +40,11 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     @Published private(set) var text: String = ""
     @Published private(set) var sourceVersion: UInt64 = 0
     @Published private(set) var locationGeneration: UInt64 = 0
-    @Published private(set) var canonicalAssetReferences = CanonicalAssetReferences(values: [])
+    private(set) var canonicalAssetReferences = CanonicalAssetReferences(values: [])
+    /// Derived asset-reference changes matter to image placement, not to the document view's
+    /// source/projection lifecycle. Keeping this separate from `objectWillChange` prevents an
+    /// authoritative parse from scheduling itself again through `EditorSession`.
+    let canonicalAssetReferenceUpdates = PassthroughSubject<CanonicalAssetReferences, Never>()
     /// Mirror of `fileURL` for SwiftUI observation (NSDocument's property is not @Published).
     @Published private(set) var publishedFileURL: URL?
 
@@ -443,7 +447,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     }
 
     func updateCanonicalAssetReferences(_ references: CanonicalAssetReferences) {
+        guard canonicalAssetReferences != references else { return }
         canonicalAssetReferences = references
+        canonicalAssetReferenceUpdates.send(references)
     }
 
     /// Canonical load path used by serialized `read(from:ofType:)`.

@@ -3,6 +3,7 @@
 //  Markdown Editor
 //
 
+import AppKit
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -140,6 +141,7 @@ final class LocalImageByteCache {
 
     private struct Entry {
         let image: CGImage
+        let displayImage: NSImage
         let cost: Int
     }
 
@@ -169,8 +171,31 @@ final class LocalImageByteCache {
         return entry.image
     }
 
+    func displayImage(
+        path: String,
+        locationGeneration: UInt64,
+        modification: Date?,
+        contentDigest: String,
+        displayEdge: Int = Int(LocalImageDecoder.maxDisplayEdge)
+    ) -> NSImage? {
+        let key = Key(
+            path: path,
+            locationGeneration: locationGeneration,
+            modificationTime: modification?.timeIntervalSinceReferenceDate ?? 0,
+            displayEdge: displayEdge,
+            contentDigest: contentDigest
+        )
+        guard let entry = map[key] else { return nil }
+        if let idx = order.firstIndex(of: key) {
+            order.remove(at: idx)
+            order.append(key)
+        }
+        return entry.displayImage
+    }
+
     func store(
         _ image: CGImage,
+        displayImage: NSImage,
         cost: Int,
         path: String,
         locationGeneration: UInt64,
@@ -190,7 +215,7 @@ final class LocalImageByteCache {
             map.removeValue(forKey: key)
             order.removeAll { $0 == key }
         }
-        map[key] = Entry(image: image, cost: cost)
+        map[key] = Entry(image: image, displayImage: displayImage, cost: cost)
         order.append(key)
         totalBytes += cost
         while totalBytes > Self.maxBytes, let oldest = order.first {
