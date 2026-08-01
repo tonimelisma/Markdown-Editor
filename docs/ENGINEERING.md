@@ -245,10 +245,12 @@ Rules:
 - A newer snapshot whose rendered text is unchanged — an authoritative snapshot replacing a
   provisional one — is applied as an attribute refresh that mutates no characters. This is why
   the full-replacement allowlist stays at three routes rather than gaining a fourth.
-- Every full replacement reachable from the native input callback — a post-commit patch failure
-  and applied-storage drift — records a typed `presentationRecovered` fault and makes WYSIWYG
-  unavailable until an authoritative snapshot lands. Recovery is an invariant violation, not a
-  fallback, so it can never be mistaken for an ordinary edit.
+- Every full replacement other than a first application records a typed `presentationRecovered`
+  fault, so a rebuild can never be mistaken for an ordinary application. Reached from the native
+  input callback — a post-commit patch failure or applied-storage drift — it additionally makes
+  WYSIWYG unavailable until an authoritative snapshot lands, because continuing forward mid-edit
+  would leave stale content editable. Reached while applying a newer snapshot, availability is
+  untouched: the rebuild targets that same snapshot, so storage converges on something current.
 - Typography is derived and replaceable. It never enters canonical source, source history,
   coordinate meaning, or serialization.
 

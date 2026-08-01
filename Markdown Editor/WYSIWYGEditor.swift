@@ -139,8 +139,15 @@ enum WYSIWYGEditor {
                         to: textView
                     )
                 }
-                if refreshed { appliedSnapshot = presentation }
-                return refreshed
+                if refreshed {
+                    appliedSnapshot = presentation
+                    return true
+                }
+                // The refresh guard only fails when applied storage has drifted from the
+                // snapshot we believe is applied. That is the same condition the input callback
+                // records, so it is recorded here too rather than falling through silently.
+                recordRecovery(for: presentation, reason: .appliedStorageMismatch)
+                return false
             }
 
             let selection = session.wysiwygModeState.selection.flatMap {
@@ -160,29 +167,41 @@ enum WYSIWYGEditor {
                     )
                 }
             ) else {
-                // Unprovable, so it is recorded rather than silently rebuilt. Availability is
-                // untouched: rebuilding from this same snapshot leaves storage correct and
-                // current, unlike a post-commit mismatch.
-                document.trace?.record(
-                    .presentationRecovered(
-                        snapshotID: presentation.id.value,
-                        sourceRevision: presentation.sourceRevision.value,
-                        reason: .patchUnprovable
-                    )
-                )
+                recordRecovery(for: presentation, reason: .patchUnprovable)
                 return false
             }
 
-            var applieded = false
+            var patched = false
             session.updateOrigin.with(.programmaticPresentation) {
-                applieded = textStorageApplier.applyPatch(patch, to: textView, expectedCurrent: applied)
+                patched = textStorageApplier.applyPatch(patch, to: textView, expectedCurrent: applied)
             }
-            guard applieded else { return false }
+            guard patched else {
+                recordRecovery(for: presentation, reason: .appliedStorageMismatch)
+                return false
+            }
             appliedSnapshot = presentation
-            if selection == nil {
-                restoreSelection(for: presentation, in: textView, limit: (presentation.renderedString as NSString).length)
-            }
+            // No selection fallback here on purpose. `selection` is nil exactly when the session
+            // has no selection belonging to this snapshot — `installPresentation` clears it when
+            // it cannot be carried forward — so there is nothing to restore, and a call guarded
+            // by that same condition could only ever be a no-op.
             return true
+        }
+
+        /// Records a full-storage rebuild reached from a newer snapshot. Availability is
+        /// deliberately untouched: the rebuild targets this same snapshot, so storage converges on
+        /// something current and correct — unlike a post-commit mismatch, where continuing forward
+        /// mid-keystroke would leave stale content editable.
+        private func recordRecovery(
+            for presentation: PresentationSnapshot,
+            reason: PresentationRecoveryReason
+        ) {
+            document.trace?.record(
+                .presentationRecovered(
+                    snapshotID: presentation.id.value,
+                    sourceRevision: presentation.sourceRevision.value,
+                    reason: reason
+                )
+            )
         }
 
         private func buildPresentation(_ snapshot: PresentationSnapshot) -> AttributedPresentation {

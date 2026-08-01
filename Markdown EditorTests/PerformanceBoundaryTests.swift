@@ -202,6 +202,39 @@ struct PerformanceBoundaryTests {
         #expect(harness.textView.string == next.renderedString)
     }
 
+    // Verifies: REQ-109; ENGINEERING §7 — a full rebuild reached from a newer snapshot because
+    // applied storage drifted is recorded, never silent. Without the record this path looks
+    // exactly like an ordinary first application.
+    @Test func driftedStorageOnNewerSnapshotIsRecorded() async throws {
+        let trace = InMemoryEditorTrace()
+        let harness = try EditorHarness(source: "First paragraph.\n\nSecond paragraph.\n", trace: trace)
+        await harness.settle()
+        let applied = try #require(harness.session.presentation)
+
+        // Diverge applied storage from the snapshot the coordinator believes is applied, so the
+        // patch's own guard must refuse.
+        harness.storage.replaceCharacters(in: NSRange(location: 0, length: 5), with: "DRIFT")
+        harness.storage.resetSpy()
+
+        let nextSource = "First paragraph!\n\nSecond paragraph.\n"
+        let version = applied.sourceRevision.value + 1
+        let index = MarkdownSourceIndex(source: nextSource, sourceVersion: version)
+        let tree = try #require(MarkdownParser.parse(nextSource, sourceVersion: version).get())
+        harness.session.installProjectionForTesting(
+            MarkdownProjectionModel.build(tree: tree, index: index),
+            tree: tree
+        )
+        harness.coordinator.applyProjectionIfNeeded(force: false)
+
+        let recovered = trace.eventsMatching {
+            if case .presentationRecovered = $0 { return true }
+            return false
+        }
+        #expect(recovered.count == 1, "drift on a newer snapshot was rebuilt without a record")
+        // Storage still converges on the current snapshot.
+        #expect(harness.textView.string == harness.session.presentation?.renderedString)
+    }
+
     /// A real document, session, and WYSIWYG coordinator over spy-backed storage.
     @MainActor
     final class EditorHarness {
