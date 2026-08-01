@@ -746,8 +746,8 @@ struct PersistentEditorCharacterizationTests {
     }
 
     // Verifies: REQ-090 — keystroke translation p95 < 8 ms (Release only).
-    @Test func keystrokeTranslationP95Under8ms() async {
-        #if !DEBUG
+    @Test func nativeInputCallbackP95Under8ms() async {
+#if !DEBUG
         let document = MarkdownDocument()
         document.installTextForTesting(String(repeating: "word ", count: 20_000))
         let session = EditorSession()
@@ -765,6 +765,7 @@ struct PersistentEditorCharacterizationTests {
         session.installProjectionForTesting(model, tree: tree)
 
         var samples: [Double] = []
+        var failures: [String] = []
         samples.reserveCapacity(40)
         for i in 0..<50 {
             let presentation = session.presentation!
@@ -780,21 +781,23 @@ struct PersistentEditorCharacterizationTests {
             )
             let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
             guard case .accepted = result else {
-                Issue.record("performance input refused at sample \(i): \(result)")
-                return
+                failures.append("performance input refused at sample \(i): \(result)")
+                break
             }
             if i >= 10 { samples.append(ms) }
         }
-        samples.sort()
-        let p95Index = min(samples.count - 1, Int(ceil(0.95 * Double(samples.count))) - 1)
-        let p95 = samples[max(p95Index, 0)]
-        recordPerformanceEvidence(
-            name: "wysiwyg-keystroke-translation",
+        let evidence = recordPerformanceEvidence(
+            name: "wysiwyg-native-input-callback",
             corpus: source,
             warmups: 10,
-            samples: samples
+            samples: samples,
+            failures: failures
         )
-        #expect(p95 < 8.0, "p95=\(p95)ms samples=\(samples)")
+        #expect(evidence.failures.isEmpty, "performance evidence failures: \(evidence.failures)")
+        #expect(evidence.samples.count > 0)
+        if let p95 = evidence.p95 {
+            #expect(p95 < 8.0, "p95=\(p95)ms samples=\(evidence.samples)")
+        }
         #else
         return
         #endif
@@ -828,16 +831,17 @@ struct PersistentEditorCharacterizationTests {
             let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
             if i >= 10 { samples.append(ms) }
         }
-        samples.sort()
-        let p95Index = min(samples.count - 1, Int(ceil(0.95 * Double(samples.count))) - 1)
-        let p95 = samples[max(p95Index, 0)]
-        recordPerformanceEvidence(
+        let evidence = recordPerformanceEvidence(
             name: "mode-toggle",
             corpus: document.text,
             warmups: 10,
             samples: samples
         )
-        #expect(p95 < 16.0, "p95=\(p95)ms samples=\(samples)")
+        #expect(evidence.failures.isEmpty, "performance evidence failures: \(evidence.failures)")
+        #expect(evidence.samples.count > 0)
+        if let p95 = evidence.p95 {
+            #expect(p95 < 16.0, "p95=\(p95)ms samples=\(evidence.samples)")
+        }
         #else
         return
         #endif

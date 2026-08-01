@@ -429,16 +429,17 @@ struct ProjectionCharacterizationTests {
             }.value
             samples.append(ms)
         }
-        samples.sort()
-        let p95Index = min(samples.count - 1, Int(ceil(0.95 * Double(samples.count))) - 1)
-        let p95 = samples[max(p95Index, 0)]
-        recordPerformanceEvidence(
+        let evidence = recordPerformanceEvidence(
             name: "parse-index-projection",
             corpus: source,
             warmups: 5,
             samples: samples
         )
-        #expect(p95 < 100.0, "p95=\(p95)ms samples=\(samples)")
+        #expect(evidence.failures.isEmpty, "performance evidence failures: \(evidence.failures)")
+        #expect(evidence.samples.count > 0)
+        if let p95 = evidence.p95 {
+            #expect(p95 < 100.0, "p95=\(p95)ms samples=\(evidence.samples)")
+        }
         #endif
     }
 

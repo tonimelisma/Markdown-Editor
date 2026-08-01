@@ -163,9 +163,8 @@ struct ReconciliationInvariantTests {
         let trace = InMemoryEditorTrace()
         document.trace = trace
         document.installTextForTesting("# Hello\n")
-        let session = EditorSession()
         // This test provokes the violation on purpose; the debug trap would abort the host.
-        session.trapsOnReconciliationViolation = false
+        let session = EditorSession(trapsOnReconciliationViolation: false)
         session.attach(document: document)
         trace.reset()
 
@@ -220,8 +219,7 @@ struct ReconciliationInvariantTests {
         let trace = InMemoryEditorTrace()
         document.trace = trace
         document.installTextForTesting("# Hello\n")
-        let session = EditorSession()
-        session.trapsOnReconciliationViolation = false
+        let session = EditorSession(trapsOnReconciliationViolation: false)
         session.attach(document: document)
         trace.reset()
 

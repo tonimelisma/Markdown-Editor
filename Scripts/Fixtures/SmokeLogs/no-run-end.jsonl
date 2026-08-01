@@ -1,0 +1,7 @@
+{"v":2,"ev":"runStart","seq":0,"run":{"host":"production"}}
+{"seq":1,"lvl":"info","cat":"document","ev":"documentOpened","doc":1}
+{"seq":2,"lvl":"info","cat":"document","ev":"documentLoaded","doc":1}
+{"seq":3,"lvl":"debug","cat":"session","ev":"availabilityChanged","doc":1,"data":{"editable":true}}
+{"seq":4,"lvl":"debug","cat":"projection","ev":"reconciliationApplied","doc":1}
+{"seq":5,"lvl":"debug","cat":"viewUpdate","ev":"hostUpdateEnded","doc":1}
+{"seq":6,"lvl":"info","cat":"session","ev":"performanceSummary","doc":1,"data":{"metric":"reconciliation","count":1}}

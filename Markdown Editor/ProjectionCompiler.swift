@@ -29,6 +29,7 @@ private nonisolated struct CompilerBuilder {
     private var runs: [ProjectionRun] = []
     private var attachments: [ProjectionAttachment] = []
     private var tables: [ProjectionTable] = []
+    private var blocks: [PresentationBlock] = []
     private var segments: [ProjectionSegment] = []
     private var listMarkers: [ProjectionListMarker] = []
     private var utf16Length = 0
@@ -40,6 +41,7 @@ private nonisolated struct CompilerBuilder {
             runs: runs,
             attachments: attachments,
             tables: tables,
+            blocks: blocks,
             segments: segments,
             listMarkers: listMarkers,
             sourceUTF16Count: (map.source as NSString).length
@@ -54,17 +56,23 @@ private nonisolated struct CompilerBuilder {
             }
 
         case .paragraph:
+            let blockStart = utf16Length
             emitInlineChildren(node, styleStack: styleStack)
             appendSyntheticBreak(after: node, kind: .paragraphBreak)
+            appendBlock(node, start: blockStart, kind: .paragraph)
 
         case .heading(let level):
+            let blockStart = utf16Length
             emitInlineChildren(node, styleStack: styleStack + [.heading(level)])
             appendSyntheticBreak(after: node, kind: .paragraphBreak)
+            appendBlock(node, start: blockStart, kind: .heading(level: level))
 
         case .blockQuote:
+            let blockStart = utf16Length
             for child in node.children {
                 emit(child, styleStack: styleStack + [.blockQuote], listNesting: listNesting)
             }
+            appendBlock(node, start: blockStart, kind: .blockQuote(depth: listNesting + 1))
 
         case .list(let info):
             for (itemIndex, child) in node.children.enumerated() {
@@ -84,6 +92,7 @@ private nonisolated struct CompilerBuilder {
             }
 
         case .codeBlock(_, let literal, _, _, _):
+            let blockStart = utf16Length
             appendSourceBacked(
                 literal.hasSuffix("\n") ? literal : literal + "\n",
                 node: node,
@@ -91,24 +100,32 @@ private nonisolated struct CompilerBuilder {
                 link: nil,
                 literalFallback: false
             )
+            appendBlock(node, start: blockStart, kind: .codeBlock(languageHintPresent: {
+                if case .codeBlock(let info, _, _, _, _) = node.kind { return !info.isEmpty }
+                return false
+            }()) )
 
         case .htmlBlock(let literal):
+            let blockStart = utf16Length
             let text = literal.hasSuffix("\n") ? literal : literal + "\n"
             appendLiteralFallback(text, node: node, styles: styleStack)
+            appendBlock(node, start: blockStart, kind: .literalHTML)
 
         case .thematicBreak:
+            let blockStart = utf16Length
             appendAttachment(nodeID: node.id, kind: .thematicBreak, source: sourceUTF16(of: node))
             appendSynthetic("\u{FFFC}", kind: .thematicBreak, after: node, refuseEdits: true)
             appendSyntheticBreak(after: node, kind: .paragraphBreak)
+            appendBlock(node, start: blockStart, kind: .thematicBreak)
 
         case .text(let text):
             appendSourceBacked(text, node: node, styles: styleStack, link: nil, literalFallback: false)
 
         case .softBreak:
-            appendSynthetic("\n", kind: .softLineBreak, after: node, refuseEdits: false)
+            appendSynthetic(" ", kind: .softLineBreak, after: node, refuseEdits: false)
 
         case .lineBreak:
-            appendSynthetic("\n", kind: .softLineBreak, after: node, refuseEdits: false)
+            appendSynthetic("\n", kind: .hardLineBreak, after: node, refuseEdits: false)
 
         case .code(let literal):
             appendSourceBacked(literal, node: node, styles: styleStack + [.code], link: nil, literalFallback: false)
@@ -126,6 +143,7 @@ private nonisolated struct CompilerBuilder {
             emitLinkedChildren(node, styleStack: styleStack + [.link], destination: destination)
 
         case .image(let destination, _):
+            let blockStart = utf16Length
             let description = plainText(of: node)
             appendAttachment(
                 nodeID: node.id,
@@ -133,9 +151,12 @@ private nonisolated struct CompilerBuilder {
                 source: sourceUTF16(of: node)
             )
             appendSynthetic("\u{FFFC}", kind: .attachmentPlaceholder, after: node, refuseEdits: false)
+            appendBlock(node, start: blockStart, kind: .image)
 
         case .table(let columnCount, let alignments):
+            let blockStart = utf16Length
             emitTable(node, columnCount: columnCount, alignments: alignments, styleStack: styleStack)
+            appendBlock(node, start: blockStart, kind: .table)
 
         case .tableRow, .tableCell:
             break
@@ -161,7 +182,11 @@ private nonisolated struct CompilerBuilder {
             return
         }
 
+        let task = taskChecked != nil
         let markerText: String
+        if task {
+            markerText = ""
+        } else {
         switch info.kind {
         case .bullet:
             markerText = markerGlyph(info.marker) + " "
@@ -169,6 +194,7 @@ private nonisolated struct CompilerBuilder {
             let delim = delimiter == .period ? "." : ")"
             // REQ / review: each item shows start + index, not the list start alone.
             markerText = "\(start + itemIndex)\(delim) "
+        }
         }
 
         let itemStart = sourceUTF16(of: node)?.location ?? 0
@@ -189,31 +215,33 @@ private nonisolated struct CompilerBuilder {
         let markerUTF16 = (markerText as NSString).length
         utf16Length += markerUTF16
         let markerRange = NSRange(location: markerStart, length: markerUTF16)
-        segments.append(
-            .synthetic(
-                projection: markerRange,
-                kind: .listMarker(text: markerText, nesting: nesting),
-                insertion: .atSourceBoundaries(before: itemStart, after: afterMarker)
+        if markerUTF16 > 0 {
+            segments.append(
+                .synthetic(
+                    projection: markerRange,
+                    kind: .listMarker(text: markerText, nesting: nesting),
+                    insertion: .atSourceBoundaries(before: itemStart, after: afterMarker)
+                )
             )
-        )
-        listMarkers.append(
-            ProjectionListMarker(
-                nodeID: node.id,
-                utf16Range: markerRange,
-                text: markerText,
-                nesting: nesting,
-                kind: info.kind
+            listMarkers.append(
+                ProjectionListMarker(
+                    nodeID: node.id,
+                    utf16Range: markerRange,
+                    text: markerText,
+                    nesting: nesting,
+                    kind: info.kind
+                )
             )
-        )
-        runs.append(
-            ProjectionRun(
-                nodeID: node.id,
-                utf16Range: markerRange,
-                styles: Set(styleStack),
-                linkDestination: nil,
-                isLiteralFallback: false
+            runs.append(
+                ProjectionRun(
+                    nodeID: node.id,
+                    utf16Range: markerRange,
+                    styles: Set(styleStack),
+                    linkDestination: nil,
+                    isLiteralFallback: false
+                )
             )
-        )
+        }
 
         if let checked = taskChecked {
             let label = plainText(of: node)
@@ -238,6 +266,11 @@ private nonisolated struct CompilerBuilder {
                 emit(child, styleStack: styleStack, listNesting: nesting)
             }
         }
+        appendBlock(
+            node,
+            start: markerStart,
+            kind: .listItem(kind: info.kind, nesting: nesting, task: task)
+        )
     }
 
     mutating func emitInlineChildren(_ node: MarkdownNode, styleStack: [ProjectionStyleTag]) {
@@ -299,9 +332,15 @@ private nonisolated struct CompilerBuilder {
                         sourceUTF16Range: sourceUTF16(of: cell)
                     )
                 )
+                appendBlock(cell, start: cellStart, kind: .tableCell(alignment: alignment, header: isHeader))
                 col += 1
             }
             appendSynthetic("\n", kind: .tableRowBreak, after: row, refuseEdits: false)
+            appendBlock(
+                row,
+                start: cells.last(where: { $0.row == rowIndex })?.utf16Range.location ?? tableStart,
+                kind: .tableRow(header: isHeader)
+            )
             rowIndex += 1
         }
         tables.append(
@@ -439,6 +478,23 @@ private nonisolated struct CompilerBuilder {
                 utf16Location: utf16Length,
                 kind: kind,
                 sourceUTF16Range: source
+            )
+        )
+    }
+
+    mutating func appendBlock(
+        _ node: MarkdownNode,
+        start: Int,
+        kind: PresentationBlockKind
+    ) {
+        let range = NSRange(location: start, length: max(0, utf16Length - start))
+        guard range.length > 0 else { return }
+        blocks.append(
+            PresentationBlock(
+                nodeID: node.id,
+                projectionRange: range,
+                sourceRange: sourceUTF16(of: node),
+                kind: kind
             )
         )
     }

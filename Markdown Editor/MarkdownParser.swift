@@ -31,9 +31,14 @@ nonisolated enum MarkdownParser {
     /// Parse Markdown into an immutable Swift value tree.
     static func parse(
         _ source: String,
-        sourceVersion: UInt64
+        sourceVersion: UInt64,
+        isCancelled: @Sendable () -> Bool = { false }
     ) -> Result<MarkdownTree, MarkdownParseFailure> {
         parseLock.withLock { _ in
+            // Cancellation is checked only at the parser boundary. Once cmark has entered its
+            // synchronous C call it cannot safely be interrupted, but a cancelled waiter must
+            // not copy its source or enter cmark after the lock becomes available.
+            guard !isCancelled() else { return .failure(.cancelled) }
             var bytes = Array(source.utf8)
             return bytes.withUnsafeMutableBufferPointer { buffer in
                 guard let base = buffer.baseAddress else {
@@ -44,6 +49,12 @@ nonisolated enum MarkdownParser {
                 }
             }
         }
+    }
+
+    /// Test-only critical-section gate used to prove cancellation ordering without exposing the
+    /// cmark lock or C pointers to production callers.
+    static func withParseLockForTesting<T: Sendable>(_ body: @Sendable () -> T) -> T {
+        parseLock.withLock { _ in body() }
     }
 
     /// Render HTML with the same pinned configuration (formal-GFM conformance).

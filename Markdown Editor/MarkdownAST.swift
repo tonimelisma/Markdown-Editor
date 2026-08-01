@@ -99,6 +99,7 @@ nonisolated struct MarkdownTree: Sendable, Equatable {
 }
 
 nonisolated enum MarkdownParseFailure: Error, Sendable, Equatable {
+    case cancelled
     case allocationFailed
     case extensionUnavailable(String)
     case emptyDocumentNode

@@ -89,6 +89,7 @@ nonisolated struct MarkdownProjectionModel: Sendable, Equatable {
     let runs: [ProjectionRun]
     let attachments: [ProjectionAttachment]
     let tables: [ProjectionTable]
+    let blocks: [PresentationBlock]
     let segments: [ProjectionSegment]
     let listMarkers: [ProjectionListMarker]
     let sourceUTF16Count: Int
@@ -100,6 +101,7 @@ nonisolated struct MarkdownProjectionModel: Sendable, Equatable {
         runs: [ProjectionRun],
         attachments: [ProjectionAttachment],
         tables: [ProjectionTable],
+        blocks: [PresentationBlock] = [],
         segments: [ProjectionSegment],
         listMarkers: [ProjectionListMarker],
         sourceUTF16Count: Int,
@@ -110,6 +112,7 @@ nonisolated struct MarkdownProjectionModel: Sendable, Equatable {
         self.runs = runs
         self.attachments = attachments
         self.tables = tables
+        self.blocks = blocks
         self.segments = segments
         self.listMarkers = listMarkers
         self.sourceUTF16Count = sourceUTF16Count

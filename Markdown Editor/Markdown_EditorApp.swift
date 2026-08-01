@@ -20,6 +20,7 @@ struct Markdown_EditorApp: App {
             EmptyView()
         }
         .commands {
+            EditorMenuCommands()
             CommandGroup(replacing: .newItem) {
                 Button("New Document") {
                     NSDocumentController.shared.newDocument(nil)
@@ -128,18 +129,15 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         _ = documentController
         guard !Self.isRunningUnitTests else { return }
         ensureOpenRecentMenuItem()
-        // The report fires from a background task precisely because the main actor may be
-        // stalled, so the record is queued rather than awaited.
-        let watchdog = MainActorWatchdog { millis in
-            Task { @MainActor in
-                DiagnosticLog.shared?.record(
-                    .mainActorStall,
-                    level: .fault,
-                    category: .lifecycle,
-                    data: [(.millis, .uint(millis))]
-                )
-            }
+        // The reporter writes through the serialized diagnostic sink directly because the main
+        // actor may be the thing that is stalled.
+        let report: MainActorWatchdog.Report
+        if let log = DiagnosticLog.shared {
+            report = log.makeProcessFaultReporter()
+        } else {
+            report = { _ in }
         }
+        let watchdog = MainActorWatchdog(report: report)
         watchdog.start()
         self.watchdog = watchdog
 
@@ -151,7 +149,7 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
             // exit cleanly so the smoke script can assert on the terminating record.
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(2))
-                flushPerformanceSamplingAtRunEnd()
+                DiagnosticRunCoordinator.shared.flushAndInvalidateAll()
                 DiagnosticLog.shared?.finishSynchronously()
                 NSApp.terminate(nil)
             }
@@ -159,7 +157,7 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        flushPerformanceSamplingAtRunEnd()
+        DiagnosticRunCoordinator.shared.flushAndInvalidateAll()
         watchdog?.stop()
         // REQ-095: the terminating record distinguishes a clean exit from a crash.
         DiagnosticLog.shared?.finishSynchronously()

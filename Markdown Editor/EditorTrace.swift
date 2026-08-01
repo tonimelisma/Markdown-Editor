@@ -338,9 +338,11 @@ extension ImagePlacementError {
 extension PerformanceSampler.Metric {
     var symbol: DiagnosticSymbol {
         switch self {
-        case .keystrokeTranslation: return .keystrokeTranslation
-        case .modeToggle: return .modeToggle
-        case .reconciliation: return .reconciliation
+        case .nativeInputCallback: return .nativeInputCallback
+        case .modeTransition: return .modeTransition
+        case .parseProjection: return .parseProjection
+        case .imageResolution: return .imageResolution
+        case .authoritativeApplication: return .authoritativeApplication
         }
     }
 }

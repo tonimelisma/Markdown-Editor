@@ -428,7 +428,7 @@ struct ImageBatchPreflightTests {
     }
 }
 
-struct CanonicalAssetReferenceScannerTests {
+struct CanonicalAssetReferenceTests {
     // Verifies: REQ-076
     @Test func findsCanonicalReferencesAndExcludesCode() {
         let source = """
@@ -440,7 +440,7 @@ struct CanonicalAssetReferenceScannerTests {
         \\![](assets/escaped.png)
             ![](assets/indent.png)
         """
-        let refs = CanonicalAssetReferenceScanner.scan(source)
+        let refs = CanonicalAssetReferences.parse(source: source, sourceVersion: 1).values
         #expect(refs.map(\.filename) == ["photo.png"])
     }
 
@@ -458,11 +458,8 @@ struct CanonicalAssetReferenceScannerTests {
         try png.write(to: dirOld.appendingPathComponent("assets/photo.png"))
         let source = "![](assets/photo.png)"
         #expect(
-            CanonicalAssetReferenceScanner.hasBrokenReferences(
-                source: source,
-                oldParent: dirOld,
-                newParent: dirNew
-            )
+            CanonicalAssetReferences.parse(source: source, sourceVersion: 1)
+                .hasBrokenReferences(oldParent: dirOld, newParent: dirNew)
         )
     }
 }
@@ -672,6 +669,7 @@ struct ImagePlacementControllerLifecycleTests {
         }
     }
 
+    @MainActor
     private func targetForCurrentState(_ document: MarkdownDocument) -> ImagePlacementTarget {
         ImagePlacementTarget(
             sourceSelection: SourceSelection(utf16: NSRange(location: (document.text as NSString).length, length: 0)),
@@ -877,7 +875,7 @@ struct ImagePlacementControllerLifecycleTests {
                 }
             } else {
                 // ".alert = ", not a bare "alert = ": the latter also matches unrelated local
-                // variables in other files (e.g. EditorToolbar.swift's `let alert = NSAlert()`).
+                // variables in other files (for example, an unrelated local AppKit alert).
                 // The leading dot is what distinguishes property access on some placement
                 // controller from an unrelated local declaration.
                 #expect(

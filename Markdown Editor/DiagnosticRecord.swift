@@ -136,6 +136,7 @@ nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
     case location
     case millis
     case mode
+    case metric
     case maxNanos
     case nameLength
     case origin

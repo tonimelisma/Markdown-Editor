@@ -140,6 +140,9 @@ struct EditorHostView: NSViewRepresentable {
 
         deinit {
             NotificationCenter.default.removeObserver(self)
+            MainActor.assumeIsolated {
+                session.detach()
+            }
         }
 
         /// Records one completed host update and reports a sustained storm.
@@ -276,7 +279,7 @@ struct EditorHostView: NSViewRepresentable {
 
         func applyMode(_ mode: EditorMode, focus: Bool) {
             let performanceStart = DispatchTime.now().uptimeNanoseconds
-            defer { session.recordPerformance(.modeToggle, durationNanos: DispatchTime.now().uptimeNanoseconds - performanceStart) }
+            defer { session.recordPerformance(.modeTransition, durationNanos: DispatchTime.now().uptimeNanoseconds - performanceStart) }
             guard let sourceScroll, let wysiwygScroll, let sourceText, let wysiwygText else { return }
             let modeChanged = lastAppliedMode != nil && lastAppliedMode != mode
             let firstResponder = sourceText.window?.firstResponder

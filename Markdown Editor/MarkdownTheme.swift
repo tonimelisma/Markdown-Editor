@@ -5,36 +5,40 @@
 
 import AppKit
 
-// REQ-041/043/047: maps a TokenStyle to display attributes. Uses system colors so it adapts
-// to Light/Dark automatically (REQ-022). Applied on the main actor.
+/// Compatibility facade for source-mode highlighting and older call sites. Approved WYSIWYG
+/// tokens live only in `MarkdownTypography`.
 @MainActor
 struct MarkdownTheme {
-    var baseFontSize: CGFloat = 14
+    private let typography = MarkdownTypography()
 
-    var baseFont: NSFont { .systemFont(ofSize: baseFontSize) }
-    var monoFont: NSFont { .monospacedSystemFont(ofSize: baseFontSize, weight: .regular) }
+    var baseFontSize: CGFloat { MarkdownTypography.bodyPointSize }
+    var baseFont: NSFont { typography.bodyFont }
+    var monoFont: NSFont { typography.monoFont }
 
-    // Base attributes reset onto the whole document before per-token styling.
     var baseAttributes: [NSAttributedString.Key: Any] {
-        [.font: baseFont, .foregroundColor: NSColor.labelColor]
+        [
+            .font: typography.bodyFont,
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: typography.paragraphStyle()
+        ]
     }
 
     func attributes(for style: TokenStyle) -> [NSAttributedString.Key: Any] {
         switch style {
         case .heading(let level):
-            let bump = CGFloat(max(0, 7 - level)) * 2
-            return [.font: NSFont.systemFont(ofSize: baseFontSize + bump, weight: .bold),
-                    .foregroundColor: NSColor.labelColor]
+            return [.font: typography.font(for: level), .foregroundColor: NSColor.labelColor]
         case .bold:
             return [.font: NSFont.systemFont(ofSize: baseFontSize, weight: .bold)]
         case .italic:
             return [.font: NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)]
         case .inlineCode, .table:
-            return [.font: monoFont, .foregroundColor: NSColor.systemPurple]
+            return [.font: typography.inlineCodeFont(), .foregroundColor: NSColor.secondaryLabelColor]
         case .codeBlock:
-            return [.font: monoFont,
-                    .foregroundColor: NSColor.systemPurple,
-                    .backgroundColor: NSColor.systemPurple.withAlphaComponent(0.10)]
+            return [
+                .font: typography.monoFont,
+                .foregroundColor: NSColor.labelColor,
+                .backgroundColor: NSColor.quaternaryLabelColor.withAlphaComponent(0.18)
+            ]
         case .link, .image:
             return [.foregroundColor: NSColor.linkColor]
         case .listMarker, .taskMarker, .thematicBreak, .blockquote:

@@ -25,6 +25,7 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
     let runs: [ProjectionRun]
     let attachments: [ProjectionAttachment]
     let tables: [ProjectionTable]
+    let blocks: [PresentationBlock]
     let listMarkers: [ProjectionListMarker]
     let atoms: [ProjectionAtom]
     let sourceUTF16Count: Int
@@ -47,6 +48,7 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
             runs: runs,
             attachments: attachments,
             tables: tables,
+            blocks: blocks,
             segments: segments,
             listMarkers: listMarkers,
             sourceUTF16Count: sourceUTF16Count,
@@ -62,6 +64,7 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
         runs: [ProjectionRun],
         attachments: [ProjectionAttachment],
         tables: [ProjectionTable],
+        blocks: [PresentationBlock] = [],
         listMarkers: [ProjectionListMarker] = [],
         atoms: [ProjectionAtom],
         sourceUTF16Count: Int
@@ -80,6 +83,7 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
             runs: runs,
             attachments: attachments,
             tables: tables,
+            blocks: blocks,
             listMarkers: listMarkers,
             atoms: atoms,
             sourceUTF16Count: sourceUTF16Count,
@@ -101,6 +105,7 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
             runs: model.runs,
             attachments: model.attachments,
             tables: model.tables,
+            blocks: model.blocks,
             listMarkers: model.listMarkers,
             atoms: ProjectionAtom.from(
                 segments: model.segments,

@@ -3,9 +3,9 @@
 # assertions Scripts/smoke-test.sh performs, this captures ONE screenshot of the application's
 # own window over a richer fixture, for mandatory human/AI visual review at the end of every
 # build increment. The screenshot is evidence for a human to look at — it is never itself an
-# automated pass/fail assertion, and this script's own exit status depends only on structured
-# diagnostic records, the same kind Scripts/smoke-test.sh checks. No UI is driven or clicked;
-# this only captures a static image of a window that already rendered on its own.
+# automated assertion about appearance. The script still fails if capture itself fails or if the
+# structured diagnostic proof fails. No UI is driven or clicked; this only captures a static image
+# of a window that already rendered on its own.
 #
 # Captures only the application's own window (screencapture -l<windowID>), never the full
 # screen: a full-screen capture would leak whatever else is currently on screen, unrelated to
@@ -17,12 +17,19 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 
-derived="${SMOKE_DERIVED_DATA:-$repo_root/.smoke-build}"
+if [[ -n "${SMOKE_DERIVED_DATA:-}" ]]; then
+    derived="$SMOKE_DERIVED_DATA"
+    cleanup_derived=0
+else
+    derived="$(mktemp -d)"
+    cleanup_derived=1
+fi
 logdir="$(mktemp -d)"
 tools_dir="$(mktemp -d)"
 out="${SMOKE_SCREENSHOT_OUT:-$repo_root/.smoke-screenshot.png}"
 cleanup() {
     rm -rf "$logdir" "$tools_dir"
+    [[ "$cleanup_derived" -eq 1 ]] && rm -rf "$derived"
     [[ -n "${app_pid:-}" ]] && kill -0 "$app_pid" 2>/dev/null && kill "$app_pid" 2>/dev/null
 }
 trap cleanup EXIT
@@ -68,9 +75,9 @@ fi
 # synchronously when session state changes, but EditorHostView.updateNSView applies the
 # projection to TextKit afterward, and the window server composites the actual pixels later
 # still — screenshotting right on the availabilityChanged record risks empty, stale, or
-# partially rendered pixels while every diagnostic assertion still passes. Wait for a
-# hostUpdateEnded record (the host view's own update-pass signal) with a strictly later
-# sequence number, then add a short fixed margin for the window server to composite.
+# partially rendered pixels while every diagnostic assertion still passes. Wait for the applied
+# reconciliation and then a hostUpdateEnded record with a strictly later sequence number, then
+# add a short fixed margin for the window server to composite.
 rendered=0
 for _ in $(seq 1 100); do
     if python3 - "$run_file" <<'PYEOF'
@@ -81,10 +88,15 @@ avail_seq = next(
      if r.get("ev") == "availabilityChanged" and r.get("data", {}).get("editable") is True),
     None
 )
-if avail_seq is None:
+reconciliation_seq = next(
+    (r["seq"] for r in records
+     if r.get("ev") == "reconciliationApplied" and r.get("doc") is not None),
+    None
+)
+if avail_seq is None or reconciliation_seq is None:
     sys.exit(1)
 has_later_host_update = any(
-    r.get("ev") == "hostUpdateEnded" and r["seq"] > avail_seq for r in records
+    r.get("ev") == "hostUpdateEnded" and r["seq"] > reconciliation_seq for r in records
 )
 sys.exit(0 if has_later_host_update else 1)
 PYEOF
@@ -118,18 +130,27 @@ if [[ -z "$window_id" ]]; then
     exit 1
 fi
 
-rm -f "$out"
-screencapture_err="$(screencapture -x -o -l"$window_id" "$out" 2>&1 1>/dev/null)"
-screencapture_status=$?
-# `screencapture` can print a write failure to stderr and still exit 0 (observed when the
-# calling process lacks Screen Recording permission in some environments) — its exit code alone
-# is not proof the file was written, so this checks the file landed on disk with real bytes,
-# not just that the command claimed success.
-if [[ -n "$screencapture_err" ]]; then
-    echo "smoke-screenshot: screencapture reported: $screencapture_err" >&2
-fi
-if [[ "$screencapture_status" -ne 0 || ! -s "$out" ]]; then
-    echo "smoke-screenshot: screencapture did not produce $out — the calling process needs Screen Recording permission (System Settings > Privacy & Security > Screen Recording)" >&2
+capture_error=""
+captured=0
+# The window server can advertise a newly composited window just before `screencapture` can read
+# its surface. Retry that bounded race while the exact launched process and window remain alive.
+for _ in $(seq 1 20); do
+    rm -f "$out"
+    capture_error="$(screencapture -x -o -l"$window_id" "$out" 2>&1 1>/dev/null)"
+    capture_status=$?
+    if [[ "$capture_status" -eq 0 && -s "$out" ]]; then
+        captured=1
+        break
+    fi
+    kill -0 "$app_pid" 2>/dev/null || break
+    sleep 0.05
+done
+# `screencapture` can print a write failure to stderr and still exit 0. Its exit code alone is not
+# proof the file was written, so success requires a non-empty output file.
+if [[ "$captured" -ne 1 ]]; then
+    [[ -n "$capture_error" ]] && echo "smoke-screenshot: screencapture reported: $capture_error" >&2
+    echo "smoke-screenshot: screencapture did not produce $out from window $window_id" >&2
+    echo "smoke-screenshot: check Screen Recording permission if this is repeatable" >&2
     exit 1
 fi
 echo "smoke-screenshot: saved $out"
@@ -152,33 +173,5 @@ if [[ "$app_exit_code" -ne 0 ]]; then
 fi
 
 host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-20}"
-python3 - "$run_file" "$host_update_threshold" <<'PYEOF'
-import json, sys
-run_file, threshold = sys.argv[1], int(sys.argv[2])
-records = [json.loads(l) for l in open(run_file) if l.strip()]
-assert records, "run file is empty"
-header = records[0]
-assert header["v"] == 1, "unexpected schema version"
-assert header["run"]["host"] == "production", f"expected production host, got {header['run'].get('host')}"
-seqs = [r["seq"] for r in records[1:]]
-for previous, current in zip(seqs, seqs[1:]):
-    assert current > previous, f"sequence numbers not strictly increasing: {previous} then {current}"
-assert any(r["ev"] == "documentOpened" for r in records), "document never opened"
-# Same rigor as smoke-test.sh: a fixture loaded more than once is a regression this script
-# claims to catch (it advertises the same structured-diagnostic checks as ARC-Q12), and could
-# also mean the screenshot captured an unintended document state.
-loaded = [r for r in records if r["ev"] == "documentLoaded"]
-assert len(loaded) == 1, f"expected exactly one documentLoaded, got {len(loaded)}"
-direct_updates = sum(1 for r in records if r["ev"] == "hostUpdateEnded")
-collapsed_updates = sum(
-    r.get("data", {}).get("count", 0)
-    for r in records
-    if r["ev"] == "repeated" and r.get("of") == "hostUpdateEnded"
-)
-host_updates = direct_updates + collapsed_updates
-assert host_updates <= threshold, f"host did not settle: {host_updates} updates (threshold {threshold})"
-faults = [r for r in records if r.get("lvl") in ("error", "fault")]
-assert not faults, f"faults recorded: {[r['ev'] for r in faults]}"
-assert records[-1]["ev"] == "runEnd", "no clean-exit record"
-print(f"smoke-screenshot: diagnostics PASS ({len(records)} records, {host_updates} host updates)")
-PYEOF
+python3 "$repo_root/Scripts/verify-smoke-log.py" \
+    "$run_file" "$host_update_threshold" --label smoke-screenshot

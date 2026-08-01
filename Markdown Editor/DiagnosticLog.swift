@@ -18,7 +18,7 @@ nonisolated enum DiagnosticHostKind: String, Sendable, Equatable {
 /// Distinct from `DiagnosticRecord`: these fields are process facts, none derived from a
 /// document, so the closed payload value type (ARC-016) does not apply to them.
 nonisolated struct DiagnosticRunHeader: Sendable, Equatable {
-    static let schemaVersion = 1
+    static let schemaVersion = 2
 
     let runID: String
     let startedAt: Date
@@ -142,12 +142,10 @@ final class DiagnosticLog {
     let header: DiagnosticRunHeader
     let fileURL: URL
 
-    private let sink: DiagnosticFileSink
     private let startUptimeNanos: UInt64
-    private var sequence: UInt64 = 0
-    private var buffer: [String] = []
-    private var flushTask: Task<Void, Never>?
-    private var timerTask: Task<Void, Never>?
+    private let sequenceAllocator = DiagnosticSequence()
+    private let writeCoordinator: DiagnosticWriteCoordinator
+    private var durabilityTask: Task<Void, Never>?
     private var closed = false
     private var sizeLimitRecorded = false
     private var suddenTerminationDisabled = false
@@ -188,15 +186,15 @@ final class DiagnosticLog {
         Task.detached(priority: .utility) {
             Self.pruneRuns(in: pruneDirectory, keeping: keep)
         }
-        sink = DiagnosticFileSink(url: fileURL, byteLimit: Self.maximumFileBytes)
+        let sink = DiagnosticFileSink(url: fileURL, byteLimit: Self.maximumFileBytes)
+        writeCoordinator = DiagnosticWriteCoordinator(sink: sink)
         startUptimeNanos = DispatchTime.now().uptimeNanoseconds
         // A document app with no dirty documents is eligible for sudden termination: the process
         // is killed without `applicationWillTerminate`, so the terminating record never lands and
         // every clean exit is indistinguishable from a crash. Hold it off until the log closes.
         ProcessInfo.processInfo.disableSuddenTermination()
         suddenTerminationDisabled = true
-        buffer.append(header.jsonLine)
-        startFlushTimer()
+        appendLine(header.jsonLine)
     }
 
     /// Production location: `~/Library/Logs/Markdown Editor/`. Test runs get their own
@@ -265,11 +263,6 @@ final class DiagnosticLog {
             uptime: uptime
         )
         appendLine(entry.jsonLine)
-        if level >= .error {
-            flush()
-        } else if buffer.count >= Self.flushRecordThreshold {
-            flush()
-        }
     }
 
     private func makeRecord(
@@ -280,11 +273,10 @@ final class DiagnosticLog {
         data: [(key: DiagnosticField, value: DiagnosticValue)],
         uptime: Double
     ) -> DiagnosticRecord {
-        sequence &+= 1
         return DiagnosticRecord(
             wallClock: Date(),
             uptimeSeconds: uptime,
-            sequence: sequence,
+            sequence: sequenceAllocator.next(),
             level: level,
             category: category,
             event: event,
@@ -298,11 +290,10 @@ final class DiagnosticLog {
         count: Int,
         uptime: Double
     ) -> DiagnosticRecord {
-        sequence &+= 1
         return DiagnosticRecord(
             wallClock: Date(),
             uptimeSeconds: uptime,
-            sequence: sequence,
+            sequence: sequenceAllocator.next(),
             level: .warn,
             category: .diagnostics,
             event: .repeated,
@@ -334,26 +325,15 @@ final class DiagnosticLog {
     }
 
     private func appendLine(_ line: String) {
-        buffer.append(line)
+        let write = writeCoordinator.append([line])
+        Task { @MainActor [weak self] in
+            if await write.value { self?.noteSizeLimitReached() }
+        }
     }
 
     func flush() {
-        guard !buffer.isEmpty else { return }
-        let batch = buffer
-        buffer.removeAll(keepingCapacity: true)
-        let sink = self.sink
-        // Chain onto the previous flush so records reach the file in sequence order.
-        // `Task.detached`, not `Task`: an inherited main-actor task cannot run while
-        // `finishSynchronously` is blocking the main thread, and the terminal flush would
-        // deadlock against its own appender.
-        let previous = flushTask
-        flushTask = Task.detached { [weak self] in
-            await previous?.value
-            let truncated = await sink.append(batch)
-            if truncated {
-                await MainActor.run { self?.noteSizeLimitReached() }
-            }
-        }
+        // Records are handed to the serialized writer as they are created. This method remains
+        // as a no-op compatibility point for callers that used to trigger buffered writes.
     }
 
     /// Records the cap once, as a well-formed record rather than a hand-written fragment.
@@ -382,20 +362,15 @@ final class DiagnosticLog {
             .runEnd,
             level: .info,
             category: .lifecycle,
-            data: [(.count, .uint(sequence))]
+            data: [(.count, .uint(sequenceAllocator.current))]
         )
         closed = true
-        timerTask?.cancel()
-        timerTask = nil
         flush()
-        let sink = self.sink
-        let previous = flushTask
-        flushTask = Task.detached { [weak self] in
-            await previous?.value
-            await sink.close()
-            // Only now is the terminating record durable; re-enabling any earlier would let
-            // the process be killed before `runEnd` reaches the file.
-            await MainActor.run { self?.allowSuddenTermination() }
+        let durability = writeCoordinator.closeAfterDrain()
+        durabilityTask = durability
+        Task { @MainActor [weak self] in
+            await durability.value
+            self?.allowSuddenTermination()
         }
     }
 
@@ -415,19 +390,37 @@ final class DiagnosticLog {
     /// Blocks the caller until every queued record has reached the file. Test support only.
     func drain() async {
         flush()
-        await flushTask?.value
+        await writeCoordinator.drain()
+    }
+
+    /// Supplies the watchdog with a direct serialized-sink route that never hops through the
+    /// main actor. The same sequence allocator and writer preserve ordering and privacy.
+    func makeProcessFaultReporter() -> @Sendable (UInt64) -> Void {
+        let sequenceAllocator = self.sequenceAllocator
+        let writer = self.writeCoordinator
+        let start = self.startUptimeNanos
+        return { millis in
+            let record = DiagnosticRecord(
+                wallClock: Date(),
+                uptimeSeconds: Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000_000,
+                sequence: sequenceAllocator.next(),
+                level: .fault,
+                category: .lifecycle,
+                event: .mainActorStall,
+                data: [(.millis, .uint(millis))]
+            )
+            _ = writer.append([record.jsonLine])
+        }
     }
 
     /// Terminal flush for `applicationWillTerminate`.
     ///
     /// // REQ-095: the terminating record must reach disk before the process exits, so an
-    /// // agent can tell a clean exit from a crash. The buffered writer is asynchronous, and
-    /// // an exiting process does not run its pending tasks; this bounds the wait instead.
-    /// // The appender runs on the cooperative pool, so blocking the main thread cannot
-    /// // deadlock it.
+    /// // agent can tell a clean exit from a crash. The serialized appender runs off the main
+    /// // actor, so blocking the main thread cannot deadlock the bounded wait.
     func finishSynchronously(timeoutSeconds: Double = 2) {
         finish()
-        let pending = flushTask
+        let pending = durabilityTask
         guard let pending else { return }
         let gate = DispatchSemaphore(value: 0)
         Task.detached {
@@ -435,16 +428,6 @@ final class DiagnosticLog {
             gate.signal()
         }
         _ = gate.wait(timeout: .now() + timeoutSeconds)
-    }
-
-    private func startFlushTimer() {
-        timerTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: Self.flushInterval)
-                guard let self, !Task.isCancelled else { return }
-                self.flush()
-            }
-        }
     }
 
     /// Keeps the newest `keeping` run files; removes the rest oldest-first.

@@ -15,6 +15,7 @@ nonisolated enum SyntheticKind: Sendable, Equatable {
     case tableRowBreak
     case attachmentPlaceholder
     case softLineBreak
+    case hardLineBreak
 }
 
 nonisolated enum SyntheticInsertionPolicy: Sendable, Equatable {

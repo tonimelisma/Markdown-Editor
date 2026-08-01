@@ -12,11 +12,11 @@ struct ContentView: View {
     @StateObject private var placementController = ImagePlacementController()
     @StateObject private var session = EditorSession()
     @StateObject private var actionRouter = EditorActionRouter()
+    @StateObject private var commandController = EditorCommandController()
+    @StateObject private var toolbarController = EditorToolbarController()
 
     var body: some View {
         VStack(spacing: 0) {
-            EditorToolbar(document: document, session: session)
-            Divider()
             // REQ-052/086: persistent dual TextKit host — both editors live across mode toggles.
             EditorHostView(
                 document: document,
@@ -50,6 +50,16 @@ struct ContentView: View {
             actionRouter.document = document
             actionRouter.session = session
             session.actionRouter = actionRouter
+            commandController.bind(
+                document: document,
+                session: session,
+                actionRouter: actionRouter,
+                window: NSApp.keyWindow
+            )
+            toolbarController.commandController = commandController
+            if let window = NSApp.keyWindow {
+                toolbarController.install(on: window)
+            }
         }
         .onChange(of: document.publishedFileURL) { _, newURL in
             placementController.updateDocumentURL(newURL)
@@ -57,10 +67,31 @@ struct ContentView: View {
         .onChange(of: document.locationGeneration) { _, _ in
             placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
         }
+        .onDisappear {
+            commandController.cancelLink()
+            toolbarController.commandController = nil
+            session.detach()
+        }
         .alert(alertTitle, isPresented: alertPresented) {
             Button("OK", role: .cancel) { placementController.dismissAlert() }
         } message: {
             Text(alertMessage)
+        }
+        .focusedValue(\.editorCommandController, commandController)
+        .sheet(
+            isPresented: Binding(
+                get: { commandController.linkSheetPresented },
+                set: { if !$0 { commandController.cancelLink() } }
+            )
+        ) {
+            LinkEditorSheet(
+                destination: Binding(
+                    get: { commandController.linkDestination },
+                    set: { commandController.updateLinkDestination($0) }
+                ),
+                onCommit: { commandController.commitLink(destination: commandController.linkDestination) },
+                onCancel: { commandController.cancelLink() }
+            )
         }
     }
 

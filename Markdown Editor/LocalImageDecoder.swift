@@ -13,6 +13,7 @@ import UniformTypeIdentifiers
 /// // REQ-081/085/087: PNG/JPEG/GIF/HEIC/HEIF; UTI validation; originals untouched.
 nonisolated enum LocalImageDecoder {
     static let maxPixelDimension = 8_192
+    static let maxEncodedFileBytes = 256 * 1024 * 1024
     static let maxDisplayEdge: CGFloat = 512
     static let allowedUTIs: Set<String> = [
         UTType.png.identifier,
@@ -57,6 +58,17 @@ nonisolated enum LocalImageDecoder {
         let ext = resolved.pathExtension.lowercased()
         guard ["png", "jpg", "jpeg", "gif", "heic", "heif"].contains(ext) else {
             return .failure(.unsupportedType)
+        }
+
+        let attributes = try? FileManager.default.attributesOfItem(atPath: resolved.path)
+        guard let attributes,
+              let fileType = attributes[.type] as? FileAttributeType,
+              fileType == .typeRegular,
+              let fileSize = attributes[.size] as? NSNumber else {
+            return .failure(.missingFile)
+        }
+        guard fileSize.int64Value <= Int64(maxEncodedFileBytes) else {
+            return .failure(.encodedFileTooLarge)
         }
 
         guard let fileData = try? Data(contentsOf: resolved, options: [.mappedIfSafe]) else {
