@@ -425,11 +425,12 @@ struct EditorHostView: NSViewRepresentable {
             textView.isAutomaticSpellingCorrectionEnabled = false
             textView.usesFindBar = true
             textView.isIncrementalSearchingEnabled = true
-            textView.textContainerInset = NSSize(width: 8, height: 8)
+            // Reading-column geometry — inset, measure, and width tracking — belongs to
+            // MarkdownWYSIWYGTextView.layout(). Setting it here too would be a second owner of
+            // the same fact, disagreeing with the first until the next layout pass.
             textView.isVerticallyResizable = true
             textView.isHorizontallyResizable = false
             textView.autoresizingMask = [.width]
-            textView.textContainer?.widthTracksTextView = true
             textView.setAccessibilityLabel("Markdown WYSIWYG")
             textView.isEditable = true
             textView.isSelectable = true

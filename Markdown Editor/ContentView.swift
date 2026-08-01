@@ -54,13 +54,25 @@ struct ContentView: View {
                 document: document,
                 session: session,
                 actionRouter: actionRouter,
-                window: NSApp.keyWindow
+                window: commandController.presentingWindow
             )
             toolbarController.commandController = commandController
-            if let window = NSApp.keyWindow {
+        }
+        .background(
+            WindowAccessor { window in
+                // Rebind with the window this view really belongs to, then install that window's
+                // own toolbar. Ordering is safe either way: onAppear and viewDidMoveToWindow
+                // both bind the same document and session.
+                commandController.bind(
+                    document: document,
+                    session: session,
+                    actionRouter: actionRouter,
+                    window: window
+                )
+                toolbarController.commandController = commandController
                 toolbarController.install(on: window)
             }
-        }
+        )
         .onChange(of: document.publishedFileURL) { _, newURL in
             placementController.updateDocumentURL(newURL)
         }

@@ -189,6 +189,13 @@ enum AttributedPresentationBuilder {
         typography: MarkdownTypography
     ) {
         let style = typography.paragraphStyle()
+        // Containing blocks are applied first, so an enclosing quote's or code block's geometry
+        // is already installed here. A paragraph inside a quote must keep it rather than replace
+        // the whole paragraph style and silently drop the quote rule.
+        if let enclosing = storage.attribute(.paragraphStyle, at: range.location, effectiveRange: nil)
+            as? NSParagraphStyle {
+            style.textBlocks = enclosing.textBlocks
+        }
         switch block.kind {
         case .paragraph:
             break

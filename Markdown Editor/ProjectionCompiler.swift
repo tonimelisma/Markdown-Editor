@@ -72,7 +72,10 @@ private nonisolated struct CompilerBuilder {
             for child in node.children {
                 emit(child, styleStack: styleStack + [.blockQuote], listNesting: listNesting)
             }
-            appendBlock(node, start: blockStart, kind: .blockQuote(depth: listNesting + 1))
+            // Quote depth is how many quotes enclose this one, which the style stack already
+            // tracks. List nesting is a different axis and must not stand in for it.
+            let quoteDepth = styleStack.filter { $0 == .blockQuote }.count + 1
+            appendBlock(node, start: blockStart, kind: .blockQuote(depth: quoteDepth))
 
         case .list(let info):
             for (itemIndex, child) in node.children.enumerated() {
