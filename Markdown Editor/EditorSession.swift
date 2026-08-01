@@ -179,7 +179,6 @@ final class EditorSession: ObservableObject {
         presentation = nil
         authoritativeTree = nil
         resolvedImages = [:]
-        document?.updateCanonicalAssetReferences(CanonicalAssetReferences(values: []))
     }
 
     func recordPerformance(_ metric: PerformanceSampler.Metric, durationNanos: UInt64) {
@@ -255,6 +254,11 @@ final class EditorSession: ObservableObject {
     }
 
     /// Test/hook: install an already-built projection without waiting on the async parse path.
+    ///
+    /// // COR-30: this validates through `ProjectionOracle` exactly as `scheduleParse` does.
+    /// // Without it, the seam most WYSIWYG tests rely on could install a snapshot the
+    /// // production path would have rejected, so those tests proved their behavior against
+    /// // state the app can never actually reach.
     func installProjectionForTesting(_ model: MarkdownProjectionModel, tree: MarkdownTree) {
         operationGeneration &+= 1
         parseTask?.cancel()
@@ -264,6 +268,10 @@ final class EditorSession: ObservableObject {
             locationGeneration: document?.locationGeneration ?? 0,
             sourceText: document?.text ?? ""
         )
+        if case .failure = ProjectionOracle.validate(snapshot: snapshot) {
+            assertionFailure("installProjectionForTesting was given an oracle-invalid snapshot")
+            return
+        }
         installPresentation(snapshot, tree: tree, provisional: false)
     }
 

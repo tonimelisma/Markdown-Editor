@@ -267,44 +267,39 @@ nonisolated struct ProjectionCoordinateMap: Sendable, Equatable {
         }
     }
 
+    /// // REQ-087; ARC-007; COR-30: affinity is honoured here, as ENGINEERING §4 states for
+    /// // conversion in both directions. This previously ended in `_ = affinity` and returned the
+    /// // first segment that happened to match in array order, so a caret sitting exactly between
+    /// // two segments was resolved by iteration order rather than by the user's affinity.
     private func projectionInsertionPoint(forSource location: Int, affinity: SelectionAffinity) -> CoordinateMappingResult {
+        // A boundary can be both the end of one segment and the start of the next. Collect both
+        // readings, then let affinity choose: upstream keeps the caret with the preceding
+        // segment, downstream with the following one.
+        var trailingEdge: Int?   // this location is NSMaxRange of some segment's source
+        var leadingEdge: Int?    // this location is the start of some segment's source
+        var interior: Int?       // strictly inside a segment — unambiguous, wins outright
+
         for segment in segments {
             switch segment {
-            case .source(let projection, let source, _, _):
-                if location == source.location {
-                    return .exact(NSRange(location: projection.location, length: 0))
-                }
-                if location > source.location && location < NSMaxRange(source),
+            case .source(let projection, let source, _, _),
+                 .literalFallback(let projection, let source):
+                if location > source.location, location < NSMaxRange(source),
                    projection.length == source.length {
-                    let local = location - source.location
-                    return .exact(NSRange(location: projection.location + local, length: 0))
+                    interior = projection.location + (location - source.location)
+                }
+                if location == source.location, leadingEdge == nil {
+                    leadingEdge = projection.location
                 }
                 if location == NSMaxRange(source) {
-                    return .exact(NSRange(location: NSMaxRange(projection), length: 0))
-                }
-            case .literalFallback(let projection, let source):
-                if location == source.location {
-                    return .exact(NSRange(location: projection.location, length: 0))
-                }
-                if location > source.location && location < NSMaxRange(source),
-                   projection.length == source.length {
-                    let local = location - source.location
-                    return .exact(NSRange(location: projection.location + local, length: 0))
-                }
-                if location == NSMaxRange(source) {
-                    return .exact(NSRange(location: NSMaxRange(projection), length: 0))
+                    trailingEdge = NSMaxRange(projection)
                 }
             case .synthetic(let projection, _, let insertion):
                 switch insertion {
                 case .atSourceLocation(let loc) where loc == location:
-                    return .exact(NSRange(location: projection.location, length: 0))
+                    if leadingEdge == nil { leadingEdge = projection.location }
                 case .atSourceBoundaries(let before, let after):
-                    if before == location {
-                        return .exact(NSRange(location: projection.location, length: 0))
-                    }
-                    if after == location {
-                        return .exact(NSRange(location: NSMaxRange(projection), length: 0))
-                    }
+                    if before == location { trailingEdge = trailingEdge ?? projection.location }
+                    if after == location, leadingEdge == nil { leadingEdge = NSMaxRange(projection) }
                 default:
                     break
                 }
@@ -312,8 +307,15 @@ nonisolated struct ProjectionCoordinateMap: Sendable, Equatable {
                 continue
             }
         }
-        _ = affinity
-        return .refused(.ambiguous)
+
+        if let interior {
+            return .exact(NSRange(location: interior, length: 0))
+        }
+        let chosen = affinity == .upstream
+            ? (trailingEdge ?? leadingEdge)
+            : (leadingEdge ?? trailingEdge)
+        guard let chosen else { return .refused(.ambiguous) }
+        return .exact(NSRange(location: chosen, length: 0))
     }
 
     private func intersection(_ a: NSRange, _ b: NSRange) -> NSRange {

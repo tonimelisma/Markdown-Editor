@@ -199,10 +199,12 @@ struct TextStatsTests {
 
     // Verifies: REQ-044
     @Test func countsWordsAndCharacters() {
-        #expect(TextStats.wordCount("the quick brown fox") == 4)
-        #expect(TextStats.wordCount("  spaced \n out \t words ") == 3)
-        #expect(TextStats.wordCount("") == 0)
-        #expect(TextStats.characterCount("abc") == 3)
+        // COR-30: asserts the one shipping implementation. These previously exercised
+        // TextStats.wordCount/characterCount, which production never called.
+        #expect(TextStats.counts("the quick brown fox")?.words == 4)
+        #expect(TextStats.counts("  spaced \n out \t words ")?.words == 3)
+        #expect(TextStats.counts("")?.words == 0)
+        #expect(TextStats.counts("abc")?.characters == 3)
         #expect(TextStats.counts("one two") == .init(words: 2, characters: 7))
     }
 

@@ -93,3 +93,40 @@ struct VisualReviewFixtureTests {
         )
     }
 }
+
+/// Inventory of production symbols that exist only for tests or verification runs.
+///
+/// // COR-30: eleven `…ForTesting` members and the smoke-run affordances ship in the product
+/// // binary. They are internal and small, and introducing a module boundary for them is not
+/// // worth it — but they should be counted and justified rather than accumulating silently.
+/// // This fails when the inventory changes, which is the prompt to justify the new entry.
+struct ProductionTestHookInventoryTests {
+    @Test func productionTestHooksAreInventoried() throws {
+        let source = try productionSourceText()
+        let hooks = [
+            "withParseLockForTesting",       // serialises cmark's process-wide critical section
+            "notificationCenterForTesting",  // injects a center so tests do not use .default
+            "applyHistoryPatchForTesting",   // drives undo/redo without an AppKit undo manager
+            "installTextForTesting",         // seeds canonical source without a file
+            "phaseForTesting",               // reads image-placement phase
+            "documentLocationGenerationForTesting",
+            "prepareUntitledPlacementForTesting",
+            "installProjectionForTesting",   // seeds a projection; validates through the oracle
+            "clearProjectionForTesting",
+            "installResolvedImagesForTesting",
+            "trapsOnReconciliationViolation", // lets a suite provoke ARC-015 without trapping
+        ]
+        for hook in hooks {
+            #expect(source.contains(hook), "inventoried hook \(hook) no longer exists")
+        }
+        // Any `ForTesting` symbol not in the list above is new and needs justifying here.
+        var found = Set<String>()
+        var searchRange = source.startIndex..<source.endIndex
+        while let match = source.range(of: #"\w+ForTesting"#, options: .regularExpression, range: searchRange) {
+            found.insert(String(source[match]))
+            searchRange = match.upperBound..<source.endIndex
+        }
+        let undeclared = found.subtracting(hooks)
+        #expect(undeclared.isEmpty, "undeclared production test hooks: \(undeclared.sorted())")
+    }
+}

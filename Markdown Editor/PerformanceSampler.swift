@@ -38,6 +38,8 @@ final class PerformanceSampler {
 
     private let capacity = 512
     private var samples: [Metric: [UInt64]] = [:]
+    /// Next slot to overwrite once a metric's buffer is full (COR-30).
+    private var writeCursor: [Metric: Int] = [:]
     private let trace: (any EditorTraceSink)?
     private var timer: Timer?
     private let coordinator: DiagnosticRunCoordinator
@@ -64,14 +66,22 @@ final class PerformanceSampler {
 
     func record(_ metric: Metric, durationNanos: UInt64) {
         guard !invalidated else { return }
+        // COR-30: a ring rather than `Array.removeFirst`, which copied the remaining 511 samples
+        // on every record once full — O(n) work on the keystroke path, inside the very boundary
+        // the 8 ms budget measures.
         var values = samples[metric, default: []]
-        if values.count == capacity { values.removeFirst() }
-        values.append(durationNanos)
+        if values.count < capacity {
+            values.append(durationNanos)
+        } else {
+            let cursor = writeCursor[metric, default: 0]
+            values[cursor] = durationNanos
+            writeCursor[metric] = (cursor + 1) % capacity
+        }
         samples[metric] = values
     }
 
     func drainSummaries() -> [Summary] {
-        defer { samples.removeAll() }
+        defer { samples.removeAll(); writeCursor.removeAll() }
         return Metric.allCases.compactMap { metric in
             let values = samples[metric, default: []].sorted()
             guard !values.isEmpty else { return nil }

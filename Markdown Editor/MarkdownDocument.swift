@@ -293,8 +293,16 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         SourceSnapshot(
             text: text,
             sourceVersion: sourceVersion,
+            // COR-30: `publishedFileURL`, not the live `super.fileURL`. AppKit can assign
+            // `fileURL` off-main, and the matching `locationGeneration` bump then lands on a
+            // later main-actor hop — so reading the live URL here could pair a NEW url with an
+            // OLD generation, and every asynchronous identity check in the app is keyed on that
+            // pair. Both fields are written inside one main-actor block in
+            // `applyFileURLChange`, so reading the published mirror is always self-consistent.
+            // It may be one hop stale, which the identity checks already handle correctly;
+            // inconsistent is what they cannot handle.
             locationGeneration: locationGeneration,
-            fileURL: fileURL
+            fileURL: publishedFileURL
         )
     }
 
