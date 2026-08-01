@@ -793,6 +793,65 @@ struct PersistentEditorCharacterizationTests {
         #endif
     }
 
+    /// Non-gating characterization: splits the complete native callback into semantic planning
+    /// (`EditorSession.perform`, which derives a complete next presentation snapshot) and the
+    /// TextKit application that follows it. Reported so a budget miss names its own cause
+    /// instead of inviting a guess. No threshold is asserted here.
+    @Test func nativeInputCallbackCostSplitCharacterization() throws {
+#if !DEBUG
+        let planningHarness = try PerformanceBoundaryTests.EditorHarness(
+            source: String(repeating: "word ", count: 20_000)
+        )
+        let source = planningHarness.document.text
+
+        var planning: [Double] = []
+        for i in 0..<50 {
+            guard let presentation = planningHarness.session.presentation else { break }
+            let selection = ProjectionSelection(
+                utf16: NSRange(location: i, length: 0),
+                revision: presentation.projectionRevision
+            )
+            let planStart = CFAbsoluteTimeGetCurrent()
+            let outcome = planningHarness.session.perform(
+                .insertText("x"),
+                selection: .projection(selection),
+                expectedSourceRevision: SourceRevision(value: planningHarness.document.sourceVersion)
+            )
+            let planMs = (CFAbsoluteTimeGetCurrent() - planStart) * 1000
+            guard case .accepted = outcome else { break }
+            if i >= 10 { planning.append(planMs) }
+        }
+        _ = recordPerformanceEvidence(
+            name: "wysiwyg-semantic-planning-only",
+            corpus: source,
+            warmups: 10,
+            samples: planning
+        )
+#endif
+    }
+
+    /// Non-gating 1M UTF-16 characterization required by COR-20. Reported, never asserted: no
+    /// threshold has been approved at this size.
+    @Test func nativeInputCallbackOneMillionCharacterization() throws {
+#if !DEBUG
+        let harness = try PerformanceBoundaryTests.EditorHarness(
+            source: String(repeating: "word ", count: 200_000)
+        )
+        var samples: [Double] = []
+        for i in 0..<30 {
+            let start = CFAbsoluteTimeGetCurrent()
+            harness.typeCharacter("x", at: NSRange(location: i, length: 0))
+            if i >= 5 { samples.append((CFAbsoluteTimeGetCurrent() - start) * 1000) }
+        }
+        _ = recordPerformanceEvidence(
+            name: "wysiwyg-native-input-callback-1M",
+            corpus: harness.document.text,
+            warmups: 5,
+            samples: samples
+        )
+#endif
+    }
+
     // Verifies: REQ-090 — mode toggle p95 < 16 ms (Release only).
     @Test func modeToggleP95Under16ms() {
         #if !DEBUG

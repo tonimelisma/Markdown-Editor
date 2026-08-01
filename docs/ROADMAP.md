@@ -68,6 +68,10 @@ Delivery order:
    link-edit sheet.
 7. 🔵 **[COR-22 — Conformance and deletion sweep](plans/cor-22-rewrite-conformance-and-deletion.md).** Delete every displaced route, rerun all
    architecture proofs, reconcile requirements from evidence, and close the rewrite program.
+   Conformance, deletion, Debug and Release suites, both smoke gates, and Release performance
+   evidence are complete. The program stays Active on one item: REQ-104's mandatory
+   window-only screenshot cannot be captured because the calling process lacks Screen Recording
+   permission, so the required visual review has not happened.
 
 The exact approved implementation work lives in the corresponding files under `docs/plans/`.
 

@@ -155,9 +155,11 @@ if [[ "$captured" -ne 1 ]]; then
     [[ -n "$capture_error" ]] && echo "smoke-screenshot: screencapture reported: $capture_error" >&2
     echo "smoke-screenshot: screencapture did not produce $out from window $window_id" >&2
     echo "smoke-screenshot: check Screen Recording permission if this is repeatable" >&2
-    exit 1
+    capture_failed=1
+else
+    echo "smoke-screenshot: saved $out"
+    capture_failed=0
 fi
-echo "smoke-screenshot: saved $out"
 
 # Wait for the process to exit (bounded), same as smoke-test.sh.
 for _ in $(seq 1 100); do
@@ -176,6 +178,16 @@ if [[ "$app_exit_code" -ne 0 ]]; then
     exit 1
 fi
 
+# The application's own diagnostics are verified even when capture failed: a missing Screen
+# Recording permission is an environment fault and must not be reported as, or hide, an
+# application fault. The two outcomes are reported separately and the script fails if either did.
 host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-20}"
 python3 "$repo_root/Scripts/verify-smoke-log.py" \
     "$run_file" "$host_update_threshold" --label smoke-screenshot
+diagnostics_status=$?
+
+if [[ "$capture_failed" -eq 1 ]]; then
+    echo "smoke-screenshot: CAPTURE FAILED (environment); visual review evidence was not produced" >&2
+    exit 1
+fi
+exit "$diagnostics_status"

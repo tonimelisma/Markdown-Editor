@@ -198,15 +198,21 @@ The default `MarkdownTypography` is:
 | Paragraph spacing | 0.7 em after an ordinary paragraph |
 | H1 | 30 pt semibold; 1.0 em before and 0.35 em after |
 | H2 | 24 pt semibold; 0.9 em before and 0.3 em after |
-| H3 | 20 pt semibold with heading spacing |
-| H4 | 17 pt semibold with heading spacing |
-| H5 | 15 pt semibold with heading spacing |
-| H6 | 13 pt semibold, secondary label color, with heading spacing |
+| H3 | 20 pt semibold; 0.8 em before and 0.3 em after |
+| H4 | 17 pt semibold; 0.7 em before and 0.25 em after |
+| H5 | 15 pt semibold; 0.6 em before and 0.25 em after |
+| H6 | 13 pt semibold, secondary label color; 0.5 em before and 0.25 em after |
 | List nesting | 24 pt per level with a hanging marker |
-| Blockquote | 3 pt leading rule and 16–18 pt content inset |
+| Blockquote | `NSTextBlock` with a 3 pt adaptive leading border and 14 pt padding — 17 pt content inset |
 | Inline code | monospaced at approximately 0.93 em with adaptive subtle background |
-| Code block | monospaced, padded adaptive block with paragraph separation |
+| Code block | `NSTextBlock` with 12 pt padding and an adaptive background; monospaced |
 | Thematic break | one-pixel separator across the available reading measure |
+
+Heading spacing is expressed in em of the *body* size, is always larger before than after, and is
+the same mechanism at every level. Block decoration that cannot be an ordinary text attribute —
+the quote rule, the code-block container — is a native `NSTextBlock`, so AppKit performs its
+layout and drawing and a component test can assert on `NSParagraphStyle.textBlocks` without
+rendering. Blocks nested inside a decorated block inherit its geometry instead of replacing it.
 
 Rules:
 
@@ -230,6 +236,13 @@ Rules:
 - A full attributed-storage replacement is permitted for initial load, recovery, and an explicit
   typography/theme change. An ordinary accepted local edit applies one validated attributed
   patch and must not rebuild or replace the entire text storage.
+- A patch is built from the touched semantic block scope only — never from a complete rebuild
+  that is then sliced. Expanding beyond the literal replacement requires proving that the
+  surrounding text is identical in both snapshots; an unprovable patch refuses.
+- Every full replacement reachable from the native input callback — a post-commit patch failure
+  and applied-storage drift — records a typed `presentationRecovered` fault and makes WYSIWYG
+  unavailable until an authoritative snapshot lands. Recovery is an invariant violation, not a
+  fallback, so it can never be mistaken for an ordinary edit.
 - Typography is derived and replaceable. It never enters canonical source, source history,
   coordinate meaning, or serialization.
 
@@ -262,6 +275,9 @@ Rules:
 
 - A window-scoped command model is the sole route for semantic formatting availability and
   execution. The menu bar and `NSToolbar` are presentations of that model.
+- The owning window is resolved from the view hierarchy, never from the application's key window:
+  during a second document's opening the key window is still the first one, so an ambient lookup
+  can bind a controller or install a toolbar on the wrong document's window.
 - Every toolbar command has a menu equivalent. Standard shortcuts include Command-B for bold,
   Command-I for italic, and Command-K for link editing.
 - Toolbar items validate against the active window, mode, exact typed selection, and current
