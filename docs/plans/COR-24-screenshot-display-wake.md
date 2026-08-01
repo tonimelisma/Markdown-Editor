@@ -1,5 +1,7 @@
 # COR-24 — Reliable window-only screenshot capture after display sleep
 
+- **Status:** Approved; not implemented
+
 ## Scope
 
 Implement the existing REQ-104 / ARC-Q13 window-only screenshot proof reliably when the

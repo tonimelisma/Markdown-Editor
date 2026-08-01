@@ -76,8 +76,12 @@ Delivery order:
    formatting commands, task presses, IME commits, and authoritative reconciliation use the
    bounded route. A newer snapshot with unchanged text refreshes only its changed semantic blocks,
    so ARC-Q16's allowlist stays at three full-replacement routes.
+9. 🔵 **COR-24 — Reliable screenshot capture after display sleep.** The existing window-only
+   REQ-104 verifier will wake and keep the local display awake for its bounded run, retaining its
+   exact-PID window selection and never falling back to a full-screen capture. [Approved
+   plan](plans/COR-24-screenshot-display-wake.md).
 
-The editor foundation rewrite is complete.
+The editor foundation rewrite is otherwise complete.
 
 ### Open defect, not yet planned
 
