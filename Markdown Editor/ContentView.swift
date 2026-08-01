@@ -79,7 +79,7 @@ struct ContentView: View {
         .onChange(of: document.locationGeneration) { _, _ in
             placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
         }
-        .onReceive(document.$canonicalAssetReferences) { _ in
+        .onReceive(document.canonicalAssetReferenceUpdates) { _ in
             placementController.canonicalAssetReferencesDidUpdate()
         }
         .onDisappear {

@@ -144,7 +144,8 @@ struct PresentationPatch {
     /// `between`: it never builds or rewrites an unrelated part of the document.
     static func attributeRefreshScope(
         current: PresentationSnapshot,
-        next: PresentationSnapshot
+        next: PresentationSnapshot,
+        imageRefreshLocations: Set<Int> = []
     ) -> NSRange? {
         guard current.renderedString == next.renderedString else { return nil }
 
@@ -181,7 +182,7 @@ struct PresentationPatch {
             current.tables,
             next.tables,
             range: \.utf16Range,
-            equivalent: ==,
+            equivalent: tablePresentationIsEquivalent,
             into: &changedRanges
         )
         collectDifferences(
@@ -196,6 +197,9 @@ struct PresentationPatch {
             },
             into: &changedRanges
         )
+        changedRanges.append(contentsOf: imageRefreshLocations.map {
+            NSRange(location: $0, length: 1)
+        })
 
         guard let first = changedRanges.map(\.location).min(),
               let last = changedRanges.map(NSMaxRange).max()
@@ -206,6 +210,25 @@ struct PresentationPatch {
             for: NSRange(location: first, length: last - first),
             in: next.asProjectionModel
         )
+    }
+
+    /// Source positions and parser identities are not table presentation. Hidden source changes
+    /// before an unchanged table must not expand a local attribute refresh across the document.
+    private static func tablePresentationIsEquivalent(
+        _ lhs: ProjectionTable,
+        _ rhs: ProjectionTable
+    ) -> Bool {
+        lhs.columnCount == rhs.columnCount
+            && lhs.alignments == rhs.alignments
+            && lhs.utf16Range == rhs.utf16Range
+            && lhs.cells.count == rhs.cells.count
+            && zip(lhs.cells, rhs.cells).allSatisfy { left, right in
+                left.row == right.row
+                    && left.column == right.column
+                    && left.isHeader == right.isHeader
+                    && left.alignment == right.alignment
+                    && left.utf16Range == right.utf16Range
+            }
     }
 
     private static func collectDifferences<Element>(

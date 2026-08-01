@@ -99,19 +99,21 @@ final class LocalImageCache {
     var totalBytes: Int { byteCache.totalBytes }
 
     func image(for descriptor: LocalImageDescriptor) -> NSImage? {
-        if let cached = byteCache.image(
+        if let cached = byteCache.displayImage(
             path: descriptor.resolvedURL.path,
             locationGeneration: descriptor.locationGeneration,
             modification: descriptor.fileModificationDate,
             contentDigest: descriptor.contentDigest
         ) {
-            return NSImage(
-                cgImage: cached,
-                size: NSSize(width: cached.width, height: cached.height)
-            )
+            return cached
         }
+        let displayImage = NSImage(
+            cgImage: descriptor.cgImage,
+            size: NSSize(width: descriptor.cgImage.width, height: descriptor.cgImage.height)
+        )
         byteCache.store(
             descriptor.cgImage,
+            displayImage: displayImage,
             cost: descriptor.byteCost,
             path: descriptor.resolvedURL.path,
             locationGeneration: descriptor.locationGeneration,
@@ -120,10 +122,7 @@ final class LocalImageCache {
         )
         // REQ-089: privacy-safe cache instrumentation (cost/total only).
         trace?.record(.imageCacheStore(cost: descriptor.byteCost, totalBytes: byteCache.totalBytes))
-        return NSImage(
-            cgImage: descriptor.cgImage,
-            size: NSSize(width: descriptor.cgImage.width, height: descriptor.cgImage.height)
-        )
+        return displayImage
     }
 
     func clear() {

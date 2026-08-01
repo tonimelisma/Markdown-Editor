@@ -6,6 +6,7 @@
 import Testing
 import Foundation
 import AppKit
+import Combine
 import UniformTypeIdentifiers
 @testable import Markdown_Editor
 
@@ -113,6 +114,28 @@ struct MarkdownDocumentTests {
         doc.installTextForTesting("snapshot-me")
         let data = try doc.data(ofType: MarkdownContentType.identifier)
         #expect(data == Data("snapshot-me".utf8))
+    }
+
+    // Verifies: REQ-096 — derived asset references notify image placement without invalidating
+    // the document view. Republishing through `objectWillChange` would reschedule parsing
+    // through EditorSession and create an idle reconciliation loop.
+    @Test func canonicalAssetReferencesDoNotRepublishTheDocument() {
+        let doc = MarkdownDocument()
+        let references = CanonicalAssetReferences(values: [], sourceVersion: 1)
+        var documentPublications = 0
+        var assetReferenceUpdates = 0
+        let documentObserver = doc.objectWillChange.sink { _ in documentPublications += 1 }
+        let assetObserver = doc.canonicalAssetReferenceUpdates.sink { _ in assetReferenceUpdates += 1 }
+        defer {
+            documentObserver.cancel()
+            assetObserver.cancel()
+        }
+
+        doc.updateCanonicalAssetReferences(references)
+        doc.updateCanonicalAssetReferences(references)
+
+        #expect(documentPublications == 0)
+        #expect(assetReferenceUpdates == 1)
     }
 
     // Verifies: REQ-014 — standard document File selectors remain wired for First Responder.
