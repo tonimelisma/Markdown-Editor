@@ -233,7 +233,58 @@ enum AttributedPresentationBuilder {
         }
         // Paragraph styles are copied per block and installed only after all values are set, so
         // a style already inside storage is never mutated in place.
-        storage.addAttribute(.paragraphStyle, value: style.copy() as! NSParagraphStyle, range: range)
+        installPerTextKitParagraph(style, to: storage, range: range)
+    }
+
+    /// Installs one semantic block's paragraph style across the **TextKit paragraphs** its
+    /// rendered text actually contains.
+    ///
+    /// // REQ-106/107; COR-27: `NSParagraphStyle.paragraphSpacing` is applied after every TextKit
+    /// // paragraph, and TextKit ends a paragraph at every `\n`. A semantic block is not always
+    /// // one TextKit paragraph: a formal hard break puts a real newline *inside* one CommonMark
+    /// // paragraph, and a fenced code block is one semantic block spanning many lines. Applying
+    /// // the block's style uniformly therefore gave a hard break the same vertical gap as a
+    /// // paragraph boundary, and spaced a code block's own lines apart.
+    /// //
+    /// // Spacing belongs to a **semantic** boundary: only the last TextKit paragraph in the block
+    /// // carries `paragraphSpacing`, and only the first carries `paragraphSpacingBefore`. Every
+    /// // other attribute — indents, tab stops, text blocks, alignment — is identical across the
+    /// // block, so nesting, quote rules, and code containers are unchanged.
+    private static func installPerTextKitParagraph(
+        _ style: NSMutableParagraphStyle,
+        to storage: NSMutableAttributedString,
+        range: NSRange
+    ) {
+        func install(_ value: NSMutableParagraphStyle, _ target: NSRange) {
+            storage.addAttribute(.paragraphStyle, value: value.copy() as! NSParagraphStyle, range: target)
+        }
+        guard range.length > 1 else {
+            install(style, range)
+            return
+        }
+        let text = storage.string as NSString
+        // A newline at the very end of the block terminates the block's own last paragraph, so it
+        // does not start another one. Interior newlines do.
+        var starts = [range.location]
+        for index in range.location..<(NSMaxRange(range) - 1) where text.character(at: index) == 0x0A {
+            starts.append(index + 1)
+        }
+        guard starts.count > 1 else {
+            install(style, range)
+            return
+        }
+        starts.append(NSMaxRange(range))
+        for position in 0..<(starts.count - 1) {
+            let sub = NSRange(
+                location: starts[position],
+                length: starts[position + 1] - starts[position]
+            )
+            guard sub.length > 0 else { continue }
+            let scoped = style.mutableCopy() as! NSMutableParagraphStyle
+            if position != starts.count - 2 { scoped.paragraphSpacing = 0 }
+            if position != 0 { scoped.paragraphSpacingBefore = 0 }
+            install(scoped, sub)
+        }
     }
 
     private static func applyTable(

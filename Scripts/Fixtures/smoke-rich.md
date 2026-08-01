@@ -22,6 +22,8 @@ This sentence begins on the next visual line.
 
 ```swift
 let greeting = "Hello"
+let subject = "world"
+print(greeting, subject)
 ```
 
 | Construct | Supported |
