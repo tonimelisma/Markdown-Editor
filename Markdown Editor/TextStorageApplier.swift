@@ -42,21 +42,33 @@ final class TextStorageApplier {
         return true
     }
 
-    /// Re-applies attributes without touching a single character. Used when a newer snapshot
-    /// carries the same text — an authoritative reconciliation replacing a provisional snapshot —
-    /// so refreshing it stays outside the full-replacement allowlist entirely.
+    /// Re-applies attributes for one changed semantic scope without touching any character. Used
+    /// when a newer snapshot carries the same text, so a local formatting change does not turn
+    /// into a document-wide main-actor layout invalidation.
     @discardableResult
-    func applyAttributeRefresh(_ built: AttributedPresentation, to textView: NSTextView) -> Bool {
+    func applyAttributeRefresh(
+        _ scoped: AttributedPresentationBuilder.Scoped,
+        to textView: NSTextView,
+        expectedCurrent: PresentationSnapshot
+    ) -> Bool {
         guard let storage = textView.textStorage,
-              storage.length == built.attributed.length,
-              storage.string == built.attributed.string else { return false }
-        let whole = NSRange(location: 0, length: built.attributed.length)
+              storage.string == expectedCurrent.renderedString,
+              scoped.range.location >= 0,
+              NSMaxRange(scoped.range) <= storage.length,
+              scoped.attributed.length == scoped.range.length else { return false }
         storage.beginEditing()
-        built.attributed.enumerateAttributes(in: whole) { attributes, range, _ in
-            storage.setAttributes(attributes, range: range)
+        scoped.attributed.enumerateAttributes(in: NSRange(location: 0, length: scoped.attributed.length)) {
+            attributes, localRange, _ in
+            storage.setAttributes(
+                attributes,
+                range: NSRange(
+                    location: scoped.range.location + localRange.location,
+                    length: localRange.length
+                )
+            )
         }
         storage.endEditing()
-        attachmentNodes = built.attachmentNodes
+        attachmentNodes = refreshedAttachmentNodes(scope: scoped.range, next: scoped.attachmentNodes)
         return true
     }
 
@@ -93,5 +105,18 @@ final class TextStorageApplier {
             spliced[location] = node
         }
         return spliced
+    }
+
+    private func refreshedAttachmentNodes(
+        scope: NSRange,
+        next: [Int: MarkdownNodeID]
+    ) -> [Int: MarkdownNodeID] {
+        var refreshed = attachmentNodes.filter { location, _ in
+            location < scope.location || location >= NSMaxRange(scope)
+        }
+        for (location, node) in next {
+            refreshed[location] = node
+        }
+        return refreshed
     }
 }

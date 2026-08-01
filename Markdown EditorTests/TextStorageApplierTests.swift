@@ -16,6 +16,7 @@ import Testing
 final class SpyTextStorage: NSTextStorage {
     private let backing = NSMutableAttributedString()
     private(set) var characterReplacements: [NSRange] = []
+    private(set) var attributeReplacements: [NSRange] = []
     private(set) var fullReplacements = 0
     /// Optional stall injected inside the mutation, used to prove a timing boundary encloses it.
     var mutationDelay: TimeInterval = 0
@@ -37,6 +38,7 @@ final class SpyTextStorage: NSTextStorage {
 
     func resetSpy() {
         characterReplacements.removeAll()
+        attributeReplacements.removeAll()
         fullReplacements = 0
     }
 
@@ -68,6 +70,7 @@ final class SpyTextStorage: NSTextStorage {
     }
 
     override func setAttributes(_ attrs: [NSAttributedString.Key: Any]?, range: NSRange) {
+        attributeReplacements.append(range)
         backing.setAttributes(attrs, range: range)
         edited(.editedAttributes, range: range, changeInLength: 0)
     }

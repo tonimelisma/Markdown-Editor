@@ -102,14 +102,35 @@ enum WYSIWYGEditor {
             // Never replace storage during marked text.
             if textView.hasMarkedText() || input.composition.isComposing { return }
 
-            // REQ-109; ARC-019/ARC-Q16: a newer snapshot arriving from a semantic formatting
-            // command or an authoritative reconciliation is an accepted change like any other,
-            // so it takes the bounded route. Only the first application, an explicit rebuild,
-            // and recovery replace the whole storage.
-            if !force,
-               let applied = appliedSnapshot,
-               applied.id != presentation.id,
-               applyIncrementally(from: applied, to: presentation, in: textView) {
+            // REQ-109; ARC-019/ARC-Q16: force only means reapply the snapshot already in
+            // storage. A newer snapshot must take the bounded route regardless of whether it
+            // arrived from reconciliation, a task press, or an IME commit.
+            if let applied = appliedSnapshot {
+                if applied.id != presentation.id {
+                    if let reason = incrementalRecoveryReason(
+                        from: applied,
+                        to: presentation,
+                        in: textView
+                    ) {
+                        // An unprovable newer snapshot is exceptional, never an ordinary
+                        // fallback. This route records the typed fault and takes WYSIWYG out of
+                        // service until authoritative reconciliation can establish a new current
+                        // snapshot.
+                        recoverFullPresentation(to: presentation, in: textView, reason: reason)
+                    } else {
+                        return
+                    }
+                    return
+                }
+                // `force` is used by state-changing callers to request prompt application. It
+                // does not itself prove drift, and a refused command may leave this exact
+                // snapshot in storage, so recovering without a mismatch would be spurious.
+                guard force, textView.string != presentation.renderedString else { return }
+                recoverFullPresentation(
+                    to: presentation,
+                    in: textView,
+                    reason: .appliedStorageMismatch
+                )
                 return
             }
 
@@ -121,33 +142,42 @@ enum WYSIWYGEditor {
             }
         }
 
-        /// Applies a newer snapshot without replacing the whole storage. Returns false when it
-        /// could not be proven, leaving the caller to rebuild.
-        private func applyIncrementally(
+        /// Applies a newer snapshot without replacing the whole storage. A typed reason means
+        /// the local proof failed and the caller must take the exceptional recovery route.
+        private func incrementalRecoveryReason(
             from applied: PresentationSnapshot,
             to presentation: PresentationSnapshot,
             in textView: NSTextView
-        ) -> Bool {
+        ) -> PresentationRecoveryReason? {
             // Same text, new identity — an authoritative snapshot replacing a provisional one.
             // Attributes may differ; characters do not. Refreshing attributes is not a
             // replacement, so this stays outside the full-replacement allowlist.
             if applied.renderedString == presentation.renderedString {
+                guard let scope = PresentationPatch.attributeRefreshScope(
+                    current: applied,
+                    next: presentation
+                ) else {
+                    return .patchUnprovable
+                }
                 var refreshed = false
                 session.updateOrigin.with(.programmaticPresentation) {
                     refreshed = textStorageApplier.applyAttributeRefresh(
-                        buildPresentation(presentation),
-                        to: textView
+                        AttributedPresentationBuilder.buildScoped(
+                            model: presentation.asProjectionModel,
+                            theme: MarkdownTheme(),
+                            images: session.resolvedImages,
+                            onTaskPress: { [weak self] nodeID in self?.performTaskToggle(nodeID: nodeID) },
+                            scope: scope
+                        ),
+                        to: textView,
+                        expectedCurrent: applied
                     )
                 }
                 if refreshed {
                     appliedSnapshot = presentation
-                    return true
+                    return nil
                 }
-                // The refresh guard only fails when applied storage has drifted from the
-                // snapshot we believe is applied. That is the same condition the input callback
-                // records, so it is recorded here too rather than falling through silently.
-                recordRecovery(for: presentation, reason: .appliedStorageMismatch)
-                return false
+                return .appliedStorageMismatch
             }
 
             let selection = session.wysiwygModeState.selection.flatMap {
@@ -167,8 +197,7 @@ enum WYSIWYGEditor {
                     )
                 }
             ) else {
-                recordRecovery(for: presentation, reason: .patchUnprovable)
-                return false
+                return .patchUnprovable
             }
 
             var patched = false
@@ -176,32 +205,14 @@ enum WYSIWYGEditor {
                 patched = textStorageApplier.applyPatch(patch, to: textView, expectedCurrent: applied)
             }
             guard patched else {
-                recordRecovery(for: presentation, reason: .appliedStorageMismatch)
-                return false
+                return .appliedStorageMismatch
             }
             appliedSnapshot = presentation
             // No selection fallback here on purpose. `selection` is nil exactly when the session
             // has no selection belonging to this snapshot — `installPresentation` clears it when
             // it cannot be carried forward — so there is nothing to restore, and a call guarded
             // by that same condition could only ever be a no-op.
-            return true
-        }
-
-        /// Records a full-storage rebuild reached from a newer snapshot. Availability is
-        /// deliberately untouched: the rebuild targets this same snapshot, so storage converges on
-        /// something current and correct — unlike a post-commit mismatch, where continuing forward
-        /// mid-keystroke would leave stale content editable.
-        private func recordRecovery(
-            for presentation: PresentationSnapshot,
-            reason: PresentationRecoveryReason
-        ) {
-            document.trace?.record(
-                .presentationRecovered(
-                    snapshotID: presentation.id.value,
-                    sourceRevision: presentation.sourceRevision.value,
-                    reason: reason
-                )
-            )
+            return nil
         }
 
         private func buildPresentation(_ snapshot: PresentationSnapshot) -> AttributedPresentation {
@@ -266,15 +277,6 @@ enum WYSIWYGEditor {
                 // Applied storage is not the snapshot this keystroke targets. Resynchronizing is
                 // a full replacement, so it is recorded for the same reason a post-commit
                 // recovery is: storage drift must never be silent.
-                if let presentation = session.presentation, textView.string != presentation.renderedString {
-                    document.trace?.record(
-                        .presentationRecovered(
-                            snapshotID: presentation.id.value,
-                            sourceRevision: presentation.sourceRevision.value,
-                            reason: .appliedStorageMismatch
-                        )
-                    )
-                }
                 applyProjectionIfNeeded(force: true)
                 return false
             }
@@ -372,6 +374,10 @@ enum WYSIWYGEditor {
             session.updateWYSIWYGModeState {
                 $0.availability = .waitingForCurrentProjection(snapshot.sourceRevision)
             }
+            // The session state will also disable this view during the next host reconciliation,
+            // but recovery is synchronous: leave no native-input window where stale rich text can
+            // accept another edit before SwiftUI observes the new availability.
+            textView.isEditable = false
             let built = AttributedPresentationBuilder.build(
                 model: snapshot.asProjectionModel,
                 theme: MarkdownTheme(),

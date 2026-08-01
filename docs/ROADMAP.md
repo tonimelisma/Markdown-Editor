@@ -73,9 +73,9 @@ Delivery order:
    per line.
 8. ✅ **COR-23 — One patch route for every accepted WYSIWYG change.** Patch scope is derived from
    the real difference between snapshots rather than a declared full-range replacement, so
-   formatting commands and authoritative reconciliation use the bounded route. A newer snapshot
-   with unchanged text is an attribute refresh, so ARC-Q16's allowlist stays at three
-   full-replacement routes.
+   formatting commands, task presses, IME commits, and authoritative reconciliation use the
+   bounded route. A newer snapshot with unchanged text refreshes only its changed semantic blocks,
+   so ARC-Q16's allowlist stays at three full-replacement routes.
 
 The editor foundation rewrite is complete.
 

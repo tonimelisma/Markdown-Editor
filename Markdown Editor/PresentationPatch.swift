@@ -44,16 +44,18 @@ struct PresentationPatch {
     ) -> PresentationPatch? {
         let next = transition.nextSnapshot
         let currentText = current.renderedString as NSString
+        let nextText = next.renderedString as NSString
+        let declaredNextRange = NSRange(
+            location: transition.projectionReplacementRange.location,
+            length: (transition.projectionReplacement as NSString).length
+        )
         guard transition.fromSnapshotID == current.id,
               next.id == transition.selectionAfter.range.revision.snapshotID,
               transition.projectionReplacementRange.location >= 0,
               NSMaxRange(transition.projectionReplacementRange) <= currentText.length,
-              (next.renderedString as NSString).substring(
-                with: NSRange(
-                    location: transition.projectionReplacementRange.location,
-                    length: (transition.projectionReplacement as NSString).length
-                )
-              ) == transition.projectionReplacement
+              declaredNextRange.location >= 0,
+              NSMaxRange(declaredNextRange) <= nextText.length,
+              nextText.substring(with: declaredNextRange) == transition.projectionReplacement
         else { return nil }
         // The declared range is not trusted as the patch scope. A semantic formatting command
         // declares the whole document; only the real textual difference may drive the patch.
@@ -137,6 +139,101 @@ struct PresentationPatch {
         )
     }
 
+    /// Returns the smallest whole-block scope whose presentation semantics differ while the
+    /// rendered characters remain identical. This is the attribute-only counterpart to
+    /// `between`: it never builds or rewrites an unrelated part of the document.
+    static func attributeRefreshScope(
+        current: PresentationSnapshot,
+        next: PresentationSnapshot
+    ) -> NSRange? {
+        guard current.renderedString == next.renderedString else { return nil }
+
+        var changedRanges: [NSRange] = []
+        collectDifferences(
+            current.runs,
+            next.runs,
+            range: \.utf16Range,
+            equivalent: { lhs, rhs in
+                lhs.utf16Range == rhs.utf16Range &&
+                    lhs.styles == rhs.styles &&
+                    lhs.linkDestination == rhs.linkDestination &&
+                    lhs.isLiteralFallback == rhs.isLiteralFallback
+            },
+            into: &changedRanges
+        )
+        collectDifferences(
+            current.blocks,
+            next.blocks,
+            range: \.projectionRange,
+            equivalent: { lhs, rhs in
+                lhs.projectionRange == rhs.projectionRange && lhs.kind == rhs.kind
+            },
+            into: &changedRanges
+        )
+        collectDifferences(
+            current.attachments,
+            next.attachments,
+            range: { NSRange(location: $0.utf16Location, length: 1) },
+            equivalent: ==,
+            into: &changedRanges
+        )
+        collectDifferences(
+            current.tables,
+            next.tables,
+            range: \.utf16Range,
+            equivalent: ==,
+            into: &changedRanges
+        )
+        collectDifferences(
+            current.listMarkers,
+            next.listMarkers,
+            range: \.utf16Range,
+            equivalent: { lhs, rhs in
+                lhs.utf16Range == rhs.utf16Range &&
+                    lhs.text == rhs.text &&
+                    lhs.nesting == rhs.nesting &&
+                    lhs.kind == rhs.kind
+            },
+            into: &changedRanges
+        )
+
+        guard let first = changedRanges.map(\.location).min(),
+              let last = changedRanges.map(NSMaxRange).max()
+        else {
+            return NSRange(location: 0, length: 0)
+        }
+        return AttributedPresentationBuilder.blockScope(
+            for: NSRange(location: first, length: last - first),
+            in: next.asProjectionModel
+        )
+    }
+
+    private static func collectDifferences<Element>(
+        _ current: [Element],
+        _ next: [Element],
+        range: (Element) -> NSRange,
+        equivalent: (Element, Element) -> Bool,
+        into changedRanges: inout [NSRange]
+    ) {
+        let count = max(current.count, next.count)
+        for index in 0..<count {
+            switch (current.indices.contains(index) ? current[index] : nil,
+                    next.indices.contains(index) ? next[index] : nil) {
+            case let (.some(lhs), .some(rhs)) where equivalent(lhs, rhs):
+                continue
+            case let (.some(lhs), .some(rhs)):
+                changedRanges.append(range(lhs))
+                changedRanges.append(range(rhs))
+            case let (.some(lhs), .none):
+                changedRanges.append(range(lhs))
+            case let (.none, .some(rhs)):
+                changedRanges.append(range(rhs))
+            case (.none, .none):
+                continue
+            }
+        }
+    }
+
     /// The minimal differing span between two rendered strings: common prefix, common suffix, and
     /// whatever is left in the middle. Boundaries are pulled back to composed-character
     /// boundaries so a patch can never split a grapheme.
@@ -160,9 +257,11 @@ struct PresentationPatch {
             prefix = min(prefix, composed.location)
         }
         let currentEnd = current.length - suffix
-        if currentEnd < current.length, currentEnd > prefix {
-            let composed = current.rangeOfComposedCharacterSequence(at: currentEnd)
-            suffix = current.length - max(prefix, NSMaxRange(composed))
+        if currentEnd > prefix, currentEnd < current.length {
+            let prior = current.rangeOfComposedCharacterSequence(at: currentEnd - 1)
+            if NSMaxRange(prior) > currentEnd {
+                suffix = current.length - max(prefix, NSMaxRange(prior))
+            }
         }
         suffix = max(0, min(suffix, limit - prefix))
 
