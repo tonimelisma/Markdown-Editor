@@ -138,6 +138,17 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case nativeInputCallback
     case modeTransition
     case parseProjection
+    // Local image display resolution failures (REQ-114). Mirrors LocalImageResolveFailure so a
+    // reference that never renders is visible in the run log instead of only on screen.
+    case remoteURL
+    case missingFile
+    case encodedFileTooLarge
+    case unsupportedType
+    case corrupt
+    case oversizeDimensions
+    case decodeFailed
+    case staleImageVersion
+    case layoutApplication
     case imageResolution
     case authoritativeApplication
 

@@ -214,6 +214,7 @@ enum WYSIWYGEditor {
             guard patched else {
                 return .appliedStorageMismatch
             }
+            recordLayoutDuration(for: textView, changed: patch.nextRange)
             appliedSnapshot = presentation
             appliedImageIdentities = imageIdentities(for: presentation)
             // No selection fallback here on purpose. `selection` is nil exactly when the session
@@ -221,6 +222,35 @@ enum WYSIWYGEditor {
             // it cannot be carried forward — so there is nothing to restore, and a call guarded
             // by that same condition could only ever be a no-op.
             return nil
+        }
+
+        /// Times TextKit's own layout for the range a patch just changed.
+        ///
+        /// // REQ-116; ARC-020: the `nativeInputCallback` boundary ends when the input delegate
+        /// // returns — after `storage.endEditing()` but before glyph generation and layout. That
+        /// // is the half of a keystroke the user actually perceives, and nothing measured it.
+        /// //
+        /// // This measures layout the application is already committed to performing: the patch
+        /// // has been applied, so these glyphs will be laid out before the next draw whether or
+        /// // not this call happens. `ensureLayout(forCharacterRange:)` moves that work earlier by
+        /// // a frame rather than adding work — the metric must never change what it measures.
+        private func recordLayoutDuration(for textView: NSTextView, changed range: NSRange) {
+            guard let layoutManager = textView.layoutManager,
+                  let container = textView.textContainer else { return }
+            let length = (textView.string as NSString).length
+            let clamped = NSRange(
+                location: min(max(0, range.location), length),
+                length: min(range.length, max(0, length - min(max(0, range.location), length)))
+            )
+            guard clamped.length > 0 else { return }
+            let started = DispatchTime.now().uptimeNanoseconds
+            let glyphs = layoutManager.glyphRange(forCharacterRange: clamped, actualCharacterRange: nil)
+            layoutManager.ensureLayout(forGlyphRange: glyphs)
+            _ = container
+            session.recordPerformance(
+                .layoutApplication,
+                durationNanos: DispatchTime.now().uptimeNanoseconds &- started
+            )
         }
 
         private func buildPresentation(_ snapshot: PresentationSnapshot) -> AttributedPresentation {

@@ -66,6 +66,43 @@ struct AttributedPresentationTests {
         #expect(codeFont?.isFixedPitch == true, "fenced code is no longer monospaced")
     }
 
+    // Verifies: REQ-107; COR-28 — an unresolved image gets an *intentional labeled* placeholder,
+    // not a bare chip of the author's description and not a truncated one.
+    //
+    // Found by reviewing the REQ-104 capture after the fixture gained a deliberately broken
+    // reference: the cell measured its label single-line but drew it with wrapping, so the last
+    // word wrapped onto a second line the single-line cell height then clipped — the placeholder
+    // for "deliberately missing" read "deliberately".
+    @Test func missingImagePlaceholderIsLabelledAndNotTruncated() throws {
+        let model = try #require(makeModel("![deliberately missing](assets/nope.png)\n"))
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let attachment = try #require(
+            built.attributed.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
+        )
+        let cell = try #require(attachment.attachmentCell as? MissingImageAttachmentCell)
+        let label = try #require(cell.accessibilityLabel())
+        #expect(label.hasPrefix("Missing image"), "placeholder does not say what it is: \(label)")
+        #expect(label.contains("deliberately missing"), "placeholder dropped the description")
+
+        // The cell must be wide enough for its whole label on one line, or drawing clips it.
+        let measured = (label as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)])
+        #expect(
+            cell.cellSize().width >= measured.width,
+            "cell width \(cell.cellSize().width) is narrower than its label \(measured.width)"
+        )
+    }
+
+    // An image with no description still reads as a placeholder rather than an empty box.
+    @Test func missingImageWithoutDescriptionStillCarriesALabel() throws {
+        let model = try #require(makeModel("![](assets/nope.png)\n"))
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let attachment = try #require(
+            built.attributed.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
+        )
+        let cell = try #require(attachment.attachmentCell as? MissingImageAttachmentCell)
+        #expect(cell.accessibilityLabel() == "Missing image")
+    }
+
     @Test func softAndHardBreaksHaveDistinctPresentationText() throws {
         let soft = try #require(makeModel("one\ntwo\n"))
         let hard = try #require(makeModel("one  \ntwo\n"))

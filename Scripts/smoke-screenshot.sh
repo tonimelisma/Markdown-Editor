@@ -59,7 +59,7 @@ tools_dir="$(mktemp -d)"
 # belongs — it is gitignored and never committed. Override with SMOKE_SCREENSHOT_OUT.
 out="${SMOKE_SCREENSHOT_OUT:-$(mktemp -d)/smoke-screenshot.png}"
 cleanup() {
-    rm -rf "$logdir" "$tools_dir"
+    rm -rf "$logdir" "$tools_dir" "${workdir:-}"
     [[ "$cleanup_derived" -eq 1 ]] && rm -rf "$derived"
     [[ -n "${wake_pid:-}" ]] && kill -0 "$wake_pid" 2>/dev/null && kill "$wake_pid" 2>/dev/null
     [[ -n "${app_pid:-}" ]] && kill -0 "$app_pid" 2>/dev/null && kill "$app_pid" 2>/dev/null
@@ -79,7 +79,11 @@ swiftc -O "$repo_root/Scripts/find-window-id.swift" -o "$tools_dir/find-window-i
 
 app="$derived/Build/Products/Debug/Markdown Editor.app"
 binary="$app/Contents/MacOS/Markdown Editor"
-fixture="$repo_root/Scripts/Fixtures/smoke-rich.md"
+# Autosave-in-place (REQ-005) means a launched app can write to whatever it opens, so the
+# verifier works on a throwaway copy of the fixture tree rather than the repository's own files.
+workdir="$(mktemp -d)"
+cp -R "$repo_root/Scripts/Fixtures/." "$workdir/"
+fixture="$workdir/smoke-rich.md"
 
 if [[ ! -x "$binary" ]]; then
     echo "smoke-screenshot: built binary not found at $binary" >&2
@@ -246,7 +250,9 @@ fi
 # The application's own diagnostics are verified even when capture failed: a missing Screen
 # Recording permission is an environment fault and must not be reported as, or hide, an
 # application fault. The two outcomes are reported separately and the script fails if either did.
-host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-20}"
+# REQ-096; ARC-Q11: measured-healthy is 2. This run performs no edits, so its ceiling is
+# tighter than smoke-test.sh's.
+host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-4}"
 # mainActorStall is tolerated here and only here: `screencapture` freezes the captured process
 # while it reads the window surface, so the watchdog reports the measurement apparatus rather
 # than the application. Scripts/smoke-test.sh runs the same app with no capture and tolerates

@@ -486,16 +486,25 @@ final class EditorSession: ObservableObject {
             let parseProjectionDuration = DispatchTime.now().uptimeNanoseconds &- parseProjectionStart
             let imageResolutionStart = DispatchTime.now().uptimeNanoseconds
             var descriptors: [LocalImageDescriptor] = []
+            // REQ-114: failures are collected rather than dropped. This loop runs off-main, so
+            // the reasons are recorded on the main actor below with the rest of the result.
+            var resolveFailures: [LocalImageResolveFailure] = []
             for attachment in model.attachments {
                 if case .image(let destination, _) = attachment.kind {
-                    if case .success(let desc) = LocalImageResolver.resolve(
+                    switch LocalImageResolver.resolve(
                         destination: destination,
                         documentURL: snapshot.fileURL,
                         nodeID: attachment.nodeID,
                         sourceVersion: snapshot.sourceVersion,
                         locationGeneration: snapshot.locationGeneration
                     ) {
+                    case .success(let desc):
                         descriptors.append(desc)
+                    case .failure(let reason):
+                        // REQ-114: this branch previously did not exist. A reference the user
+                        // sees as a placeholder produced no diagnostic at all — eight typed
+                        // failure cases existed and none ever reached the run log.
+                        resolveFailures.append(reason)
                     }
                 }
             }
@@ -526,6 +535,12 @@ final class EditorSession: ObservableObject {
                 }
 
                 self.authoritativeTree = tree
+                // REQ-114: recorded only for a result that passes identity checks, so a
+                // superseded reconciliation cannot report failures for a revision the user has
+                // already moved past.
+                for reason in resolveFailures {
+                    self.document?.trace?.record(.imageResolutionFailed(reason: reason))
+                }
                 self.document?.updateCanonicalAssetReferences(CanonicalAssetReferences.from(model: model))
                 let imageCacheLookupStart = DispatchTime.now().uptimeNanoseconds
                 var images: [MarkdownNodeID: NSImage] = [:]

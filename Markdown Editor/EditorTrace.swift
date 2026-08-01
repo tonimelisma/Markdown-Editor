@@ -235,6 +235,9 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case compositionCancelled
     case compositionRefusedStale
     case imageCacheStore(cost: Int, totalBytes: Int)
+    /// REQ-114: a referenced local image that could not be resolved for display. Carries only a
+    /// closed reason symbol — never the destination, filename, or path.
+    case imageResolutionFailed(reason: LocalImageResolveFailure)
     case editRouted(context: EditorMode, groupingTyping: Bool, planner: PlannerKind)
     case presentationInstalled(snapshotID: UInt64, sourceRevision: UInt64, provisional: Bool)
     case presentationTransition(from: UInt64, to: UInt64, sourceRevision: UInt64, durationNanos: UInt64)
@@ -361,6 +364,7 @@ extension PerformanceSampler.Metric {
         case .parseProjection: return .parseProjection
         case .imageResolution: return .imageResolution
         case .authoritativeApplication: return .authoritativeApplication
+        case .layoutApplication: return .layoutApplication
         }
     }
 }
@@ -386,5 +390,23 @@ final class InMemoryEditorTrace: EditorTraceSink {
 
     func eventsMatching(_ predicate: (EditorTraceEvent) -> Bool) -> [EditorTraceEvent] {
         events.filter(predicate)
+    }
+}
+
+extension LocalImageResolveFailure {
+    /// REQ-114/089; ARC-016: a closed symbol per failure class. `oversizeDimensions` deliberately
+    /// drops its measured width and height here — they are recorded as the reason class only, so
+    /// the payload cannot describe the referenced file.
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .remoteURL: return .remoteURL
+        case .missingFile: return .missingFile
+        case .encodedFileTooLarge: return .encodedFileTooLarge
+        case .unsupportedType: return .unsupportedType
+        case .corrupt: return .corrupt
+        case .oversizeDimensions: return .oversizeDimensions
+        case .decodeFailed: return .decodeFailed
+        case .staleVersion: return .staleImageVersion
+        }
     }
 }

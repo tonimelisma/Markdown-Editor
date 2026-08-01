@@ -362,9 +362,9 @@ enum AttributedPresentationBuilder {
                     )
                 }
             } else {
-                nsAttachment.attachmentCell = MissingImageAttachmentCell(
-                    text: description.isEmpty ? "Missing image: \(destination)" : description
-                )
+                // The cell composes its own "Missing image" prefix, so pass only the author's
+                // description; an empty one yields the bare label rather than a path.
+                nsAttachment.attachmentCell = MissingImageAttachmentCell(text: description)
             }
         case .thematicBreak:
             nsAttachment.attachmentCell = ThematicRuleAttachmentCell()
@@ -431,19 +431,33 @@ final class ThematicRuleAttachmentCell: NSTextAttachmentCell {
 @MainActor
 final class MissingImageAttachmentCell: NSTextAttachmentCell {
     private let text: String
+    /// Stored rather than computed so the nonisolated `accessibilityLabel()` override can read
+    /// it without crossing the main-actor boundary.
+    private let displayText: String
 
     init(text: String) {
         self.text = text
+        // REQ-107; COR-28: ENGINEERING §7 requires "an intentional labeled placeholder rather
+        // than an unrelated generic file icon". Showing only the image description rendered as a
+        // bare grey chip of ordinary-looking text, which reads as content rather than as a
+        // failure, so the label always says what it is.
+        self.displayText = text.isEmpty ? "Missing image" : "Missing image — \(text)"
         super.init()
     }
 
     @available(*, unavailable)
     required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    private static let labelFont = NSFont.systemFont(ofSize: 11)
+
     nonisolated override func cellSize() -> NSSize {
         MainActor.assumeIsolated {
-            let size = (text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)])
-            return NSSize(width: size.width + 8, height: max(size.height + 4, 16))
+            let size = (displayText as NSString).size(withAttributes: [.font: Self.labelFont])
+            // Ceil, and leave real horizontal slack. `size(withAttributes:)` measures a single
+            // line while `draw(in:)` wraps, so a rect merely *equal* to the measured width let
+            // the last word wrap onto a second line that the single-line cell height then
+            // clipped — the placeholder read "deliberately" for "deliberately missing".
+            return NSSize(width: ceil(size.width) + 14, height: max(ceil(size.height) + 4, 16))
         }
     }
 
@@ -452,14 +466,21 @@ final class MissingImageAttachmentCell: NSTextAttachmentCell {
             NSColor.quaternaryLabelColor.setFill()
             NSBezierPath(roundedRect: cellFrame, xRadius: 3, yRadius: 3).fill()
             let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 11),
+                .font: Self.labelFont,
                 .foregroundColor: NSColor.secondaryLabelColor
             ]
-            (text as NSString).draw(in: cellFrame.insetBy(dx: 4, dy: 2), withAttributes: attrs)
+            // `draw(at:)` never wraps, so the label cannot be silently truncated by the cell's
+            // own single-line height.
+            let size = (displayText as NSString).size(withAttributes: attrs)
+            let origin = NSPoint(
+                x: cellFrame.minX + 7,
+                y: cellFrame.minY + max(0, (cellFrame.height - size.height) / 2)
+            )
+            (displayText as NSString).draw(at: origin, withAttributes: attrs)
         }
     }
 
-    nonisolated override func accessibilityLabel() -> String? { text }
+    nonisolated override func accessibilityLabel() -> String? { displayText }
 }
 
 @MainActor
