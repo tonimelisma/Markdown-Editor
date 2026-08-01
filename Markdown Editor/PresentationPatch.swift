@@ -25,7 +25,9 @@ struct PresentationPatch {
     /// The same span in the next snapshot's coordinates.
     let nextRange: NSRange
     let replacement: NSAttributedString
-    let selectionAfter: ProjectionSelection
+    /// Selection to restore after applying. `nil` when the caller has no selection that belongs
+    /// to the next snapshot — a reconciliation replacing a snapshot the user is not editing.
+    let selectionAfter: ProjectionSelection?
     let affectedBlockIDs: Set<MarkdownNodeID>
     /// Attachments inside `nextRange`, in next-snapshot coordinates. The applier splices these
     /// into its lookup rather than replacing it, because the patch knows only its own scope.
@@ -42,21 +44,41 @@ struct PresentationPatch {
     ) -> PresentationPatch? {
         let next = transition.nextSnapshot
         let currentText = current.renderedString as NSString
-        let nextText = next.renderedString as NSString
         guard transition.fromSnapshotID == current.id,
               next.id == transition.selectionAfter.range.revision.snapshotID,
               transition.projectionReplacementRange.location >= 0,
-              NSMaxRange(transition.projectionReplacementRange) <= currentText.length
+              NSMaxRange(transition.projectionReplacementRange) <= currentText.length,
+              (next.renderedString as NSString).substring(
+                with: NSRange(
+                    location: transition.projectionReplacementRange.location,
+                    length: (transition.projectionReplacement as NSString).length
+                )
+              ) == transition.projectionReplacement
         else { return nil }
-
-        let rawCurrent = transition.projectionReplacementRange
-        let rawNext = NSRange(
-            location: rawCurrent.location,
-            length: (transition.projectionReplacement as NSString).length
+        // The declared range is not trusted as the patch scope. A semantic formatting command
+        // declares the whole document; only the real textual difference may drive the patch.
+        return between(
+            current: current,
+            next: next,
+            selectionAfter: transition.selectionAfter,
+            buildScope: buildScope
         )
-        guard NSMaxRange(rawNext) <= nextText.length,
-              nextText.substring(with: rawNext) == transition.projectionReplacement
-        else { return nil }
+    }
+
+    /// Builds a patch from the actual difference between two complete snapshots. Returns nil when
+    /// the texts are identical (nothing to replace — the caller refreshes attributes instead) or
+    /// when the difference cannot be proven local.
+    static func between(
+        current: PresentationSnapshot,
+        next: PresentationSnapshot,
+        selectionAfter: ProjectionSelection?,
+        buildScope: (MarkdownProjectionModel, NSRange) -> AttributedPresentationBuilder.Scoped
+    ) -> PresentationPatch? {
+        let currentText = current.renderedString as NSString
+        let nextText = next.renderedString as NSString
+        guard let (rawCurrent, rawNext) = changedSpan(from: currentText, to: nextText) else {
+            return nil
+        }
 
         let currentModel = current.asProjectionModel
         let nextModel = next.asProjectionModel
@@ -108,10 +130,45 @@ struct PresentationPatch {
             currentRange: currentRange,
             nextRange: nextRange,
             replacement: scoped.attributed,
-            selectionAfter: transition.selectionAfter,
+            selectionAfter: selectionAfter,
             affectedBlockIDs: affected,
             attachmentNodes: scoped.attachmentNodes,
             expansion: currentRange == rawCurrent ? nil : .containingBlocks
+        )
+    }
+
+    /// The minimal differing span between two rendered strings: common prefix, common suffix, and
+    /// whatever is left in the middle. Boundaries are pulled back to composed-character
+    /// boundaries so a patch can never split a grapheme.
+    static func changedSpan(from current: NSString, to next: NSString) -> (NSRange, NSRange)? {
+        let limit = min(current.length, next.length)
+        var prefix = 0
+        while prefix < limit, current.character(at: prefix) == next.character(at: prefix) {
+            prefix += 1
+        }
+        if prefix == current.length, current.length == next.length { return nil }
+
+        var suffix = 0
+        while suffix < (limit - prefix),
+              current.character(at: current.length - 1 - suffix)
+                == next.character(at: next.length - 1 - suffix) {
+            suffix += 1
+        }
+
+        if prefix < current.length {
+            let composed = current.rangeOfComposedCharacterSequence(at: prefix)
+            prefix = min(prefix, composed.location)
+        }
+        let currentEnd = current.length - suffix
+        if currentEnd < current.length, currentEnd > prefix {
+            let composed = current.rangeOfComposedCharacterSequence(at: currentEnd)
+            suffix = current.length - max(prefix, NSMaxRange(composed))
+        }
+        suffix = max(0, min(suffix, limit - prefix))
+
+        return (
+            NSRange(location: prefix, length: current.length - suffix - prefix),
+            NSRange(location: prefix, length: next.length - suffix - prefix)
         )
     }
 }

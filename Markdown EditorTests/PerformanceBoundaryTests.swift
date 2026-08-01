@@ -125,6 +125,83 @@ struct PerformanceBoundaryTests {
         #expect(patch == nil)
     }
 
+    // Verifies: REQ-109; ARC-Q16 — a formatting command whose rendered text is unchanged (the
+    // delimiters are hidden) refreshes attributes and replaces nothing at all.
+    @Test func hiddenDelimiterCommandRefreshesAttributesWithoutReplacing() async throws {
+        let harness = try EditorHarness(source: "First paragraph.\n\nSecond paragraph.\n")
+        await harness.settle()
+        harness.storage.resetSpy()
+        let controller = harness.makeCommandController()
+        harness.select(NSRange(location: 0, length: 5))
+
+        #expect(controller.perform(.bold) == .accepted)
+        harness.coordinator.applyProjectionIfNeeded(force: false)
+
+        #expect(harness.document.text.hasPrefix("**First**"))
+        // Bold hides its delimiters, so the projection text is identical and no character may be
+        // touched — and certainly not the whole storage.
+        #expect(harness.storage.fullReplacements == 0, "formatting command replaced the whole storage")
+        #expect(harness.storage.characterReplacements.isEmpty, "unchanged text was still rewritten")
+        let font = harness.textView.textStorage?
+            .attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        let traits = font.map { NSFontManager.shared.traits(of: $0) } ?? []
+        #expect(traits.contains(.boldFontMask), "attribute refresh did not apply the bold trait")
+    }
+
+    // Verifies: REQ-109; ARC-Q16 — installing a newer snapshot whose rendered text differs uses
+    // one bounded patch. This is the route every formatting command and every authoritative
+    // reconciliation takes once the session has installed the new snapshot; it is driven at that
+    // boundary so the assertion does not depend on an individual planner's preconditions.
+    @Test func newerSnapshotWithChangedTextUsesOneBoundedPatch() async throws {
+        let harness = try EditorHarness(source: "First paragraph.\n\nSecond paragraph.\n")
+        await harness.settle()
+        harness.storage.resetSpy()
+
+        let applied = try #require(harness.session.presentation)
+        let nextSource = "First paragraph!\n\nSecond paragraph.\n"
+        let index = MarkdownSourceIndex(source: nextSource, sourceVersion: applied.sourceRevision.value + 1)
+        let tree = try #require(MarkdownParser.parse(nextSource, sourceVersion: applied.sourceRevision.value + 1).get())
+        let model = MarkdownProjectionModel.build(tree: tree, index: index)
+        harness.session.installProjectionForTesting(model, tree: tree)
+
+        let next = try #require(harness.session.presentation)
+        #expect(next.id != applied.id)
+        #expect(next.renderedString != applied.renderedString)
+
+        harness.coordinator.applyProjectionIfNeeded(force: false)
+
+        #expect(harness.storage.fullReplacements == 0, "a newer snapshot replaced the whole storage")
+        #expect(harness.storage.characterReplacements.count == 1)
+        let patched = try #require(harness.storage.characterReplacements.first)
+        #expect(patched.length < (next.renderedString as NSString).length, "patch was not bounded")
+        #expect(harness.textView.string == next.renderedString)
+    }
+
+    // Verifies: REQ-109 — a newer snapshot carrying the same text refreshes attributes and
+    // replaces no characters at all, so it needs no place in the full-replacement allowlist.
+    @Test func newerSnapshotWithUnchangedTextReplacesNothing() async throws {
+        let harness = try EditorHarness(source: "First paragraph.\n\nSecond paragraph.\n")
+        await harness.settle()
+        harness.storage.resetSpy()
+
+        let applied = try #require(harness.session.presentation)
+        let source = harness.document.text
+        let index = MarkdownSourceIndex(source: source, sourceVersion: applied.sourceRevision.value)
+        let tree = try #require(MarkdownParser.parse(source, sourceVersion: applied.sourceRevision.value).get())
+        harness.session.installProjectionForTesting(
+            MarkdownProjectionModel.build(tree: tree, index: index),
+            tree: tree
+        )
+        let next = try #require(harness.session.presentation)
+        #expect(next.renderedString == applied.renderedString)
+
+        harness.coordinator.applyProjectionIfNeeded(force: false)
+
+        #expect(harness.storage.fullReplacements == 0)
+        #expect(harness.storage.characterReplacements.isEmpty, "unchanged text was rewritten")
+        #expect(harness.textView.string == next.renderedString)
+    }
+
     /// A real document, session, and WYSIWYG coordinator over spy-backed storage.
     @MainActor
     final class EditorHarness {
@@ -156,6 +233,39 @@ struct PerformanceBoundaryTests {
             coordinator.textView = textView
             coordinator.applyProjectionIfNeeded(force: true)
             storage.resetSpy()
+        }
+
+        func makeCommandController() -> EditorCommandController {
+            let controller = EditorCommandController()
+            controller.bind(
+                document: document,
+                session: session,
+                actionRouter: EditorActionRouter(),
+                window: nil
+            )
+            return controller
+        }
+
+        /// Waits until the authoritative parse scheduled by `attach` has landed, so a command's
+        /// selection cannot be invalidated by a reconciliation arriving mid-test. Without this the
+        /// test refuses under suite load — a false failure about a real route.
+        func settle() async {
+            var previous = session.presentation?.id
+            for _ in 0..<200 {
+                await Task.yield()
+                try? await Task.sleep(for: .milliseconds(5))
+                let current = session.presentation?.id
+                if current != nil, current == previous { return }
+                previous = current
+            }
+        }
+
+        /// Selects a projection range belonging to the current presentation.
+        func select(_ range: NSRange) {
+            guard let presentation = session.presentation else { return }
+            session.updateWYSIWYGModeState {
+                $0.selection = ProjectionSelection(utf16: range, revision: presentation.projectionRevision)
+            }
         }
 
         /// Drives the real native delegate callback, the one whose latency the budget describes.

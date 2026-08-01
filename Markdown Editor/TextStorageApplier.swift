@@ -36,7 +36,27 @@ final class TextStorageApplier {
         storage.replaceCharacters(in: patch.currentRange, with: patch.replacement)
         storage.endEditing()
         attachmentNodes = splicedAttachmentNodes(for: patch)
-        textView.setSelectedRange(patch.selectionAfter.range.utf16)
+        if let selection = patch.selectionAfter {
+            textView.setSelectedRange(selection.range.utf16)
+        }
+        return true
+    }
+
+    /// Re-applies attributes without touching a single character. Used when a newer snapshot
+    /// carries the same text — an authoritative reconciliation replacing a provisional snapshot —
+    /// so refreshing it stays outside the full-replacement allowlist entirely.
+    @discardableResult
+    func applyAttributeRefresh(_ built: AttributedPresentation, to textView: NSTextView) -> Bool {
+        guard let storage = textView.textStorage,
+              storage.length == built.attributed.length,
+              storage.string == built.attributed.string else { return false }
+        let whole = NSRange(location: 0, length: built.attributed.length)
+        storage.beginEditing()
+        built.attributed.enumerateAttributes(in: whole) { attributes, range, _ in
+            storage.setAttributes(attributes, range: range)
+        }
+        storage.endEditing()
+        attachmentNodes = built.attachmentNodes
         return true
     }
 

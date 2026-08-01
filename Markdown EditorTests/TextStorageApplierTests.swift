@@ -164,7 +164,7 @@ struct TextStorageApplierTests {
         // Bounded: the patch touches the edited paragraph, not the whole document.
         #expect(patch.currentRange.length < (fixture.current.renderedString as NSString).length)
         #expect(textView.string == fixture.next.renderedString)
-        #expect(textView.selectedRange() == patch.selectionAfter.range.utf16)
+        #expect(textView.selectedRange() == patch.selectionAfter?.range.utf16)
     }
 
     // Verifies: REQ-109 — the patch scope covers whole semantic blocks and no more.

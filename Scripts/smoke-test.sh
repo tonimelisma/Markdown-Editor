@@ -52,6 +52,10 @@ launch_start=$(date +%s)
 # otherwise, which would drop default.profraw into the repository. Redirect it into the
 # temporary log directory rather than adding an ignore rule for an avoidable artifact.
 LLVM_PROFILE_FILE="$logdir/smoke-%p.profraw" \
+# The default 2 s lifetime is enough on an idle machine but not on a loaded one: the app exits
+# before the first reconciliation lands and the run then fails for "never became editable", which
+# describes the machine rather than the application. 6 s costs nothing and removes the race.
+MARKDOWN_EDITOR_SMOKE_EXIT_SECONDS="${SMOKE_EXIT_SECONDS:-6}" \
 MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$logdir" \
     "$binary" -ApplePersistenceIgnoreState YES --diagnostic-smoke-exit "$fixture" &
 app_pid=$!

@@ -239,6 +239,12 @@ Rules:
 - A patch is built from the touched semantic block scope only — never from a complete rebuild
   that is then sliced. Expanding beyond the literal replacement requires proving that the
   surrounding text is identical in both snapshots; an unprovable patch refuses.
+- The patch scope comes from the real difference between two snapshots, never from a declared
+  replacement range. A semantic formatting command declares a whole-document replacement, so
+  trusting the declaration would make every command a full rebuild.
+- A newer snapshot whose rendered text is unchanged — an authoritative snapshot replacing a
+  provisional one — is applied as an attribute refresh that mutates no characters. This is why
+  the full-replacement allowlist stays at three routes rather than gaining a fourth.
 - Every full replacement reachable from the native input callback — a post-commit patch failure
   and applied-storage drift — records a typed `presentationRecovered` fault and makes WYSIWYG
   unavailable until an authoritative snapshot lands. Recovery is an invariant violation, not a
