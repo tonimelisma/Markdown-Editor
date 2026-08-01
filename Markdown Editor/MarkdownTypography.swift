@@ -25,7 +25,7 @@ struct MarkdownTypography {
     nonisolated static let separatorHeight: CGFloat = 14
 
     nonisolated static let headingPointSizes: [CGFloat] = [30, 24, 20, 17, 15, 13]
-    /// Heading spacing in em of the *body* size, H1…H6. More before than after, so a heading
+    /// Heading spacing in em of the effective heading size, H1…H6. More before than after, so a heading
     /// binds to the content it introduces.
     nonisolated static let headingSpacingBeforeEm: [CGFloat] = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5]
     nonisolated static let headingSpacingAfterEm: [CGFloat] = [0.35, 0.3, 0.3, 0.25, 0.25, 0.25]
@@ -56,9 +56,10 @@ struct MarkdownTypography {
 
     func headingSpacing(for level: Int) -> (before: CGFloat, after: CGFloat) {
         let index = max(0, min(level - 1, Self.headingSpacingBeforeEm.count - 1))
+        let pointSize = font(for: level).pointSize
         return (
-            Self.bodyPointSize * Self.headingSpacingBeforeEm[index],
-            Self.bodyPointSize * Self.headingSpacingAfterEm[index]
+            pointSize * Self.headingSpacingBeforeEm[index],
+            pointSize * Self.headingSpacingAfterEm[index]
         )
     }
 

@@ -40,7 +40,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     @Published private(set) var text: String = ""
     @Published private(set) var sourceVersion: UInt64 = 0
     @Published private(set) var locationGeneration: UInt64 = 0
-    private(set) var canonicalAssetReferences = CanonicalAssetReferences(values: [])
+    @Published private(set) var canonicalAssetReferences = CanonicalAssetReferences(values: [])
     /// Mirror of `fileURL` for SwiftUI observation (NSDocument's property is not @Published).
     @Published private(set) var publishedFileURL: URL?
 

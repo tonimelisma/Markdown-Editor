@@ -213,6 +213,5 @@ how delivered behavior is verified. Current architecture is in
 table creation/structural controls, image sizing syntax, transcoding, metadata stripping, remote
 images, automatic asset cleanup, and asset-aware Save Copy.
 
-*Active approved rewrite plan:* COR-22 under `docs/plans/`.
 
 *Next free IDs: REQ-008 (A), REQ-023 (C), REQ-033 (D), REQ-113.*

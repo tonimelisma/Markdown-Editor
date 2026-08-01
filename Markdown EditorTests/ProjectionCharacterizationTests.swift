@@ -11,6 +11,28 @@ import Foundation
 
 struct ProjectionCharacterizationTests {
 
+    // Verifies: REQ-054/079 — link children preserve the same soft/hard break contract as
+    // ordinary inline children.
+    @Test func linksPreserveSoftAndHardBreakSemantics() throws {
+        let softSource = "[one\ntwo](https://example.com)\n"
+        let hardSource = "[one  \ntwo](https://example.com)\n"
+        let soft = build(softSource, tree: try parse(softSource))
+        let hard = build(hardSource, tree: try parse(hardSource))
+        #expect(soft.renderedString == "one two\n")
+        #expect(hard.renderedString == "one\ntwo\n")
+        #expect(soft.segments.contains { if case .synthetic(_, .softLineBreak, _) = $0 { return true }; return false })
+        #expect(hard.segments.contains { if case .synthetic(_, .hardLineBreak, _) = $0 { return true }; return false })
+    }
+
+    // Verifies: REQ-080/105 — every semantic table cell is a distinct paragraph rather than a
+    // tab-delimited span, allowing TextKit's paragraph-level table blocks to form columns.
+    @Test func tableCellsUseParagraphSeparators() throws {
+        let source = "| left | right |\n| - | - |\n| one | two |\n"
+        let model = build(source, tree: try parse(source))
+        #expect(!model.renderedString.contains("\t"))
+        #expect(model.tables.first?.cells.count == 4)
+    }
+
     // Verifies: REQ-087; ARC-009 — uneditable/refuse boundaries never invent source offset zero.
     @Test func uneditableBoundariesRefuseInsteadOfMappingToZero() {
         let uneditable = ProjectionCoordinateMap(

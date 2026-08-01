@@ -39,6 +39,7 @@ final class ImagePlacementController: ObservableObject {
     private var documentLocationGeneration: UInt64 = 0
     private var activeTask: Task<Void, Never>?
     private var pendingSnapshot: ImageActionSnapshot?
+    private var pendingMoveReferenceCheck: (oldParent: URL, newParent: URL)?
     private let executor = ImageIOExecutor.shared
     private var activeTrackingGeneration: Int = 0
 
@@ -62,18 +63,12 @@ final class ImagePlacementController: ObservableObject {
 
     func updateDocumentURL(_ url: URL?) {
         let newParent = url?.deletingLastPathComponent()
-        if let old = lastDocumentParent, let newParent, old != newParent, let actions {
-            // REQ-076/112: use the latest authoritative cmark-derived references; do not
-            // reparse raw Markdown from a URL notification.
-            let references = actions.canonicalAssetReferences
-            if references.hasBrokenReferences(oldParent: old, newParent: newParent) {
-                presentAlert(
-                    .warning(
-                        "This document’s assets/ references no longer resolve after the file was moved. Companion files were not moved automatically."
-                    ),
-                    reason: .brokenReferencesAfterMove
-                )
-            }
+        if let old = lastDocumentParent, let newParent, old != newParent {
+            // REQ-076/112: a move can race the asynchronous authoritative parse. Retain the
+            // location pair until canonical references represent the current source, rather
+            // than inspecting a stale parse result or reparsing Markdown here.
+            pendingMoveReferenceCheck = (old, newParent)
+            evaluatePendingMoveReferenceCheck()
         }
         // REQ-019: location generation is owned by the document; sync the mirror used in snapshots.
         if let actions {
@@ -85,6 +80,26 @@ final class ImagePlacementController: ObservableObject {
         // Resume awaiting-save when URL appears for the active transaction.
         if state.phase == .awaitingSave, let url, let snapshot = pendingSnapshot {
             Task { await self.continueAfterSave(snapshot: snapshot, documentURL: url) }
+        }
+    }
+
+    /// Called when the document publishes a new authoritative reference set.
+    func canonicalAssetReferencesDidUpdate() {
+        evaluatePendingMoveReferenceCheck()
+    }
+
+    private func evaluatePendingMoveReferenceCheck() {
+        guard let pending = pendingMoveReferenceCheck, let actions else { return }
+        let references = actions.canonicalAssetReferences
+        guard references.sourceVersion == actions.sourceSnapshot().sourceVersion else { return }
+        pendingMoveReferenceCheck = nil
+        if references.hasBrokenReferences(oldParent: pending.oldParent, newParent: pending.newParent) {
+            presentAlert(
+                .warning(
+                    "This document’s assets/ references no longer resolve after the file was moved. Companion files were not moved automatically."
+                ),
+                reason: .brokenReferencesAfterMove
+            )
         }
     }
 

@@ -56,6 +56,18 @@ struct EditorCommandControllerTests {
         fixture.tearDown()
     }
 
+    // Verifies: REQ-082/108 — Add Image is not advertised while WYSIWYG lacks the exact
+    // source-domain insertion target that `EditorSession.addImages()` requires.
+    @Test func addImageIsDisabledWhileWYSIWYGHasNoCurrentPresentation() {
+        let fixture = Fixture(text: "hello\n")
+        #expect(fixture.controller.availability(for: .addImage) == .enabled)
+        fixture.session.setMode(.wysiwyg)
+        #expect(fixture.session.presentation == nil)
+        #expect(fixture.controller.availability(for: .addImage) == .disabled(.unavailablePresentation))
+        #expect(fixture.controller.perform(.addImage) == .disabled(.unavailablePresentation))
+        fixture.tearDown()
+    }
+
     // Verifies: REQ-058 — link editing needs a real selection to describe.
     @Test func linkEditingIsDisabledWithoutASelection() {
         let fixture = Fixture(text: "hello\n")

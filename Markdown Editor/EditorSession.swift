@@ -558,7 +558,7 @@ final class EditorSession: ObservableObject {
         Task { @MainActor [weak self, task] in
             await task.value
             guard let self else { return }
-            if self.parseScheduler.finish() {
+            if self.parseScheduler.finish(request) {
                 self.scheduleParse()
             }
         }
@@ -666,13 +666,27 @@ final class EditorSession: ObservableObject {
     /// Window-scoped image action router (REQ-082). Injected by ContentView.
     weak var actionRouter: EditorActionRouter?
 
+    var canAddImages: Bool {
+        imagePlacementTarget() != nil
+    }
+
     func addImages() async {
-        guard let document else { return }
         // REQ-060/082; ARC-012: capture immutable source-domain intent before async picker work.
-        let target: ImagePlacementTarget
+        guard let target = imagePlacementTarget() else { return }
+        actionRouter?.captureImagePlacementTarget(target)
+
+        guard let imagePicker else { return }
+        let urls = await imagePicker.pickImages()
+        guard !urls.isEmpty else { return }
+        let claims = urls.map { ImageClaim.fileURL($0, providerName: $0.lastPathComponent, declaredType: nil) }
+        actionRouter?.handleAddImageClaims(claims)
+    }
+
+    private func imagePlacementTarget() -> ImagePlacementTarget? {
+        guard let document else { return nil }
         switch mode {
         case .source:
-            target = ImagePlacementTarget(
+            return ImagePlacementTarget(
                 sourceSelection: sourceModeState.selection,
                 sourceRevision: SourceRevision(value: document.sourceVersion),
                 locationGeneration: document.locationGeneration,
@@ -688,22 +702,15 @@ final class EditorSession: ObservableObject {
                     forProjection: projectionSelection.range.utf16,
                     affinity: projectionSelection.affinity
                   ) else {
-                return
+                return nil
             }
-            target = ImagePlacementTarget(
+            return ImagePlacementTarget(
                 sourceSelection: SourceSelection(utf16: sourceRange, affinity: projectionSelection.affinity),
                 sourceRevision: SourceRevision(value: document.sourceVersion),
                 locationGeneration: document.locationGeneration,
                 operationID: UUID()
             )
         }
-        actionRouter?.captureImagePlacementTarget(target)
-
-        guard let imagePicker else { return }
-        let urls = await imagePicker.pickImages()
-        guard !urls.isEmpty else { return }
-        let claims = urls.map { ImageClaim.fileURL($0, providerName: $0.lastPathComponent, declaredType: nil) }
-        actionRouter?.handleAddImageClaims(claims)
     }
 
 }

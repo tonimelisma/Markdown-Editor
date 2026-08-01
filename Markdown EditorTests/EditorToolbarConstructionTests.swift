@@ -27,6 +27,18 @@ struct EditorToolbarConstructionTests {
         }
     }
 
+    // Verifies: REQ-108 — grouped Paragraph/Structure controls expose a real visible toolbar
+    // menu; an overflow-only menu representation would silently execute just the default tag.
+    @Test func groupedToolbarCommandsUseVisibleMenuItems() {
+        let controller = EditorToolbarController()
+        let toolbar = NSToolbar(identifier: EditorToolbarController.toolbarIdentifier)
+        for identifier in [EditorToolbarController.paragraphIdentifier, EditorToolbarController.structureIdentifier] {
+            let item = controller.toolbar(toolbar, itemForItemIdentifier: identifier, willBeInsertedIntoToolbar: true)
+            let grouped = item as? NSMenuToolbarItem
+            #expect(grouped.map { !$0.menu.items.isEmpty } == true)
+        }
+    }
+
     // Verifies: REQ-108; ARC-024 — each document window owns its own toolbar and controller, so
     // a command can never reach a different window's document.
     @Test func eachWindowInstallsItsOwnToolbar() {

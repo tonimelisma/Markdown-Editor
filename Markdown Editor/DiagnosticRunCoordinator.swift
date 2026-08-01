@@ -1,24 +1,12 @@
 import Foundation
 import Synchronization
 
-/// A sendable sequence allocator shared by main-actor and watchdog records.
-final class DiagnosticSequence: Sendable {
-    private let state = Mutex<UInt64>(0)
-
-    func next() -> UInt64 {
-        state.withLock { value in
-            value &+= 1
-            return value
-        }
-    }
-
-    var current: UInt64 { state.withLock { $0 } }
-}
-
 /// Serializes all file writes, including records produced while the main actor is blocked.
 final class DiagnosticWriteCoordinator: Sendable {
     private struct State {
         var tail: Task<Bool, Never>?
+        var nextSequence: UInt64 = 0
+        var closed = false
     }
 
     private let state = Mutex(State(tail: nil))
@@ -28,8 +16,9 @@ final class DiagnosticWriteCoordinator: Sendable {
         self.sink = sink
     }
 
-    func append(_ lines: [String]) -> Task<Bool, Never> {
+    func appendUnsequenced(_ lines: [String]) -> Task<Bool, Never>? {
         state.withLock { state in
+            guard !state.closed else { return nil }
             let previous = state.tail
             let sink = self.sink
             let task = Task.detached {
@@ -41,17 +30,47 @@ final class DiagnosticWriteCoordinator: Sendable {
         }
     }
 
+    /// Allocates the sequence and reserves the matching writer position under one lock.
+    func appendRecord(_ makeLine: @Sendable (UInt64) -> String) -> Task<Bool, Never>? {
+        state.withLock { state in
+            guard !state.closed else { return nil }
+            state.nextSequence &+= 1
+            let line = makeLine(state.nextSequence)
+            let previous = state.tail
+            let sink = self.sink
+            let task = Task.detached {
+                _ = await previous?.value
+                return await sink.append([line])
+            }
+            state.tail = task
+            return task
+        }
+    }
+
     func drain() async {
         let tail = state.withLock { $0.tail }
         _ = await tail?.value
     }
 
-    func closeAfterDrain() -> Task<Void, Never> {
-        let tail = state.withLock { $0.tail }
-        let sink = self.sink
-        return Task.detached {
-            _ = await tail?.value
-            await sink.close()
+    /// Atomically makes the stream terminal and appends its final record. Late watchdog appends
+    /// cannot appear after `runEnd` or reopen the closed file handle.
+    func closeAfterAppending(_ makeFinalLine: @Sendable (UInt64) -> String) -> Task<Void, Never> {
+        state.withLock { state in
+            if state.closed { return Task {} }
+            state.nextSequence &+= 1
+            let line = makeFinalLine(state.nextSequence)
+            state.closed = true
+            let previous = state.tail
+            let sink = self.sink
+            let write = Task.detached {
+                _ = await previous?.value
+                return await sink.append([line])
+            }
+            state.tail = write
+            return Task.detached {
+                _ = await write.value
+                await sink.close()
+            }
         }
     }
 }

@@ -167,7 +167,7 @@ Every presented atom is one of:
 
 Entity and escape decoding follows the pinned cmark/CommonMark rules, not an application-specific
 table or fallback. List/task markers and other editable synthetic controls carry their exact
-source representation. Tables use escape-aware concrete cell coordinates. A normalized inline or
+source representation. Tables use escape-aware concrete cell coordinates and one presentation paragraph per cell, so native table blocks have the paragraph geometry they require. A normalized inline or
 fenced-code representation is editable only when its inverse is proven.
 
 `ProjectionOracle` validates:
@@ -447,7 +447,7 @@ ordinary files the user owns and can read, delete, or ignore.
   every run-loop pass produces bounded evidence instead of an unbounded file. Faults are never
   collapsed: they are the evidence.
 - Ordinary editor records buffer without synchronous file I/O and are appended by one serialized
-  sink actor; record order is preserved. A process-level fault has a non-main route to that same
+  sink actor; sequence allocation and sink reservation are atomic, and terminal closure reserves `runEnd` before rejecting late appends. A process-level fault has a non-main route to that same
   sink, so reporting a main-actor stall never depends on the stalled actor. Faults flush
   immediately, and the terminating record is made durable before the process may exit.
 - Retained runs and per-file size are bounded; the oldest runs are removed first.

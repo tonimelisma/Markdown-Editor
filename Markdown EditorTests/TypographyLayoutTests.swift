@@ -85,9 +85,9 @@ struct TypographyLayoutTests {
             let spacing = typography.headingSpacing(for: level)
             #expect(spacing.before > spacing.after, "H\(level) spacing is not front-weighted")
         }
-        #expect(typography.headingSpacing(for: 1).before == 15)
-        #expect(typography.headingSpacing(for: 1).after == 15 * 0.35)
-        #expect(typography.headingSpacing(for: 2).before == 15 * 0.9)
+        #expect(typography.headingSpacing(for: 1).before == 30)
+        #expect(typography.headingSpacing(for: 1).after == 30 * 0.35)
+        #expect(typography.headingSpacing(for: 2).before == 24 * 0.9)
     }
 
     // Verifies: REQ-107 — adaptive colors resolve in both appearances, and the semantic

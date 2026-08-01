@@ -16,7 +16,7 @@ nonisolated struct LatestParseRequest: Sendable, Equatable {
 /// checks remain the authority for applying a result.
 @MainActor
 final class LatestParseScheduler {
-    private var running = false
+    private var running: LatestParseRequest?
     private var pending: LatestParseRequest?
     private(set) var requestedCount = 0
     private(set) var discardedBeforeParseCount = 0
@@ -24,28 +24,31 @@ final class LatestParseScheduler {
     @discardableResult
     func submit(_ request: LatestParseRequest) -> Bool {
         requestedCount += 1
-        guard !running else {
+        guard running == nil else {
             if pending != nil { discardedBeforeParseCount += 1 }
             pending = request
             return false
         }
-        running = true
+        running = request
         return true
     }
 
-    func finish() -> Bool {
-        running = false
+    /// Completion is keyed to the request that started it. A detached lifetime's late task must
+    /// never clear the running slot belonging to a reattached lifetime.
+    func finish(_ request: LatestParseRequest) -> Bool {
+        guard running == request else { return false }
+        running = nil
         let hasPending = pending != nil
         pending = nil
         return hasPending
     }
 
     func cancel() {
-        running = false
+        running = nil
         pending = nil
     }
 
-    var hasRunningRequest: Bool { running }
+    var hasRunningRequest: Bool { running != nil }
     var hasPendingRequest: Bool { pending != nil }
     var pendingRequest: LatestParseRequest? { pending }
 }

@@ -287,8 +287,10 @@ private nonisolated struct CompilerBuilder {
             switch child.kind {
             case .text(let text):
                 appendSourceBacked(text, node: child, styles: styleStack, link: destination, literalFallback: false)
-            case .softBreak, .lineBreak:
-                appendSynthetic("\n", kind: .softLineBreak, after: child, refuseEdits: false)
+            case .softBreak:
+                appendSynthetic(" ", kind: .softLineBreak, after: child, refuseEdits: false)
+            case .lineBreak:
+                appendSynthetic("\n", kind: .hardLineBreak, after: child, refuseEdits: false)
             case .code(let literal):
                 appendSourceBacked(literal, node: child, styles: styleStack + [.code], link: destination, literalFallback: false)
             case .emphasis:
@@ -319,9 +321,6 @@ private nonisolated struct CompilerBuilder {
                 guard case .tableCell = cell.kind else { continue }
                 let cellStart = utf16Length
                 emitInlineChildren(cell, styleStack: styleStack)
-                if col + 1 < columnCount {
-                    appendSynthetic("\t", kind: .tableCellSeparator, after: cell, refuseEdits: false)
-                }
                 let cellRange = NSRange(location: cellStart, length: utf16Length - cellStart)
                 let alignment = col < alignments.count ? alignments[col] : .none
                 cells.append(
@@ -336,6 +335,11 @@ private nonisolated struct CompilerBuilder {
                     )
                 )
                 appendBlock(cell, start: cellStart, kind: .tableCell(alignment: alignment, header: isHeader))
+                if col + 1 < columnCount {
+                    // NSTextTableBlock is paragraph geometry: cells must be distinct paragraphs,
+                    // not tab-delimited runs in one paragraph.
+                    appendSynthetic("\n", kind: .tableCellSeparator, after: cell, refuseEdits: false)
+                }
                 col += 1
             }
             appendSynthetic("\n", kind: .tableRowBreak, after: row, refuseEdits: false)
