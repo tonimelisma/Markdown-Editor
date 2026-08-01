@@ -84,9 +84,12 @@ reason.
 
 `default.profraw` is produced by instrumented runs in the repository root and is not ignored;
 `Scripts/smoke-screenshot.sh` already redirects `LLVM_PROFILE_FILE` for its own run, so the
-remaining producer is an ordinary local test run. Add the ignore rule. Stale worktree
-directories `/private/tmp/wt-cor11-smoke` and `/private/tmp/wt-cor11-tests` remain from COR-11
-and are no longer tracked by Git; remove them in the stale-work sweep.
+remaining producer is an ordinary local test run. Add the ignore rule.
+
+(The `/private/tmp/wt-cor11-*` directories left over from COR-11 were investigated during this
+increment's stale-work sweep and removed: they contained only derived build output — `Build/`,
+`CompilationCache.noindex`, `Index.noindex` — with no source and no Git metadata, despite the
+`wt-` prefix suggesting worktrees. No work was lost. Nothing remains to do here.)
 
 ## Requirements and invariants
 
