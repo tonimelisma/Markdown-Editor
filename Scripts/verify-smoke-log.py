@@ -25,10 +25,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("run_file", type=Path)
     parser.add_argument("host_update_threshold", type=int)
     parser.add_argument("--label", default="smoke")
+    parser.add_argument(
+        "--allow-fault",
+        action="append",
+        default=[],
+        metavar="EVENT",
+        help=(
+            "Tolerate this fault event, for a caller that provably causes it. Used by "
+            "smoke-screenshot.sh for mainActorStall: screencapture freezes the captured "
+            "process while reading its window surface, so the watchdog correctly reports the "
+            "measurement apparatus rather than the application. Never pass this to hide an "
+            "application fault — the same run without a capture must be clean."
+        ),
+    )
     return parser.parse_args()
 
 
-def verify(run_file: Path, host_update_threshold: int) -> tuple[int, int]:
+def verify(
+    run_file: Path,
+    host_update_threshold: int,
+    allowed_faults: frozenset[str] = frozenset(),
+) -> tuple[int, int]:
     records = [
         json.loads(line)
         for line in run_file.read_text(encoding="utf-8").splitlines()
@@ -130,6 +147,7 @@ def verify(run_file: Path, host_update_threshold: int) -> tuple[int, int]:
     faults = [
         record for record in events
         if record.get("lvl") in ("error", "fault")
+        and record.get("ev") not in allowed_faults
     ]
     assert not faults, f"faults recorded: {[record['ev'] for record in faults]}"
     assert events[-1]["ev"] == "runEnd", "no clean-exit record"
@@ -140,7 +158,9 @@ def verify(run_file: Path, host_update_threshold: int) -> tuple[int, int]:
 def main() -> int:
     args = parse_args()
     try:
-        record_count, host_updates = verify(args.run_file, args.host_update_threshold)
+        record_count, host_updates = verify(
+            args.run_file, args.host_update_threshold, frozenset(args.allow_fault)
+        )
     except (AssertionError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         print(f"{args.label}: diagnostics FAIL: {error}", file=sys.stderr)
         return 1

@@ -81,6 +81,30 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         ProcessInfo.processInfo.arguments.contains("--diagnostic-smoke-exit")
     }
 
+    /// Content height for a smoke run's window, when the screenshot verification asks for one.
+    /// `nil` outside a smoke run, so ordinary launches always use the product default.
+    nonisolated static var smokeWindowHeight: CGFloat? {
+        guard isSmokeRun,
+              let raw = ProcessInfo.processInfo.environment["MARKDOWN_EDITOR_SMOKE_WINDOW_HEIGHT"],
+              let height = Double(raw), height >= 200, height <= 4000 else { return nil }
+        return CGFloat(height)
+    }
+
+    /// How long a smoke run stays up before terminating itself.
+    ///
+    /// // REQ-104: overridable because the two verifications need different lifetimes. The log
+    /// // smoke run only needs the records to settle. The screenshot run additionally needs the
+    /// // window server to have composited and published the window — measured at ~2.5 s on this
+    /// // hardware, i.e. *after* the 2 s default — so a fixed 2 s made the capture race the
+    /// // application's own exit and lose.
+    nonisolated static var smokeExitSeconds: Double {
+        guard let raw = ProcessInfo.processInfo.environment["MARKDOWN_EDITOR_SMOKE_EXIT_SECONDS"],
+              let seconds = Double(raw), seconds > 0, seconds <= 60 else {
+            return 2
+        }
+        return seconds
+    }
+
     /// The fixture path passed as a plain positional argument alongside the smoke-exit flag.
     /// Launching the built binary directly bypasses Launch Services, so this app must open the
     /// fixture itself rather than rely on `application(_:open:)`.
@@ -148,7 +172,7 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
             // REQ-098: settle within a bounded number of host updates, then close the log and
             // exit cleanly so the smoke script can assert on the terminating record.
             Task { @MainActor in
-                try? await Task.sleep(for: .seconds(2))
+                try? await Task.sleep(for: .seconds(Self.smokeExitSeconds))
                 DiagnosticRunCoordinator.shared.flushAndInvalidateAll()
                 DiagnosticLog.shared?.finishSynchronously()
                 NSApp.terminate(nil)

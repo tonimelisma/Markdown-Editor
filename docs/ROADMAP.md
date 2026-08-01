@@ -70,12 +70,14 @@ Delivery order:
    architecture proofs, reconcile requirements from evidence, and close the rewrite program.
    Conformance, deletion, Debug and Release suites, both smoke gates, and Release performance
    evidence are complete. The program stays Active on two items:
-   1. REQ-104's mandatory window-only screenshot cannot be captured because the calling process
-      lacks Screen Recording permission, so the required visual review has not happened.
-   2. REQ-109 returned to `Correction`: separate-agent review found that semantic formatting
+   1. REQ-109 returned to `Correction`: separate-agent review found that semantic formatting
       commands still apply a whole-document attributed replacement, a fourth full-replacement
       route ARC-Q16 does not permit. Closing it changes where a patch is derived, so it needs a
       separately approved discovery unit rather than an edit inside this build.
+
+   REQ-104's screenshot evidence is complete: the capture was produced and reviewed, and the
+   review itself found and fixed a caret-shaped task checkmark and a blockquote that laid out one
+   character per line.
 
 The exact approved implementation work lives in the corresponding files under `docs/plans/`.
 

@@ -68,6 +68,10 @@ struct MarkdownTypography {
     /// padding, expressed as a native `NSTextBlock` so AppKit lays out and draws it.
     func quoteBlock() -> NSTextBlock {
         let block = NSTextBlock()
+        // Without an explicit content width the block lays out at effectively zero width and
+        // wraps one character per line. The screenshot review caught this; attribute-level tests
+        // could not, because the border and padding values were correct all along.
+        block.setContentWidth(100, type: .percentageValueType)
         block.setWidth(Self.quoteRuleWidth, type: .absoluteValueType, for: .border, edge: .minX)
         block.setWidth(Self.quoteRulePadding, type: .absoluteValueType, for: .padding, edge: .minX)
         block.setBorderColor(NSColor.separatorColor, for: .minX)
@@ -77,6 +81,7 @@ struct MarkdownTypography {
     /// The padded adaptive code-block container.
     func codeBlock() -> NSTextBlock {
         let block = NSTextBlock()
+        block.setContentWidth(100, type: .percentageValueType)
         block.setWidth(Self.codeBlockPadding, type: .absoluteValueType, for: .padding)
         block.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.18)
         return block

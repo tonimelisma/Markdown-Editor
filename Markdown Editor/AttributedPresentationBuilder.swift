@@ -428,11 +428,17 @@ final class TaskCheckboxAttachmentCell: NSTextAttachmentCell {
             box.lineWidth = 1.2
             box.stroke()
             if checked {
+                // An attachment cell draws inside the text view's flipped coordinate space, so
+                // minY is the *top* edge. The stroke therefore runs left-middle → lower-middle
+                // → upper-right; using minY for the middle point drew an inverted caret rather
+                // than a check mark, which the window screenshot showed plainly.
                 let check = NSBezierPath()
-                check.move(to: NSPoint(x: cellFrame.minX + 3, y: cellFrame.midY))
-                check.line(to: NSPoint(x: cellFrame.midX - 1, y: cellFrame.minY + 3))
-                check.line(to: NSPoint(x: cellFrame.maxX - 3, y: cellFrame.maxY - 3))
+                check.move(to: NSPoint(x: cellFrame.minX + 3.5, y: cellFrame.midY))
+                check.line(to: NSPoint(x: cellFrame.midX - 0.5, y: cellFrame.maxY - 4))
+                check.line(to: NSPoint(x: cellFrame.maxX - 3, y: cellFrame.minY + 4))
                 check.lineWidth = 1.5
+                check.lineCapStyle = .round
+                check.lineJoinStyle = .round
                 check.stroke()
             }
         }

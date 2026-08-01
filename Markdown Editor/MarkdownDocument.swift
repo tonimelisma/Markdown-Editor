@@ -125,7 +125,10 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         let hosting = NSHostingController(rootView: contentView)
         let window = NSWindow(contentViewController: hosting)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        window.setContentSize(NSSize(width: 720, height: 560))
+        // REQ-104: the screenshot verification may make the window taller so one capture can
+        // show every semantic construct at once. Width stays at the default, because the default
+        // width is what the reading measure and the untruncated toolbar are reviewed against.
+        window.setContentSize(NSSize(width: 720, height: MarkdownAppDelegate.smokeWindowHeight ?? 560))
         window.minSize = NSSize(width: 320, height: 240)
         window.center()
         let controller = NSWindowController(window: window)

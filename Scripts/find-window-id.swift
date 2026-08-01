@@ -21,7 +21,22 @@ guard CommandLine.arguments.count > 1, let targetPID = Int32(CommandLine.argumen
 }
 
 guard let list = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: AnyObject]] else {
-    exit(1)
+    FileHandle.standardError.write("find-window-id: window list unavailable\n".data(using: .utf8)!)
+    exit(2)
+}
+
+// Distinguish "no Screen Recording permission" from "the window is not up yet". Without the
+// permission the list still returns entries, but window *names* are withheld — so a list with
+// several windows and zero names means permission, and a list with names means the caller has
+// it and any failure below is a different problem. Reported on stderr so the caller can say
+// which of the two it is instead of guessing, and exit 3 is reserved for the permission case.
+let namedWindows = list.filter { $0[kCGWindowName as String] as? String != nil }.count
+if list.count > 3 && namedWindows == 0 {
+    FileHandle.standardError.write(
+        "find-window-id: \(list.count) windows visible, none named — Screen Recording permission is missing\n"
+            .data(using: .utf8)!
+    )
+    exit(3)
 }
 
 for entry in list {
