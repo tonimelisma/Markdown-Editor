@@ -79,8 +79,12 @@ Delivery order:
 9. ✅ **COR-24 — Reliable screenshot capture after display sleep.** The existing window-only
    REQ-104 verifier wakes and keeps the local display awake for its bounded run, retaining its
    exact-PID window selection and never falling back to a full-screen capture.
+10. 🔵 **COR-25 — WYSIWYG list toggle over an ordinary paragraph.** The shared semantic command
+    route will accept an exactly mapped ordinary paragraph selection and apply its smallest
+    proven list rewrite, without weakening refusal behavior for mixed or synthetic selections.
+    [Approved plan](plans/COR-25-wysiwyg-list-selection.md).
 
-The editor foundation rewrite is complete.
+The editor foundation rewrite is otherwise complete.
 
 ### Open defect, not yet planned
 
