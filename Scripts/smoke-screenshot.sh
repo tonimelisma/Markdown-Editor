@@ -61,6 +61,7 @@ out="${SMOKE_SCREENSHOT_OUT:-$(mktemp -d)/smoke-screenshot.png}"
 cleanup() {
     rm -rf "$logdir" "$tools_dir"
     [[ "$cleanup_derived" -eq 1 ]] && rm -rf "$derived"
+    [[ -n "${wake_pid:-}" ]] && kill -0 "$wake_pid" 2>/dev/null && kill "$wake_pid" 2>/dev/null
     [[ -n "${app_pid:-}" ]] && kill -0 "$app_pid" 2>/dev/null && kill "$app_pid" 2>/dev/null
 }
 trap cleanup EXIT
@@ -84,6 +85,17 @@ if [[ ! -x "$binary" ]]; then
     echo "smoke-screenshot: built binary not found at $binary" >&2
     exit 1
 fi
+
+# A display that is asleep still lets Core Graphics enumerate the app's window, but it has no
+# readable surface for `screencapture -l<windowID>`. Ask macOS to wake the display and keep both
+# display and idle sleep suppressed for this bounded verifier run. This is not UI automation and
+# does not alter capture scope: the PID-specific window route below remains the only capture.
+if ! command -v caffeinate >/dev/null; then
+    echo "smoke-screenshot: caffeinate is unavailable; cannot establish the required display wake assertion" >&2
+    exit 1
+fi
+caffeinate -d -i -u -t 90 &
+wake_pid=$!
 
 echo "smoke-screenshot: launching…"
 # An instrumented build writes its coverage profile to the working directory unless told
