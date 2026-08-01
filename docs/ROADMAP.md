@@ -85,66 +85,51 @@ Delivery order:
 
 The editor foundation rewrite is complete.
 
-## Active: conformance and liveness program
+## Delivered: conformance and liveness program
 
 The August whole-repository review found the source/projection ownership model, the diagnostic
-plumbing, and the single-route constructions (`TextStorageApplier`, `ImagePlacementController`)
-sound and honestly documented — every identifier cited in REQUIREMENTS resolves to real code, and
-both gate scripts genuinely discriminate.
+plumbing, and the single-route constructions sound and honestly documented. It also found one
+systematic gap: the requirement set, the architecture drivers, and the test suite were built
+almost entirely from **safety** properties, with almost no **liveness** properties. REQ-058 was
+satisfied by a build in which four formatting commands reported `enabled` and silently refused,
+and nine of twelve semantic commands had never been executed through the WYSIWYG route — the
+product's default mode — in any test.
 
-It also found one systematic gap. The requirement set, the architecture drivers, and the test
-suite are built almost entirely from **safety** properties — nothing bad happens — with almost no
-**liveness** properties. REQ-058 is satisfied by a build in which every formatting command
-silently refuses, and four of them did. Nine of twelve semantic commands had never been executed
-through the WYSIWYG route — the product's default mode — in any test.
-
-Measured on `88b7bd3` through the real command controller, WYSIWYG selection `{0,16}` over
-`"First paragraph.\n\nSecond paragraph.\n"`: `paragraph`, `heading`, `blockQuote`, and `codeBlock`
-report `availability == .enabled` and then refuse without mutating source. Each maps exactly to a
-`SemanticPlannerGate.commitIfValid` call site that does not pass an explicit `selectionAfter` —
-the same root cause COR-25 fixed for one of eleven call sites.
-
-Delivery order:
-
-1. 🔵 **COR-26 — Enabled implies performable.** Hoist the post-command caret rule into the shared
-   planner gate so every enabled command performs, and add a command × mode conformance matrix
-   that fails the build when a new command has undeclared behavior in either mode.
-   [Approved plan](plans/COR-26-command-liveness.md).
-2. ⚪ **COR-27 — TextKit paragraph geometry.** A rendered newline that is not a semantic block
-   boundary must not collect paragraph spacing, so a hard break stops looking identical to a
-   paragraph break and a multi-line fenced block stops spacing its own lines apart. Adds
-   laid-out-geometry proofs, not attribute-value proofs.
-   [Approved plan](plans/COR-27-textkit-paragraph-geometry.md).
-3. ⚪ **COR-28 — Rendered appearance conformance.** Fenced code stops carrying the inline-code
-   run background on top of its container, toolbar command items stop rendering as blank buttons,
-   and the visual-review fixture gains an image a reviewer can tell apart from the failure mode
-   ENGINEERING forbids. [Approved plan](plans/COR-28-rendered-appearance-conformance.md).
-4. ⚪ **COR-29 — Instrumentation coverage and honest gates.** Typed local-image resolution
-   failures reach the run log, process-level verification exercises an accepted edit and a
-   semantic command rather than only open-and-idle, the idle-settle gate drops from 20 to 4
-   against a measured-healthy 2, and latency is measured past the input callback into layout.
-   [Approved plan](plans/COR-29-instrumentation-and-gate-honesty.md).
-5. ⚪ **COR-30 — Ownership, correctness, and cleanup sweep.** Affinity honoured in both conversion
-   directions, `fileURL` and `locationGeneration` observed atomically, one word-count
-   implementation instead of two, bounded sampler buffer, oracle enforced in the WYSIWYG test
-   seam, one test framework, and repository hygiene.
-   [Approved plan](plans/COR-30-ownership-and-cleanup.md).
-6. ⚪ **COR-31 — Process and traceability gates.** Forward traceability enforced, a `Done`
-   requirement can no longer contradict an open defect, `CLAUDE.md` requires a liveness proof for
-   every user-invocable action and laid-out-geometry proof for every appearance requirement, and
-   a short inner loop exists alongside the full one.
-   [Approved plan](plans/COR-31-process-and-traceability-gates.md).
+1. ✅ **COR-26 — Enabled implies performable.** The post-command caret rule is one shared helper
+   on `SemanticPlannerGate` instead of arithmetic inlined at one of eleven call sites, so
+   `paragraph`, `heading`, `blockQuote`, and `codeBlock` apply rather than refuse.
+   `CommandLivenessMatrixTests` is the closed matrix that fails the build when a new command has
+   undeclared behavior in either mode.
+2. ✅ **COR-27 — TextKit paragraph geometry.** Spacing follows semantic boundaries rather than
+   every `\n`, so a hard break no longer lays out identically to a paragraph break and a fenced
+   block no longer spaces its own lines apart. Proofs assert laid-out line-fragment geometry, not
+   attribute values.
+3. ✅ **COR-28 — Rendered appearance conformance.** Fenced content carries `.codeBlock` rather
+   than the inline `.code` tag, so the two treatments cannot compose; toolbar items carry SF
+   Symbols instead of rendering blank; and the visual-review fixture can now discriminate a
+   correct render from the failure mode ENGINEERING §7 forbids.
+4. ✅ **COR-29 — Instrumentation coverage and honest gates.** Typed image-resolution failures
+   reach the run log, process verification exercises an accepted insertion and an accepted
+   command rather than only open-and-idle (19 records → 47), the idle-settle gate dropped from 20
+   to 8/4 against a measured-healthy 2, and layout is measured past the input callback.
+5. ✅ **COR-30 — Ownership, correctness, and cleanup sweep.** Affinity honoured in both
+   conversion directions, URL and location generation observed together, one word-count
+   implementation, bounded sampler ring, oracle enforced in the WYSIWYG test seam, and
+   repository hygiene.
+6. ✅ **COR-31 — Process and traceability gates.** Forward traceability enforced, a `Done`
+   requirement can no longer contradict an active increment, `CLAUDE.md` requires liveness proofs
+   and laid-out-geometry proofs, and `Scripts/fast-check.sh` is the short inner loop.
 
 ### Next discovery unit, not yet researched
 
 **DISC-01 — Should semantic commands share the free-form edit coordinate machinery?**
 
-COR-26 corrects the symptom within the current architecture and deliberately does not touch the
+COR-26 corrected the symptom within the current architecture and deliberately did not touch the
 cause. The cause is that "exact or refuse" — correct and load-bearing for arbitrary text edits,
 where a wrong mapping corrupts a document — is also applied to semantic command dispatch, where a
-refusal is not protection but a product defect: the user pressed a button and nothing happened.
-"Make this paragraph a list" does not need an exact inverse mapping of an arbitrary selection; it
-needs to identify which block the caret is in, which always succeeds for any caret inside a block.
+refusal is not protection but a product defect. "Make this paragraph a list" does not need an
+exact inverse mapping of an arbitrary selection; it needs to identify which block the caret is
+in, which always succeeds for any caret inside a block.
 
 Two candidate directions, neither approved:
 
@@ -155,11 +140,7 @@ Two candidate directions, neither approved:
   and the eleven-call-site caret problem cannot exist.
 
 This changes `ARC-007`/`ARC-009` and therefore requires the full architecture change gate in
-`ENGINEERING.md` §15: a reproduced counterexample (COR-26's matrix supplies it), fresh research
-and real API probes, credible options compared against the architecture drivers, explicit
-approval, an atomic ENGINEERING and requirements update, a discriminating executable proof, and
-deletion of the displaced path in the same build. It is recorded here so the cause is not lost
-now that the symptom is scheduled.
+`ENGINEERING.md` §15. COR-26's matrix supplies the reproduced counterexample it needs.
 
 ## Post-MVP backlog
 
