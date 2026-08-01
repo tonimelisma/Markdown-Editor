@@ -9,7 +9,11 @@ import Combine
 /// Native per-window toolbar presentation of `EditorCommandController`.
 @MainActor
 final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObject {
-    weak var commandController: EditorCommandController?
+    weak var commandController: EditorCommandController? {
+        didSet { observeModeChanges() }
+    }
+    private weak var installedToolbar: NSToolbar?
+    private var modeCancellable: AnyCancellable?
 
     static let toolbarIdentifier = NSToolbar.Identifier("MarkdownEditor.toolbar")
     static let modeIdentifier = NSToolbarItem.Identifier("MarkdownEditor.mode")
@@ -33,6 +37,8 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
         toolbar.autosavesConfiguration = true
         toolbar.displayMode = .default
         window.toolbar = toolbar
+        installedToolbar = toolbar
+        observeModeChanges()
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -68,7 +74,7 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
             item.paletteLabel = "Editor Mode"
             return item
         case Self.paragraphIdentifier:
-            return menuItem(itemIdentifier, label: "Paragraph", command: .paragraph, menu: paragraphMenu())
+            return groupedMenuItem(itemIdentifier, label: "Paragraph", menu: paragraphMenu())
         case Self.boldIdentifier:
             return menuItem(itemIdentifier, label: "Bold", command: .bold)
         case Self.italicIdentifier:
@@ -76,7 +82,7 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
         case Self.linkIdentifier:
             return menuItem(itemIdentifier, label: "Link", command: .editLink)
         case Self.structureIdentifier:
-            return menuItem(itemIdentifier, label: "Structure", command: .unorderedList, menu: structureMenu())
+            return groupedMenuItem(itemIdentifier, label: "Structure", menu: structureMenu())
         case Self.addImageIdentifier:
             return menuItem(itemIdentifier, label: "Add Image…", command: .addImage)
         default:
@@ -85,7 +91,11 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
     }
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
-        command(for: item.tag).map { commandController?.availability(for: $0).isEnabled ?? false } ?? true
+        if let segmented = item.view as? NSSegmentedControl {
+            segmented.selectedSegment = commandController?.session?.mode == .source ? 1 : 0
+            return true
+        }
+        return command(for: item.tag).map { commandController?.availability(for: $0).isEnabled ?? false } ?? true
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -96,7 +106,6 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
         _ id: NSToolbarItem.Identifier,
         label: String,
         command: EditorCommand,
-        menu: NSMenu? = nil
     ) -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: id)
         item.label = label
@@ -108,6 +117,23 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
         item.menuFormRepresentation = NSMenuItem(title: label, action: #selector(commandInvoked(_:)), keyEquivalent: "")
         item.menuFormRepresentation?.target = self
         item.menuFormRepresentation?.tag = item.tag
+        return item
+    }
+
+    /// `menuFormRepresentation` exists only for toolbar overflow. The visible grouped controls
+    /// must be real `NSMenuToolbarItem`s or clicking them executes a default command instead of
+    /// exposing the advertised heading/list choices.
+    private func groupedMenuItem(
+        _ id: NSToolbarItem.Identifier,
+        label: String,
+        menu: NSMenu
+    ) -> NSToolbarItem {
+        let item = NSMenuToolbarItem(itemIdentifier: id)
+        item.label = label
+        item.paletteLabel = label
+        item.toolTip = label
+        item.menu = menu
+        item.menuFormRepresentation = NSMenuItem(title: label, action: nil, keyEquivalent: "")
         item.menuFormRepresentation?.submenu = menu
         return item
     }
@@ -151,6 +177,19 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
 
     @objc private func modeChanged(_ sender: NSSegmentedControl) {
         _ = commandController?.perform(sender.selectedSegment == 1 ? .sourceMode : .wysiwygMode)
+    }
+
+    private func observeModeChanges() {
+        modeCancellable = commandController?.session?.$mode.sink { [weak self] _ in
+            self?.syncModeControl()
+        }
+        syncModeControl()
+    }
+
+    private func syncModeControl() {
+        guard let item = installedToolbar?.items.first(where: { $0.itemIdentifier == Self.modeIdentifier }),
+              let segmented = item.view as? NSSegmentedControl else { return }
+        segmented.selectedSegment = commandController?.session?.mode == .source ? 1 : 0
     }
 
     private func command(for tag: Int) -> EditorCommand? {

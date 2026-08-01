@@ -167,7 +167,7 @@ Every presented atom is one of:
 
 Entity and escape decoding follows the pinned cmark/CommonMark rules, not an application-specific
 table or fallback. List/task markers and other editable synthetic controls carry their exact
-source representation. Tables use escape-aware concrete cell coordinates. A normalized inline or
+source representation. Tables use escape-aware concrete cell coordinates and one presentation paragraph per cell, so native table blocks have the paragraph geometry they require. A normalized inline or
 fenced-code representation is editable only when its inverse is proven.
 
 `ProjectionOracle` validates:
@@ -239,10 +239,19 @@ Rules:
 - A patch is built from the touched semantic block scope only — never from a complete rebuild
   that is then sliced. Expanding beyond the literal replacement requires proving that the
   surrounding text is identical in both snapshots; an unprovable patch refuses.
-- Every full replacement reachable from the native input callback — a post-commit patch failure
-  and applied-storage drift — records a typed `presentationRecovered` fault and makes WYSIWYG
-  unavailable until an authoritative snapshot lands. Recovery is an invariant violation, not a
-  fallback, so it can never be mistaken for an ordinary edit.
+- The patch scope comes from the real difference between two snapshots, never from a declared
+  replacement range. A semantic formatting command declares a whole-document replacement, so
+  trusting the declaration would make every command a full rebuild.
+- A newer snapshot whose rendered text is unchanged — an authoritative snapshot replacing a
+  provisional one — is applied as an attribute refresh that mutates no characters. The refresh
+  rebuilds and reapplies only the semantic blocks whose runs, blocks, attachments, tables, or list
+  markers differ; it does not build or invalidate an unrelated document range. This is why the
+  full-replacement allowlist stays at three routes rather than gaining a fourth.
+- Every full replacement other than a first application records a typed `presentationRecovered`
+  fault, so a rebuild can never be mistaken for an ordinary application. A failed proof from the
+  native input callback or while applying a newer snapshot makes WYSIWYG unavailable until an
+  authoritative snapshot lands: an exceptional rebuild may reestablish storage, but never proves
+  that continued rich-text editing is safe.
 - Typography is derived and replaceable. It never enters canonical source, source history,
   coordinate meaning, or serialization.
 
@@ -438,7 +447,7 @@ ordinary files the user owns and can read, delete, or ignore.
   every run-loop pass produces bounded evidence instead of an unbounded file. Faults are never
   collapsed: they are the evidence.
 - Ordinary editor records buffer without synchronous file I/O and are appended by one serialized
-  sink actor; record order is preserved. A process-level fault has a non-main route to that same
+  sink actor; sequence allocation and sink reservation are atomic, and terminal closure reserves `runEnd` before rejecting late appends. A process-level fault has a non-main route to that same
   sink, so reporting a main-actor stall never depends on the stalled actor. Faults flush
   immediately, and the terminating record is made durable before the process may exit.
 - Retained runs and per-file size are bounded; the oldest runs are removed first.

@@ -80,6 +80,38 @@ struct AttributedPresentationTests {
         #expect((value?.attachmentCell as? ResolvedImageAttachmentCell) != nil)
     }
 
+    @Test func headingAndTableHeaderPreserveInlineFontTraits() throws {
+        let heading = try #require(makeModel("# *italic* `code`\n"))
+        let headingPresentation = AttributedPresentationBuilder.build(model: heading, theme: MarkdownTheme())
+        let headingFonts = heading.runs.compactMap { run in
+            headingPresentation.attributed.attribute(.font, at: run.utf16Range.location, effectiveRange: nil) as? NSFont
+        }
+        #expect(headingFonts.contains { $0.fontDescriptor.symbolicTraits.contains(.italic) })
+        #expect(headingFonts.contains { $0.isFixedPitch })
+
+        let table = try #require(makeModel("| *term* | `code` |\n| - | - |\n| value | value |\n"))
+        let presentation = AttributedPresentationBuilder.build(model: table, theme: MarkdownTheme())
+        let headers = table.tables.flatMap(\.cells).filter(\.isHeader)
+        let fonts = headers.compactMap {
+            presentation.attributed.attribute(.font, at: $0.utf16Range.location, effectiveRange: nil) as? NSFont
+        }
+        #expect(fonts.contains { $0.fontDescriptor.symbolicTraits.contains(.italic) })
+        #expect(fonts.contains { $0.isFixedPitch })
+    }
+
+    @Test func resolvedImageUsesCurrentLineFragmentWidth() throws {
+        let image = NSImage(size: NSSize(width: 400, height: 200))
+        let cell = ResolvedImageAttachmentCell(image: image, description: "")
+        let frame = cell.cellFrame(
+            for: NSTextContainer(size: NSSize(width: 344, height: 1_000)),
+            proposedLineFragment: NSRect(x: 0, y: 0, width: 344, height: 1_000),
+            glyphPosition: .zero,
+            characterIndex: 0
+        )
+        #expect(frame.width == 344)
+        #expect(frame.height == 172)
+    }
+
     private func makeModel(_ source: String) -> MarkdownProjectionModel? {
         let index = MarkdownSourceIndex(source: source, sourceVersion: 1)
         guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: 1) else { return nil }

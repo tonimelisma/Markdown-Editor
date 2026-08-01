@@ -79,6 +79,9 @@ struct ContentView: View {
         .onChange(of: document.locationGeneration) { _, _ in
             placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
         }
+        .onReceive(document.$canonicalAssetReferences) { _ in
+            placementController.canonicalAssetReferencesDidUpdate()
+        }
         .onDisappear {
             commandController.cancelLink()
             toolbarController.commandController = nil

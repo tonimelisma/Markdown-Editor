@@ -71,12 +71,23 @@ Delivery order:
    performance evidence recorded, and REQ-104's screenshot captured and reviewed — a review that
    itself found and fixed a caret-shaped task checkmark and a blockquote laying out one character
    per line.
-8. 🔵 **[COR-23 — One patch route for every accepted WYSIWYG change](plans/cor-23-command-patch-route.md).** REQ-109 is
-   `Correction`: semantic formatting commands and authoritative reconciliation still replace the
-   complete text storage, which ARC-Q16 does not permit. Derive the changed span rather than
-   trusting a declared full-range transition, let the view patch to a newer snapshot, and treat a
-   reconciliation with unchanged text as an attribute refresh. No architecture changes — the
-   architecture already requires this.
+8. ✅ **COR-23 — One patch route for every accepted WYSIWYG change.** Patch scope is derived from
+   the real difference between snapshots rather than a declared full-range replacement, so
+   formatting commands, task presses, IME commits, and authoritative reconciliation use the
+   bounded route. A newer snapshot with unchanged text refreshes only its changed semantic blocks,
+   so ARC-Q16's allowlist stays at three full-replacement routes.
+
+The editor foundation rewrite is complete.
+
+### Open defect, not yet planned
+
+**List toggle refuses on an ordinary paragraph selection.** With the authoritative projection
+applied, selecting a paragraph's visible text in WYSIWYG and invoking `.unorderedList` refuses
+with `mappingFailure` — reproduced 3/3, tree present, selection derived from the snapshot's own
+paragraph block minus its synthetic trailing break. Source `"First paragraph.\n\nSecond
+paragraph.\n"`, projection `"First paragraph.\nSecond paragraph.\n"`, selection `{0, 16}`.
+Found while writing COR-23's proofs. Needs its own investigation and correction: an ordinary
+formatting action on an ordinary selection must not refuse.
 
 The exact approved implementation work lives in the corresponding files under `docs/plans/`.
 

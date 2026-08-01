@@ -34,9 +34,9 @@ struct LatestParseSchedulerTests {
         #expect(scheduler.hasRunningRequest)
         #expect(scheduler.hasPendingRequest)
         #expect(scheduler.pendingRequest?.operationGeneration == 3)
-        #expect(scheduler.finish())
+        #expect(scheduler.finish(source(1)))
         #expect(!scheduler.hasPendingRequest)
-        #expect(!scheduler.finish())
+        #expect(!scheduler.finish(source(1)))
     }
 
     @Test func oneHundredRevisionsDiscardEveryOlderPendingRequest() {
@@ -64,6 +64,27 @@ struct LatestParseSchedulerTests {
         scheduler.cancel()
         #expect(!scheduler.hasRunningRequest)
         #expect(!scheduler.hasPendingRequest)
-        #expect(!scheduler.finish())
+        #expect(!scheduler.finish(request))
+    }
+
+    // Verifies: REQ-111; ARC-Q18 — a cancelled prior lifetime cannot clear an attached
+    // lifetime's active parse bookkeeping when its completion arrives late.
+    @Test func staleCompletionCannotFinishReplacementRequest() {
+        let scheduler = LatestParseScheduler()
+        let first = LatestParseRequest(
+            source: SourceSnapshot(text: "old", sourceVersion: 1, locationGeneration: 1, fileURL: nil),
+            operationGeneration: 1
+        )
+        let replacement = LatestParseRequest(
+            source: SourceSnapshot(text: "new", sourceVersion: 2, locationGeneration: 2, fileURL: nil),
+            operationGeneration: 2
+        )
+        #expect(scheduler.submit(first))
+        scheduler.cancel()
+        #expect(scheduler.submit(replacement))
+        #expect(!scheduler.finish(first))
+        #expect(scheduler.hasRunningRequest)
+        #expect(scheduler.finish(replacement) == false)
+        #expect(!scheduler.hasRunningRequest)
     }
 }

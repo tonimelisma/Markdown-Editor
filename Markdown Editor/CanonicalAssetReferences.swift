@@ -14,6 +14,14 @@ nonisolated struct CanonicalAssetReference: Equatable, Sendable {
 
 nonisolated struct CanonicalAssetReferences: Equatable, Sendable {
     let values: [CanonicalAssetReference]
+    /// Source revision represented by this immutable parse product. Consumers that make a
+    /// location-sensitive decision must wait for this to match the document's current source.
+    let sourceVersion: UInt64
+
+    init(values: [CanonicalAssetReference], sourceVersion: UInt64 = 0) {
+        self.values = values
+        self.sourceVersion = sourceVersion
+    }
 
     static func from(model: MarkdownProjectionModel) -> CanonicalAssetReferences {
         let refs = model.attachments.compactMap { attachment -> CanonicalAssetReference? in
@@ -30,7 +38,7 @@ nonisolated struct CanonicalAssetReferences: Equatable, Sendable {
                 sourceRange: attachment.sourceUTF16Range
             )
         }
-        return CanonicalAssetReferences(values: refs)
+        return CanonicalAssetReferences(values: refs, sourceVersion: model.sourceVersion)
     }
 
     func hasBrokenReferences(

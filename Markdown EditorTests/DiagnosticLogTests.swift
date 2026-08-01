@@ -237,6 +237,29 @@ struct DiagnosticLogTests {
         #expect(afterFinish.count == recorded.count)
     }
 
+    // Verifies: REQ-095; ARC-Q17 — sequence allocation and writer reservation are one atomic
+    // operation even while the watchdog reports from a detached task, and no late fault can
+    // append after the terminal record.
+    @Test func watchdogRecordsRemainOrderedAndCannotAppendAfterFinish() async {
+        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
+        let reportFault = log.makeProcessFaultReporter()
+        let tasks = (0..<20).map { index in
+            Task.detached { reportFault(UInt64(index + 1)) }
+        }
+        for index in 0..<20 {
+            log.record(.documentOpened, level: .info, category: .document, data: [(.count, .int(index))])
+        }
+        for task in tasks { await task.value }
+        log.finish()
+        let before = await lines(of: log)
+        reportFault(999)
+        let after = await lines(of: log)
+        #expect(after == before)
+        let sequences = after.compactMap { object($0)?["seq"] as? Int }
+        #expect(sequences == sequences.sorted())
+        #expect(after.last?.contains("\"ev\":\"runEnd\"") == true)
+    }
+
     // Verifies: REQ-096 — a defect firing every run-loop pass produces bounded evidence.
     @Test func repeatedEventsCollapseWithCount() async {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)

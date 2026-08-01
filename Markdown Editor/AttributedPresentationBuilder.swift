@@ -203,7 +203,6 @@ enum AttributedPresentationBuilder {
             let spacing = typography.headingSpacing(for: level)
             style.paragraphSpacingBefore = spacing.before
             style.paragraphSpacing = spacing.after
-            storage.addAttribute(.font, value: typography.font(for: level), range: range)
             if level >= 6 {
                 storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: range)
             }
@@ -269,11 +268,14 @@ enum AttributedPresentationBuilder {
             }
             storage.addAttribute(.paragraphStyle, value: paragraph.copy() as! NSParagraphStyle, range: local)
             if cell.isHeader {
-                storage.addAttribute(
-                    .font,
-                    value: NSFont.systemFont(ofSize: MarkdownTypography.bodyPointSize, weight: .semibold),
-                    range: local
-                )
+                storage.enumerateAttribute(.font, in: local) { value, range, _ in
+                    guard let font = value as? NSFont else { return }
+                    storage.addAttribute(
+                        .font,
+                        value: NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask),
+                        range: range
+                    )
+                }
             }
         }
     }
@@ -457,9 +459,11 @@ final class TaskCheckboxAttachmentCell: NSTextAttachmentCell {
 @MainActor
 final class ResolvedImageAttachmentCell: NSTextAttachmentCell {
     private let descriptionText: String
+    private let intrinsicSize: NSSize
 
     init(image: NSImage, description: String) {
         self.descriptionText = description
+        self.intrinsicSize = image.size
         super.init(imageCell: image)
     }
 
@@ -471,4 +475,25 @@ final class ResolvedImageAttachmentCell: NSTextAttachmentCell {
     }
 
     nonisolated override func accessibilityRole() -> NSAccessibility.Role? { .image }
+
+    /// TextKit supplies the actual line fragment at layout time. Keep the image inside that
+    /// measure as well as the document-wide maximum, preserving its intrinsic aspect ratio.
+    nonisolated override func cellFrame(
+        for textContainer: NSTextContainer,
+        proposedLineFragment lineFrag: NSRect,
+        glyphPosition position: NSPoint,
+        characterIndex charIndex: Int
+    ) -> NSRect {
+        let available = max(1, min(lineFrag.width, MarkdownTypography.maximumReadingMeasure))
+        guard intrinsicSize.width > 0, intrinsicSize.height > 0 else {
+            return NSRect(x: 0, y: 0, width: available, height: 1)
+        }
+        let scale = min(1, available / intrinsicSize.width)
+        return NSRect(
+            x: 0,
+            y: 0,
+            width: intrinsicSize.width * scale,
+            height: intrinsicSize.height * scale
+        )
+    }
 }

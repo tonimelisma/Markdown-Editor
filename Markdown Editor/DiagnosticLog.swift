@@ -143,7 +143,6 @@ final class DiagnosticLog {
     let fileURL: URL
 
     private let startUptimeNanos: UInt64
-    private let sequenceAllocator = DiagnosticSequence()
     private let writeCoordinator: DiagnosticWriteCoordinator
     private var durabilityTask: Task<Void, Never>?
     private var closed = false
@@ -250,11 +249,11 @@ final class DiagnosticLog {
             case .suppress:
                 return
             case .summarize(let count):
-                appendLine(makeCollapseSummary(of: event, count: count, uptime: uptime).jsonLine)
+                appendCollapseSummary(of: event, count: count, uptime: uptime)
             }
         }
 
-        let entry = makeRecord(
+        appendRecord(
             event,
             level: level,
             category: category,
@@ -262,44 +261,49 @@ final class DiagnosticLog {
             data: data,
             uptime: uptime
         )
-        appendLine(entry.jsonLine)
     }
 
-    private func makeRecord(
+    private func appendRecord(
         _ event: DiagnosticEventName,
         level: DiagnosticLevel,
         category: DiagnosticCategory,
         document: UInt64?,
         data: [(key: DiagnosticField, value: DiagnosticValue)],
         uptime: Double
-    ) -> DiagnosticRecord {
-        return DiagnosticRecord(
-            wallClock: Date(),
-            uptimeSeconds: uptime,
-            sequence: sequenceAllocator.next(),
-            level: level,
-            category: category,
-            event: event,
-            document: document,
-            data: data
-        )
+    ) {
+        let timestamp = Date()
+        observeSizeLimit(writeCoordinator.appendRecord { sequence in
+            DiagnosticRecord(
+                wallClock: timestamp,
+                uptimeSeconds: uptime,
+                sequence: sequence,
+                level: level,
+                category: category,
+                event: event,
+                document: document,
+                data: data
+            ).jsonLine
+        })
     }
 
-    private func makeCollapseSummary(
+    private func appendCollapseSummary(
         of event: DiagnosticEventName,
         count: Int,
         uptime: Double
-    ) -> DiagnosticRecord {
-        return DiagnosticRecord(
-            wallClock: Date(),
-            uptimeSeconds: uptime,
-            sequence: sequenceAllocator.next(),
-            level: .warn,
-            category: .diagnostics,
-            event: .repeated,
-            collapsedEvent: event,
-            data: [(.count, .int(count)), (.windowMillis, .int(1000))]
-        )
+    ) {
+        let timestamp = Date()
+        observeSizeLimit(writeCoordinator.appendRecord { sequence in
+            DiagnosticRecord(
+                wallClock: timestamp,
+                uptimeSeconds: uptime,
+                sequence: sequence,
+                level: .warn,
+                category: .diagnostics,
+                event: .repeated,
+                collapsedEvent: event,
+                data: [(.count, .int(count)), (.windowMillis, .int(1000))]
+            ).jsonLine
+        })
     }
 
     private enum CollapseOutcome {
@@ -325,7 +329,11 @@ final class DiagnosticLog {
     }
 
     private func appendLine(_ line: String) {
-        let write = writeCoordinator.append([line])
+        observeSizeLimit(writeCoordinator.appendUnsequenced([line]))
+    }
+
+    private func observeSizeLimit(_ write: Task<Bool, Never>?) {
+        guard let write else { return }
         Task { @MainActor [weak self] in
             if await write.value { self?.noteSizeLimitReached() }
         }
@@ -355,18 +363,23 @@ final class DiagnosticLog {
         let uptime = Double(DispatchTime.now().uptimeNanoseconds - startUptimeNanos) / 1_000_000_000
         for (event, window) in repeatWindows.sorted(by: { $0.key.rawValue < $1.key.rawValue })
         where window.suppressed > 0 {
-            appendLine(makeCollapseSummary(of: event, count: window.suppressed, uptime: uptime).jsonLine)
+            appendCollapseSummary(of: event, count: window.suppressed, uptime: uptime)
         }
         repeatWindows.removeAll()
-        record(
-            .runEnd,
-            level: .info,
-            category: .lifecycle,
-            data: [(.count, .uint(sequenceAllocator.current))]
-        )
         closed = true
         flush()
-        let durability = writeCoordinator.closeAfterDrain()
+        let timestamp = Date()
+        let durability = writeCoordinator.closeAfterAppending { sequence in
+            DiagnosticRecord(
+                wallClock: timestamp,
+                uptimeSeconds: uptime,
+                sequence: sequence,
+                level: .info,
+                category: .lifecycle,
+                event: .runEnd,
+                data: [(.count, .uint(sequence - 1))]
+            ).jsonLine
+        }
         durabilityTask = durability
         Task { @MainActor [weak self] in
             await durability.value
@@ -394,22 +407,23 @@ final class DiagnosticLog {
     }
 
     /// Supplies the watchdog with a direct serialized-sink route that never hops through the
-    /// main actor. The same sequence allocator and writer preserve ordering and privacy.
+    /// main actor. Atomic sequence-and-writer reservation preserves ordering and privacy.
     func makeProcessFaultReporter() -> @Sendable (UInt64) -> Void {
-        let sequenceAllocator = self.sequenceAllocator
         let writer = self.writeCoordinator
         let start = self.startUptimeNanos
         return { millis in
-            let record = DiagnosticRecord(
-                wallClock: Date(),
-                uptimeSeconds: Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000_000,
-                sequence: sequenceAllocator.next(),
-                level: .fault,
-                category: .lifecycle,
-                event: .mainActorStall,
-                data: [(.millis, .uint(millis))]
-            )
-            _ = writer.append([record.jsonLine])
+            let timestamp = Date()
+            _ = writer.appendRecord { sequence in
+                DiagnosticRecord(
+                    wallClock: timestamp,
+                    uptimeSeconds: Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000_000,
+                    sequence: sequence,
+                    level: .fault,
+                    category: .lifecycle,
+                    event: .mainActorStall,
+                    data: [(.millis, .uint(millis))]
+                ).jsonLine
+            }
         }
     }
 
