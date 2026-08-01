@@ -69,9 +69,13 @@ Delivery order:
 7. 🔵 **[COR-22 — Conformance and deletion sweep](plans/cor-22-rewrite-conformance-and-deletion.md).** Delete every displaced route, rerun all
    architecture proofs, reconcile requirements from evidence, and close the rewrite program.
    Conformance, deletion, Debug and Release suites, both smoke gates, and Release performance
-   evidence are complete. The program stays Active on one item: REQ-104's mandatory
-   window-only screenshot cannot be captured because the calling process lacks Screen Recording
-   permission, so the required visual review has not happened.
+   evidence are complete. The program stays Active on two items:
+   1. REQ-104's mandatory window-only screenshot cannot be captured because the calling process
+      lacks Screen Recording permission, so the required visual review has not happened.
+   2. REQ-109 returned to `Correction`: separate-agent review found that semantic formatting
+      commands still apply a whole-document attributed replacement, a fourth full-replacement
+      route ARC-Q16 does not permit. Closing it changes where a patch is derived, so it needs a
+      separately approved discovery unit rather than an edit inside this build.
 
 The exact approved implementation work lives in the corresponding files under `docs/plans/`.
 
