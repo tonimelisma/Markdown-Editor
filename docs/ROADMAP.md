@@ -79,24 +79,11 @@ Delivery order:
 9. ✅ **COR-24 — Reliable screenshot capture after display sleep.** The existing window-only
    REQ-104 verifier wakes and keeps the local display awake for its bounded run, retaining its
    exact-PID window selection and never falling back to a full-screen capture.
-10. 🔵 **COR-25 — WYSIWYG list toggle over an ordinary paragraph.** The shared semantic command
-    route will accept an exactly mapped ordinary paragraph selection and apply its smallest
-    proven list rewrite, without weakening refusal behavior for mixed or synthetic selections.
-    [Approved plan](plans/COR-25-wysiwyg-list-selection.md).
+10. ✅ **COR-25 — WYSIWYG list toggle over an ordinary paragraph.** The shared semantic command
+    route accepts an exactly mapped ordinary paragraph selection and applies its smallest proven
+    list rewrite, without weakening refusal behavior for mixed or synthetic selections.
 
-The editor foundation rewrite is otherwise complete.
-
-### Open defect, not yet planned
-
-**List toggle refuses on an ordinary paragraph selection.** With the authoritative projection
-applied, selecting a paragraph's visible text in WYSIWYG and invoking `.unorderedList` refuses
-with `mappingFailure` — reproduced 3/3, tree present, selection derived from the snapshot's own
-paragraph block minus its synthetic trailing break. Source `"First paragraph.\n\nSecond
-paragraph.\n"`, projection `"First paragraph.\nSecond paragraph.\n"`, selection `{0, 16}`.
-Found while writing COR-23's proofs. Needs its own investigation and correction: an ordinary
-formatting action on an ordinary selection must not refuse.
-
-The exact approved implementation work lives in the corresponding files under `docs/plans/`.
+The editor foundation rewrite is complete.
 
 ## Post-MVP backlog
 

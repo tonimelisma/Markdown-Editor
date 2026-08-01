@@ -256,6 +256,26 @@ struct PerformanceBoundaryTests {
         #expect(traits.contains(.boldFontMask), "attribute refresh did not apply the bold trait")
     }
 
+    // Verifies: REQ-058/057/087/109; ARC-005/007/009/019 — the shared WYSIWYG command route
+    // maps one ordinary paragraph exactly, rewrites only that paragraph as a list, and keeps the
+    // matching presentation editable without a full-storage replacement.
+    @Test func unorderedListCommandAcceptsAnOrdinaryParagraphSelection() async throws {
+        let harness = try EditorHarness(source: "First paragraph.\n\nSecond paragraph.\n")
+        await harness.settle()
+        harness.storage.resetSpy()
+        let controller = harness.makeCommandController()
+        // This is the first paragraph's visible identity text; the following rendered newline is
+        // synthetic paragraph structure and deliberately excluded.
+        harness.select(NSRange(location: 0, length: 16))
+
+        #expect(controller.perform(.unorderedList) == .accepted)
+        harness.coordinator.applyProjectionIfNeeded(force: false)
+
+        #expect(harness.document.text == "- First paragraph.\n\nSecond paragraph.\n")
+        #expect(harness.textView.string == harness.session.presentation?.renderedString)
+        #expect(harness.storage.fullReplacements == 0)
+    }
+
     // Verifies: REQ-109; ARC-Q16 — installing a newer snapshot whose rendered text differs uses
     // one bounded patch. This is the route every formatting command and every authoritative
     // reconciliation takes once the session has installed the new snapshot; it is driven at that

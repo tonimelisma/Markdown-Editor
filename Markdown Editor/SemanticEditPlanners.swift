@@ -16,6 +16,7 @@ nonisolated enum SemanticPlannerGate {
         action: String,
         grouping: MutationGrouping = .discrete,
         selectionBefore: SourceSelection? = nil,
+        selectionAfter: SourceSelection? = nil,
         postcondition: @escaping @Sendable (MarkdownTree, String) -> Bool
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
@@ -39,6 +40,7 @@ nonisolated enum SemanticPlannerGate {
             range: range,
             replacement: replacement,
             selectionBefore: before,
+            selectionAfter: selectionAfter,
             actionName: action,
             grouping: grouping
         ) else {
@@ -258,13 +260,22 @@ nonisolated enum ListEditPlanner {
         } else {
             replacement = quotePrefix + prefix + stripped + (hadNewline ? "\n" : "")
         }
+        // A list marker is synthetic in WYSIWYG. The default mutation selection (after the
+        // replacement's newline) can land on the following paragraph boundary, which has no
+        // exact projection coordinate. Keep the caret at the concrete end of this rewritten line.
+        let replacementContentLength = (replacement as NSString).length - (hadNewline ? 1 : 0)
+        let selectionAfter = SourceSelection(
+            utf16: NSRange(location: line.location + replacementContentLength, length: 0),
+            affinity: selectionBefore?.affinity ?? .downstream
+        )
         return SemanticPlannerGate.commitIfValid(
             snapshot: snapshot,
             range: line,
             replacement: replacement,
             action: action,
             grouping: grouping,
-            selectionBefore: selectionBefore
+            selectionBefore: selectionBefore,
+            selectionAfter: selectionAfter
         ) { _, _ in true }
     }
 
