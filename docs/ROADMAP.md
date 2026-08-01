@@ -66,18 +66,17 @@ Delivery order:
 6. ✅ **INC-06 — Native command surface.** The document-embedded toolbar is replaced by one
    window-scoped command model, native toolbar, menu parity, shared validation, shortcuts, and a
    link-edit sheet.
-7. 🔵 **[COR-22 — Conformance and deletion sweep](plans/cor-22-rewrite-conformance-and-deletion.md).** Delete every displaced route, rerun all
-   architecture proofs, reconcile requirements from evidence, and close the rewrite program.
-   Conformance, deletion, Debug and Release suites, both smoke gates, and Release performance
-   evidence are complete. The program stays Active on two items:
-   1. REQ-109 returned to `Correction`: separate-agent review found that semantic formatting
-      commands still apply a whole-document attributed replacement, a fourth full-replacement
-      route ARC-Q16 does not permit. Closing it changes where a patch is derived, so it needs a
-      separately approved discovery unit rather than an edit inside this build.
-
-   REQ-104's screenshot evidence is complete: the capture was produced and reviewed, and the
-   review itself found and fixed a caret-shaped task checkmark and a blockquote that laid out one
-   character per line.
+7. ✅ **COR-22 — Conformance and deletion sweep.** Every displaced route deleted, architecture
+   proofs rerun, requirements reconciled from evidence, both smoke gates green, Release
+   performance evidence recorded, and REQ-104's screenshot captured and reviewed — a review that
+   itself found and fixed a caret-shaped task checkmark and a blockquote laying out one character
+   per line.
+8. 🔵 **[COR-23 — One patch route for every accepted WYSIWYG change](plans/cor-23-command-patch-route.md).** REQ-109 is
+   `Correction`: semantic formatting commands and authoritative reconciliation still replace the
+   complete text storage, which ARC-Q16 does not permit. Derive the changed span rather than
+   trusting a declared full-range transition, let the view patch to a newer snapshot, and treat a
+   reconciliation with unchanged text as an attribute refresh. No architecture changes — the
+   architecture already requires this.
 
 The exact approved implementation work lives in the corresponding files under `docs/plans/`.
 
