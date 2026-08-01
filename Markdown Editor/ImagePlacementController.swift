@@ -63,12 +63,10 @@ final class ImagePlacementController: ObservableObject {
     func updateDocumentURL(_ url: URL?) {
         let newParent = url?.deletingLastPathComponent()
         if let old = lastDocumentParent, let newParent, old != newParent, let actions {
-            // REQ-076: source-derived move warning.
-            if CanonicalAssetReferenceScanner.hasBrokenReferences(
-                source: actions.sourceSnapshot().text,
-                oldParent: old,
-                newParent: newParent
-            ) {
+            // REQ-076/112: use the latest authoritative cmark-derived references; do not
+            // reparse raw Markdown from a URL notification.
+            let references = actions.canonicalAssetReferences
+            if references.hasBrokenReferences(oldParent: old, newParent: newParent) {
                 presentAlert(
                     .warning(
                         "This document’s assets/ references no longer resolve after the file was moved. Companion files were not moved automatically."

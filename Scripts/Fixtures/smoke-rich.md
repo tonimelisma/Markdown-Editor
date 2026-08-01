@@ -1,10 +1,14 @@
-# Rich fixture
+# Typography proof
 
-Smoke-screenshot-only fixture, compacted to fit the app's 720×560 default window with no
-scrolling — see `Scripts/smoke-screenshot.sh` and `docs/ENGINEERING.md`'s ARC-Q13 entry for why:
-every construct below must appear in the one screenshot this fixture exists to produce.
+Paragraph one, long enough to show the reading measure and its spacing from the next paragraph.
 
-**Bold**, *italic*, ~~strikethrough~~, `inline code`. A [link](https://example.com) and image:
+This source line flows
+into one paragraph, ending with a hard break.\
+This sentence begins on the next visual line.
+
+## Inline styles
+
+**Bold**, *italic*, ~~strikethrough~~, `inline code`, and a [link](https://example.com).
 
 ![sample image](assets/sample.png)
 
@@ -14,10 +18,10 @@ every construct below must appear in the one screenshot this fixture exists to p
 - [x] Done
 - [ ] Open
 
-> A blockquote.
+> A blockquote reads as a distinct voice.
 
 ```swift
-func greet(_ name: String) -> String { "Hello, \(name)!" }
+let greeting = "Hello"
 ```
 
 | Construct | Supported |
@@ -26,4 +30,4 @@ func greet(_ name: String) -> String { "Hello, \(name)!" }
 
 ---
 
-Raw HTML, literal: <div>not executed</div>
+Literal HTML: <div>not executed</div>

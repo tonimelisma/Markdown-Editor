@@ -131,6 +131,12 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 (.sourceRevision, .uint(sourceRevision)),
                 (.durationNanos, .uint(durationNanos))
             ])
+        case .presentationRecovered(let snapshotID, let sourceRevision, let reason):
+            return Mapped(name: .presentationRecovered, level: .fault, category: .projection, data: [
+                (.snapshot, .uint(snapshotID)),
+                (.sourceRevision, .uint(sourceRevision)),
+                (.reason, .symbol(reason.symbol))
+            ])
         case .reconciliationScheduled(let sourceRevision, let generation):
             return Mapped(name: .reconciliationScheduled, level: .debug, category: .projection, data: [
                 (.sourceRevision, .uint(sourceRevision)),
@@ -254,12 +260,12 @@ final class JSONLinesEditorTrace: EditorTraceSink {
             ])
         case .performanceSummary(let metric, let count, let p50Nanos, let p95Nanos, let maxNanos):
             return Mapped(name: .performanceSummary, level: .info, category: .session, data: [
-                (.mode, .symbol(metric.symbol)), (.count, .int(count)), (.p50Nanos, .uint(p50Nanos)),
+                (.metric, .symbol(metric.symbol)), (.count, .int(count)), (.p50Nanos, .uint(p50Nanos)),
                 (.p95Nanos, .uint(p95Nanos)), (.maxNanos, .uint(maxNanos))
             ])
         case .budgetExceeded(let metric, let p95Nanos, let budgetNanos):
             return Mapped(name: .budgetExceeded, level: .warn, category: .session, data: [
-                (.mode, .symbol(metric.symbol)), (.p95Nanos, .uint(p95Nanos)), (.budgetNanos, .uint(budgetNanos))
+                (.metric, .symbol(metric.symbol)), (.p95Nanos, .uint(p95Nanos)), (.budgetNanos, .uint(budgetNanos))
             ])
         }
     }

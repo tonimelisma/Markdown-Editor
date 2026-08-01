@@ -67,7 +67,12 @@ final class MainActorWatchdog {
     }
 
     /// Times one hop onto the main actor. Exposed so tests can drive a single probe.
-    static func probeOnce(thresholdMillis: UInt64, report: Report) async {
+    ///
+    /// // REQ-096; ARC-021: deliberately `nonisolated`. If this were main-actor isolated, the
+    /// // detached probe task would have to acquire the main actor before it could start timing —
+    /// // so it would queue behind the very stall it exists to report, and could only ever
+    /// // describe a stall that had already ended.
+    nonisolated static func probeOnce(thresholdMillis: UInt64, report: Report) async {
         let started = DispatchTime.now().uptimeNanoseconds
         let flag = WatchdogProbeFlag()
         let probe = Task<Void, Never> { @MainActor in

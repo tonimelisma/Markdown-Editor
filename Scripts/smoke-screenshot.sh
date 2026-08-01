@@ -3,13 +3,40 @@
 # assertions Scripts/smoke-test.sh performs, this captures ONE screenshot of the application's
 # own window over a richer fixture, for mandatory human/AI visual review at the end of every
 # build increment. The screenshot is evidence for a human to look at — it is never itself an
-# automated pass/fail assertion, and this script's own exit status depends only on structured
-# diagnostic records, the same kind Scripts/smoke-test.sh checks. No UI is driven or clicked;
-# this only captures a static image of a window that already rendered on its own.
+# automated assertion about appearance. The script still fails if capture itself fails or if the
+# structured diagnostic proof fails. No UI is driven or clicked; this only captures a static image
+# of a window that already rendered on its own.
 #
 # Captures only the application's own window (screencapture -l<windowID>), never the full
 # screen: a full-screen capture would leak whatever else is currently on screen, unrelated to
 # this verification and potentially sensitive.
+#
+# ── Known failure modes, and what they actually mean ────────────────────────────────────────
+#
+# These were each misdiagnosed once as "missing Screen Recording permission" because that is
+# what this script used to suggest for every failure. It no longer guesses: find-window-id
+# exits 3 only when it has positively determined the permission is absent (windows present,
+# no window names), so the messages below distinguish the real causes.
+#
+# 1. "could not find the application's on-screen window"
+#    Usually NOT permission. The window server publishes the window *later* than the diagnostics
+#    settle — measured at ~2.5 s on Apple silicon, versus the 2 s default smoke lifetime — so the
+#    app terminated itself before its own window existed to capture. This script therefore runs
+#    the app with MARKDOWN_EDITOR_SMOKE_EXIT_SECONDS (default 12 here) and polls for the window
+#    while the process is alive. Raise SMOKE_EXIT_SECONDS on a slower machine.
+#
+# 2. "cannot write file to intended destination"
+#    A file-access problem, not a capture problem: `screencapture` is a separate process with its
+#    own file-access context and cannot always write inside the repository. The output therefore
+#    defaults to a temp directory; override with SMOKE_SCREENSHOT_OUT.
+#
+# 3. "could not create image from window"
+#    The window was found but its surface could not be read — normally the window disappearing
+#    mid-capture (same root cause as 1). The capture retries while the process is alive.
+#
+# Environment overrides: SMOKE_DERIVED_DATA, SMOKE_SCREENSHOT_OUT, SMOKE_EXIT_SECONDS,
+# SMOKE_HOST_UPDATE_THRESHOLD.
+#
 # Not -e: the polling loops below check exit conditions explicitly rather than aborting on the
 # first non-zero probe.
 set -uo pipefail
@@ -17,12 +44,23 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 
-derived="${SMOKE_DERIVED_DATA:-$repo_root/.smoke-build}"
+if [[ -n "${SMOKE_DERIVED_DATA:-}" ]]; then
+    derived="$SMOKE_DERIVED_DATA"
+    cleanup_derived=0
+else
+    derived="$(mktemp -d)"
+    cleanup_derived=1
+fi
 logdir="$(mktemp -d)"
 tools_dir="$(mktemp -d)"
-out="${SMOKE_SCREENSHOT_OUT:-$repo_root/.smoke-screenshot.png}"
+# `screencapture` runs as its own process with its own file-access context and cannot always
+# write inside the repository (observed: "cannot write file to intended destination"). The
+# default therefore goes to a temporary directory, which is also where a one-shot review artifact
+# belongs — it is gitignored and never committed. Override with SMOKE_SCREENSHOT_OUT.
+out="${SMOKE_SCREENSHOT_OUT:-$(mktemp -d)/smoke-screenshot.png}"
 cleanup() {
     rm -rf "$logdir" "$tools_dir"
+    [[ "$cleanup_derived" -eq 1 ]] && rm -rf "$derived"
     [[ -n "${app_pid:-}" ]] && kill -0 "$app_pid" 2>/dev/null && kill "$app_pid" 2>/dev/null
 }
 trap cleanup EXIT
@@ -48,7 +86,16 @@ if [[ ! -x "$binary" ]]; then
 fi
 
 echo "smoke-screenshot: launching…"
+# An instrumented build writes its coverage profile to the working directory unless told
+# otherwise, which would drop default.profraw into the repository. Redirect it into the
+# temporary log directory rather than adding an ignore rule for an avoidable artifact.
+# The window server publishes the window later than the diagnostics settle (~2.5 s here, versus
+# the 2 s default lifetime), so a screenshot run must outlive the log-only run or the capture
+# races the application's own exit and loses.
+LLVM_PROFILE_FILE="$logdir/smoke-%p.profraw" \
 MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$logdir" \
+MARKDOWN_EDITOR_SMOKE_EXIT_SECONDS="${SMOKE_EXIT_SECONDS:-12}" \
+MARKDOWN_EDITOR_SMOKE_WINDOW_HEIGHT="${SMOKE_WINDOW_HEIGHT:-980}" \
     "$binary" -ApplePersistenceIgnoreState YES --diagnostic-smoke-exit "$fixture" &
 app_pid=$!
 
@@ -68,9 +115,9 @@ fi
 # synchronously when session state changes, but EditorHostView.updateNSView applies the
 # projection to TextKit afterward, and the window server composites the actual pixels later
 # still — screenshotting right on the availabilityChanged record risks empty, stale, or
-# partially rendered pixels while every diagnostic assertion still passes. Wait for a
-# hostUpdateEnded record (the host view's own update-pass signal) with a strictly later
-# sequence number, then add a short fixed margin for the window server to composite.
+# partially rendered pixels while every diagnostic assertion still passes. Wait for the applied
+# reconciliation and then a hostUpdateEnded record with a strictly later sequence number, then
+# add a short fixed margin for the window server to composite.
 rendered=0
 for _ in $(seq 1 100); do
     if python3 - "$run_file" <<'PYEOF'
@@ -81,10 +128,15 @@ avail_seq = next(
      if r.get("ev") == "availabilityChanged" and r.get("data", {}).get("editable") is True),
     None
 )
-if avail_seq is None:
+reconciliation_seq = next(
+    (r["seq"] for r in records
+     if r.get("ev") == "reconciliationApplied" and r.get("doc") is not None),
+    None
+)
+if avail_seq is None or reconciliation_seq is None:
     sys.exit(1)
 has_later_host_update = any(
-    r.get("ev") == "hostUpdateEnded" and r["seq"] > avail_seq for r in records
+    r.get("ev") == "hostUpdateEnded" and r["seq"] > reconciliation_seq for r in records
 )
 sys.exit(0 if has_later_host_update else 1)
 PYEOF
@@ -103,36 +155,64 @@ fi
 sleep 0.2
 
 window_id=""
-for _ in $(seq 1 40); do
+# Bounded by the launched process staying alive rather than by a fixed count: the window can be
+# published a second or more after the diagnostics say the projection was applied.
+for _ in $(seq 1 200); do
     # Matched by the exact PID this script launched, not by owner-name substring: if the user
     # already has their own real Markdown Editor window open, a name-only match could select
     # their document instead of the fixture, capturing unrelated (and potentially private)
     # content.
     window_id="$("$tools_dir/find-window-id" "$app_pid" 2>/dev/null | head -1)"
+    find_status=$?
+    # Exit 3 means the finder positively determined the permission is missing. Anything else is
+    # simply "not up yet", so keep polling while the process lives.
+    [[ "$find_status" -eq 3 ]] && break
     [[ -n "$window_id" ]] && break
-    sleep 0.02
+    kill -0 "$app_pid" 2>/dev/null || break
+    sleep 0.05
 done
 if [[ -z "$window_id" ]]; then
-    echo "smoke-screenshot: could not find the application's on-screen window" >&2
-    echo "smoke-screenshot: if this keeps happening, check that the calling process has Screen Recording permission (System Settings > Privacy & Security > Screen Recording) — CGWindowListCopyWindowInfo returns an empty/incomplete list without it, which reads identically to \"no matching window\"" >&2
+    if [[ "${find_status:-0}" -eq 3 ]]; then
+        echo "smoke-screenshot: Screen Recording permission is MISSING for this process." >&2
+        echo "smoke-screenshot: grant it in System Settings > Privacy & Security > Screen Recording" >&2
+        echo "smoke-screenshot: (verified, not guessed: the window list returned windows but no window names)" >&2
+    else
+        echo "smoke-screenshot: could not find the application's on-screen window." >&2
+        echo "smoke-screenshot: Screen Recording permission is present — this is NOT a permission problem." >&2
+        echo "smoke-screenshot: the window is published later than the diagnostics settle; if the app" >&2
+        echo "smoke-screenshot: exited first, raise SMOKE_EXIT_SECONDS (currently ${SMOKE_EXIT_SECONDS:-12})." >&2
+    fi
     exit 1
 fi
 
-rm -f "$out"
-screencapture_err="$(screencapture -x -o -l"$window_id" "$out" 2>&1 1>/dev/null)"
-screencapture_status=$?
-# `screencapture` can print a write failure to stderr and still exit 0 (observed when the
-# calling process lacks Screen Recording permission in some environments) — its exit code alone
-# is not proof the file was written, so this checks the file landed on disk with real bytes,
-# not just that the command claimed success.
-if [[ -n "$screencapture_err" ]]; then
-    echo "smoke-screenshot: screencapture reported: $screencapture_err" >&2
+capture_error=""
+captured=0
+# The window server can advertise a newly composited window just before `screencapture` can read
+# its surface. Retry that bounded race while the exact launched process and window remain alive.
+for _ in $(seq 1 20); do
+    rm -f "$out"
+    capture_error="$(screencapture -x -o -l"$window_id" "$out" 2>&1 1>/dev/null)"
+    capture_status=$?
+    if [[ "$capture_status" -eq 0 && -s "$out" ]]; then
+        captured=1
+        break
+    fi
+    kill -0 "$app_pid" 2>/dev/null || break
+    sleep 0.05
+done
+# `screencapture` can print a write failure to stderr and still exit 0. Its exit code alone is not
+# proof the file was written, so success requires a non-empty output file.
+if [[ "$captured" -ne 1 ]]; then
+    [[ -n "$capture_error" ]] && echo "smoke-screenshot: screencapture reported: $capture_error" >&2
+    echo "smoke-screenshot: screencapture did not produce $out from window $window_id" >&2
+    echo "smoke-screenshot: the window was found, so Screen Recording permission is present." >&2
+    echo "smoke-screenshot: 'cannot write file to intended destination' is a file-access problem —" >&2
+    echo "smoke-screenshot: set SMOKE_SCREENSHOT_OUT to a path screencapture can write." >&2
+    capture_failed=1
+else
+    echo "smoke-screenshot: saved $out"
+    capture_failed=0
 fi
-if [[ "$screencapture_status" -ne 0 || ! -s "$out" ]]; then
-    echo "smoke-screenshot: screencapture did not produce $out — the calling process needs Screen Recording permission (System Settings > Privacy & Security > Screen Recording)" >&2
-    exit 1
-fi
-echo "smoke-screenshot: saved $out"
 
 # Wait for the process to exit (bounded), same as smoke-test.sh.
 for _ in $(seq 1 100); do
@@ -151,34 +231,20 @@ if [[ "$app_exit_code" -ne 0 ]]; then
     exit 1
 fi
 
+# The application's own diagnostics are verified even when capture failed: a missing Screen
+# Recording permission is an environment fault and must not be reported as, or hide, an
+# application fault. The two outcomes are reported separately and the script fails if either did.
 host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-20}"
-python3 - "$run_file" "$host_update_threshold" <<'PYEOF'
-import json, sys
-run_file, threshold = sys.argv[1], int(sys.argv[2])
-records = [json.loads(l) for l in open(run_file) if l.strip()]
-assert records, "run file is empty"
-header = records[0]
-assert header["v"] == 1, "unexpected schema version"
-assert header["run"]["host"] == "production", f"expected production host, got {header['run'].get('host')}"
-seqs = [r["seq"] for r in records[1:]]
-for previous, current in zip(seqs, seqs[1:]):
-    assert current > previous, f"sequence numbers not strictly increasing: {previous} then {current}"
-assert any(r["ev"] == "documentOpened" for r in records), "document never opened"
-# Same rigor as smoke-test.sh: a fixture loaded more than once is a regression this script
-# claims to catch (it advertises the same structured-diagnostic checks as ARC-Q12), and could
-# also mean the screenshot captured an unintended document state.
-loaded = [r for r in records if r["ev"] == "documentLoaded"]
-assert len(loaded) == 1, f"expected exactly one documentLoaded, got {len(loaded)}"
-direct_updates = sum(1 for r in records if r["ev"] == "hostUpdateEnded")
-collapsed_updates = sum(
-    r.get("data", {}).get("count", 0)
-    for r in records
-    if r["ev"] == "repeated" and r.get("of") == "hostUpdateEnded"
-)
-host_updates = direct_updates + collapsed_updates
-assert host_updates <= threshold, f"host did not settle: {host_updates} updates (threshold {threshold})"
-faults = [r for r in records if r.get("lvl") in ("error", "fault")]
-assert not faults, f"faults recorded: {[r['ev'] for r in faults]}"
-assert records[-1]["ev"] == "runEnd", "no clean-exit record"
-print(f"smoke-screenshot: diagnostics PASS ({len(records)} records, {host_updates} host updates)")
-PYEOF
+# mainActorStall is tolerated here and only here: `screencapture` freezes the captured process
+# while it reads the window surface, so the watchdog reports the measurement apparatus rather
+# than the application. Scripts/smoke-test.sh runs the same app with no capture and tolerates
+# nothing, so a real stall still fails a gate.
+python3 "$repo_root/Scripts/verify-smoke-log.py" \
+    "$run_file" "$host_update_threshold" --label smoke-screenshot --allow-fault mainActorStall
+diagnostics_status=$?
+
+if [[ "$capture_failed" -eq 1 ]]; then
+    echo "smoke-screenshot: CAPTURE FAILED (environment); visual review evidence was not produced" >&2
+    exit 1
+fi
+exit "$diagnostics_status"

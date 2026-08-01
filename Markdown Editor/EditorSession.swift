@@ -56,8 +56,10 @@ final class EditorSession: ObservableObject {
     var imagePicker: (any ImagePicking)?
 
     private weak var document: MarkdownDocument?
+    private let performanceSamplerCoordinator: DiagnosticRunCoordinator
     private var performanceSampler: PerformanceSampler?
     private var parseTask: Task<Void, Never>?
+    private let parseScheduler = LatestParseScheduler()
     private var cancellables = Set<AnyCancellable>()
     private var publicationObserver: AnyCancellable?
     private var operationGeneration: UInt64 = 0
@@ -84,13 +86,10 @@ final class EditorSession: ObservableObject {
         return body()
     }
 
-    #if DEBUG
-    /// Test seam: the suite that provokes a violation on purpose disables the debug trap.
-    /// Every other test and every debug run keeps it, so an ARC-015 regression fails
-    /// immediately. `assertionFailure` is already a no-op in release, so this exists only
-    /// where the assertion does.
-    var trapsOnReconciliationViolation = true
-    #endif
+    /// Internal test seam: the suites that provoke a violation on purpose disable the debug
+    /// trap through the initializer. The default preserves the production Debug proof, while
+    /// keeping the API shape identical in Release so the complete test bundle still compiles.
+    private let trapsOnReconciliationViolation: Bool
 
     private func reportReconciliationViolation(_ kind: ReconciliationViolation) {
         reconciliationViolationCount &+= 1
@@ -104,7 +103,17 @@ final class EditorSession: ObservableObject {
         #endif
     }
 
-    init() {
+    init(
+        trapsOnReconciliationViolation: Bool = true,
+        performanceSamplerCoordinator: DiagnosticRunCoordinator = .shared
+    ) {
+        self.trapsOnReconciliationViolation = trapsOnReconciliationViolation
+        self.performanceSamplerCoordinator = performanceSamplerCoordinator
+        installPublicationObserver()
+    }
+
+    private func installPublicationObserver() {
+        guard publicationObserver == nil else { return }
         // ObservableObjectPublisher is not isolated; every mutation of this type is main-actor
         // bound, so observing it under `assumeIsolated` is exact rather than optimistic.
         publicationObserver = objectWillChange.sink { [weak self] _ in
@@ -116,8 +125,16 @@ final class EditorSession: ObservableObject {
     }
 
     func attach(document: MarkdownDocument) {
+        installPublicationObserver()
+        parseTask?.cancel()
+        parseScheduler.cancel()
+        performanceSampler?.invalidate()
         self.document = document
-        performanceSampler = PerformanceSampler(trace: document.trace)
+        document.updateCanonicalAssetReferences(CanonicalAssetReferences(values: []))
+        performanceSampler = PerformanceSampler(
+            trace: document.trace,
+            coordinator: performanceSamplerCoordinator
+        )
         updateOrigin.didChange = { [weak document] origin in
             document?.trace?.record(.updateOrigin(origin))
         }
@@ -144,8 +161,35 @@ final class EditorSession: ObservableObject {
         scheduleParse()
     }
 
+    /// Ends the window/session lifetime without retaining the document, sampler, timer, or
+    /// Combine subscriptions. Repeated detach is intentionally harmless.
+    func detach() {
+        parseTask?.cancel()
+        parseTask = nil
+        parseScheduler.cancel()
+        cancellables.removeAll()
+        performanceSampler?.invalidate()
+        performanceSampler = nil
+        publicationObserver?.cancel()
+        publicationObserver = nil
+        updateOrigin.didChange = nil
+        imageCache.trace = nil
+        document?.updateCanonicalAssetReferences(CanonicalAssetReferences(values: []))
+        document = nil
+        presentation = nil
+        authoritativeTree = nil
+        resolvedImages = [:]
+        document?.updateCanonicalAssetReferences(CanonicalAssetReferences(values: []))
+    }
+
     func recordPerformance(_ metric: PerformanceSampler.Metric, durationNanos: UInt64) {
         performanceSampler?.record(metric, durationNanos: durationNanos)
+    }
+
+    /// Aggregate samples collected so far, draining them. Reading is what the periodic flush and
+    /// the boundary proof both do; nothing here exposes per-keystroke timings.
+    func drainPerformanceSummaries() -> [PerformanceSampler.Summary] {
+        performanceSampler?.drainSummaries() ?? []
     }
 
     private func invalidateDerivedState() {
@@ -355,6 +399,8 @@ final class EditorSession: ObservableObject {
         }
 
         parseTask?.cancel()
+        let request = LatestParseRequest(source: snapshot, operationGeneration: generation)
+        guard parseScheduler.submit(request) else { return }
         document.trace?.record(
             .reconciliationScheduled(sourceRevision: snapshot.sourceVersion, generation: generation)
         )
@@ -364,8 +410,8 @@ final class EditorSession: ObservableObject {
         document.trace?.record(
             .parseStarted(sourceVersion: snapshot.sourceVersion, utf16Count: (snapshot.text as NSString).length)
         )
-        let reconciliationStart = DispatchTime.now().uptimeNanoseconds
-        parseTask = Task.detached(priority: .userInitiated) { [weak self] in
+        let parseProjectionStart = DispatchTime.now().uptimeNanoseconds
+        let task = Task.detached(priority: .userInitiated) { [weak self] in
             if Task.isCancelled {
                 await MainActor.run {
                     self?.document?.trace?.record(.parseCancelled(sourceVersion: snapshot.sourceVersion))
@@ -373,7 +419,11 @@ final class EditorSession: ObservableObject {
                 return
             }
             let index = MarkdownSourceIndex(source: snapshot.text, sourceVersion: snapshot.sourceVersion)
-            let parseResult = MarkdownParser.parse(snapshot.text, sourceVersion: snapshot.sourceVersion)
+            let parseResult = MarkdownParser.parse(
+                snapshot.text,
+                sourceVersion: snapshot.sourceVersion,
+                isCancelled: { Task.isCancelled }
+            )
             if Task.isCancelled {
                 await MainActor.run {
                     self?.document?.trace?.record(.parseCancelled(sourceVersion: snapshot.sourceVersion))
@@ -426,6 +476,8 @@ final class EditorSession: ObservableObject {
                 return
             }
 
+            let parseProjectionDuration = DispatchTime.now().uptimeNanoseconds &- parseProjectionStart
+            let imageResolutionStart = DispatchTime.now().uptimeNanoseconds
             var descriptors: [LocalImageDescriptor] = []
             for attachment in model.attachments {
                 if case .image(let destination, _) = attachment.kind {
@@ -440,6 +492,7 @@ final class EditorSession: ObservableObject {
                     }
                 }
             }
+            let imageResolutionDuration = DispatchTime.now().uptimeNanoseconds &- imageResolutionStart
 
             await MainActor.run {
                 guard let self else { return }
@@ -466,6 +519,8 @@ final class EditorSession: ObservableObject {
                 }
 
                 self.authoritativeTree = tree
+                self.document?.updateCanonicalAssetReferences(CanonicalAssetReferences.from(model: model))
+                let imageCacheLookupStart = DispatchTime.now().uptimeNanoseconds
                 var images: [MarkdownNodeID: NSImage] = [:]
                 for desc in descriptors {
                     if let image = self.imageCache.image(for: desc) {
@@ -473,7 +528,10 @@ final class EditorSession: ObservableObject {
                     }
                 }
                 self.resolvedImages = images
+                let imageResolutionTotal = imageResolutionDuration
+                    &+ (DispatchTime.now().uptimeNanoseconds &- imageCacheLookupStart)
 
+                let applicationStart = DispatchTime.now().uptimeNanoseconds
                 if self.presentation?.sourceRevision.value == authoritative.sourceRevision.value {
                     // Replace provisional with authoritative under programmatic origin semantics.
                     self.updateOrigin.with(.programmaticPresentation) {
@@ -482,16 +540,26 @@ final class EditorSession: ObservableObject {
                 } else {
                     self.installPresentation(authoritative, tree: tree, provisional: false)
                 }
-                let duration = DispatchTime.now().uptimeNanoseconds - reconciliationStart
-                self.performanceSampler?.record(.reconciliation, durationNanos: duration)
+                let authoritativeApplicationDuration = DispatchTime.now().uptimeNanoseconds &- applicationStart
+                self.performanceSampler?.record(.parseProjection, durationNanos: parseProjectionDuration)
+                self.performanceSampler?.record(.imageResolution, durationNanos: imageResolutionTotal)
+                self.performanceSampler?.record(.authoritativeApplication, durationNanos: authoritativeApplicationDuration)
                 self.document?.trace?.record(
                     .reconciliationApplied(
                         snapshotID: authoritative.id.value,
                         sourceRevision: authoritative.sourceRevision.value,
                         generation: generation,
-                        durationNanos: duration
+                        durationNanos: DispatchTime.now().uptimeNanoseconds &- parseProjectionStart
                     )
                 )
+            }
+        }
+        parseTask = task
+        Task { @MainActor [weak self, task] in
+            await task.value
+            guard let self else { return }
+            if self.parseScheduler.finish() {
+                self.scheduleParse()
             }
         }
     }
@@ -513,8 +581,7 @@ final class EditorSession: ObservableObject {
             expectedSourceRevision: expectedSourceRevision,
             grouping: grouping
         )
-        let planningStart = DispatchTime.now().uptimeNanoseconds
-        defer { performanceSampler?.record(.keystrokeTranslation, durationNanos: DispatchTime.now().uptimeNanoseconds - planningStart) }
+        let editStart = DispatchTime.now().uptimeNanoseconds
         let outcome = SemanticEditEngine.plan(
             request,
             snapshot: snapshot,
@@ -559,7 +626,7 @@ final class EditorSession: ObservableObject {
                             from: transition.fromSnapshotID.value,
                             to: transition.nextSnapshot.id.value,
                             sourceRevision: transition.nextSnapshot.sourceRevision.value,
-                            durationNanos: DispatchTime.now().uptimeNanoseconds - planningStart
+                            durationNanos: DispatchTime.now().uptimeNanoseconds &- editStart
                         )
                     )
                 }

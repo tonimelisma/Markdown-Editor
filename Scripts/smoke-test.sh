@@ -8,10 +8,17 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 
-derived="${SMOKE_DERIVED_DATA:-$repo_root/.smoke-build}"
+if [[ -n "${SMOKE_DERIVED_DATA:-}" ]]; then
+    derived="$SMOKE_DERIVED_DATA"
+    cleanup_derived=0
+else
+    derived="$(mktemp -d)"
+    cleanup_derived=1
+fi
 logdir="$(mktemp -d)"
 cleanup() {
     rm -rf "$logdir"
+    [[ "$cleanup_derived" -eq 1 ]] && rm -rf "$derived"
     [[ -n "${app_pid:-}" ]] && kill -0 "$app_pid" 2>/dev/null && kill "$app_pid" 2>/dev/null
 }
 trap cleanup EXIT
@@ -41,6 +48,10 @@ launch_start=$(date +%s)
 # window restoration for every future ordinary launch (Debug/Release share one bundle
 # identifier); UserDefaults.register(defaults:) registers into the lowest-priority domain and is
 # silently overridden if the persistent domain already holds any explicit value for this key.
+# An instrumented build writes its coverage profile to the working directory unless told
+# otherwise, which would drop default.profraw into the repository. Redirect it into the
+# temporary log directory rather than adding an ignore rule for an avoidable artifact.
+LLVM_PROFILE_FILE="$logdir/smoke-%p.profraw" \
 MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$logdir" \
     "$binary" -ApplePersistenceIgnoreState YES --diagnostic-smoke-exit "$fixture" &
 app_pid=$!
@@ -84,47 +95,5 @@ launch_end=$(date +%s)
 echo "smoke: launch→exit took $((launch_end - launch_start))s"
 
 host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-20}"
-
-python3 - "$run_file" "$host_update_threshold" <<'PYEOF'
-import json, sys
-run_file, threshold = sys.argv[1], int(sys.argv[2])
-records = [json.loads(l) for l in open(run_file) if l.strip()]
-assert records, "run file is empty"
-header = records[0]
-assert header["v"] == 1, "unexpected schema version"
-assert header["run"]["host"] == "production", f"expected production host, got {header['run'].get('host')}"
-seqs = [r["seq"] for r in records[1:]]
-# Strict comparison, not "seqs == sorted(seqs)": sorting a list with duplicate values leaves it
-# unchanged, so that comparison would not catch a logging regression that repeats a sequence
-# number, despite the header record's contract being *strictly* increasing.
-for previous, current in zip(seqs, seqs[1:]):
-    assert current > previous, f"sequence numbers not strictly increasing: {previous} then {current}"
-assert any(r["ev"] == "documentOpened" for r in records), "document never opened"
-# REQ-100: exactly one successful file load, never more, for a fixture opened exactly once.
-loaded = [r for r in records if r["ev"] == "documentLoaded"]
-assert len(loaded) == 1, f"expected exactly one documentLoaded, got {len(loaded)}"
-# A storm above the log's own rate-collapse threshold stops emitting individual
-# hostUpdateEnded records and reports the suppressed remainder as one "repeated" summary
-# (ev == "repeated", of == "hostUpdateEnded", data.count == suppressed). Counting only direct
-# records would let a real storm hide behind the collapse and pass this bounded-update check.
-direct_updates = sum(1 for r in records if r["ev"] == "hostUpdateEnded")
-collapsed_updates = sum(
-    r.get("data", {}).get("count", 0)
-    for r in records
-    if r["ev"] == "repeated" and r.get("of") == "hostUpdateEnded"
-)
-host_updates = direct_updates + collapsed_updates
-assert host_updates <= threshold, f"host did not settle: {host_updates} updates (threshold {threshold})"
-faults = [r for r in records if r.get("lvl") in ("error", "fault")]
-assert not faults, f"faults recorded: {[r['ev'] for r in faults]}"
-# REQ-099: the fixture opens with no matching projection yet, so WYSIWYG must announce becoming
-# editable once the first parse completes — this is the transition availabilityChanged exists to
-# report, and it has a real production call site only as of COR-12.
-became_editable = any(
-    r["ev"] == "availabilityChanged" and r.get("data", {}).get("editable") is True
-    for r in records
-)
-assert became_editable, "WYSIWYG never announced becoming editable"
-assert records[-1]["ev"] == "runEnd", "no clean-exit record"
-print(f"smoke: PASS ({len(records)} records, {host_updates} host updates)")
-PYEOF
+python3 "$repo_root/Scripts/verify-smoke-log.py" \
+    "$run_file" "$host_update_threshold" --label smoke

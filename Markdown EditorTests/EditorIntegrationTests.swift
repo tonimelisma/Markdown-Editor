@@ -228,7 +228,7 @@ struct EditorIntegrationTests {
         let model = MarkdownProjectionModel.build(tree: tree, index: index)
         let attachment = try #require(model.attachments.first)
         let image = NSImage(size: NSSize(width: 10, height: 10))
-        let built = RichTextBuilder.build(
+        let built = AttributedPresentationBuilder.build(
             model: model,
             theme: MarkdownTheme(),
             images: [attachment.nodeID: image]

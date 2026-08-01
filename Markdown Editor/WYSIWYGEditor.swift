@@ -73,6 +73,7 @@ enum WYSIWYGEditor {
         }
         weak var scrollView: NSScrollView?
         private var appliedSnapshotID: PresentationSnapshot.ID?
+        private let textStorageApplier = TextStorageApplier()
 
         init(document: MarkdownDocument, session: EditorSession, placementController: ImagePlacementController) {
             self.document = document
@@ -99,16 +100,15 @@ enum WYSIWYGEditor {
             if textView.hasMarkedText() || input.composition.isComposing { return }
 
             session.updateOrigin.with(.programmaticPresentation) {
-                let built = RichTextBuilder.build(
+                let built = AttributedPresentationBuilder.build(
                     model: presentation.asProjectionModel,
                     theme: MarkdownTheme(),
                     images: session.resolvedImages,
-                    openURL: session.openURL,
                     onTaskPress: { [weak self] nodeID in
                         self?.performTaskToggle(nodeID: nodeID)
                     }
                 )
-                textView.textStorage?.setAttributedString(built.attributed)
+                textStorageApplier.applyInitialPresentation(built, to: textView)
                 appliedSnapshotID = presentation.id
 
                 if let selection = session.wysiwygModeState.selection,
@@ -132,6 +132,13 @@ enum WYSIWYGEditor {
             shouldChangeTextIn affectedCharRange: NSRange,
             replacementString: String?
         ) -> Bool {
+            let nativeInputStart = DispatchTime.now().uptimeNanoseconds
+            defer {
+                session.recordPerformance(
+                    .nativeInputCallback,
+                    durationNanos: DispatchTime.now().uptimeNanoseconds &- nativeInputStart
+                )
+            }
             if session.updateOrigin.current != .nativeUserInput { return true }
             // Attribute-only changes (nil replacement) stay native.
             guard let replacement = replacementString else { return true }
@@ -149,9 +156,22 @@ enum WYSIWYGEditor {
                   affectedCharRange.location >= 0,
                   NSMaxRange(affectedCharRange) <= (presentation.renderedString as NSString).length
             else {
+                // Applied storage is not the snapshot this keystroke targets. Resynchronizing is
+                // a full replacement, so it is recorded for the same reason a post-commit
+                // recovery is: storage drift must never be silent.
+                if let presentation = session.presentation, textView.string != presentation.renderedString {
+                    document.trace?.record(
+                        .presentationRecovered(
+                            snapshotID: presentation.id.value,
+                            sourceRevision: presentation.sourceRevision.value,
+                            reason: .appliedStorageMismatch
+                        )
+                    )
+                }
                 applyProjectionIfNeeded(force: true)
                 return false
             }
+            let appliedPresentation = presentation
 
             let projectionSelection = ProjectionSelection(
                 utf16: affectedCharRange,
@@ -175,58 +195,88 @@ enum WYSIWYGEditor {
             case .accepted(let edit):
                 // REQ-091; ARC-005: apply the accepted presentation transition programmatically
                 // and refuse TextKit's optimistic second mutation.
-                applyAcceptedEdit(edit, in: textView)
+                applyAcceptedEdit(edit, from: appliedPresentation, in: textView)
                 return false
             case .refused:
                 return false
             }
         }
 
-        func applyAcceptedEdit(_ edit: AcceptedEdit, in textView: NSTextView) {
+        func applyAcceptedEdit(
+            _ edit: AcceptedEdit,
+            from current: PresentationSnapshot,
+            in textView: NSTextView
+        ) {
             guard let transition = edit.presentationTransition else {
                 preconditionFailure("Accepted WYSIWYG edit must carry a presentation transition")
             }
+            // Only the touched semantic block scope is turned into attributed content. Building
+            // the complete next presentation here would put the whole document's cost inside
+            // every keystroke, which is exactly what ARC-019 exists to prevent.
+            guard let patch = PresentationPatch.make(
+                transition: transition,
+                current: current,
+                buildScope: { [weak self] model, scope in
+                    AttributedPresentationBuilder.buildScoped(
+                        model: model,
+                        theme: MarkdownTheme(),
+                        images: self?.session.resolvedImages ?? [:],
+                        onTaskPress: { nodeID in self?.performTaskToggle(nodeID: nodeID) },
+                        scope: scope
+                    )
+                }
+            ) else {
+                recoverFullPresentation(
+                    to: transition.nextSnapshot,
+                    in: textView,
+                    reason: .patchUnprovable
+                )
+                return
+            }
             session.updateOrigin.with(.programmaticPresentation) {
-                applyAcceptedTransition(transition, in: textView)
+                guard textStorageApplier.applyPatch(patch, to: textView, expectedCurrent: current) else {
+                    recoverFullPresentation(
+                        to: transition.nextSnapshot,
+                        in: textView,
+                        reason: .appliedStorageMismatch
+                    )
+                    return
+                }
                 appliedSnapshotID = transition.nextSnapshot.id
             }
         }
 
-        private func applyAcceptedTransition(_ transition: PresentationTransition, in textView: NSTextView) {
-            guard let storage = textView.textStorage else { return }
-            let range = transition.projectionReplacementRange
-            precondition(
-                range.location >= 0 && NSMaxRange(range) <= storage.length,
-                "Validated presentation transition no longer matches applied TextKit storage"
+        /// The only route from an accepted edit to a full replacement. It is an invariant
+        /// violation, not a fallback: it records a typed reason and makes WYSIWYG unavailable
+        /// until an authoritative reconciliation lands, so a recovery can never be mistaken for
+        /// an ordinary edit that happened to be slow.
+        private func recoverFullPresentation(
+            to snapshot: PresentationSnapshot,
+            in textView: NSTextView,
+            reason: PresentationRecoveryReason
+        ) {
+            document.trace?.record(
+                .presentationRecovered(
+                    snapshotID: snapshot.id.value,
+                    sourceRevision: snapshot.sourceRevision.value,
+                    reason: reason
+                )
             )
-
-            if range == NSRange(location: 0, length: storage.length),
-               transition.projectionReplacement == transition.nextSnapshot.renderedString {
-                let built = RichTextBuilder.build(
-                    model: transition.nextSnapshot.asProjectionModel,
-                    theme: MarkdownTheme(),
-                    images: session.resolvedImages,
-                    openURL: session.openURL,
-                    onTaskPress: { [weak self] nodeID in
-                        self?.performTaskToggle(nodeID: nodeID)
-                    }
-                )
-                storage.setAttributedString(built.attributed)
-            } else {
-                storage.replaceCharacters(in: range, with: transition.projectionReplacement)
-                // Re-apply styles for the affected snapshot when possible via full rebuild for safety.
-                let built = RichTextBuilder.build(
-                    model: transition.nextSnapshot.asProjectionModel,
-                    theme: MarkdownTheme(),
-                    images: session.resolvedImages,
-                    openURL: session.openURL,
-                    onTaskPress: { [weak self] nodeID in
-                        self?.performTaskToggle(nodeID: nodeID)
-                    }
-                )
-                storage.setAttributedString(built.attributed)
+            session.updateWYSIWYGModeState {
+                $0.availability = .waitingForCurrentProjection(snapshot.sourceRevision)
             }
-            textView.setSelectedRange(transition.selectionAfter.range.utf16)
+            let built = AttributedPresentationBuilder.build(
+                model: snapshot.asProjectionModel,
+                theme: MarkdownTheme(),
+                images: session.resolvedImages,
+                onTaskPress: { [weak self] nodeID in
+                    self?.performTaskToggle(nodeID: nodeID)
+                }
+            )
+            session.updateOrigin.with(.programmaticPresentation) {
+                textStorageApplier.applyRecoveryPresentation(built, to: textView)
+            }
+            appliedSnapshotID = snapshot.id
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -296,6 +346,30 @@ final class MarkdownWYSIWYGTextView: NSTextView {
     weak var placementController: ImagePlacementController?
     weak var inputCoordinator: WYSIWYGEditor.WYSIWYGInputCoordinator?
     weak var adapterCoordinator: WYSIWYGEditor.Coordinator?
+
+    override func layout() {
+        super.layout()
+        guard bounds.width > 0, let textContainer else { return }
+        let horizontalInset = max(
+            MarkdownTypography.minimumHorizontalInset,
+            (bounds.width - MarkdownTypography.maximumReadingMeasure) / 2
+        )
+        let measure = max(1, bounds.width - (horizontalInset * 2))
+        let wantedInset = NSSize(
+            width: horizontalInset,
+            height: MarkdownTypography.minimumVerticalInset
+        )
+        if textContainerInset != wantedInset {
+            textContainerInset = wantedInset
+        }
+        textContainer.widthTracksTextView = false
+        if textContainer.containerSize.width != measure {
+            textContainer.containerSize = NSSize(
+                width: measure,
+                height: CGFloat.greatestFiniteMagnitude
+            )
+        }
+    }
 
     override var undoManager: UndoManager? {
         documentActions?.documentUndoManager ?? super.undoManager
@@ -631,6 +705,7 @@ final class MarkdownWYSIWYGTextView: NSTextView {
               presentation.sourceRevision.value == snapshot.sourceVersion else {
             return false
         }
+        let appliedPresentation = presentation
         let selection = ProjectionSelection(
             utf16: selectedRange(),
             revision: presentation.projectionRevision,
@@ -644,7 +719,7 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             grouping: .discrete
         )
         guard case .accepted(let edit) = outcome else { return false }
-        adapterCoordinator.applyAcceptedEdit(edit, in: self)
+        adapterCoordinator.applyAcceptedEdit(edit, from: appliedPresentation, in: self)
         return true
     }
 

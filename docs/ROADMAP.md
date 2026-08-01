@@ -48,24 +48,36 @@ Affected requirements are marked `Correction`; new approved behavior is `Planned
 
 Delivery order:
 
-1. 🔵 **[COR-18 — Restore the proof floor](plans/cor-18-proof-floor.md).** Make Debug and Release tests compile and execute,
-   land the shared smoke verifier and typography-rich fixture, and prove nonzero performance
-   samples.
-2. ⚪ **[COR-19 — Diagnostic lifetime and shutdown](plans/cor-19-diagnostic-lifetime-and-shutdown.md).** Remove sampler/timer retention, make an
-   unrecovered main-actor stall durable off-main, and remove the terminal main-actor self-wait.
-3. ⚪ **[INC-05 — Semantic presentation and typography](plans/inc-05-semantic-presentation-and-typography.md).** Introduce semantic block presentation
-   and the approved native editorial typography, including correct soft/hard/paragraph breaks,
-   block spacing, lists, tasks, quotes, code, tables, images, separators, and literal HTML.
-4. ⚪ **[COR-20 — Incremental TextKit application and honest latency](plans/cor-20-incremental-textkit-and-latency.md).** Apply validated attributed
-   patches for ordinary edits and measure the complete native input callback.
-5. ⚪ **[COR-21 — Latest-work scheduling and resource bounds](plans/cor-21-latest-work-and-resource-bounds.md).** Coalesce pending parses, reject
-   oversized encoded images before bulk work, and derive asset references from the canonical
-   parse tree.
-6. ⚪ **[INC-06 — Native command surface](plans/inc-06-native-command-surface.md).** Replace the document-embedded toolbar with one
+1. ✅ **COR-18 — Restore the proof floor.** Debug and Release tests compile and execute, the
+   shared smoke verifier and typography-rich fixture are landed, and performance evidence
+   rejects zero samples.
+2. ✅ **COR-19 — Diagnostic lifetime and shutdown.** `EditorSession` now detaches its sampler and
+   subscriptions, diagnostics serialize directly through an off-main sink, and terminal durability
+   no longer waits for main-actor cleanup.
+3. ✅ **INC-05 — Semantic presentation and typography.** Semantic projection blocks now drive the
+   approved typography, reading column, break semantics, list/task alignment, quote/code/table
+   treatments, bounded images, thematic separators, and literal HTML styling.
+4. ✅ **COR-20 — Incremental TextKit application and honest latency.** Ordinary accepted WYSIWYG
+   edits now use validated range patches through `TextStorageApplier`, and performance sampling
+   covers the complete native callback plus split parse, image, and application boundaries.
+5. ✅ **COR-21 — Latest-work scheduling and resource bounds.** Latest parse demand is bounded to
+   the running request plus newest pending request, oversized encoded images are rejected from
+   metadata before bulk reads, and asset move checks use cmark-derived references.
+6. ✅ **INC-06 — Native command surface.** The document-embedded toolbar is replaced by one
    window-scoped command model, native toolbar, menu parity, shared validation, shortcuts, and a
    link-edit sheet.
-7. ⚪ **[COR-22 — Conformance and deletion sweep](plans/cor-22-rewrite-conformance-and-deletion.md).** Delete every displaced route, rerun all
+7. 🔵 **[COR-22 — Conformance and deletion sweep](plans/cor-22-rewrite-conformance-and-deletion.md).** Delete every displaced route, rerun all
    architecture proofs, reconcile requirements from evidence, and close the rewrite program.
+   Conformance, deletion, Debug and Release suites, both smoke gates, and Release performance
+   evidence are complete. The program stays Active on two items:
+   1. REQ-109 returned to `Correction`: separate-agent review found that semantic formatting
+      commands still apply a whole-document attributed replacement, a fourth full-replacement
+      route ARC-Q16 does not permit. Closing it changes where a patch is derived, so it needs a
+      separately approved discovery unit rather than an edit inside this build.
+
+   REQ-104's screenshot evidence is complete: the capture was produced and reviewed, and the
+   review itself found and fixed a caret-shaped task checkmark and a blockquote that laid out one
+   character per line.
 
 The exact approved implementation work lives in the corresponding files under `docs/plans/`.
 

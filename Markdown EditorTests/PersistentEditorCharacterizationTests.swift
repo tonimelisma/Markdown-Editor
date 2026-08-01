@@ -745,59 +745,111 @@ struct PersistentEditorCharacterizationTests {
         #expect(cache.totalBytes == 0)
     }
 
-    // Verifies: REQ-090 — keystroke translation p95 < 8 ms (Release only).
-    @Test func keystrokeTranslationP95Under8ms() async {
-        #if !DEBUG
-        let document = MarkdownDocument()
-        document.installTextForTesting(String(repeating: "word ", count: 20_000))
-        let session = EditorSession()
-        session.attach(document: document)
-        let source = document.text
-        let version = document.sourceVersion
-        let (tree, model) = await Task.detached {
-            let tree = MarkdownParser.parse(source, sourceVersion: version).get()!
-            let model = MarkdownProjectionModel.build(
-                tree: tree,
-                index: MarkdownSourceIndex(source: source, sourceVersion: version)
-            )
-            return (tree, model)
-        }.value
-        session.installProjectionForTesting(model, tree: tree)
+    /// Verifies: REQ-090 — p95 of the *complete* native input callback < 8 ms (Release only).
+    ///
+    /// The measured span is the delegate callback itself, so it contains semantic planning,
+    /// source commit, the attributed patch, the attachment update, and selection restoration.
+    /// Timing `EditorSession.perform` alone would exclude every TextKit cost the budget is about.
+    @Test func nativeInputCallbackP95Under8ms() throws {
+#if !DEBUG
+        let harness = try PerformanceBoundaryTests.EditorHarness(
+            source: String(repeating: "word ", count: 20_000)
+        )
+        let source = harness.document.text
 
         var samples: [Double] = []
+        var failures: [String] = []
         samples.reserveCapacity(40)
         for i in 0..<50 {
-            let presentation = session.presentation!
+            let before = harness.document.sourceVersion
+            let start = CFAbsoluteTimeGetCurrent()
+            harness.typeCharacter("x", at: NSRange(location: i, length: 0))
+            let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
+            guard harness.document.sourceVersion == before &+ 1 else {
+                failures.append("performance input refused at sample \(i)")
+                break
+            }
+            if i >= 10 { samples.append(ms) }
+        }
+        // Every accepted input was applied as a bounded patch: a full rebuild would satisfy the
+        // string assertions while quietly invalidating the latency claim.
+        if harness.storage.fullReplacements > 0 {
+            failures.append("\(harness.storage.fullReplacements) full storage replacements")
+        }
+        let evidence = recordPerformanceEvidence(
+            name: "wysiwyg-native-input-callback",
+            corpus: source,
+            warmups: 10,
+            samples: samples,
+            failures: failures
+        )
+        #expect(evidence.failures.isEmpty, "performance evidence failures: \(evidence.failures)")
+        #expect(evidence.samples.count > 0)
+        if let p95 = evidence.p95 {
+            #expect(p95 < 8.0, "p95=\(p95)ms samples=\(evidence.samples)")
+        }
+        #else
+        return
+        #endif
+    }
+
+    /// Non-gating characterization: splits the complete native callback into semantic planning
+    /// (`EditorSession.perform`, which derives a complete next presentation snapshot) and the
+    /// TextKit application that follows it. Reported so a budget miss names its own cause
+    /// instead of inviting a guess. No threshold is asserted here.
+    @Test func nativeInputCallbackCostSplitCharacterization() throws {
+#if !DEBUG
+        let planningHarness = try PerformanceBoundaryTests.EditorHarness(
+            source: String(repeating: "word ", count: 20_000)
+        )
+        let source = planningHarness.document.text
+
+        var planning: [Double] = []
+        for i in 0..<50 {
+            guard let presentation = planningHarness.session.presentation else { break }
             let selection = ProjectionSelection(
                 utf16: NSRange(location: i, length: 0),
                 revision: presentation.projectionRevision
             )
-            let start = CFAbsoluteTimeGetCurrent()
-            let result = session.perform(
+            let planStart = CFAbsoluteTimeGetCurrent()
+            let outcome = planningHarness.session.perform(
                 .insertText("x"),
                 selection: .projection(selection),
-                expectedSourceRevision: SourceRevision(value: document.sourceVersion)
+                expectedSourceRevision: SourceRevision(value: planningHarness.document.sourceVersion)
             )
-            let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
-            guard case .accepted = result else {
-                Issue.record("performance input refused at sample \(i): \(result)")
-                return
-            }
-            if i >= 10 { samples.append(ms) }
+            let planMs = (CFAbsoluteTimeGetCurrent() - planStart) * 1000
+            guard case .accepted = outcome else { break }
+            if i >= 10 { planning.append(planMs) }
         }
-        samples.sort()
-        let p95Index = min(samples.count - 1, Int(ceil(0.95 * Double(samples.count))) - 1)
-        let p95 = samples[max(p95Index, 0)]
-        recordPerformanceEvidence(
-            name: "wysiwyg-keystroke-translation",
+        _ = recordPerformanceEvidence(
+            name: "wysiwyg-semantic-planning-only",
             corpus: source,
             warmups: 10,
+            samples: planning
+        )
+#endif
+    }
+
+    /// Non-gating 1M UTF-16 characterization required by COR-20. Reported, never asserted: no
+    /// threshold has been approved at this size.
+    @Test func nativeInputCallbackOneMillionCharacterization() throws {
+#if !DEBUG
+        let harness = try PerformanceBoundaryTests.EditorHarness(
+            source: String(repeating: "word ", count: 200_000)
+        )
+        var samples: [Double] = []
+        for i in 0..<30 {
+            let start = CFAbsoluteTimeGetCurrent()
+            harness.typeCharacter("x", at: NSRange(location: i, length: 0))
+            if i >= 5 { samples.append((CFAbsoluteTimeGetCurrent() - start) * 1000) }
+        }
+        _ = recordPerformanceEvidence(
+            name: "wysiwyg-native-input-callback-1M",
+            corpus: harness.document.text,
+            warmups: 5,
             samples: samples
         )
-        #expect(p95 < 8.0, "p95=\(p95)ms samples=\(samples)")
-        #else
-        return
-        #endif
+#endif
     }
 
     // Verifies: REQ-090 — mode toggle p95 < 16 ms (Release only).
@@ -828,16 +880,17 @@ struct PersistentEditorCharacterizationTests {
             let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
             if i >= 10 { samples.append(ms) }
         }
-        samples.sort()
-        let p95Index = min(samples.count - 1, Int(ceil(0.95 * Double(samples.count))) - 1)
-        let p95 = samples[max(p95Index, 0)]
-        recordPerformanceEvidence(
+        let evidence = recordPerformanceEvidence(
             name: "mode-toggle",
             corpus: document.text,
             warmups: 10,
             samples: samples
         )
-        #expect(p95 < 16.0, "p95=\(p95)ms samples=\(samples)")
+        #expect(evidence.failures.isEmpty, "performance evidence failures: \(evidence.failures)")
+        #expect(evidence.samples.count > 0)
+        if let p95 = evidence.p95 {
+            #expect(p95 < 16.0, "p95=\(p95)ms samples=\(evidence.samples)")
+        }
         #else
         return
         #endif

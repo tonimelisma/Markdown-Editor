@@ -13,6 +13,11 @@ import Foundation
 protocol DocumentActionInterface: AnyObject {
     @MainActor func sourceSnapshot() -> SourceSnapshot
 
+    /// Canonical image references from the latest pinned parse result. Consumers must not
+    /// reparse raw Markdown during a move/save notification.
+    @MainActor var canonicalAssetReferences: CanonicalAssetReferences { get }
+    @MainActor func updateCanonicalAssetReferences(_ references: CanonicalAssetReferences)
+
     /// Placement-range tracking owned by the document interface, not a text view.
     @MainActor func beginPlacementTracking(range: SourceRange) -> Int
     @MainActor func endPlacementTracking(_ generation: Int)

@@ -82,6 +82,10 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case oracleSnapshot
     case identityMismatch
 
+    // Presentation recovery reasons
+    case patchUnprovable
+    case appliedStorageMismatch
+
     // Reconciliation violations
     case publication
     case liveStateCapture
@@ -131,9 +135,11 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case promiseTimedOut
     case nonRegularSource
     case parentChanged
-    case keystrokeTranslation
-    case modeToggle
-    case reconciliation
+    case nativeInputCallback
+    case modeTransition
+    case parseProjection
+    case imageResolution
+    case authoritativeApplication
 
     // Alert reasons with no natural ImagePlacementError equivalent
     case noInsertionTarget

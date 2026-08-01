@@ -428,20 +428,71 @@ struct ImageBatchPreflightTests {
     }
 }
 
-struct CanonicalAssetReferenceScannerTests {
+struct CanonicalAssetReferenceTests {
     // Verifies: REQ-076
     @Test func findsCanonicalReferencesAndExcludesCode() {
+        // Blank lines are load-bearing: an indented code block cannot interrupt a paragraph, so
+        // without the separation the last line would be a lazy paragraph continuation holding a
+        // real image node — cmark's answer, and the one this type must agree with.
         let source = """
         See ![](assets/photo.png)
+
         `![](assets/code.png)`
+
         ```
         ![](assets/fence.png)
         ```
+
         \\![](assets/escaped.png)
+
             ![](assets/indent.png)
+
         """
-        let refs = CanonicalAssetReferenceScanner.scan(source)
+        let refs = canonicalReferences(source).values
         #expect(refs.map(\.filename) == ["photo.png"])
+    }
+
+    /// Fence length, indentation, escapes, nested parentheses, titles, angle destinations, CRLF,
+    /// and Unicode all resolve through the pinned parser rather than a private grammar.
+    @Test func destinationSpellingsAgreeWithThePinnedParser() {
+        #expect(canonicalReferences("![](<assets/photo.png>)").values.map(\.filename) == ["photo.png"])
+        #expect(canonicalReferences("![](assets/photo.png \"A title\")").values.map(\.filename) == ["photo.png"])
+        #expect(canonicalReferences("![](assets/pho%20to.png)").values.map(\.filename) == ["pho%20to.png"])
+        #expect(canonicalReferences("![](assets/tä-bild.png)").values.map(\.filename) == ["tä-bild.png"])
+        #expect(canonicalReferences("![](assets/photo.png)\r\n").values.map(\.filename) == ["photo.png"])
+        // A four-backtick fence is not closed by three backticks, so everything inside stays code.
+        #expect(canonicalReferences("````\n```\n![](assets/fence.png)\n````\n").values.isEmpty)
+        // Not an image node: a bare link, an unsupported extension, and a nested subdirectory.
+        #expect(canonicalReferences("[](assets/link.png)").values.isEmpty)
+        #expect(canonicalReferences("![](assets/notes.txt)").values.isEmpty)
+        #expect(canonicalReferences("![](assets/nested/photo.png)").values.isEmpty)
+    }
+
+    /// Structural gate: no consumer may reintroduce a line- or regex-oriented Markdown scanner
+    /// for asset references. The canonical value is derived once, during authoritative parsing.
+    @Test func noSecondaryMarkdownScannerRouteExists() throws {
+        #expect(try !productionSourceText().contains("CanonicalAssetReferenceScanner"))
+        // Pattern matching over Markdown is confined to Source-mode lexical highlighting, which
+        // styles text and never derives semantics. No other production file may reintroduce it.
+        let regexOwners = try productionSourceFiles()
+            .filter { try String(contentsOf: $0, encoding: .utf8).contains("NSRegularExpression") }
+            .map(\.lastPathComponent)
+        #expect(regexOwners == ["MarkdownHighlighter.swift"])
+        // `CanonicalAssetReferences` is populated from the authoritative projection only.
+        #expect(try productionSourceText().contains("CanonicalAssetReferences.from(model:"))
+    }
+
+    private func canonicalReferences(_ source: String) -> CanonicalAssetReferences {
+        guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: 1) else {
+            Issue.record("fixture did not parse")
+            return CanonicalAssetReferences(values: [])
+        }
+        return CanonicalAssetReferences.from(
+            model: MarkdownProjectionModel.build(
+                tree: tree,
+                index: MarkdownSourceIndex(source: source, sourceVersion: 1)
+            )
+        )
     }
 
     // Verifies: REQ-076
@@ -456,13 +507,9 @@ struct CanonicalAssetReferenceScannerTests {
         }
         let png = try makePNGData()
         try png.write(to: dirOld.appendingPathComponent("assets/photo.png"))
-        let source = "![](assets/photo.png)"
         #expect(
-            CanonicalAssetReferenceScanner.hasBrokenReferences(
-                source: source,
-                oldParent: dirOld,
-                newParent: dirNew
-            )
+            canonicalReferences("![](assets/photo.png)")
+                .hasBrokenReferences(oldParent: dirOld, newParent: dirNew)
         )
     }
 }
@@ -665,13 +712,16 @@ struct ImagePlacementControllerLifecycleTests {
     }
 
     @MainActor
-    private func waitUntilIdle(_ controller: ImagePlacementController, timeoutSeconds: Double = 3) async {
+    /// Generous by design: the assertion is that placement *reaches* idle, and tests run
+    /// concurrently, so a tight deadline turns main-actor contention into a false failure.
+    private func waitUntilIdle(_ controller: ImagePlacementController, timeoutSeconds: Double = 15) async {
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         while controller.phaseForTesting != .idle, Date() < deadline {
             try? await Task.sleep(for: .milliseconds(10))
         }
     }
 
+    @MainActor
     private func targetForCurrentState(_ document: MarkdownDocument) -> ImagePlacementTarget {
         ImagePlacementTarget(
             sourceSelection: SourceSelection(utf16: NSRange(location: (document.text as NSString).length, length: 0)),
@@ -877,7 +927,7 @@ struct ImagePlacementControllerLifecycleTests {
                 }
             } else {
                 // ".alert = ", not a bare "alert = ": the latter also matches unrelated local
-                // variables in other files (e.g. EditorToolbar.swift's `let alert = NSAlert()`).
+                // variables in other files (for example, an unrelated local AppKit alert).
                 // The leading dot is what distinguishes property access on some placement
                 // controller from an unrelated local declaration.
                 #expect(

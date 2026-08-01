@@ -140,6 +140,9 @@ struct EditorHostView: NSViewRepresentable {
 
         deinit {
             NotificationCenter.default.removeObserver(self)
+            MainActor.assumeIsolated {
+                session.detach()
+            }
         }
 
         /// Records one completed host update and reports a sustained storm.
@@ -276,9 +279,20 @@ struct EditorHostView: NSViewRepresentable {
 
         func applyMode(_ mode: EditorMode, focus: Bool) {
             let performanceStart = DispatchTime.now().uptimeNanoseconds
-            defer { session.recordPerformance(.modeToggle, durationNanos: DispatchTime.now().uptimeNanoseconds - performanceStart) }
             guard let sourceScroll, let wysiwygScroll, let sourceText, let wysiwygText else { return }
             let modeChanged = lastAppliedMode != nil && lastAppliedMode != mode
+            // REQ-090/103: only a real mode transition is a mode transition. Initial editor
+            // construction also lands here, and timing it would put view-setup latency into the
+            // 16 ms budget — inflating p95 and able to emit a budget warning for a user who
+            // never switched modes.
+            defer {
+                if modeChanged {
+                    session.recordPerformance(
+                        .modeTransition,
+                        durationNanos: DispatchTime.now().uptimeNanoseconds - performanceStart
+                    )
+                }
+            }
             let firstResponder = sourceText.window?.firstResponder
             let hadEditorFocus =
                 firstResponder === sourceText
@@ -422,11 +436,12 @@ struct EditorHostView: NSViewRepresentable {
             textView.isAutomaticSpellingCorrectionEnabled = false
             textView.usesFindBar = true
             textView.isIncrementalSearchingEnabled = true
-            textView.textContainerInset = NSSize(width: 8, height: 8)
+            // Reading-column geometry — inset, measure, and width tracking — belongs to
+            // MarkdownWYSIWYGTextView.layout(). Setting it here too would be a second owner of
+            // the same fact, disagreeing with the first until the next layout pass.
             textView.isVerticallyResizable = true
             textView.isHorizontallyResizable = false
             textView.autoresizingMask = [.width]
-            textView.textContainer?.widthTracksTextView = true
             textView.setAccessibilityLabel("Markdown WYSIWYG")
             textView.isEditable = true
             textView.isSelectable = true

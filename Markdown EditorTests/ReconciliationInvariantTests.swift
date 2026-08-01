@@ -10,6 +10,7 @@
 import Testing
 import AppKit
 import Combine
+import Synchronization
 import Foundation
 @testable import Markdown_Editor
 
@@ -163,9 +164,8 @@ struct ReconciliationInvariantTests {
         let trace = InMemoryEditorTrace()
         document.trace = trace
         document.installTextForTesting("# Hello\n")
-        let session = EditorSession()
         // This test provokes the violation on purpose; the debug trap would abort the host.
-        session.trapsOnReconciliationViolation = false
+        let session = EditorSession(trapsOnReconciliationViolation: false)
         session.attach(document: document)
         trace.reset()
 
@@ -220,8 +220,7 @@ struct ReconciliationInvariantTests {
         let trace = InMemoryEditorTrace()
         document.trace = trace
         document.installTextForTesting("# Hello\n")
-        let session = EditorSession()
-        session.trapsOnReconciliationViolation = false
+        let session = EditorSession(trapsOnReconciliationViolation: false)
         session.attach(document: document)
         trace.reset()
 
@@ -279,17 +278,34 @@ struct ReconciliationInvariantTests {
     // Verifies: REQ-096 — a blocked main actor is reported while it is still blocked, not
     // only once it recovers. Without the threshold race in `probeOnce` only one report
     // arrives, and only after recovery.
+    /// The whole scenario runs inside `Task.detached`, off the main actor.
+    ///
+    /// This is not incidental. Anything main-actor-bound cannot observe this stall: it would have
+    /// to resume on the actor the blocker is holding, so it only gets to look *after* the stall
+    /// has ended — and then reports "no stall", a false negative about a real invariant. That is
+    /// also why production's probe is `nonisolated` and driven from a detached task. The hold
+    /// (3 s) is an order of magnitude longer than the threshold (100 ms), so a loaded machine
+    /// cannot end the stall before the probe looks.
     @Test func watchdogReportsStallWhileStillBlocked() async {
         let reported = ReportBox()
-        let blocker = Task { @MainActor in
-            // Occupy the main actor past the probe threshold. The blocking sleep lives in a
-            // synchronous function so it genuinely holds the actor rather than suspending.
-            occupyMainActor(seconds: 0.4)
+        let scenario = Task.detached {
+            let occupied = Mutex(false)
+            let blocker = Task { @MainActor in
+                // Set synchronously, with no suspension before the sleep, so observing the flag
+                // means the actor is already held. The blocking sleep is in a synchronous
+                // function so it genuinely occupies the actor rather than suspending.
+                occupied.withLock { $0 = true }
+                occupyMainActor(seconds: 3)
+            }
+            while !occupied.withLock({ $0 }) {
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+            await MainActorWatchdog.probeOnce(thresholdMillis: 100) { millis in
+                reported.append(millis)
+            }
+            await blocker.value
         }
-        await MainActorWatchdog.probeOnce(thresholdMillis: 100) { millis in
-            reported.append(millis)
-        }
-        await blocker.value
+        await scenario.value
 
         let values = await reported.awaitingCount(2)
         #expect(values.count == 2, "expected an immediate stall report and a recovery duration")

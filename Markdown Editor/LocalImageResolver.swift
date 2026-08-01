@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 nonisolated enum LocalImageResolveFailure: Error, Sendable, Equatable {
     case remoteURL
     case missingFile
+    case encodedFileTooLarge
     case unsupportedType
     case corrupt
     case oversizeDimensions(width: Int, height: Int)

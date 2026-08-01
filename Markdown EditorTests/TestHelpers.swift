@@ -21,16 +21,55 @@ extension Result {
     }
 }
 
+/// Production Swift sources, for structural gates that prove a displaced route is gone rather
+/// than merely unused. Source inspection is the only available proof of an *absence*.
+func productionSourceFiles() throws -> [URL] {
+    let root = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("Markdown Editor")
+    return try FileManager.default
+        .contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+        .filter { $0.pathExtension == "swift" }
+        .sorted { $0.lastPathComponent < $1.lastPathComponent }
+}
+
+func productionSourceText() throws -> String {
+    try productionSourceFiles()
+        .map { try String(contentsOf: $0, encoding: .utf8) }
+        .joined(separator: "\n")
+}
+
+struct PerformanceEvidence: Equatable, Sendable {
+    let warmups: Int
+    let samples: [Double]
+    let median: Double?
+    let p95: Double?
+    let failures: [String]
+
+    init(warmups: Int, samples: [Double], failures: [String] = []) {
+        let sorted = samples.sorted()
+        self.warmups = warmups
+        self.samples = sorted
+        self.median = sorted.isEmpty ? nil : sorted[sorted.count / 2]
+        if sorted.isEmpty {
+            self.p95 = nil
+        } else {
+            let index = min(sorted.count - 1, max(0, Int(ceil(0.95 * Double(sorted.count))) - 1))
+            self.p95 = sorted[index]
+        }
+        self.failures = sorted.isEmpty ? failures + ["no performance samples"] : failures
+    }
+}
+
 func recordPerformanceEvidence(
     name: String,
     corpus: String,
     warmups: Int,
-    samples: [Double]
-) {
-    let sorted = samples.sorted()
-    guard !sorted.isEmpty else { return }
-    let median = sorted[sorted.count / 2]
-    let p95Index = min(sorted.count - 1, max(0, Int(ceil(0.95 * Double(sorted.count))) - 1))
+    samples: [Double],
+    failures: [String] = []
+) -> PerformanceEvidence {
+    let evidence = PerformanceEvidence(warmups: warmups, samples: samples, failures: failures)
     let digest = SHA256.hash(data: Data(corpus.utf8))
         .map { String(format: "%02x", $0) }
         .joined()
@@ -39,11 +78,20 @@ func recordPerformanceEvidence(
     #else
     let architecture = "other"
     #endif
+    #if DEBUG
+    let configuration = "Debug"
+    #else
+    let configuration = "Release"
+    #endif
+    let median = evidence.median.map { String($0) } ?? "nil"
+    let p95 = evidence.p95.map { String($0) } ?? "nil"
     print(
-        "PERF name=\(name) config=Release os=\(ProcessInfo.processInfo.operatingSystemVersionString) "
+        "PERF name=\(name) config=\(configuration) os=\(ProcessInfo.processInfo.operatingSystemVersionString) "
         + "arch=\(architecture) corpusUTF16=\((corpus as NSString).length) corpusSHA256=\(digest) "
-        + "warmups=\(warmups) samples=\(sorted.count) medianMs=\(median) p95Ms=\(sorted[p95Index]) failures=0"
+        + "warmups=\(evidence.warmups) samples=\(evidence.samples.count) "
+        + "medianMs=\(median) p95Ms=\(p95) failures=\(evidence.failures.count)"
     )
+    return evidence
 }
 
 /// Test fixture input. Production accepts only typed `EditorSelection` requests.

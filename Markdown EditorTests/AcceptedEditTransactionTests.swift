@@ -539,6 +539,61 @@ struct EditorStateOwnershipTests {
         #expect(!haystack.contains("var preferDiscreteGrouping"))
         #expect(!haystack.contains("var nsRange: NSRange"))
     }
+
+    /// COR-22 deletion gate for the editor foundation rewrite. Each symbol was displaced by an
+    /// approved plan; the architecture forbids keeping either one as a compatibility route.
+    @Test func rewriteDisplacedRoutesAreAbsent() throws {
+        let haystack = try productionSourceText()
+        let displaced = [
+            "RichTextBuilder",                 // INC-05: one attributed builder
+            "PlaceholderAttachmentCell",       // INC-05: semantic separator route
+            "PresentationDecoration",          // INC-05: unconsumed decoration descriptors
+            "PerformanceSamplerRegistry",      // COR-19: sampler lifetime coordination
+            "flushPerformanceSamplingAtRunEnd",// COR-19
+            "keystrokeTranslation",            // COR-20: dishonest metric boundary
+            "CanonicalAssetReferenceScanner",  // COR-21: secondary Markdown scanner
+            "struct EditorToolbar"             // INC-06: in-document formatting row
+        ]
+        for symbol in displaced {
+            #expect(!haystack.contains(symbol), "displaced route still present: \(symbol)")
+        }
+        // INC-06: no application-modal formatting dialog.
+        #expect(!haystack.contains("runModal("))
+        // COR-20: the ordinary edit path may not reach a whole-document replacement.
+        #expect(!haystack.contains("applyRecoveryPresentation(built, to: textView)\n                appliedSnapshotID"))
+    }
+
+    /// INC-05: only `MarkdownTypography` defines approved numeric typography tokens, and the
+    /// semantic compiler stays free of AppKit.
+    @Test func typographyTokensAndAppKitStayInTheirOwners() throws {
+        let files = try productionSourceFiles()
+        let compiler = try #require(files.first { $0.lastPathComponent == "ProjectionCompiler.swift" })
+        let compilerText = try String(contentsOf: compiler, encoding: .utf8)
+        #expect(!compilerText.contains("import AppKit"))
+        #expect(!compilerText.contains("NSFont"))
+        #expect(!compilerText.contains("NSColor"))
+
+        // Typography tokens are declared in exactly one place, and consumers reference the named
+        // token rather than restating its value.
+        let tokenNames = [
+            "bodyPointSize", "lineHeightMultiple", "maximumReadingMeasure",
+            "minimumHorizontalInset", "minimumVerticalInset", "paragraphSpacingEm",
+            "listIndent", "quoteRuleWidth", "headingPointSizes"
+        ]
+        for token in tokenNames {
+            let declarers = try files
+                .filter { try String(contentsOf: $0, encoding: .utf8).contains("let \(token)") }
+                .map(\.lastPathComponent)
+            #expect(declarers == ["MarkdownTypography.swift"], "\(token) declared in \(declarers)")
+        }
+        for consumer in ["AttributedPresentationBuilder.swift", "WYSIWYGEditor.swift"] {
+            let text = try String(
+                contentsOf: try #require(files.first { $0.lastPathComponent == consumer }),
+                encoding: .utf8
+            )
+            #expect(text.contains("MarkdownTypography."), "\(consumer) does not use the tokens")
+        }
+    }
 }
 
 @MainActor

@@ -136,6 +136,7 @@ nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
     case location
     case millis
     case mode
+    case metric
     case maxNanos
     case nameLength
     case origin
@@ -188,6 +189,7 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
     case parseCancelled
     case presentationInstalled
     case presentationTransition
+    case presentationRecovered
     case reconciliationScheduled
     case reconciliationDiscarded
     case reconciliationApplied
