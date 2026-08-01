@@ -103,6 +103,8 @@ struct DiagnosticLogTests {
             .editRouted(context: .wysiwyg, groupingTyping: true, planner: PlannerKind(.toggleBold)),
             .presentationInstalled(snapshotID: 1, sourceRevision: 1, provisional: false),
             .presentationTransition(from: 1, to: 2, sourceRevision: 2, durationNanos: 5),
+            .presentationRecovered(snapshotID: 2, sourceRevision: 2, reason: .patchUnprovable),
+            .presentationRecovered(snapshotID: 2, sourceRevision: 2, reason: .appliedStorageMismatch),
             .reconciliationScheduled(sourceRevision: 1, generation: 1),
             .reconciliationDiscarded(sourceRevision: 1, reason: .identityMismatch),
             .reconciliationApplied(snapshotID: 1, sourceRevision: 1, generation: 1, durationNanos: 5),

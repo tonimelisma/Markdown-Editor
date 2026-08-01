@@ -131,6 +131,12 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 (.sourceRevision, .uint(sourceRevision)),
                 (.durationNanos, .uint(durationNanos))
             ])
+        case .presentationRecovered(let snapshotID, let sourceRevision, let reason):
+            return Mapped(name: .presentationRecovered, level: .fault, category: .projection, data: [
+                (.snapshot, .uint(snapshotID)),
+                (.sourceRevision, .uint(sourceRevision)),
+                (.reason, .symbol(reason.symbol))
+            ])
         case .reconciliationScheduled(let sourceRevision, let generation):
             return Mapped(name: .reconciliationScheduled, level: .debug, category: .projection, data: [
                 (.sourceRevision, .uint(sourceRevision)),

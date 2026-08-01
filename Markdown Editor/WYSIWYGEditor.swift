@@ -156,6 +156,18 @@ enum WYSIWYGEditor {
                   affectedCharRange.location >= 0,
                   NSMaxRange(affectedCharRange) <= (presentation.renderedString as NSString).length
             else {
+                // Applied storage is not the snapshot this keystroke targets. Resynchronizing is
+                // a full replacement, so it is recorded for the same reason a post-commit
+                // recovery is: storage drift must never be silent.
+                if let presentation = session.presentation, textView.string != presentation.renderedString {
+                    document.trace?.record(
+                        .presentationRecovered(
+                            snapshotID: presentation.id.value,
+                            sourceRevision: presentation.sourceRevision.value,
+                            reason: .appliedStorageMismatch
+                        )
+                    )
+                }
                 applyProjectionIfNeeded(force: true)
                 return false
             }
@@ -198,36 +210,73 @@ enum WYSIWYGEditor {
             guard let transition = edit.presentationTransition else {
                 preconditionFailure("Accepted WYSIWYG edit must carry a presentation transition")
             }
+            // Only the touched semantic block scope is turned into attributed content. Building
+            // the complete next presentation here would put the whole document's cost inside
+            // every keystroke, which is exactly what ARC-019 exists to prevent.
+            guard let patch = PresentationPatch.make(
+                transition: transition,
+                current: current,
+                buildScope: { [weak self] model, scope in
+                    AttributedPresentationBuilder.buildScoped(
+                        model: model,
+                        theme: MarkdownTheme(),
+                        images: self?.session.resolvedImages ?? [:],
+                        onTaskPress: { nodeID in self?.performTaskToggle(nodeID: nodeID) },
+                        scope: scope
+                    )
+                }
+            ) else {
+                recoverFullPresentation(
+                    to: transition.nextSnapshot,
+                    in: textView,
+                    reason: .patchUnprovable
+                )
+                return
+            }
+            session.updateOrigin.with(.programmaticPresentation) {
+                guard textStorageApplier.applyPatch(patch, to: textView, expectedCurrent: current) else {
+                    recoverFullPresentation(
+                        to: transition.nextSnapshot,
+                        in: textView,
+                        reason: .appliedStorageMismatch
+                    )
+                    return
+                }
+                appliedSnapshotID = transition.nextSnapshot.id
+            }
+        }
+
+        /// The only route from an accepted edit to a full replacement. It is an invariant
+        /// violation, not a fallback: it records a typed reason and makes WYSIWYG unavailable
+        /// until an authoritative reconciliation lands, so a recovery can never be mistaken for
+        /// an ordinary edit that happened to be slow.
+        private func recoverFullPresentation(
+            to snapshot: PresentationSnapshot,
+            in textView: NSTextView,
+            reason: PresentationRecoveryReason
+        ) {
+            document.trace?.record(
+                .presentationRecovered(
+                    snapshotID: snapshot.id.value,
+                    sourceRevision: snapshot.sourceRevision.value,
+                    reason: reason
+                )
+            )
+            session.updateWYSIWYGModeState {
+                $0.availability = .waitingForCurrentProjection(snapshot.sourceRevision)
+            }
             let built = AttributedPresentationBuilder.build(
-                model: transition.nextSnapshot.asProjectionModel,
+                model: snapshot.asProjectionModel,
                 theme: MarkdownTheme(),
                 images: session.resolvedImages,
                 onTaskPress: { [weak self] nodeID in
                     self?.performTaskToggle(nodeID: nodeID)
                 }
             )
-            guard let patch = PresentationPatch.make(
-                transition: transition,
-                current: current,
-                builtNext: built
-            ) else {
-                session.updateWYSIWYGModeState {
-                    $0.availability = .waitingForCurrentProjection(transition.nextSnapshot.sourceRevision)
-                }
-                textStorageApplier.applyRecoveryPresentation(built, to: textView)
-                appliedSnapshotID = transition.nextSnapshot.id
-                return
-            }
             session.updateOrigin.with(.programmaticPresentation) {
-                guard textStorageApplier.applyPatch(patch, to: textView, expectedCurrent: current) else {
-                    session.updateWYSIWYGModeState {
-                        $0.availability = .waitingForCurrentProjection(transition.nextSnapshot.sourceRevision)
-                    }
-                    textStorageApplier.applyRecoveryPresentation(built, to: textView)
-                    return
-                }
-                appliedSnapshotID = transition.nextSnapshot.id
+                textStorageApplier.applyRecoveryPresentation(built, to: textView)
             }
+            appliedSnapshotID = snapshot.id
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {

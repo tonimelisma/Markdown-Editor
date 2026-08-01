@@ -745,46 +745,36 @@ struct PersistentEditorCharacterizationTests {
         #expect(cache.totalBytes == 0)
     }
 
-    // Verifies: REQ-090 — keystroke translation p95 < 8 ms (Release only).
-    @Test func nativeInputCallbackP95Under8ms() async {
+    /// Verifies: REQ-090 — p95 of the *complete* native input callback < 8 ms (Release only).
+    ///
+    /// The measured span is the delegate callback itself, so it contains semantic planning,
+    /// source commit, the attributed patch, the attachment update, and selection restoration.
+    /// Timing `EditorSession.perform` alone would exclude every TextKit cost the budget is about.
+    @Test func nativeInputCallbackP95Under8ms() throws {
 #if !DEBUG
-        let document = MarkdownDocument()
-        document.installTextForTesting(String(repeating: "word ", count: 20_000))
-        let session = EditorSession()
-        session.attach(document: document)
-        let source = document.text
-        let version = document.sourceVersion
-        let (tree, model) = await Task.detached {
-            let tree = MarkdownParser.parse(source, sourceVersion: version).get()!
-            let model = MarkdownProjectionModel.build(
-                tree: tree,
-                index: MarkdownSourceIndex(source: source, sourceVersion: version)
-            )
-            return (tree, model)
-        }.value
-        session.installProjectionForTesting(model, tree: tree)
+        let harness = try PerformanceBoundaryTests.EditorHarness(
+            source: String(repeating: "word ", count: 20_000)
+        )
+        let source = harness.document.text
 
         var samples: [Double] = []
         var failures: [String] = []
         samples.reserveCapacity(40)
         for i in 0..<50 {
-            let presentation = session.presentation!
-            let selection = ProjectionSelection(
-                utf16: NSRange(location: i, length: 0),
-                revision: presentation.projectionRevision
-            )
+            let before = harness.document.sourceVersion
             let start = CFAbsoluteTimeGetCurrent()
-            let result = session.perform(
-                .insertText("x"),
-                selection: .projection(selection),
-                expectedSourceRevision: SourceRevision(value: document.sourceVersion)
-            )
+            harness.typeCharacter("x", at: NSRange(location: i, length: 0))
             let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
-            guard case .accepted = result else {
-                failures.append("performance input refused at sample \(i): \(result)")
+            guard harness.document.sourceVersion == before &+ 1 else {
+                failures.append("performance input refused at sample \(i)")
                 break
             }
             if i >= 10 { samples.append(ms) }
+        }
+        // Every accepted input was applied as a bounded patch: a full rebuild would satisfy the
+        // string assertions while quietly invalidating the latency claim.
+        if harness.storage.fullReplacements > 0 {
+            failures.append("\(harness.storage.fullReplacements) full storage replacements")
         }
         let evidence = recordPerformanceEvidence(
             name: "wysiwyg-native-input-callback",

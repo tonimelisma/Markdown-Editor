@@ -189,6 +189,7 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
     case parseCancelled
     case presentationInstalled
     case presentationTransition
+    case presentationRecovered
     case reconciliationScheduled
     case reconciliationDiscarded
     case reconciliationApplied

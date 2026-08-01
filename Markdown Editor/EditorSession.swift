@@ -186,6 +186,12 @@ final class EditorSession: ObservableObject {
         performanceSampler?.record(metric, durationNanos: durationNanos)
     }
 
+    /// Aggregate samples collected so far, draining them. Reading is what the periodic flush and
+    /// the boundary proof both do; nothing here exposes per-keystroke timings.
+    func drainPerformanceSummaries() -> [PerformanceSampler.Summary] {
+        performanceSampler?.drainSummaries() ?? []
+    }
+
     private func invalidateDerivedState() {
         operationGeneration &+= 1
         parseTask?.cancel()

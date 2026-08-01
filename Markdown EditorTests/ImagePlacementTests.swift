@@ -712,7 +712,9 @@ struct ImagePlacementControllerLifecycleTests {
     }
 
     @MainActor
-    private func waitUntilIdle(_ controller: ImagePlacementController, timeoutSeconds: Double = 3) async {
+    /// Generous by design: the assertion is that placement *reaches* idle, and tests run
+    /// concurrently, so a tight deadline turns main-actor contention into a false failure.
+    private func waitUntilIdle(_ controller: ImagePlacementController, timeoutSeconds: Double = 15) async {
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         while controller.phaseForTesting != .idle, Date() < deadline {
             try? await Task.sleep(for: .milliseconds(10))

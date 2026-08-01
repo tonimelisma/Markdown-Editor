@@ -82,6 +82,10 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case oracleSnapshot
     case identityMismatch
 
+    // Presentation recovery reasons
+    case patchUnprovable
+    case appliedStorageMismatch
+
     // Reconciliation violations
     case publication
     case liveStateCapture

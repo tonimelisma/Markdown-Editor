@@ -23,6 +23,23 @@ nonisolated enum ReconciliationViolation: Sendable, Equatable {
 }
 
 /// Why an authoritative reconciliation result was dropped.
+/// Why an accepted WYSIWYG edit could not be applied as a bounded patch. Both cases are
+/// invariant violations: the presentation is rebuilt authoritatively and WYSIWYG goes
+/// unavailable until it is current again.
+nonisolated enum PresentationRecoveryReason: Sendable, Equatable {
+    /// A patch could not be proven against both complete snapshots.
+    case patchUnprovable
+    /// Applied storage no longer matched the snapshot the patch was built against.
+    case appliedStorageMismatch
+
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .patchUnprovable: return .patchUnprovable
+        case .appliedStorageMismatch: return .appliedStorageMismatch
+        }
+    }
+}
+
 nonisolated enum ReconciliationDiscardReason: Sendable, Equatable {
     case stale
     case parseFailure
@@ -221,6 +238,7 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case editRouted(context: EditorMode, groupingTyping: Bool, planner: PlannerKind)
     case presentationInstalled(snapshotID: UInt64, sourceRevision: UInt64, provisional: Bool)
     case presentationTransition(from: UInt64, to: UInt64, sourceRevision: UInt64, durationNanos: UInt64)
+    case presentationRecovered(snapshotID: UInt64, sourceRevision: UInt64, reason: PresentationRecoveryReason)
     case reconciliationScheduled(sourceRevision: UInt64, generation: UInt64)
     case reconciliationDiscarded(sourceRevision: UInt64, reason: ReconciliationDiscardReason)
     case reconciliationApplied(snapshotID: UInt64, sourceRevision: UInt64, generation: UInt64, durationNanos: UInt64)
