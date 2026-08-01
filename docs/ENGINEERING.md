@@ -221,13 +221,29 @@ Rules:
   block boundary and receives paragraph spacing.
 - Paragraph spacing and heading spacing are `NSParagraphStyle` attributes. Synthetic extra
   newline characters are not inserted merely to create visual spacing.
+- **Spacing belongs to a semantic boundary, not to a newline character.** TextKit ends a
+  paragraph at every `\n` and applies `paragraphSpacing` after each one, but a semantic block is
+  not always one TextKit paragraph: a formal hard break puts a real newline *inside* one
+  CommonMark paragraph, and a fenced code block is one block spanning many lines. A block's
+  paragraph style is therefore installed per TextKit paragraph — only the last carries
+  `paragraphSpacing`, only the first carries `paragraphSpacingBefore`, and every other attribute
+  (indents, tab stops, text blocks, alignment) is identical across the block. Applying one style
+  uniformly across a block's whole range made a hard break lay out identically to a paragraph
+  boundary and spaced a code block's own lines apart. A requirement about what the reader sees is
+  proved by forcing layout on a directly constructed `NSTextView` and asserting on
+  `NSLayoutManager` line-fragment rectangles; asserting the attribute value is not the same claim.
 - List marker, body, continuation lines, nested children, and task controls share explicit block
   metadata. A task checkbox replaces the ordinary bullet. Nesting changes indentation, never
   source spelling.
 - Blockquotes have an inset and leading rule. Color is supplementary and cannot be their only
   distinction.
 - Code blocks use block geometry and padding. Inline code remains inline; neither treatment
-  changes source or edit coordinates.
+  changes source or edit coordinates. The two are distinct projection style tags (`.codeBlock`
+  and `.code`), so they cannot compose: fenced content carrying the inline tag drew the inline
+  run background *inside* the block's own container.
+- Every toolbar command item carries an image as well as a label. An `NSToolbarItem` with neither
+  an image nor a view draws as an empty control, and accessibility meaning never depends on the
+  glyph: label, palette label, tooltip, and accessibility description all remain.
 - Tables size to their contents within the reading measure. They do not expand solely to fill the
   viewport. Header emphasis and borders use adaptive system colors.
 - Images preserve aspect ratio and fit the reading measure. Missing images use an intentional
@@ -479,7 +495,16 @@ Metric names describe their actual boundaries:
 - `modeTransition`: requested mode change through visibility, focus, and selection restoration;
 - `parseProjection`: parser, source index, and semantic projection only;
 - `imageResolution`: inspection, hashing, thumbnail decode, and cache lookup; and
-- `authoritativeApplication`: main-actor application of a completed authoritative result.
+- `authoritativeApplication`: main-actor application of a completed authoritative result; and
+- `layoutApplication`: TextKit layout for the range an applied patch changed. The
+  `nativeInputCallback` boundary ends when the input delegate returns — after
+  `storage.endEditing()` but before glyph generation, layout, and drawing — so without this
+  metric every boundary measured a phase the app owns and none measured one TextKit owns, which
+  is where perceived jank lives on the TextKit 1 compatibility path.
+
+Every metric has a p95 budget in one exported table (`PerformanceSampler.budgetNanos`), asserted
+against the values REQ-090 states. The budgets previously existed twice — as prose here and as
+literals inside `flush()` — with nothing tying them.
 
 Every Release performance proof records configuration, corpus identity, warmups, sample count,
 median, p95, and failures. Zero executed samples is a failing proof, never a skipped success.
@@ -492,6 +517,32 @@ application directly (bypassing Launch Services) on `Scripts/Fixtures/smoke-basi
 structured JSON Lines records the run produces — sequence order, a `documentOpened` record, a
 bounded `hostUpdateEnded` count (the livelock guard; a healthy run settles at 2), no `error`/
 `fault` record, and a terminating `runEnd` record. It never drives, reads, or asserts on the UI.
+The run additionally performs one accepted text insertion and one accepted semantic command
+before settling (REQ-115). Without them the verification proved only open-and-idle, so
+`editRefused` — the record that would have surfaced COR-25 and the four commands COR-26 fixed —
+could never fire in a process-level run.
+
+**How those edits reach the app, and why that is still inside the carve-out.** They are invoked
+on the same window-scoped `EditorCommandController` a toolbar click would use, obtained by
+walking `NSApp.windows` to that window's toolbar delegate (ARC-024 makes the command controller
+window-scoped, so the window *is* its owner). No synthetic event is dispatched, no accessibility
+API is used, no pixel or view state is read, and every assertion afterward is still made purely
+on structured diagnostic records. This is a deliberate judgement, recorded rather than left
+implicit: reaching a controller through `NSApp.windows` touches a UI object, so a stricter
+reading of "must not drive, read, or assert on any user interface" would require a non-UI
+accessor instead. There is no such accessor today, and inventing a parallel registry purely for
+verification would add exactly the kind of second route this architecture forbids. If that
+judgement is ever revisited, the alternative is a non-UI production handle on the session — not a
+relaxation of the assertion rule.
+
+The idle-settle ceiling is 8 for this script (it edits) and 4 for the screenshot script (it does
+not). A healthy run measures 2, reproducibly; the previous ceiling of 20 left ten-fold slack on
+the one metric that exists to catch a self-feeding reconciliation loop.
+
+Both scripts copy the fixture tree to a temporary working directory before launching. Autosave in
+place (REQ-005) means a launched app can write to whatever it opens, so a verification run must
+never be pointed at the repository's own fixtures.
+
 This is the narrow, explicit exception described in `CLAUDE.md` §4; it does not replace or excuse
 any other automated proof.
 
