@@ -145,6 +145,11 @@ enum AttributedPresentationBuilder {
             case .code:
                 monospaced = true
                 attrs[.backgroundColor] = NSColor.quaternaryLabelColor.withAlphaComponent(0.18)
+            case .codeBlock:
+                // REQ-107; COR-28: monospaced only. The block's `NSTextBlock` container already
+                // supplies the background and padding; adding the inline run background here is
+                // what drew a darker band inside the container.
+                monospaced = true
             case .link:
                 break
             case .blockQuote, .literalFallback:

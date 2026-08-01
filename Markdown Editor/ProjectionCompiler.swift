@@ -99,7 +99,9 @@ private nonisolated struct CompilerBuilder {
             appendSourceBacked(
                 literal.hasSuffix("\n") ? literal : literal + "\n",
                 node: node,
-                styles: styleStack + [.code],
+                // REQ-107; COR-28: `.codeBlock`, not `.code`. Fenced content must not carry the
+                // inline-code run background on top of its own container background.
+                styles: styleStack + [.codeBlock],
                 link: nil,
                 literalFallback: false
             )
