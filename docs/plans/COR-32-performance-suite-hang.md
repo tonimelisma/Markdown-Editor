@@ -31,9 +31,53 @@ xcodebuild test -configuration Debug -destination 'platform=macOS' \
 This is why no run in the closing sequence of the COR-26..COR-31 increment could produce Release
 performance evidence, and why that increment's REQ-090 row is `Correction`.
 
+## Discovery findings (2026-08-02)
+
+The original reproduction stands, but investigation changed the picture materially. **There are
+two independent defects here, not one**, and neither is a regression from COR-26..COR-31.
+
+**Finding 1 — a `Done` requirement's cited proof has been failing, unnoticed.**
+`PerformanceBoundaryTests.hiddenDelimiterCommandRefreshesAttributesWithoutReplacing` fails with
+"one-word formatting refreshed attributes outside its semantic block". Reproduced by running that
+single test in isolation at `c90db74`, at `24341da` (immediately before the COR-26..COR-31
+merge), and at `a4e170b` — the PR #29 merge whose description claimed *"Debug 328 passed / 0
+failed"*. REQ-109 cites this test as proof and is therefore now `Correction`.
+
+This is the sharpest lesson available: the forward-traceability gate COR-31 added checks that a
+cited proof **exists**, not that it **passes**. A suite that never completes hides every failure
+inside it, and a green-looking process reported success for months.
+
+**Finding 2 — a genuine hang, separate from that failure.** Running the suite with the failing
+test explicitly skipped still hangs with zero cases reported, so the hang is not the failure.
+
+**What is now excluded as a cause:**
+
+- Not a COR-26..COR-31 regression — reproduces at `a4e170b` and `24341da`.
+- Not `-only-testing` — `-only-testing` on `ProjectionCharacterizationTests` completes (19 cases),
+  and a single named test inside `PerformanceBoundaryTests` completes.
+- Not a cold build — reproduces against warm derived data that other suites build and run from.
+- Not any single test tested so far — six run individually to completion (five pass, one fails).
+
+**Therefore the hang is an interaction *between* tests in this suite**, not any one of them. The
+unfiltered full run reaches `Testing started`, executes 110 cases, and then stalls, while
+`-skip-testing` for the whole suite completes 354 — consistent with the suite blocking the run
+once reached.
+
+`Testing started: 0` in the filtered runs is an output-buffering artefact of hanging early, not
+evidence that testing never began; that misread cost real time and is recorded so it is not
+repeated.
+
+**Next experiment:** halve the suite with Swift Testing's `.disabled()` trait and bisect *within*
+it, since per-test runs pass and only combinations fail. Prime suspects are cross-test residue —
+`EditorHarness` never calls `session.detach()`, so every test leaves a live `EditorSession`, its
+`PerformanceSampler`, and a 60-second repeating `Timer` registered with
+`DiagnosticRunCoordinator.shared`; and `SpyTextStorage.mutationDelay` is set on one harness but
+the spy type is shared.
+
 ## Requirements and invariants
 
 - REQ-090 → `Correction`: its p95 gates cannot currently be executed.
+- REQ-109 → `Correction`: its cited proof fails (finding 1).
 - REQ-103, ARC-020: sampler lifetime and boundary honesty are unaffected; the metrics themselves
   still work (`Scripts/smoke-test.sh` reports real `performanceSummary` records).
 - ARC-014: the fix must not introduce any UI-driven verification.
