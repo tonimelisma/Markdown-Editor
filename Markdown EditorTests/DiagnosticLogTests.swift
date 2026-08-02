@@ -100,6 +100,10 @@ struct DiagnosticLogTests {
             .compositionCancelled,
             .compositionRefusedStale,
             .imageCacheStore(cost: 10, totalBytes: 20),
+            // REQ-114: `oversizeDimensions` carries measurements in the Swift case; the mapping
+            // must reduce it to a bare reason symbol so the payload cannot describe the file.
+            .imageResolutionFailed(reason: .missingFile),
+            .imageResolutionFailed(reason: .oversizeDimensions(width: 99_999, height: 99_999)),
             .editRouted(context: .wysiwyg, groupingTyping: true, planner: PlannerKind(.toggleBold)),
             .presentationInstalled(snapshotID: 1, sourceRevision: 1, provisional: false),
             .presentationTransition(from: 1, to: 2, sourceRevision: 2, durationNanos: 5),

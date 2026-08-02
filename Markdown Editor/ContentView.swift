@@ -35,7 +35,11 @@ struct ContentView: View {
                     .padding(.vertical, 4)
             }
         }
-        .task(id: document.text) {
+        // COR-30: keyed on the revision, not on the whole document string. `id: document.text`
+        // made SwiftUI compare the entire text on the main actor for every keystroke, then
+        // cancel and restart the counting task — O(document) work per keystroke, outside every
+        // boundary the performance budgets measure.
+        .task(id: document.sourceVersion) {
             let snapshot = document.text
             guard let next = await statsComputer.counts(for: snapshot), !Task.isCancelled else { return }
             counts = next

@@ -109,6 +109,79 @@ else
     done <"$done_report"
 fi
 
+
+# ── Forward traceability (COR-31) ────────────────────────────────────────────────────────────
+# The backward direction — every REQ-### in code exists in REQUIREMENTS — is checked above. The
+# forward direction was not: the "Verified by" column is free prose, so a renamed or deleted test
+# left this gate green while the requirement silently lost its proof.
+python3 - "$PWD" <<'FORWARD_EOF' || failures=$((failures + 1))
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+rows = [l for l in (root / "docs/REQUIREMENTS.md").read_text().splitlines()
+        if re.match(r"^\| REQ-\d{3} ", l)]
+tests = "".join(p.read_text() for p in (root / "Markdown EditorTests").rglob("*.swift"))
+declared = set(re.findall(r"(?:func|struct|final class|class|enum)\s+(\w+)", tests))
+problems = []
+for row in rows:
+    cols = row.split("|")
+    if len(cols) < 7:
+        continue
+    rid, status, verified = cols[1].strip(), cols[4].strip(), cols[6].strip()
+    if status != "Done":
+        continue
+    # A verification script is a legitimate proof kind (REQ-098/104 use the process-level
+    # carve-outs), as is an explicit `inherent` justification.
+    scripts = re.findall(r"`(Scripts/[\w./-]+)`", verified)
+    missing_scripts = [s for s in scripts if not (root / s).exists()]
+    if missing_scripts:
+        problems.append(f"{rid}: cites a script that does not exist ({', '.join(missing_scripts)})")
+        continue
+    names = [n for n in re.findall(r"`([A-Za-z_][A-Za-z0-9_]*)`", verified) if len(n) > 4]
+    resolved = [n for n in names if n in declared]
+    if resolved or scripts or "inherent" in verified.lower():
+        continue
+    if names:
+        problems.append(f"{rid}: no cited proof resolves to a test symbol ({', '.join(names)})")
+    else:
+        problems.append(f"{rid}: Done with no named proof, script, or 'inherent' justification")
+for problem in problems:
+    print(f"documentation-authority: {problem}", file=sys.stderr)
+sys.exit(1 if problems else 0)
+FORWARD_EOF
+
+# ── Status consistency (COR-31) ──────────────────────────────────────────────────────────────
+# A Done requirement must not be contradicted by an increment ROADMAP still lists as active, nor
+# by an open-defect section naming it. Before COR-26, REQ-058 was Done while ROADMAP carried a
+# reproduced defect against it and the row itself named the in-flight correction.
+python3 - "$PWD" <<'STATUS_EOF' || failures=$((failures + 1))
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+roadmap = (root / "docs/ROADMAP.md").read_text()
+rows = [l for l in (root / "docs/REQUIREMENTS.md").read_text().splitlines()
+        if re.match(r"^\| REQ-\d{3} ", l)]
+active = set(re.findall(r"🔵\s*\*\*((?:COR|INC|DISC)-\d+)", roadmap))
+problems = []
+for row in rows:
+    cols = row.split("|")
+    if len(cols) < 7:
+        continue
+    rid, inc, status = cols[1].strip(), cols[3].strip(), cols[4].strip()
+    if status != "Done":
+        continue
+    for increment in re.findall(r"(?:COR|INC|DISC)-\d+", inc):
+        if increment in active:
+            problems.append(f"{rid} is Done but {increment} is still active in ROADMAP")
+if "### Open defect" in roadmap:
+    section = roadmap.split("### Open defect", 1)[1]
+    for rid in set(re.findall(r"REQ-\d{3}", section)):
+        row = next((r for r in rows if r.split("|")[1].strip() == rid), None)
+        if row and row.split("|")[4].strip() == "Done":
+            problems.append(f"{rid} is Done but named in ROADMAP's open-defect section")
+for problem in problems:
+    print(f"documentation-authority: {problem}", file=sys.stderr)
+sys.exit(1 if problems else 0)
+STATUS_EOF
+
 if [[ ! -L AGENTS.md ]] || [[ "$(readlink AGENTS.md)" != "CLAUDE.md" ]]; then
     fail "AGENTS.md must remain a symlink to CLAUDE.md"
 fi

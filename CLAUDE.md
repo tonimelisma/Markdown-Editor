@@ -157,6 +157,30 @@ For docs/config only: commit and push directly on `main`, then run stale-work sw
 A green existing suite is not proof of a new claim. Tests must fail for the relevant defective
 behavior before the fix or otherwise discriminate the required invariant.
 
+### Liveness, not only safety
+
+A requirement that promises a capability needs a proof that the capability *works*, not only
+proofs that it refuses when it should. A refusal-only proof set does not discharge such a
+requirement: REQ-058 promised formatting commands in both modes and was satisfied for months by
+a build in which four of them reported `enabled` and silently refused, because every cited proof
+asserted availability, window scoping, or refusal.
+
+- Every user-invocable action carries at least one automated proof that it succeeds on its
+  ordinary input, in every mode it is offered in.
+- Where the set of actions is closed (`EditorCommand.allCases`, `EditorTraceEvent`), the proof is
+  a structural matrix over that set, so a newly added member fails the build until its behavior
+  is declared. A hand-written list of examples silently omits the case nobody thought of.
+
+### Proofs must assert the thing the requirement is about
+
+A proof asserting a model value or an attribute value does not discharge a requirement about
+what the user sees. Where a requirement is about rendered geometry, the proof forces real layout
+on directly constructed AppKit objects and asserts on the result — `NSLayoutManager`
+line-fragment rectangles rather than `NSParagraphStyle` fields. REQ-106 was `Done` on a proof
+that the rendered *string* differed while a hard break laid out identically to a paragraph
+boundary. This is not a licence for UI testing: constructing components directly and forcing
+layout remains a component test.
+
 ## 5. Git workflow
 
 - Docs-only and project-config changes commit directly to `main`; no branch, worktree, or PR.
@@ -185,6 +209,12 @@ Before every squash merge — not only the first PR of a session, every one:
    - keep that correction in one commit as part of the PR being merged; and
    - reply on that same comment with the fixing commit SHA.
 4. Merge only after every comment found in the sweep is resolved.
+   When a review identifies a defect *class* rather than a single instance, the increment closes
+   the class with a structural gate, or records explicitly why it cannot and what remains open.
+   Fixing only the reported instance is not sufficient triage: the COR-23 full-replacement defect
+   was correctly diagnosed as "two proof suites individually sound and jointly blind", the
+   instance was fixed, no gate was added, and the same blindness produced COR-25 and then four
+   more silently refusing commands.
 5. After the merge lands on `main`, return to each comment claimed in step 3 and post a
    follow-up reply confirming it is fixed on `main` (name the merge commit). A comment is not
    closed out until this confirmation is posted — the fixing commit alone is not enough, since
@@ -229,6 +259,8 @@ Report ✅, ❌, or ➖ for:
 - CLAUDE.md/AGENTS.md self-check completed
 - Informed consent honored
 - User corrections propagated to durable current docs
+- Liveness proofs present for every user-invocable action touched
+- Gate scripts rehearsed failing before being trusted
 - Code-smell/quality analysis reported
 
 Any ❌ means the task is not complete and must be explained plainly.

@@ -19,6 +19,14 @@ DerivedData/
 .smoke-build/
 .smoke-screenshot.png
 
+# Coverage profiles from instrumented local test runs. Scripts/smoke-*.sh already redirect
+# LLVM_PROFILE_FILE into their own temp dirs; this covers an ordinary `xcodebuild test`.
+*.profraw
+
+# Scripts/fast-check.sh local build output
+.fast-check-build/
+.fast-check-build.log
+
 # Swift Package Manager
 .build/
 .swiftpm/

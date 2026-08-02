@@ -17,6 +17,7 @@ KNOWN_METRICS = {
     "parseProjection",
     "imageResolution",
     "authoritativeApplication",
+    "layoutApplication",
 }
 
 
@@ -25,6 +26,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("run_file", type=Path)
     parser.add_argument("host_update_threshold", type=int)
     parser.add_argument("--label", default="smoke")
+    parser.add_argument(
+        "--expect-edits",
+        action="store_true",
+        help=(
+            "Require the run to have exercised one accepted insertion and one accepted "
+            "semantic command (REQ-115). Without this the run only proves open-and-idle, so "
+            "editRefused - the record that would have surfaced COR-25 and the four commands "
+            "COR-26 fixed - can never fire."
+        ),
+    )
     parser.add_argument(
         "--allow-fault",
         action="append",
@@ -45,6 +56,7 @@ def verify(
     run_file: Path,
     host_update_threshold: int,
     allowed_faults: frozenset[str] = frozenset(),
+    expect_edits: bool = False,
 ) -> tuple[int, int]:
     records = [
         json.loads(line)
@@ -111,8 +123,15 @@ def verify(
         if record["ev"] == "reconciliationApplied"
         and record.get("doc") == opened[0]["doc"]
     ]
-    assert len(reconciliations) == 1, (
-        f"expected exactly one reconciliationApplied, got {len(reconciliations)}"
+    assert reconciliations, "no reconciliationApplied record"
+    # Bounded, not exact. An `== 1` equality froze the current startup ordering into the gate: a
+    # legitimate future change that applies a second reconciliation would have failed it for
+    # being correct. The livelock guard is the host-update ceiling above, which is what actually
+    # catches a self-feeding loop.
+    reconciliation_ceiling = 4 if expect_edits else 2
+    assert len(reconciliations) <= reconciliation_ceiling, (
+        f"reconciliation did not settle: {len(reconciliations)} applied "
+        f"(ceiling {reconciliation_ceiling})"
     )
     assert any(
         record["ev"] == "hostUpdateEnded"
@@ -144,6 +163,25 @@ def verify(
         "parseProjection performance summary contains no samples"
     )
 
+    if expect_edits:
+        # REQ-115: the run must prove it actually edited, and that nothing refused.
+        committed = [r for r in events if r["ev"] == "mutationCommitted"]
+        assert len(committed) >= 2, (
+            f"expected an insertion and a semantic command to commit, got {len(committed)}"
+        )
+        routed = [r for r in events if r["ev"] == "editRouted"]
+        assert routed, "no editRouted record; the command route was never exercised"
+        refused = [r for r in events if r["ev"] in ("editRefused", "mutationRefused")]
+        assert not refused, (
+            f"the scripted edits were refused: {[r.get('data') for r in refused]}"
+        )
+        # Deliberately NOT asserting nativeInputCallback samples here. That metric is sampled
+        # inside the WYSIWYG text view's own input delegate, so producing it at process level
+        # would mean driving an NSTextView - i.e. driving UI, which the CLAUDE.md §4 carve-out
+        # forbids for this verification. The scripted edits go through EditorSession.perform,
+        # the same model route the adapters call, and are proven by the mutation and routing
+        # records above. The callback boundary keeps its component-test and Release evidence.
+
     faults = [
         record for record in events
         if record.get("lvl") in ("error", "fault")
@@ -159,7 +197,10 @@ def main() -> int:
     args = parse_args()
     try:
         record_count, host_updates = verify(
-            args.run_file, args.host_update_threshold, frozenset(args.allow_fault)
+            args.run_file,
+            args.host_update_threshold,
+            frozenset(args.allow_fault),
+            args.expect_edits,
         )
     except (AssertionError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         print(f"{args.label}: diagnostics FAIL: {error}", file=sys.stderr)

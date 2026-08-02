@@ -17,7 +17,7 @@ else
 fi
 logdir="$(mktemp -d)"
 cleanup() {
-    rm -rf "$logdir"
+    rm -rf "$logdir" "${workdir:-}"
     [[ "$cleanup_derived" -eq 1 ]] && rm -rf "$derived"
     [[ -n "${app_pid:-}" ]] && kill -0 "$app_pid" 2>/dev/null && kill "$app_pid" 2>/dev/null
 }
@@ -54,8 +54,15 @@ launch_start=$(date +%s)
 # The default 2 s lifetime is enough on an idle machine but not on a loaded one: the app exits
 # before the first reconciliation lands and the run then fails for "never became editable", which
 # describes the machine rather than the application. 6 s costs nothing and removes the race.
+# REQ-115: this run now performs real edits, and autosave-in-place (REQ-005) is enabled, so it
+# must never open the repository's own fixture. Work on a throwaway copy, assets included.
+workdir="$(mktemp -d)"
+cp -R "$repo_root/Scripts/Fixtures/." "$workdir/"
+fixture="$workdir/$(basename "$fixture")"
+
 LLVM_PROFILE_FILE="$logdir/smoke-%p.profraw" \
 MARKDOWN_EDITOR_SMOKE_EXIT_SECONDS="${SMOKE_EXIT_SECONDS:-6}" \
+MARKDOWN_EDITOR_SMOKE_EXERCISE_EDITS=1 \
 MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$logdir" \
     "$binary" -ApplePersistenceIgnoreState YES --diagnostic-smoke-exit "$fixture" &
 app_pid=$!
@@ -98,6 +105,10 @@ fi
 launch_end=$(date +%s)
 echo "smoke: launch→exit took $((launch_end - launch_start))s"
 
-host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-20}"
+# REQ-096; ARC-Q11: a healthy run settles at 2 (measured, reproducibly). The previous default
+# of 20 left ten-fold slack on the exact metric that exists to catch a self-feeding
+# reconciliation loop, so a nine-fold regression passed silently. This run also performs two
+# edits, each of which legitimately produces further host updates.
+host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-8}"
 python3 "$repo_root/Scripts/verify-smoke-log.py" \
-    "$run_file" "$host_update_threshold" --label smoke
+    "$run_file" "$host_update_threshold" --label smoke --expect-edits

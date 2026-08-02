@@ -490,6 +490,30 @@ final class MarkdownWYSIWYGTextView: NSTextView {
     weak var inputCoordinator: WYSIWYGEditor.WYSIWYGInputCoordinator?
     weak var adapterCoordinator: WYSIWYGEditor.Coordinator?
 
+    /// REQ-116; ARC-020: measures the layout and drawing TextKit performs **anyway**.
+    ///
+    /// // The `nativeInputCallback` boundary ends when the input delegate returns — after
+    /// // `storage.endEditing()` but before glyph generation, layout, and drawing — so no metric
+    /// // covered the half of a keystroke the user actually perceives.
+    /// //
+    /// // An earlier version of this measurement called `ensureLayout` from
+    /// // inside `applyProjectionIfNeeded`, which `shouldChangeTextIn` calls. That forced
+    /// // synchronous layout on every accepted keystroke *inside the sampled callback region*:
+    /// // it made the app slower on the real edit path and inflated the very p95 REQ-090 gates
+    /// // at 8 ms, so the metric corrupted its own boundary. COR-29's own rule — "layout
+    /// // sampling must never itself force layout the app would not otherwise perform" —
+    /// // forbids it. Timing the view's real `draw(_:)` adds two timestamp reads and nothing
+    /// // else; TextKit lays out lazily during drawing, so this is the work as it actually
+    /// // happens.
+    override func draw(_ dirtyRect: NSRect) {
+        let started = DispatchTime.now().uptimeNanoseconds
+        super.draw(dirtyRect)
+        session?.recordPerformance(
+            .layoutApplication,
+            durationNanos: DispatchTime.now().uptimeNanoseconds &- started
+        )
+    }
+
     override func layout() {
         super.layout()
         guard bounds.width > 0, let textContainer else { return }

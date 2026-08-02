@@ -121,6 +121,15 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         return URL(fileURLWithPath: path)
     }
 
+    /// REQ-115: true when the smoke run should additionally exercise one accepted insertion and
+    /// one accepted semantic command.
+    ///
+    /// // Opt-in rather than always-on because `Scripts/smoke-screenshot.sh` shares this launch
+    /// // path and its capture must show the pristine fixture. `Scripts/smoke-test.sh` sets it.
+    nonisolated static var smokeExercisesEdits: Bool {
+        isSmokeRun && ProcessInfo.processInfo.environment["MARKDOWN_EDITOR_SMOKE_EXERCISE_EDITS"] == "1"
+    }
+
     /// Detects an unresponsive main actor for the process lifetime (REQ-096).
     private var watchdog: MainActorWatchdog?
 
@@ -172,12 +181,54 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
             // REQ-098: settle within a bounded number of host updates, then close the log and
             // exit cleanly so the smoke script can assert on the terminating record.
             Task { @MainActor in
+                if Self.smokeExercisesEdits {
+                    // Let the first authoritative projection land before editing.
+                    try? await Task.sleep(for: .seconds(min(2, Self.smokeExitSeconds / 3)))
+                    Self.exerciseSmokeEdits()
+                }
                 try? await Task.sleep(for: .seconds(Self.smokeExitSeconds))
                 DiagnosticRunCoordinator.shared.flushAndInvalidateAll()
                 DiagnosticLog.shared?.finishSynchronously()
                 NSApp.terminate(nil)
             }
         }
+    }
+
+    /// Drives one accepted insertion and one accepted semantic command through the ordinary
+    /// production routes (REQ-115).
+    ///
+    /// // Before this, both process-level verifications only opened a fixture and idled. That
+    /// // meant `editRefused` — the record that would have surfaced COR-25 and the four commands
+    /// // COR-26 fixed — could never fire in a smoke run, and `nativeInputCallback` always had
+    /// // zero samples.
+    /// //
+    /// // The window's own toolbar delegate is the handle: it already holds the window-scoped
+    /// // `EditorCommandController` (ARC-024), so this reaches the session the same way a toolbar
+    /// // click does. Nothing here drives, reads, or asserts on any UI — no synthetic events, no
+    /// // accessibility, no screen automation — so `CLAUDE.md` §4's carve-out still holds.
+    @MainActor
+    private static func exerciseSmokeEdits() {
+        guard let controller = NSApp.windows
+            .compactMap({ ($0.toolbar?.delegate as? EditorToolbarController)?.commandController })
+            .first,
+            let session = controller.session,
+            let document = controller.document
+        else { return }
+
+        // Source mode is deterministic: it does not depend on a projection having landed.
+        session.setMode(.source)
+        let caret = SourceSelection(utf16: NSRange(location: 0, length: 0))
+        session.updateSourceModeState { $0.selection = caret }
+        session.perform(
+            .insertText("x"),
+            selection: .source(caret),
+            expectedSourceRevision: SourceRevision(value: document.sourceVersion)
+        )
+
+        // One semantic command over the character just inserted.
+        let inserted = SourceSelection(utf16: NSRange(location: 0, length: 1))
+        session.updateSourceModeState { $0.selection = inserted }
+        _ = controller.perform(.bold)
     }
 
     func applicationWillTerminate(_ notification: Notification) {

@@ -29,6 +29,80 @@ struct AttributedPresentationTests {
         #expect(headingFont?.pointSize == 30)
     }
 
+    // Verifies: REQ-107; COR-28 — the block and inline code treatments do not compose.
+    //
+    // Fenced content carried the same `.code` style tag as an inline span, so the inline run
+    // background was drawn inside the block's own `NSTextBlock` container — the darker band
+    // visible in the REQ-104 capture at 88b7bd3. ENGINEERING §7 states these are distinct
+    // treatments; `codeBlockIsPaddedAdaptiveContainer` asserted the container exists and never
+    // that the run background is absent.
+    @Test func fencedCodeCarriesNoInlineRunBackground() throws {
+        let model = try #require(makeModel("Some `inline` span.\n\n```\nlet a = 1\nlet b = 2\n```\n"))
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let text = built.attributed.string as NSString
+
+        // Inline code keeps its run background.
+        let inlineRange = text.range(of: "inline")
+        try #require(inlineRange.location != NSNotFound)
+        #expect(
+            built.attributed.attribute(.backgroundColor, at: inlineRange.location, effectiveRange: nil) != nil,
+            "inline code lost its run background"
+        )
+
+        // Fenced content keeps its container, and carries no run background inside it.
+        let codeRange = text.range(of: "let a = 1")
+        try #require(codeRange.location != NSNotFound)
+        for offset in codeRange.location..<NSMaxRange(codeRange) {
+            #expect(
+                built.attributed.attribute(.backgroundColor, at: offset, effectiveRange: nil) == nil,
+                "fenced code carries an inline run background at \(offset)"
+            )
+        }
+        let codeStyle = built.attributed.attribute(
+            .paragraphStyle, at: codeRange.location, effectiveRange: nil
+        ) as? NSParagraphStyle
+        #expect(codeStyle?.textBlocks.isEmpty == false, "fenced code lost its container")
+        let codeFont = built.attributed.attribute(.font, at: codeRange.location, effectiveRange: nil) as? NSFont
+        #expect(codeFont?.isFixedPitch == true, "fenced code is no longer monospaced")
+    }
+
+    // Verifies: REQ-107; COR-28 — an unresolved image gets an *intentional labeled* placeholder,
+    // not a bare chip of the author's description and not a truncated one.
+    //
+    // Found by reviewing the REQ-104 capture after the fixture gained a deliberately broken
+    // reference: the cell measured its label single-line but drew it with wrapping, so the last
+    // word wrapped onto a second line the single-line cell height then clipped — the placeholder
+    // for "deliberately missing" read "deliberately".
+    @Test func missingImagePlaceholderIsLabelledAndNotTruncated() throws {
+        let model = try #require(makeModel("![deliberately missing](assets/nope.png)\n"))
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let attachment = try #require(
+            built.attributed.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
+        )
+        let cell = try #require(attachment.attachmentCell as? MissingImageAttachmentCell)
+        let label = try #require(cell.accessibilityLabel())
+        #expect(label.hasPrefix("Missing image"), "placeholder does not say what it is: \(label)")
+        #expect(label.contains("deliberately missing"), "placeholder dropped the description")
+
+        // The cell must be wide enough for its whole label on one line, or drawing clips it.
+        let measured = (label as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)])
+        #expect(
+            cell.cellSize().width >= measured.width,
+            "cell width \(cell.cellSize().width) is narrower than its label \(measured.width)"
+        )
+    }
+
+    // An image with no description still reads as a placeholder rather than an empty box.
+    @Test func missingImageWithoutDescriptionStillCarriesALabel() throws {
+        let model = try #require(makeModel("![](assets/nope.png)\n"))
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let attachment = try #require(
+            built.attributed.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
+        )
+        let cell = try #require(attachment.attachmentCell as? MissingImageAttachmentCell)
+        #expect(cell.accessibilityLabel() == "Missing image")
+    }
+
     @Test func softAndHardBreaksHaveDistinctPresentationText() throws {
         let soft = try #require(makeModel("one\ntwo\n"))
         let hard = try #require(makeModel("one  \ntwo\n"))

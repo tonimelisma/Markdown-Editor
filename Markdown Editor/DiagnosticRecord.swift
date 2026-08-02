@@ -207,6 +207,7 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
 
     // image
     case imageCacheStore
+    case imageResolutionFailed
 
     // image placement (REQ-101/102; ARC-017)
     case imagePlacementPhase

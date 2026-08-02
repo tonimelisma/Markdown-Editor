@@ -112,6 +112,10 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 (.cost, .int(cost)),
                 (.totalBytes, .int(totalBytes))
             ])
+        case .imageResolutionFailed(let reason):
+            return Mapped(name: .imageResolutionFailed, level: .warn, category: .image, data: [
+                (.reason, .symbol(reason.symbol))
+            ])
         case .editRouted(let context, let groupingTyping, let planner):
             return Mapped(name: .editRouted, level: .debug, category: .edit, data: [
                 (.mode, .symbol(context.symbol)),

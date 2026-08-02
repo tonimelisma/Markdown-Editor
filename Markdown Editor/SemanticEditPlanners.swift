@@ -48,6 +48,48 @@ nonisolated enum SemanticPlannerGate {
         }
         return .mutation(mutation)
     }
+
+    /// Caret at a concrete source position **inside** a rewritten block's own content.
+    ///
+    /// // REQ-113; COR-26: `SourceMutation.exact` otherwise defaults the post-command caret to
+    /// // `range.location + replacement.length`. For a block rewrite whose replacement ends in a
+    /// // newline that lands on the block *boundary* — the blank-line separator between blocks —
+    /// // which has no exact projection preimage, so `planAuthoritativeTransition` refuses the
+    /// // whole command with `mappingFailure`. Every block planner therefore states where its
+    /// // rewritten content ends, and that offset is always inside the block's identity text.
+    ///
+    /// This rule exists once. Eleven inlined copies of the same arithmetic is the defect that
+    /// produced COR-25 and then four more refusing commands.
+    static func caretInsideContent(
+        lineStart: Int,
+        offsetInReplacement: Int,
+        selectionBefore: SourceSelection?
+    ) -> SourceSelection {
+        SourceSelection(
+            utf16: NSRange(location: lineStart + max(0, offsetInReplacement), length: 0),
+            affinity: selectionBefore?.affinity ?? .downstream
+        )
+    }
+
+    /// Length of `replacement` excluding its **complete** line terminator.
+    ///
+    /// // REQ-007/015; PR #32 review: subtracting a single UTF-16 unit is wrong for CRLF. It
+    /// // places the caret between `\r` and `\n`, an offset belonging to neither the paragraph's
+    /// // identity atom nor its synthetic break, so `planAuthoritativeTransition` still refuses
+    /// // with `mappingFailure` — in exactly the CRLF documents REQ-007 requires this app to
+    /// // preserve byte-for-byte.
+    static func contentLength(of replacement: String) -> Int {
+        trimmedLength(of: replacement)
+    }
+
+    /// UTF-16 length of `text` with one trailing CRLF, LF, or CR removed.
+    static func trimmedLength(of text: String) -> Int {
+        let ns = text as NSString
+        var end = ns.length
+        if end > 0, ns.character(at: end - 1) == 0x0A { end -= 1 }
+        if end > 0, ns.character(at: end - 1) == 0x0D { end -= 1 }
+        return end
+    }
 }
 
 nonisolated enum InlineEditPlanner {
@@ -198,14 +240,25 @@ nonisolated enum BlockEditPlanner {
         var body = content
         let hadNewline = body.hasSuffix("\n")
         if hadNewline { body = String(body.dropLast()) }
-        let replacement = "```\n" + body + "\n```" + (hadNewline ? "\n" : "")
+        let openingFence = "```\n"
+        let replacement = openingFence + body + "\n```" + (hadNewline ? "\n" : "")
         return SemanticPlannerGate.commitIfValid(
             snapshot: snapshot,
             range: line,
             replacement: replacement,
             action: "Code Block",
             grouping: grouping,
-            selectionBefore: selectionBefore
+            selectionBefore: selectionBefore,
+            // REQ-113; COR-26: the caret belongs at the end of the fenced *content*, not past
+            // the closing fence. Both fences are synthetic in WYSIWYG, so a caret after the
+            // closing fence has no exact projection preimage just as one past a trailing
+            // newline does.
+            selectionAfter: SemanticPlannerGate.caretInsideContent(
+                lineStart: line.location,
+                offsetInReplacement: (openingFence as NSString).length
+                    + SemanticPlannerGate.trimmedLength(of: body),
+                selectionBefore: selectionBefore
+            )
         ) { tree, _ in
             contains(tree.root) { if case .codeBlock = $0.kind { return true }; return false }
         }
@@ -233,6 +286,14 @@ nonisolated enum BlockEditPlanner {
             action: action,
             grouping: grouping,
             selectionBefore: selectionBefore,
+            // REQ-113; COR-26: a heading's `#` chrome is synthetic in WYSIWYG, and even for a
+            // plain paragraph the default caret would land past the line's newline on the block
+            // boundary. Both refuse; the content end never does.
+            selectionAfter: SemanticPlannerGate.caretInsideContent(
+                lineStart: line.location,
+                offsetInReplacement: SemanticPlannerGate.contentLength(of: replacement),
+                selectionBefore: selectionBefore
+            ),
             postcondition: postcondition
         )
     }
@@ -260,14 +321,6 @@ nonisolated enum ListEditPlanner {
         } else {
             replacement = quotePrefix + prefix + stripped + (hadNewline ? "\n" : "")
         }
-        // A list marker is synthetic in WYSIWYG. The default mutation selection (after the
-        // replacement's newline) can land on the following paragraph boundary, which has no
-        // exact projection coordinate. Keep the caret at the concrete end of this rewritten line.
-        let replacementContentLength = (replacement as NSString).length - (hadNewline ? 1 : 0)
-        let selectionAfter = SourceSelection(
-            utf16: NSRange(location: line.location + replacementContentLength, length: 0),
-            affinity: selectionBefore?.affinity ?? .downstream
-        )
         return SemanticPlannerGate.commitIfValid(
             snapshot: snapshot,
             range: line,
@@ -275,7 +328,13 @@ nonisolated enum ListEditPlanner {
             action: action,
             grouping: grouping,
             selectionBefore: selectionBefore,
-            selectionAfter: selectionAfter
+            // REQ-113; COR-26: the list marker is synthetic in WYSIWYG, so the caret stays at
+            // the concrete end of this rewritten line rather than past its newline.
+            selectionAfter: SemanticPlannerGate.caretInsideContent(
+                lineStart: line.location,
+                offsetInReplacement: SemanticPlannerGate.contentLength(of: replacement),
+                selectionBefore: selectionBefore
+            )
         ) { _, _ in true }
     }
 
@@ -302,7 +361,13 @@ nonisolated enum ListEditPlanner {
             replacement: replacement,
             action: "Quote",
             grouping: grouping,
-            selectionBefore: selectionBefore
+            selectionBefore: selectionBefore,
+            // REQ-113; COR-26: the `> ` marker is synthetic in WYSIWYG, same as a list marker.
+            selectionAfter: SemanticPlannerGate.caretInsideContent(
+                lineStart: line.location,
+                offsetInReplacement: SemanticPlannerGate.contentLength(of: replacement),
+                selectionBefore: selectionBefore
+            )
         ) { _, _ in true }
     }
 }

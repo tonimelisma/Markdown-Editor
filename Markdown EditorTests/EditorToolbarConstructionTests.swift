@@ -60,6 +60,42 @@ struct EditorToolbarConstructionTests {
         #expect(first.toolbar === existing)
     }
 
+    // Verifies: REQ-058/108; COR-28 — every toolbar item the controller vends carries an image.
+    //
+    // An NSToolbarItem with neither an image nor a view draws as an empty control with a label
+    // beneath it, which is exactly how Bold, Italic, and Link rendered in the REQ-104 capture at
+    // 88b7bd3. The suite above asserted ownership, identifiers, and labels — never appearance —
+    // so a blank button satisfied every existing proof.
+    @Test func everyToolbarCommandItemCarriesAnImage() {
+        let controller = EditorToolbarController()
+        let toolbar = NSToolbar(identifier: EditorToolbarController.toolbarIdentifier)
+        for identifier in controller.toolbarAllowedItemIdentifiers(toolbar)
+        where identifier != .flexibleSpace && identifier != .space {
+            guard let item = controller.toolbar(
+                toolbar, itemForItemIdentifier: identifier, willBeInsertedIntoToolbar: true
+            ) else {
+                Issue.record("no item for \(identifier)")
+                continue
+            }
+            // The mode item is a segmented control, which supplies its own presentation.
+            if item.view is NSSegmentedControl { continue }
+            #expect(item.image != nil, "\(identifier) renders as a blank button")
+            #expect(!item.label.isEmpty, "\(identifier) has no label")
+        }
+    }
+
+    // Verifies: REQ-032/058; COR-28 — every command resolves to a real SF Symbol on this
+    // deployment target, so the fallback path is never silently the shipping one.
+    @Test func everyCommandSymbolResolvesOnThisPlatform() {
+        for command in EditorCommand.allCases {
+            let name = EditorToolbarController.symbolName(for: command)
+            #expect(
+                NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil,
+                "\(command) maps to unavailable symbol \(name)"
+            )
+        }
+    }
+
     // Verifies: REQ-058 — the formatting row is gone from document content entirely.
     @Test func documentContentContainsNoFormattingControlRow() throws {
         let contentView = try String(

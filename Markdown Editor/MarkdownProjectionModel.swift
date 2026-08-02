@@ -40,7 +40,18 @@ nonisolated enum ProjectionStyleTag: Hashable, Sendable {
     case emphasis
     case strong
     case strikethrough
+    /// An inline code span: monospaced plus a subtle run background.
     case code
+    /// Content inside a fenced or indented code block.
+    ///
+    /// // REQ-107; COR-28: distinct from `.code` because the two treatments must not compose.
+    /// // The block already carries an `NSTextBlock` container background and padding; when
+    /// // fenced content also carried `.code`, the inline run background was drawn *inside* that
+    /// // container, producing the darker band visible in the REQ-104 capture at 88b7bd3.
+    /// // ENGINEERING §7 states these are distinct treatments — "Code blocks use block geometry
+    /// // and padding. Inline code remains inline" — so the distinction lives in the type rather
+    /// // than in a positional test inside the builder.
+    case codeBlock
     case link
     case blockQuote
     case literalFallback

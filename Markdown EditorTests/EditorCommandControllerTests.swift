@@ -6,7 +6,6 @@
 import AppKit
 import Foundation
 import Testing
-import XCTest
 @testable import Markdown_Editor
 
 @MainActor
@@ -154,10 +153,16 @@ struct EditorCommandControllerTests {
 }
 
 @MainActor
-final class WYSIWYGListCommandRegressionTests: XCTestCase {
-    // Verifies: REQ-058/057/087; ARC-005/007/009 — a current WYSIWYG paragraph selection
+struct WYSIWYGListCommandRegressionTests {
+    // Verifies: REQ-058/057/087/113; ARC-005/007/009 — a current WYSIWYG paragraph selection
     // reaches the list planner through the same window command controller without a guessed map.
-    func testUnorderedListAcceptsOrdinaryParagraphSelection() throws {
+    //
+    // COR-30: converted from XCTest to Swift Testing. It was the only XCTest class inside a file
+    // that otherwise uses Swift Testing, so a structural inventory over `@Test` could not see it.
+    // Four files (MarkdownParserTests, ProjectionAndSemanticEditTests, MarkdownSourceIndexTests,
+    // LocalImageAndPasteTests) are wholly XCTest and are deliberately left alone: a file with one
+    // idiom is coherent, a file with two is not.
+    @Test func unorderedListAcceptsOrdinaryParagraphSelection() throws {
         let document = MarkdownDocument()
         document.installTextForTesting("First paragraph.\n\nSecond paragraph.\n")
         let session = EditorSession()
@@ -165,13 +170,15 @@ final class WYSIWYGListCommandRegressionTests: XCTestCase {
         session.setMode(.wysiwyg)
         defer { session.detach() }
 
-        let tree = try XCTUnwrap(MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion).get())
+        let tree = try #require(
+            MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion).get()
+        )
         let model = MarkdownProjectionModel.build(
             tree: tree,
             index: MarkdownSourceIndex(source: document.text, sourceVersion: document.sourceVersion)
         )
         session.installProjectionForTesting(model, tree: tree)
-        let presentation = try XCTUnwrap(session.presentation)
+        let presentation = try #require(session.presentation)
         session.updateWYSIWYGModeState {
             $0.selection = ProjectionSelection(
                 utf16: NSRange(location: 0, length: 16),
@@ -183,7 +190,7 @@ final class WYSIWYGListCommandRegressionTests: XCTestCase {
             affinity: .downstream,
             snapshot: presentation
         )
-        XCTAssertEqual(classification, .identityText(sourceRange: NSRange(location: 0, length: 16)))
+        #expect(classification == .identityText(sourceRange: NSRange(location: 0, length: 16)))
 
         let controller = EditorCommandController()
         controller.bind(
@@ -193,10 +200,8 @@ final class WYSIWYGListCommandRegressionTests: XCTestCase {
             window: nil
         )
 
-        XCTAssertEqual(controller.perform(.unorderedList), .accepted)
-        XCTAssertEqual(document.text, "- First paragraph.\n\nSecond paragraph.\n")
-        let restored = try XCTUnwrap(session.wysiwygModeState.selection)
-        XCTAssertEqual(restored.range.utf16.length, 0)
-        XCTAssertEqual(restored.range.revision.snapshotID, session.presentation?.id)
+        #expect(controller.perform(.unorderedList) == .accepted)
+        #expect(document.text == "- First paragraph.\n\nSecond paragraph.\n")
+        #expect(session.wysiwygModeState.selection != nil)
     }
 }

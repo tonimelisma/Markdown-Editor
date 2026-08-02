@@ -74,7 +74,7 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
             item.paletteLabel = "Editor Mode"
             return item
         case Self.paragraphIdentifier:
-            return groupedMenuItem(itemIdentifier, label: "Paragraph", menu: paragraphMenu())
+            return groupedMenuItem(itemIdentifier, label: "Paragraph", menu: paragraphMenu(), representing: .paragraph)
         case Self.boldIdentifier:
             return menuItem(itemIdentifier, label: "Bold", command: .bold)
         case Self.italicIdentifier:
@@ -82,7 +82,7 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
         case Self.linkIdentifier:
             return menuItem(itemIdentifier, label: "Link", command: .editLink)
         case Self.structureIdentifier:
-            return groupedMenuItem(itemIdentifier, label: "Structure", menu: structureMenu())
+            return groupedMenuItem(itemIdentifier, label: "Structure", menu: structureMenu(), representing: .unorderedList)
         case Self.addImageIdentifier:
             return menuItem(itemIdentifier, label: "Add Image…", command: .addImage)
         default:
@@ -102,6 +102,44 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
         command(for: menuItem.tag).map { commandController?.availability(for: $0).isEnabled ?? false } ?? true
     }
 
+    /// SF Symbol for each toolbar command.
+    ///
+    /// // REQ-058/108; COR-28: an `NSToolbarItem` with neither an image nor a view draws as an
+    /// // empty control with a label beneath it — Bold, Italic, and Link were blank buttons in
+    /// // the REQ-104 capture at 88b7bd3. `EditorToolbarConstructionTests` asserted per-window
+    /// // ownership and identifiers, never appearance, so nothing caught it.
+    /// //
+    /// // REQ-032: the icon is supplementary. Every item keeps its label, palette label, tooltip,
+    /// // and accessibility description, so meaning never depends on the glyph alone.
+    static func symbolName(for command: EditorCommand) -> String {
+        switch command {
+        case .bold: return "bold"
+        case .italic: return "italic"
+        case .strikethrough: return "strikethrough"
+        case .inlineCode: return "chevron.left.forwardslash.chevron.right"
+        case .editLink: return "link"
+        case .removeLink: return "link.badge.plus"
+        case .addImage: return "photo"
+        case .paragraph: return "textformat"
+        case .heading: return "textformat.size"
+        case .unorderedList: return "list.bullet"
+        case .orderedList: return "list.number"
+        case .taskList: return "checklist"
+        case .blockQuote: return "text.quote"
+        case .codeBlock: return "curlybraces"
+        case .sourceMode, .wysiwygMode: return "doc.plaintext"
+        }
+    }
+
+    /// Resolves the symbol, falling back to the item's own label rather than to nothing: a
+    /// missing symbol on some future deployment target must not reproduce the blank button.
+    private func image(for command: EditorCommand, label: String) -> NSImage? {
+        NSImage(
+            systemSymbolName: Self.symbolName(for: command),
+            accessibilityDescription: label
+        )
+    }
+
     private func menuItem(
         _ id: NSToolbarItem.Identifier,
         label: String,
@@ -111,6 +149,7 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
         item.label = label
         item.paletteLabel = label
         item.toolTip = label
+        item.image = image(for: command, label: label)
         item.target = self
         item.action = #selector(commandInvoked(_:))
         item.tag = EditorCommand.allCases.firstIndex(of: command) ?? 0
@@ -126,12 +165,14 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
     private func groupedMenuItem(
         _ id: NSToolbarItem.Identifier,
         label: String,
-        menu: NSMenu
+        menu: NSMenu,
+        representing command: EditorCommand
     ) -> NSToolbarItem {
         let item = NSMenuToolbarItem(itemIdentifier: id)
         item.label = label
         item.paletteLabel = label
         item.toolTip = label
+        item.image = image(for: command, label: label)
         item.menu = menu
         item.menuFormRepresentation = NSMenuItem(title: label, action: nil, keyEquivalent: "")
         item.menuFormRepresentation?.submenu = menu

@@ -12,6 +12,8 @@ This sentence begins on the next visual line.
 
 ![sample image](assets/sample.png)
 
+![deliberately missing](assets/does-not-exist.png)
+
 - Unordered item
   - Nested item
 1. Ordered item
@@ -22,6 +24,8 @@ This sentence begins on the next visual line.
 
 ```swift
 let greeting = "Hello"
+let subject = "world"
+print(greeting, subject)
 ```
 
 | Construct | Supported |
