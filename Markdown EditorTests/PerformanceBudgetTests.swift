@@ -69,3 +69,23 @@ struct PerformanceBudgetTests {
         second.invalidate()
     }
 }
+
+/// // Verifies: REQ-090/116; ARC-020 — the measured input-callback boundary contains no forced
+/// layout, so the metric cannot corrupt the budget it sits inside.
+///
+/// An earlier COR-29 implementation called `ensureLayout` from `applyProjectionIfNeeded`, which
+/// `shouldChangeTextIn` calls — so every accepted keystroke forced synchronous TextKit layout
+/// *inside* the region `nativeInputCallback` times. It made the real edit path slower and
+/// inflated the p95 REQ-090 gates at 8 ms: the measurement changed what it measured. A focused
+/// Release run of `PerformanceBoundaryTests` took over 3h45m and had to be killed.
+///
+/// Source inspection is the only proof of an absence.
+struct ForcedLayoutAbsenceTests {
+    @Test func productionForcesNoTextKitLayout() throws {
+        let source = try productionSourceText()
+        #expect(
+            !source.contains("ensureLayout("),
+            "production forces TextKit layout; layout must be measured as it happens, never provoked"
+        )
+    }
+}

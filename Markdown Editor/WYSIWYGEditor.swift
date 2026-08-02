@@ -214,7 +214,6 @@ enum WYSIWYGEditor {
             guard patched else {
                 return .appliedStorageMismatch
             }
-            recordLayoutDuration(for: textView, changed: patch.nextRange)
             appliedSnapshot = presentation
             appliedImageIdentities = imageIdentities(for: presentation)
             // No selection fallback here on purpose. `selection` is nil exactly when the session
@@ -222,35 +221,6 @@ enum WYSIWYGEditor {
             // it cannot be carried forward — so there is nothing to restore, and a call guarded
             // by that same condition could only ever be a no-op.
             return nil
-        }
-
-        /// Times TextKit's own layout for the range a patch just changed.
-        ///
-        /// // REQ-116; ARC-020: the `nativeInputCallback` boundary ends when the input delegate
-        /// // returns — after `storage.endEditing()` but before glyph generation and layout. That
-        /// // is the half of a keystroke the user actually perceives, and nothing measured it.
-        /// //
-        /// // This measures layout the application is already committed to performing: the patch
-        /// // has been applied, so these glyphs will be laid out before the next draw whether or
-        /// // not this call happens. `ensureLayout(forCharacterRange:)` moves that work earlier by
-        /// // a frame rather than adding work — the metric must never change what it measures.
-        private func recordLayoutDuration(for textView: NSTextView, changed range: NSRange) {
-            guard let layoutManager = textView.layoutManager,
-                  let container = textView.textContainer else { return }
-            let length = (textView.string as NSString).length
-            let clamped = NSRange(
-                location: min(max(0, range.location), length),
-                length: min(range.length, max(0, length - min(max(0, range.location), length)))
-            )
-            guard clamped.length > 0 else { return }
-            let started = DispatchTime.now().uptimeNanoseconds
-            let glyphs = layoutManager.glyphRange(forCharacterRange: clamped, actualCharacterRange: nil)
-            layoutManager.ensureLayout(forGlyphRange: glyphs)
-            _ = container
-            session.recordPerformance(
-                .layoutApplication,
-                durationNanos: DispatchTime.now().uptimeNanoseconds &- started
-            )
         }
 
         private func buildPresentation(_ snapshot: PresentationSnapshot) -> AttributedPresentation {
@@ -519,6 +489,30 @@ final class MarkdownWYSIWYGTextView: NSTextView {
     weak var placementController: ImagePlacementController?
     weak var inputCoordinator: WYSIWYGEditor.WYSIWYGInputCoordinator?
     weak var adapterCoordinator: WYSIWYGEditor.Coordinator?
+
+    /// REQ-116; ARC-020: measures the layout and drawing TextKit performs **anyway**.
+    ///
+    /// // The `nativeInputCallback` boundary ends when the input delegate returns — after
+    /// // `storage.endEditing()` but before glyph generation, layout, and drawing — so no metric
+    /// // covered the half of a keystroke the user actually perceives.
+    /// //
+    /// // An earlier version of this measurement called `ensureLayout` from
+    /// // inside `applyProjectionIfNeeded`, which `shouldChangeTextIn` calls. That forced
+    /// // synchronous layout on every accepted keystroke *inside the sampled callback region*:
+    /// // it made the app slower on the real edit path and inflated the very p95 REQ-090 gates
+    /// // at 8 ms, so the metric corrupted its own boundary. COR-29's own rule — "layout
+    /// // sampling must never itself force layout the app would not otherwise perform" —
+    /// // forbids it. Timing the view's real `draw(_:)` adds two timestamp reads and nothing
+    /// // else; TextKit lays out lazily during drawing, so this is the work as it actually
+    /// // happens.
+    override func draw(_ dirtyRect: NSRect) {
+        let started = DispatchTime.now().uptimeNanoseconds
+        super.draw(dirtyRect)
+        session?.recordPerformance(
+            .layoutApplication,
+            durationNanos: DispatchTime.now().uptimeNanoseconds &- started
+        )
+    }
 
     override func layout() {
         super.layout()
