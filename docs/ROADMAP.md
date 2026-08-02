@@ -120,6 +120,15 @@ product's default mode — in any test.
    requirement can no longer contradict an active increment, `CLAUDE.md` requires liveness proofs
    and laid-out-geometry proofs, and `Scripts/fast-check.sh` is the short inner loop.
 
+### Open defect, reproduced and planned
+
+**`PerformanceBoundaryTests` hangs before executing a single case.** Reproduced on `main`
+@`24341da` and on the COR-26..COR-31 branch: the suite reports 0 cases after 4+ minutes with the
+test host idle at 0% CPU in `NSApplicationMain` and no test thread present, while every other
+suite runs (350 pass through `Scripts/fast-check.sh`, which skips it). It passed as recently as
+PR #29. REQ-090 is `Correction` because its Release evidence cannot currently be regenerated.
+[Approved plan](plans/COR-32-performance-suite-hang.md).
+
 ### Next discovery unit, not yet researched
 
 **DISC-01 — Should semantic commands share the free-form edit coordinate machinery?**
