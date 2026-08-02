@@ -120,20 +120,53 @@ product's default mode — in any test.
    requirement can no longer contradict an active increment, `CLAUDE.md` requires liveness proofs
    and laid-out-geometry proofs, and `Scripts/fast-check.sh` is the short inner loop.
 
-### Open defect, reproduced and planned
+## Active: verification integrity programme
 
-**`PerformanceBoundaryTests` hangs before executing a single case.** Reproduced on `main`
-@`24341da` and on the COR-26..COR-31 branch: the suite reports 0 cases after 4+ minutes with the
-test host idle at 0% CPU in `NSApplicationMain` and no test thread present, while every other
-suite runs (350 pass through `Scripts/fast-check.sh`, which skips it). It passed as recently as
-PR #29. REQ-090 is `Correction` because its Release evidence cannot currently be regenerated.
-[Approved plan](plans/COR-32-performance-suite-hang.md).
+The COR-26..COR-31 closing sequence could not produce Release performance evidence, and
+investigating why found more than a slow suite. Five defects and one systemic gap, none of them a
+regression from that programme — every one reproduces at `a4e170b` (PR #29) or earlier.
 
-**Fenced code content is not an identity mapping in CRLF documents.** `.codeBlock` refuses on an
-ordinary identity selection in a CRLF document while every other line-reshaping command succeeds:
-cmark normalises line endings to `\n`, so a code block's literal and its source span differ by one
-UTF-16 unit per line and the post-command caret cannot be projected exactly. Found while fixing
-the PR #32 CRLF review comment. [Approved plan](plans/COR-33-crlf-code-block-projection.md).
+The systemic finding governs the ordering below: **REQ-109 sat `Done` for months while four of
+its cited proofs were failing.** COR-31's forward-traceability gate checks that a cited proof
+*exists*; nothing checks that it *passes*, and the suite containing those proofs never completes,
+so the failures were invisible. PR #29's description reported *"Debug 328 passed / 0 failed"*.
+
+This is the same shape as the defect the previous programme fixed, one level up. REQ-058 was
+satisfiable by a build where every command refused; "records a test" is satisfiable by a test that
+fails. Both contracts checked that a thing existed rather than that it did its job.
+
+Delivery order, and why it is this order:
+
+1. 🔵 **COR-32 — The performance suite hangs.** Bisected to an interaction among the last five
+   tests of `PerformanceBoundaryTests`; each passes alone. **First because it gates everything
+   else:** while the suite cannot complete, no fix below can be proven and COR-35's gate cannot
+   run at all. [Approved plan](plans/COR-32-performance-suite-hang.md).
+2. ⚪ **COR-34 — Attribute refresh escapes its semantic block.** A one-word formatting command
+   refreshes attributes across the whole document; `PresentationPatch.collectDifferences`
+   compares snapshot arrays by index, so one inserted run makes every later element mismatch.
+   Four failing tests, one cause. **Second because COR-32 makes these failures visible in every
+   run, and they are real product defects, not stale assertions.**
+   [Approved plan](plans/COR-34-attribute-refresh-scope.md).
+3. ⚪ **COR-35 — A cited proof must pass, not merely exist.** The systemic fix: correlate
+   requirement rows with actual test results. **Third because it cannot go green until COR-32 and
+   COR-34 land** — a gate asserting "every cited proof passed" fails while proofs are red or
+   unrunnable. Written now regardless, because the gap is understood now.
+   [Approved plan](plans/COR-35-proofs-must-pass.md).
+4. ⚪ **COR-36 — A nested block discards its parent's indentation.** A paragraph inside a list
+   item loses the hanging indent ENGINEERING §7 promises. **Sequenced after COR-27 landed**
+   because both edit the same style-derivation path; its first phase is to reproduce it, and the
+   plan is deleted with the finding recorded if it does not reproduce.
+   [Approved plan](plans/COR-36-nested-block-paragraph-style.md).
+5. ⚪ **COR-33 — Code content is uneditable in CRLF documents.** Measured, not assumed: cmark
+   normalises CRLF to LF, and the compiler correctly emits `.uneditable(ambiguous)` rather than a
+   bad mapping — so ARC-007 holds and the real defect is that *all* code-block content, fenced and
+   indented, is uneditable under CRLF. **Last because it is the only item whose recommended option
+   opens the architecture change gate** (ENGINEERING §6 atom vocabulary), and it should not block
+   four independently shippable corrections.
+   [Approved plan](plans/COR-33-crlf-code-block-projection.md).
+
+Requirements currently `Correction` and the increment that clears each: REQ-090 (COR-32),
+REQ-109 (COR-34).
 
 ### Next discovery unit, not yet researched
 

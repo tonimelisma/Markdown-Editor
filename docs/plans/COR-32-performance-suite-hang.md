@@ -36,19 +36,29 @@ performance evidence, and why that increment's REQ-090 row is `Correction`.
 The original reproduction stands, but investigation changed the picture materially. **There are
 two independent defects here, not one**, and neither is a regression from COR-26..COR-31.
 
-**Finding 1 — a `Done` requirement's cited proof has been failing, unnoticed.**
-`PerformanceBoundaryTests.hiddenDelimiterCommandRefreshesAttributesWithoutReplacing` fails with
-"one-word formatting refreshed attributes outside its semantic block". Reproduced by running that
-single test in isolation at `c90db74`, at `24341da` (immediately before the COR-26..COR-31
-merge), and at `a4e170b` — the PR #29 merge whose description claimed *"Debug 328 passed / 0
-failed"*. REQ-109 cites this test as proof and is therefore now `Correction`.
+**Finding 1 — moved to COR-34.** Four tests in this suite fail, all on attribute-refresh scope.
+That is a product defect in `PresentationPatch`, not a harness hang, so it is planned separately.
+Summarised here only because it is why this suite looked like it "hung" in the first place.
+**Finding 2 — a genuine hang, separate from those failures.** Running the suite with the failing
+tests skipped still hangs with zero cases reported, so the hang is not the failures.
 
-This is the sharpest lesson available: the forward-traceability gate COR-31 added checks that a
-cited proof **exists**, not that it **passes**. A suite that never completes hides every failure
-inside it, and a green-looking process reported success for months.
+**Localised by bisection.** Each group below was run with explicit per-test `-only-testing`
+filters against warm derived data:
 
-**Finding 2 — a genuine hang, separate from that failure.** Running the suite with the failing
-test explicitly skipped still hangs with zero cases reported, so the hang is not the failure.
+| Group | Result |
+| --- | --- |
+| Any single test (7 tried) | completes |
+| Two individually-passing tests together | completes |
+| Tests 1–9 of the file | completes (9 cases, 1 failure) |
+| Tests 10–19 of the file | **hangs, 0 cases** |
+| Tests 10–14 of the file | completes (5 cases, 3 failures) |
+
+By elimination the hang lives in the **last five tests of the file**:
+`tableCellEditUsesOneBoundedPatch`, `committedCompositionUsesBoundedPatch`,
+`newerSnapshotWithUnchangedTextReplacesNothing`,
+`forcedCurrentSnapshotDoesNotRecoverWithoutStorageDrift`, and
+`driftedStorageOnNewerSnapshotIsRecorded` — and, since each passes alone, in an *interaction*
+among them rather than in any one.
 
 **What is now excluded as a cause:**
 
@@ -67,17 +77,22 @@ once reached.
 evidence that testing never began; that misread cost real time and is recorded so it is not
 repeated.
 
-**Next experiment:** halve the suite with Swift Testing's `.disabled()` trait and bisect *within*
-it, since per-test runs pass and only combinations fail. Prime suspects are cross-test residue —
-`EditorHarness` never calls `session.detach()`, so every test leaves a live `EditorSession`, its
-`PerformanceSampler`, and a 60-second repeating `Timer` registered with
-`DiagnosticRunCoordinator.shared`; and `SpyTextStorage.mutationDelay` is set on one harness but
-the spy type is shared.
+**Next experiment:** bisect those five into pairs, then triples. Prime suspect is cross-test
+residue: `EditorHarness` never calls `session.detach()`, so every test leaves a live
+`EditorSession`, its `PerformanceSampler`, and a 60-second repeating `Timer` registered with
+`DiagnosticRunCoordinator.shared`. Three of the five drive the recovery/drift paths, which is
+where a `presentationRecovered` fault and a terminal diagnostic flush can meet an undetached
+sink — `DiagnosticLog.finishSynchronously` waits for durability, and REQ-110/ARC-021 exist
+precisely because that wait once depended on a main-actor hop.
+
+Note `committedCompositionUsesBoundedPatch` drives real marked-text/IME through `NSTextView`,
+which runs its own input-context machinery; an IME test left mid-composition is a credible way to
+block a subsequent test that also touches marked text.
 
 ## Requirements and invariants
 
 - REQ-090 → `Correction`: its p95 gates cannot currently be executed.
-- REQ-109 → `Correction`: its cited proof fails (finding 1).
+- REQ-109 → `Correction`: its cited proofs fail — planned in COR-34, not here.
 - REQ-103, ARC-020: sampler lifetime and boundary honesty are unaffected; the metrics themselves
   still work (`Scripts/smoke-test.sh` reports real `performanceSummary` records).
 - ARC-014: the fix must not introduce any UI-driven verification.
