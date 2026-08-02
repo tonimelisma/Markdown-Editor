@@ -25,6 +25,23 @@ nonisolated enum SemanticCommand: Sendable, Equatable {
     case insertImageMarkdown(String)
 }
 
+extension SemanticCommand {
+    /// True for commands whose planner rewrites the caret's entire source line.
+    ///
+    /// // REQ-113/087; ARC-009: these may act only on a proven identity selection. Inline
+    /// // commands wrap the selected span instead and are not restricted here.
+    var reshapesWholeLine: Bool {
+        switch self {
+        case .setParagraph, .setHeading, .toggleOrderedList, .toggleUnorderedList,
+             .toggleTaskList, .toggleBlockQuote, .toggleCodeBlock:
+            return true
+        case .toggleBold, .toggleItalic, .toggleStrikethrough, .toggleInlineCode, .setLink,
+             .insertText, .deleteBackward, .toggleTask, .replaceTableCell, .insertImageMarkdown:
+            return false
+        }
+    }
+}
+
 nonisolated enum SemanticEditRefusal: Error, Sendable, Equatable {
     case staleVersion
     case ambiguousSelection
@@ -720,6 +737,22 @@ nonisolated enum SemanticEditEngine {
         case .toggleBold, .toggleItalic, .toggleStrikethrough, .toggleInlineCode,
              .setHeading, .setParagraph, .toggleOrderedList, .toggleUnorderedList,
              .toggleTaskList, .toggleBlockQuote, .toggleCodeBlock, .setLink:
+            // REQ-113/087; ARC-009; PR #32 review: a **block** rewrite reshapes the whole line,
+            // so it may act only on a selection proven to be that line's own identity text. A
+            // caret on a synthetic paragraph break classifies as `.syntheticInsertion` and folds
+            // to a declared source location, which would make the planner silently rewrite the
+            // *preceding* line. Before COR-25/COR-26 that mutation was planned and then rescued
+            // by an unmappable post-edit selection refusing the whole edit; giving every planner
+            // a projectable caret removed that accident, so the refusal is now stated where it
+            // belongs instead of emerging from a mapping failure.
+            //
+            // Inline commands are unaffected: they wrap the selected span rather than reshaping
+            // a line, so an atomic or synthetic endpoint stays legitimate for them.
+            if command.reshapesWholeLine {
+                guard case .identityText = classification else {
+                    return refusal(for: classification)
+                }
+            }
             guard let sourceRange = sourceRange(for: classification, affinity: selection.affinity)
             else { return refusal(for: classification) }
             let sourceSelection = SourceSelection(utf16: sourceRange, affinity: selection.affinity)

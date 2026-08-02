@@ -115,6 +115,95 @@ struct CommandLivenessMatrixTests {
         }
     }
 
+    /// // Verifies: REQ-113/087; ARC-009; PR #32 review — a caret on a synthetic paragraph break
+    /// is not an identity paragraph, so a line-reshaping command refuses instead of silently
+    /// rewriting the preceding line.
+    ///
+    /// Before this, the mutation *was* planned and only rescued by an unmappable post-edit
+    /// selection. COR-25/COR-26 gave every planner a projectable caret, which removed that
+    /// accident — so the refusal now has to be stated rather than emerge from a mapping failure.
+    @Test func syntheticBreakCaretRefusesEveryLineReshapingCommand() throws {
+        let reshaping: [EditorCommand] = [
+            .paragraph, .heading(2), .unorderedList, .orderedList,
+            .taskList, .blockQuote, .codeBlock,
+        ]
+        for command in reshaping {
+            let fixture = Fixture(mode: .wysiwyg)
+            defer { fixture.tearDown() }
+            let presentation = try #require(fixture.session.presentation)
+            // Location 16 is the synthetic break between the two paragraphs.
+            let classification = ProjectionSelectionClassifier.classify(
+                selection: NSRange(location: 16, length: 0),
+                affinity: .downstream,
+                snapshot: presentation
+            )
+            guard case .syntheticInsertion = classification else {
+                Issue.record("expected a synthetic break at 16, got \(classification)")
+                return
+            }
+            fixture.select(NSRange(location: 16, length: 0))
+            _ = fixture.controller.perform(command)
+            #expect(
+                fixture.document.text == Self.original,
+                "\(command) rewrote source from a synthetic-break caret"
+            )
+        }
+    }
+
+    /// // Verifies: REQ-007/015/113; PR #32 review — a CRLF document gets a caret before the
+    /// **whole** terminator, not between `\r` and `\n`.
+    ///
+    /// This must run through WYSIWYG: the defect is in `planAuthoritativeTransition`'s
+    /// re-projection of the post-command caret, which source mode never reaches. An earlier
+    /// version of this test used source mode and passed against the defect.
+    @Test func lineReshapingCommandsApplyInCRLFWYSIWYGDocuments() throws {
+        let crlf = "First paragraph.\r\n\r\nSecond paragraph.\r\n"
+        // `.codeBlock` is deliberately excluded and tracked as COR-33: cmark normalises CRLF to
+        // LF, so fenced content is not an identity mapping in a CRLF document. That is a
+        // projection defect, not a caret one, and this fix does not claim it.
+        for command in [EditorCommand.unorderedList, .blockQuote, .heading(2)] {
+            let document = MarkdownDocument()
+            document.installTextForTesting(crlf)
+            let session = EditorSession()
+            session.attach(document: document)
+            session.setMode(.wysiwyg)
+            defer { session.detach() }
+
+            let tree = try #require(
+                MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion).get()
+            )
+            session.installProjectionForTesting(
+                MarkdownProjectionModel.build(
+                    tree: tree,
+                    index: MarkdownSourceIndex(
+                        source: document.text, sourceVersion: document.sourceVersion
+                    )
+                ),
+                tree: tree
+            )
+            let presentation = try #require(session.presentation)
+            session.updateWYSIWYGModeState {
+                $0.selection = ProjectionSelection(
+                    utf16: NSRange(location: 0, length: 16),
+                    revision: presentation.projectionRevision
+                )
+            }
+            let controller = EditorCommandController()
+            controller.bind(
+                document: document,
+                session: session,
+                actionRouter: EditorActionRouter(),
+                window: nil
+            )
+
+            #expect(controller.perform(command) == .accepted, "\(command) refused on CRLF")
+            #expect(
+                document.text.contains("\r\n"),
+                "\(command) destroyed the CRLF terminators REQ-007 preserves"
+            )
+        }
+    }
+
     private func assertLiveness(
         _ command: EditorCommand,
         _ expectation: Expectation,

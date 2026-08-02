@@ -129,6 +129,12 @@ suite runs (350 pass through `Scripts/fast-check.sh`, which skips it). It passed
 PR #29. REQ-090 is `Correction` because its Release evidence cannot currently be regenerated.
 [Approved plan](plans/COR-32-performance-suite-hang.md).
 
+**Fenced code content is not an identity mapping in CRLF documents.** `.codeBlock` refuses on an
+ordinary identity selection in a CRLF document while every other line-reshaping command succeeds:
+cmark normalises line endings to `\n`, so a code block's literal and its source span differ by one
+UTF-16 unit per line and the post-command caret cannot be projected exactly. Found while fixing
+the PR #32 CRLF review comment. [Approved plan](plans/COR-33-crlf-code-block-projection.md).
+
 ### Next discovery unit, not yet researched
 
 **DISC-01 — Should semantic commands share the free-form edit coordinate machinery?**

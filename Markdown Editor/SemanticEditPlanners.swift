@@ -71,11 +71,24 @@ nonisolated enum SemanticPlannerGate {
         )
     }
 
-    /// Length of `replacement` excluding a single trailing newline — the usual content end for a
-    /// planner that rewrites one line in place.
+    /// Length of `replacement` excluding its **complete** line terminator.
+    ///
+    /// // REQ-007/015; PR #32 review: subtracting a single UTF-16 unit is wrong for CRLF. It
+    /// // places the caret between `\r` and `\n`, an offset belonging to neither the paragraph's
+    /// // identity atom nor its synthetic break, so `planAuthoritativeTransition` still refuses
+    /// // with `mappingFailure` — in exactly the CRLF documents REQ-007 requires this app to
+    /// // preserve byte-for-byte.
     static func contentLength(of replacement: String) -> Int {
-        let ns = replacement as NSString
-        return replacement.hasSuffix("\n") ? ns.length - 1 : ns.length
+        trimmedLength(of: replacement)
+    }
+
+    /// UTF-16 length of `text` with one trailing CRLF, LF, or CR removed.
+    static func trimmedLength(of text: String) -> Int {
+        let ns = text as NSString
+        var end = ns.length
+        if end > 0, ns.character(at: end - 1) == 0x0A { end -= 1 }
+        if end > 0, ns.character(at: end - 1) == 0x0D { end -= 1 }
+        return end
     }
 }
 
@@ -242,7 +255,8 @@ nonisolated enum BlockEditPlanner {
             // newline does.
             selectionAfter: SemanticPlannerGate.caretInsideContent(
                 lineStart: line.location,
-                offsetInReplacement: (openingFence as NSString).length + (body as NSString).length,
+                offsetInReplacement: (openingFence as NSString).length
+                    + SemanticPlannerGate.trimmedLength(of: body),
                 selectionBefore: selectionBefore
             )
         ) { tree, _ in
