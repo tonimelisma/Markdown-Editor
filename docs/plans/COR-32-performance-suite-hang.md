@@ -89,6 +89,28 @@ Note `committedCompositionUsesBoundedPatch` drives real marked-text/IME through 
 which runs its own input-context machinery; an IME test left mid-composition is a credible way to
 block a subsequent test that also touches marked text.
 
+## Working notes for whoever continues this
+
+Each of these cost real time during the investigation and none is obvious.
+
+- **`-only-testing` needs the parentheses.** `…/PerformanceBoundaryTests/someTest` matches nothing
+  and exits **0**; `…/PerformanceBoundaryTests/someTest()` runs it. A filter that matches nothing
+  is indistinguishable from a passing run — always confirm a nonzero case count before believing
+  a green result.
+- **Quote the filter.** The target name contains a space, so building filters in a shell variable
+  and expanding it unquoted splits them and yields `rc=65, cases=0`. Use a bash array:
+  `A+=(-only-testing:"Markdown EditorTests/PerformanceBoundaryTests/$t()")`.
+- **`Testing started: 0` does not mean testing never began.** When a run hangs early, xcodebuild's
+  output is still buffered, so that marker never flushes. Reading it literally sent this
+  investigation down a "the build is stuck" path for some time. Judge by the test host process,
+  not by the log.
+- **A fresh `-derivedDataPath` rebuilds cmark-gfm and everything else**, which takes minutes and
+  looks exactly like a hang. Reuse a warm directory when bisecting; every timing quoted above is
+  warm.
+- **Killing a run leaves the test host alive.** Run `pkill -f "Markdown Editor.app/Contents/MacOS"`
+  between attempts, or a stale host can hold state into the next run and corrupt the result.
+- **macOS has no `timeout(1)`.** Run in the background and poll with a bounded loop instead.
+
 ## Requirements and invariants
 
 - REQ-090 → `Correction`: its p95 gates cannot currently be executed.

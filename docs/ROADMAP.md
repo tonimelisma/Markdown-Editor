@@ -166,7 +166,31 @@ Delivery order, and why it is this order:
    [Approved plan](plans/COR-33-crlf-code-block-projection.md).
 
 Requirements currently `Correction` and the increment that clears each: REQ-090 (COR-32),
-REQ-109 (COR-34).
+REQ-109 (COR-34), REQ-113 (COR-33 stage 1).
+
+Two findings are recorded but deliberately unplanned, so they are not mistaken for oversights:
+the plain Cmd+S/Save-panel cancellation gap already documented in `ENGINEERING.md` §9, which is a
+deliberate user choice rather than a failure needing a diagnostic; and the `sourceSnapshot()`
+location-generation window raised by the PR #33 review, which that review traced as self-healing
+through `objectWillChange` re-scheduling and the existing generation gates, and which no
+experiment has shown to produce a persistent wrong result.
+
+### Discovery units, not yet researched
+
+**DISC-02 — May projected code-block content be an atomic atom?** (blocks COR-33 stage 2)
+
+COR-33 stage 1 makes `.codeBlock`'s availability honest without touching architecture. Stage 2 —
+representing code content as `.atomicText` with a proven `\r\n`↔`\n` decoder so code blocks
+become editable in CRLF documents — changes the projection's atom vocabulary and therefore needs
+the ENGINEERING §15 gate: a reproduced counterexample (COR-33's probe supplies it), fresh research
+and real API probes, options compared against the architecture drivers, explicit approval, an
+atomic ENGINEERING and requirements update, an executable proof that would fail under the old
+behaviour, and deletion of the displaced path in the same build.
+
+Open questions DISC-02 must answer: whether the decoder generalises to indented code and raw HTML
+blocks, which have the same normalisation exposure; whether a document with mixed line endings
+(legal, and REQ-007 requires preserving it) can still be proven; and whether
+`AtomicRepresentationKind` gains a case or the existing vocabulary suffices.
 
 ### Next discovery unit, not yet researched
 
