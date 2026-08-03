@@ -135,13 +135,22 @@ This is the same shape as the defect the previous programme fixed, one level up.
 satisfiable by a build where every command refused; "records a test" is satisfiable by a test that
 fails. Both contracts checked that a thing existed rather than that it did its job.
 
+COR-32 delivered the systemic fix's prerequisite: the suite executes. Its root cause was not the
+suspected cross-test interaction but a real IME-path defect — see the delivered item below.
+
 Delivery order, and why it is this order:
 
-1. 🔵 **COR-32 — The performance suite hangs.** Bisected to an interaction among the last five
-   tests of `PerformanceBoundaryTests`; each passes alone. **First because it gates everything
-   else:** while the suite cannot complete, no fix below can be proven and COR-35's gate cannot
-   run at all. [Approved plan](plans/COR-32-performance-suite-hang.md).
-2. ⚪ **COR-34 — Attribute refresh escapes its semantic block.** A one-word formatting command
+1. ✅ **COR-32 — The performance suite hangs.** Root cause found and fixed: `NSTextView.setMarkedText`
+   registers an undo operation, and AppKit raises "must begin a group before registering undo"
+   because `MarkdownDocument` sets `groupsByEvent = false` (REQ-011 explicit typing groups) and no
+   group is open when marked text arrives. The text view now opens the undo group around the native
+   marked-text mutation, so real IME composition works and the suite no longer hangs — it executes
+   in ~25 s with the four attribute-refresh failures visible in every run (COR-34's scope).
+   `Scripts/check-performance-suite.sh` guards the bounded wall-clock time and nonzero case count,
+   and the Release evidence has been re-recorded in full. The plan's working hypothesis — an
+   *interaction* among the last five tests — was superseded: the hang was `committedComposition-`
+   `UsesBoundedPatch` alone, because it is the only test that drives the real marked-text path.
+2. 🔵 **COR-34 — Attribute refresh escapes its semantic block.** A one-word formatting command
    refreshes attributes across the whole document; `PresentationPatch.collectDifferences`
    compares snapshot arrays by index, so one inserted run makes every later element mismatch.
    Four failing tests, one cause. **Second because COR-32 makes these failures visible in every
@@ -165,8 +174,8 @@ Delivery order, and why it is this order:
    four independently shippable corrections.
    [Approved plan](plans/COR-33-crlf-code-block-projection.md).
 
-Requirements currently `Correction` and the increment that clears each: REQ-090 (COR-32),
-REQ-109 (COR-34), REQ-113 (COR-33 stage 1).
+Requirements currently `Correction` and the increment that clears each: REQ-109 (COR-34),
+REQ-113 (COR-33 stage 1).
 
 Two findings are recorded but deliberately unplanned, so they are not mistaken for oversights:
 the plain Cmd+S/Save-panel cancellation gap already documented in `ENGINEERING.md` §9, which is a

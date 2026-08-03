@@ -42,3 +42,5 @@ DerivedData/
 # Dependency managers (unused, listed defensively)
 Pods/
 Carthage/Build/
+.perf-suite-build/
+.perf-suite.log

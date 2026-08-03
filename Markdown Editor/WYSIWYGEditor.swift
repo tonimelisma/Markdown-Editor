@@ -562,6 +562,24 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             snapshotID: session?.presentation?.id
         )
         inputCoordinator?.allowingMarkedText = true
+        // REQ-084: NSTextView registers marked-text edits on its undo manager, and AppKit
+        // requires an open group before registering. The document's undo manager disables
+        // event grouping (`groupsByEvent = false`, REQ-011) because the app drives typing
+        // groups explicitly, so a marked-text update that arrives before any explicit group
+        // is open would raise "must begin a group before registering undo". Open the group
+        // around the native marked-text mutation and close it afterwards; the composition
+        // commit itself opens its own group when it reaches source.
+        let undoManager = documentActions?.documentUndoManager
+        let opensUndoGroup = undoManager?.groupingLevel == 0
+        if opensUndoGroup { undoManager?.beginUndoGrouping() }
+        defer {
+            // Mirror MarkdownDocument.closeTypingGroupIfNeeded: never end a group at level 0.
+            // A checkpoint could in principle have closed the group mid-call; ending at level 0
+            // would raise the same "invalid state" exception the fix exists to prevent.
+            if opensUndoGroup, undoManager?.groupingLevel ?? 0 > 0 {
+                undoManager?.endUndoGrouping()
+            }
+        }
         if let session {
             session.updateOrigin.with(.composition) {
                 super.setMarkedText(
