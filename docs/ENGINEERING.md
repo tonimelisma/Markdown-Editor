@@ -293,6 +293,13 @@ Rules:
 - Selection restoration is a one-shot session instruction consumed by the relevant adapter.
 - `NSTextView` owns marked text. Canonical source receives one completed composition transaction;
   projection replacement never occurs through active marked text.
+- Marked-text arrival opens the document's undo group around the native mutation. AppKit registers
+  marked-text edits on the undo manager, and `NSTextView.setMarkedText` raises "must begin a group
+  before registering undo" when the document's undo manager has `groupsByEvent = false` (REQ-011:
+  the app drives typing groups explicitly) and no group is open — which is exactly the state at the
+  start of a composition. The WYSIWYG text view therefore opens the group when none is open,
+  mutates marked text inside it, and closes it afterwards; the composition commit then opens its
+  own group when it reaches source.
 - Native plain-text paste, spelling, Find, keyboard input, selection, and accessibility remain
   available. There are no UI-test dependencies.
 

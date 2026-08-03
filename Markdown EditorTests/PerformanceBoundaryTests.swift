@@ -374,8 +374,10 @@ struct PerformanceBoundaryTests {
         #expect(patch.length < (harness.textView.string as NSString).length)
     }
 
-    // Verifies: REQ-084/109 — a real marked-text commit asks for immediate application, but its
-    // new snapshot still takes exactly one bounded patch rather than a full replacement.
+    // Verifies: REQ-084/109 — a real marked-text commit asks for immediate application, and its
+    // new snapshot takes only bounded patches rather than a full replacement. The marked text is
+    // shown in the native storage first (REQ-084 keeps composition transient but visible), then
+    // the commit replaces it; every storage edit stays inside the document and never rebuilds it.
     @Test func committedCompositionUsesBoundedPatch() throws {
         let harness = try EditorHarness(source: "ab\n\nTrailing paragraph.\n")
         harness.textView.setSelectedRange(NSRange(location: 2, length: 0))
@@ -390,9 +392,10 @@ struct PerformanceBoundaryTests {
 
         #expect(harness.document.text.hasPrefix("ab日"))
         #expect(harness.storage.fullReplacements == 0)
-        #expect(harness.storage.characterReplacements.count == 1)
-        let patch = try #require(harness.storage.characterReplacements.first)
-        #expect(patch.length < (harness.textView.string as NSString).length)
+        #expect(!harness.storage.characterReplacements.isEmpty)
+        #expect(harness.storage.characterReplacements.allSatisfy {
+            $0.length < (harness.textView.string as NSString).length
+        }, "a composition storage edit was not bounded")
     }
 
     // Verifies: REQ-109 — a newer snapshot carrying the same text refreshes attributes and
