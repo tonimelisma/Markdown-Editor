@@ -123,8 +123,13 @@ For docs/config only: commit and push directly on `main`, then run stale-work sw
 ## 4. Traceability and proof
 
 - Each requirement row names current production types/routes and verification.
-- Local code comments such as `// REQ-012: ...` and test comments such as
-  `// Verifies: REQ-012` are optional cross-references for important or cross-cutting contracts.
+- Local production comments such as `// REQ-012: ...` are optional cross-references for important
+  or cross-cutting contracts.
+- A test comment `// Verifies: REQ-012` is **not** optional: it is how REQ-118 maps a test to what
+  it proves. Every test carries one unless a `Done` row cites the test or its suite by name, or it
+  is one of the stated exemptions in `Scripts/check-proof-results.sh`. Keeping the mapping beside
+  the test rather than in a registry means a new test fails the gate until it names its
+  requirement.
 - Every `REQ-###` comment that exists in code/tests resolves to a current requirement.
 - Every `Done` requirement has automated test evidence or a precise construction/framework proof.
 - Every `Done` requirement's cited proof must be **observed to pass** in the run that closes the increment; a suite that does not complete leaves every requirement citing it unproven, not proven. `Scripts/check-proof-results.sh` enforces this and also ensures no test fails unnoticed because nothing cites it (REQ-117/118).
