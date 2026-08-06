@@ -119,6 +119,9 @@ struct AttributedPresentationTests {
         })
     }
 
+    // Verifies: REQ-107 — checkbox-without-duplicate-bullet alignment. Anchored rather than left
+    // to REQ-107's citation: the row is `Correction` while COR-37 is open, and a test whose only
+    // mapping is a citation from a non-`Done` row would otherwise fail unnoticed.
     @Test func taskPresentationHasCheckboxWithoutDuplicateBullet() throws {
         let model = try #require(makeModel("- [ ] task\n"))
         let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
