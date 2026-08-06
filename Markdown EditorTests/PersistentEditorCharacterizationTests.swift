@@ -809,6 +809,7 @@ struct PersistentEditorCharacterizationTests {
     /// (`EditorSession.perform`, which derives a complete next presentation snapshot) and the
     /// TextKit application that follows it. Reported so a budget miss names its own cause
     /// instead of inviting a guess. No threshold is asserted here.
+    // Verifies: REQ-090 — Release characterization of where the native-input-callback budget goes.
     @Test func nativeInputCallbackCostSplitCharacterization() throws {
 #if !DEBUG
         let planningHarness = try PerformanceBoundaryTests.EditorHarness(
@@ -844,6 +845,7 @@ struct PersistentEditorCharacterizationTests {
 
     /// Non-gating 1M UTF-16 characterization required by COR-20. Reported, never asserted: no
     /// threshold has been approved at this size.
+    // Verifies: REQ-090 — native-input-callback behaviour beyond the approved corpus size.
     @Test func nativeInputCallbackOneMillionCharacterization() throws {
 #if !DEBUG
         let harness = try PerformanceBoundaryTests.EditorHarness(

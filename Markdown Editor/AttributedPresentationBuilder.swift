@@ -193,13 +193,15 @@ enum AttributedPresentationBuilder {
         to storage: NSMutableAttributedString,
         typography: MarkdownTypography
     ) {
-        let style = typography.paragraphStyle()
         // Containing blocks are applied first, so an enclosing quote's or code block's geometry
-        // is already installed here. A paragraph inside a quote must keep it rather than replace
-        // the whole paragraph style and silently drop the quote rule.
+        // is already installed here. A nested block must inherit its parent's geometry instead of
+        // replacing it, so a paragraph inside a list item keeps the list's hanging indent.
+        let style: NSMutableParagraphStyle
         if let enclosing = storage.attribute(.paragraphStyle, at: range.location, effectiveRange: nil)
             as? NSParagraphStyle {
-            style.textBlocks = enclosing.textBlocks
+            style = enclosing.mutableCopy() as! NSMutableParagraphStyle
+        } else {
+            style = typography.paragraphStyle()
         }
         switch block.kind {
         case .paragraph:
@@ -252,9 +254,13 @@ enum AttributedPresentationBuilder {
     /// // paragraph boundary, and spaced a code block's own lines apart.
     /// //
     /// // Spacing belongs to a **semantic** boundary: only the last TextKit paragraph in the block
-    /// // carries `paragraphSpacing`, and only the first carries `paragraphSpacingBefore`. Every
-    /// // other attribute — indents, tab stops, text blocks, alignment — is identical across the
-    /// // block, so nesting, quote rules, and code containers are unchanged.
+    /// // carries `paragraphSpacing`, and only the first carries `paragraphSpacingBefore`.
+    /// //
+    /// // COR-36: `firstLineHeadIndent` is likewise not uniform. It is the hanging indent that
+    /// // positions the list marker, so only the block's first TextKit paragraph may carry it;
+    /// // every later paragraph is continuation content and begins at `headIndent`. `headIndent`,
+    /// // tab stops, text blocks, and alignment *are* identical across the block, so nesting,
+    /// // quote rules, and code containers are unchanged.
     private static func installPerTextKitParagraph(
         _ style: NSMutableParagraphStyle,
         to storage: NSMutableAttributedString,
@@ -287,7 +293,16 @@ enum AttributedPresentationBuilder {
             guard sub.length > 0 else { continue }
             let scoped = style.mutableCopy() as! NSMutableParagraphStyle
             if position != starts.count - 2 { scoped.paragraphSpacing = 0 }
-            if position != 0 { scoped.paragraphSpacingBefore = 0 }
+            if position != 0 {
+                scoped.paragraphSpacingBefore = 0
+                // COR-36: `firstLineHeadIndent` is the *hanging* indent — it positions the line
+                // that carries the list marker, and it is smaller than `headIndent` by exactly one
+                // indent step. Only the block's first TextKit paragraph carries that marker. Every
+                // later one is continuation content, so it starts at the content indent; leaving it
+                // at the marker indent drew a list item's second paragraph, and a quote nested in a
+                // list item, flush to the reading margin as though they had left the list.
+                scoped.firstLineHeadIndent = scoped.headIndent
+            }
             install(scoped, sub)
         }
     }

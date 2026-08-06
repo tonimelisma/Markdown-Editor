@@ -166,25 +166,80 @@ Delivery order, and why it is this order:
    assertion now checks boundedness to the image block and exclusion of the trailing paragraph.
    Full unified suite: 373 passed, 0 failed. **Second because COR-32 makes these failures visible
    in every run, and they are real product defects, not stale assertions.**
-3. ⚪ **COR-35 — A cited proof must pass, not merely exist.** The systemic fix: correlate
-   requirement rows with actual test results. **Third because it cannot go green until COR-32 and
-   COR-34 land** — a gate asserting "every cited proof passed" fails while proofs are red or
-   unrunnable. Written now regardless, because the gap is understood now.
-   [Approved plan](plans/COR-35-proofs-must-pass.md).
-4. ⚪ **COR-36 — A nested block discards its parent's indentation.** A paragraph inside a list
-   item loses the hanging indent ENGINEERING §7 promises. **Sequenced after COR-27 landed**
-   because both edit the same style-derivation path; its first phase is to reproduce it, and the
-   plan is deleted with the finding recorded if it does not reproduce.
-   [Approved plan](plans/COR-36-nested-block-paragraph-style.md).
-5. ⚪ **COR-33 — Code content is uneditable in CRLF documents.** Measured, not assumed: cmark
-   normalises CRLF to LF, and the compiler correctly emits `.uneditable(ambiguous)` rather than a
-   bad mapping — so ARC-007 holds and the real defect is that *all* code-block content, fenced and
-   indented, is uneditable under CRLF. **Last because it is the only item whose recommended option
-   opens the architecture change gate** (ENGINEERING §6 atom vocabulary), and it should not block
-   four independently shippable corrections.
-   [Approved plan](plans/COR-33-crlf-code-block-projection.md).
+3. ✅ **COR-35 — A cited proof must pass, not merely exist.** `Scripts/check-proof-results.sh`
+   reads structured results from the run's own `.xcresult` bundle and correlates them with the
+   `Done` rows of `REQUIREMENTS.md`: every cited proof must have executed and passed, whether it
+   is named as a test or as a suite (REQ-117). The gate **fails closed** — an absent bundle, a
+   bundle yielding zero cases, a changed `xcresulttool` schema, or zero resolved rows is a
+   failure, not a pass, because a check that silently matches nothing is the same defect wearing
+   a new hat.
+   REQ-118 is satisfied structurally rather than by a hand-maintained list: a test is mapped when
+   a `Done` row cites it or its suite, or when it carries a `// Verifies: REQ-###` anchor — the
+   convention the tests already used. Reading the anchors makes the mapping a property of the
+   code, so a newly added test fails the gate until it names what it proves. Only three tests are
+   exempt, each an absence gate no requirement can cite (`noUITestTargetInProject`,
+   `productionForcesNoTextKitLayout`, `productionTestHooksAreInventoried`). A test that names a
+   requirement and then fails is reported against that requirement even when `REQUIREMENTS.md`
+   does not cite it back — the hole through which
+   `resolvedImageRefreshesItsAttachmentOnlyWhenDisplayIdentityChanges` stayed red.
+4. ✅ **COR-36 — A nested block discards its parent's indentation.** Reproduced with laid-out
+   geometry, and the cause was **not** the one the plan predicted. The parent's style is not
+   missing: `MarkdownProjectionModel` emits a list item's child paragraphs *before* the list item
+   itself, so the item's style is applied last and wins across the whole item. The defect is in
+   `installPerTextKitParagraph` (COR-27): it treated `firstLineHeadIndent` as uniform across the
+   block. That value is the *hanging* indent — it positions the line carrying the list marker and
+   is one indent step left of `headIndent` — so every later TextKit paragraph in the item began at
+   the marker column. A list item's continuation paragraph therefore drew at x=0 while its own
+   content indent was 24, and a quote nested in a list item drew at 17 (its rule and padding
+   alone). Only the block's first TextKit paragraph now carries the hanging indent.
+   `ParagraphGeometryTests.nestedParagraphKeepsItsListItemContentIndent` measures the item's
+   content indent from a wrapped line of the item's own text rather than restating
+   `MarkdownTypography.listIndent`, and asserts at narrow, default, and wide widths (ARC-Q15);
+   `quoteNestedInAListItemKeepsRuleAndIndent` covers the decorated case. `Scripts/Fixtures/`
+   `smoke-rich.md` gained a list item with a continuation paragraph so the REQ-104 visual review
+   can see this class at all.
+5. ⚪ **COR-33 — Code content is uneditable in CRLF documents.** Unchanged and still unimplemented.
+   A stage-1 attempt was written and **withdrawn as measured-wrong** rather than shipped; the
+   evidence is recorded here so the next attempt does not repeat it. The attempt disabled
+   `.codeBlock` whenever the WYSIWYG presentation contained any `.uneditable` segment. Measured
+   through the real `EditorCommandController`:
+   - `"First paragraph.\r\n\r\nSecond paragraph.\r\n"` — COR-33's own reproduction — has **no**
+     uneditable segment, so `.codeBlock` still reported `enabled` and then refused. The attempt
+     did not fix the defect it was written for.
+   - An ordinary **LF** document containing raw HTML *does* have an uneditable segment, so
+     `.codeBlock` was disabled document-wide there — a new silently-disabled command, the exact
+     class REQ-113 and the liveness matrix exist to prevent.
 
-Requirements currently `Correction` and the increment that clears each: REQ-113 (COR-33 stage 1).
+   The unresolved design question is what projection fact identifies "the code content this
+   command would create cannot be projected editably" in a document that contains no code block
+   yet. The plan's stage-1 wording ("a segment classified `.uneditable` covering the target")
+   does not answer it, and inferring the document's line-ending convention from projection
+   segments is a new predicate that needs approval, not a build-time choice.
+   [Approved plan](plans/COR-33-crlf-code-block-projection.md); stage 2 remains blocked on
+   `DISC-02`.
+
+6. ⚪ **COR-37 — A block's own container is replaced, not composed, when it is nested.** Raised by
+   the separate-agent review of PR #35 and reproduced. `AttributedPresentationBuilder` sorts blocks
+   by descending `projectionRange.length` so containers apply before their children, but that
+   comparator only orders *strict* inequalities and Swift's sort is stable, so a container tied in
+   length with its only child applies **after** it. `.blockQuote` and `.codeBlock` then each assign
+   `style.textBlocks` wholesale, so whichever runs last wins outright.
+
+   Measured for `> ```\n> code here\n> ```\n`: quote and code block both occupy `{0, 10}`; the
+   installed style ends with the quote's rule and `backgroundColor == nil`, where an unnested code
+   block measures non-nil. The code block's padded container is silently lost — REQ-107 promises
+   it.
+
+   Pre-existing; COR-36 did not introduce it and deliberately did not widen scope to it, because
+   the fix is not merely an ordering change. Ordering alone reverses the loss (the code block would
+   then discard the quote's rule). The two treatments must **compose** — a code block inside a
+   quote wants both containers — which changes how `textBlocks` is derived and therefore needs an
+   approved plan rather than a build-time choice. Sequencing note: `nestedBlockQuotesComposeTheir-`
+   `Rules` currently asserts `textBlocks.count == max(1, depth)`, which encodes depth inside a
+   single block's assignment; a composing design has to restate that expectation.
+
+Requirements currently `Correction` and the increment that clears each: REQ-113 (COR-33 stage 1),
+REQ-107 (COR-37).
 
 Two findings are recorded but deliberately unplanned, so they are not mistaken for oversights:
 the plain Cmd+S/Save-panel cancellation gap already documented in `ENGINEERING.md` §9, which is a

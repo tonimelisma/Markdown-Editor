@@ -56,6 +56,118 @@ struct ParagraphGeometryTests {
 
     private enum GeometryError: Error { case noLayoutManager }
 
+    /// Lays a document out and returns, for each laid-out line, the x origin of the text it
+    /// actually draws and the text itself.
+    ///
+    /// `lineFragmentUsedRect` rather than `lineFragmentRect`: the fragment rect spans the whole
+    /// container regardless of indentation, so reading it would report every line at the same x
+    /// and the proof would pass against any indent defect whatsoever.
+    private func laidOutLines(for source: String, width: CGFloat) throws -> [(minX: CGFloat, text: String)] {
+        let version: UInt64 = 1
+        let tree = try #require(MarkdownParser.parse(source, sourceVersion: version).get())
+        let index = MarkdownSourceIndex(source: source, sourceVersion: version)
+        let model = MarkdownProjectionModel.build(tree: tree, index: index)
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+
+        let view = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 4000))
+        view.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
+        view.textContainer?.widthTracksTextView = false
+        view.textContainer?.lineFragmentPadding = 0
+        view.textStorage?.setAttributedString(built.attributed)
+        guard let layoutManager = view.layoutManager, let container = view.textContainer else {
+            throw GeometryError.noLayoutManager
+        }
+        layoutManager.ensureLayout(for: container)
+
+        let string = built.attributed.string as NSString
+        var lines: [(minX: CGFloat, text: String)] = []
+        var glyph = 0
+        while glyph < layoutManager.numberOfGlyphs {
+            var effective = NSRange(location: 0, length: 0)
+            let used = layoutManager.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: &effective)
+            let characters = layoutManager.characterRange(forGlyphRange: effective, actualGlyphRange: nil)
+            lines.append((used.minX, string.substring(with: characters)))
+            glyph = effective.length > 0 ? NSMaxRange(effective) : glyph + 1
+        }
+        return lines
+    }
+
+    /// // Verifies: REQ-107 — a block nested inside a list item keeps the list's content indent
+    /// instead of resetting to the reading margin.
+    ///
+    /// COR-36. The nested-block path built a fresh paragraph style and copied only `textBlocks`
+    /// from the enclosing block, so everything carrying *horizontal* geometry — `headIndent`,
+    /// `firstLineHeadIndent`, `tabStops` — was dropped. A quote inside a list kept its rule and
+    /// lost its indent, and a list item's continuation paragraph rendered flush left as though it
+    /// had left the list.
+    ///
+    /// The reference indent is measured, not assumed: the list item's own text is long enough to
+    /// wrap, and a wrapped line lays out at exactly the item's content indent by definition. An
+    /// assertion against a hardcoded 24 pt would restate `MarkdownTypography.listIndent` rather
+    /// than prove where the glyphs went.
+    @Test func nestedParagraphKeepsItsListItemContentIndent() throws {
+        let itemText = String(repeating: "item ", count: 60)
+        let source = """
+        - \(itemText)
+
+          A continuation paragraph inside the same list item.
+
+        An unnested paragraph at the reading margin.
+
+        """
+
+        // ARC-Q15: narrow, default, and wide constructed widths.
+        for width in [320.0, 600.0, 900.0] as [CGFloat] {
+            let lines = try laidOutLines(for: source, width: width)
+
+            let itemLines = lines.filter { $0.text.contains("item ") }
+            try #require(itemLines.count >= 2, "the list item did not wrap at width \(width)")
+            // A wrapped line of the item's own text sits at the item's content indent.
+            let contentIndent = itemLines[1].minX
+
+            let continuation = try #require(
+                lines.first { $0.text.contains("A continuation paragraph") },
+                "the continuation paragraph did not lay out"
+            )
+            let unnested = try #require(
+                lines.first { $0.text.contains("An unnested paragraph") },
+                "the unnested paragraph did not lay out"
+            )
+
+            #expect(
+                abs(continuation.minX - contentIndent) < 0.5,
+                "at width \(width) the continuation paragraph drew at x=\(continuation.minX) but its list item's content indent is \(contentIndent)"
+            )
+            #expect(
+                continuation.minX > unnested.minX + MarkdownTypography.listIndent / 2,
+                "at width \(width) the continuation paragraph (x=\(continuation.minX)) is not indented past an unnested paragraph (x=\(unnested.minX))"
+            )
+        }
+    }
+
+    /// // Verifies: REQ-107 — the same inheritance holds for a decorated nested block: a quote
+    /// inside a list item keeps both the quote's rule and the list's indent.
+    @Test func quoteNestedInAListItemKeepsRuleAndIndent() throws {
+        let itemText = String(repeating: "item ", count: 60)
+        let source = """
+        - \(itemText)
+
+          > A quote inside the list item.
+
+        """
+        let lines = try laidOutLines(for: source, width: 600)
+        let itemLines = lines.filter { $0.text.contains("item ") }
+        try #require(itemLines.count >= 2, "the list item did not wrap")
+        let quoted = try #require(lines.first { $0.text.contains("A quote inside") })
+
+        // The quote's own rule and padding add to the list indent; it must never sit at or left
+        // of the reading margin, and never left of its list item's content indent.
+        #expect(
+            quoted.minX >= itemLines[1].minX,
+            "quote drew at x=\(quoted.minX), left of its list item's content indent \(itemLines[1].minX)"
+        )
+    }
+
     /// // Verifies: REQ-106 — the gap across a formal hard break is one ordinary line advance and
     /// is strictly smaller than the gap across a paragraph boundary in the same document.
     ///
@@ -115,6 +227,8 @@ struct ParagraphGeometryTests {
 
     /// // Verifies: ARC-018 — this is a layout-only correction. The rendered string and every
     /// projection coordinate are byte-identical to what the same source produced before.
+    // Verifies: REQ-105 — geometry is derived presentation only; it changes neither the rendered
+    // string nor any coordinate (ARC-018).
     @Test func paragraphGeometryChangesNoRenderedTextOrCoordinates() throws {
         for source in [
             "Alpha\\\nBravo\n\nCharlie\n",
