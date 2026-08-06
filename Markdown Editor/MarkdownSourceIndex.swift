@@ -95,13 +95,20 @@ nonisolated struct MarkdownSourceIndex: Sendable {
         }
         // cmark columns are 1-based UTF-8 byte offsets into the line (including the first byte).
         // A node whose content ends exactly at a line boundary — a loose list item followed by a
-        // blank line, for example — is reported with end_line = the next line and end_column = 0.
-        // That means "the end of the previous line's content", which is this line's first byte.
+        // blank line, for example — is reported with end_line = the next line and end_column = 0,
+        // meaning "the end of the previous line's content".
+        //
+        // Every other column returns the **inclusive** offset of its last byte, and `utf8Range`
+        // converts inclusive to exclusive by adding one. So this branch must also return an
+        // inclusive last byte — the previous line's terminator at `lineStart - 1` — or that shared
+        // `+ 1` carries the span one byte into this line. It did: a task item followed by a blank
+        // line mapped to "- [ ] Task\n\n" instead of "- [ ] Task\n", absorbing the blank line's
+        // own newline (ARC-007: a coordinate is exact or it is a typed refusal).
         if column == 0 {
-            guard lineStart <= lineEnd, lineStart <= utf8Count else {
+            guard lineStart > 0 else {
                 return .failure(.outOfBoundsColumn(line: line, column: column))
             }
-            return .success(lineStart)
+            return .success(lineStart - 1)
         }
         guard column >= 1 else { return .failure(.outOfBoundsColumn(line: line, column: column)) }
         let offset = lineStart + (column - 1)

@@ -92,8 +92,10 @@ Source and projection coordinates are different domains and must be unmixable in
   accepted merely because two numeric revisions happen to match.
 - cmark reports a node whose content ends exactly at a line boundary — a loose list item followed
   by a blank line, for example — with `end_line` set to the next line and `end_column` 0. The
-  source index maps that as the previous line's content end (this line's first byte); it is a
-  legitimate cmark convention, not an ambiguous or clamped coordinate.
+  source index maps that to the previous line's terminator as an **inclusive** last byte, matching
+  every other column, so the shared inclusive→exclusive conversion lands the span exactly after
+  that terminator and never one byte into the following line. It is a legitimate cmark convention,
+  not an ambiguous or clamped coordinate.
 
 A presentation snapshot identity covers all content needed to edit it: source revision, rendered
 string, semantic inline and block spans, resolved attributes/attachments, segment map, structural
