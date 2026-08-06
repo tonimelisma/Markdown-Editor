@@ -166,7 +166,14 @@ for path in (root / "Markdown EditorTests").rglob("*.swift"):
                 cursor -= 1
                 continue
             if above.startswith("//"):
-                found.update(re.findall(r"REQ-\d{3}", above))
+                # The anchors use a slash-separated multi-requirement form —
+                # `// Verifies: REQ-090/103/116` — so a bare `REQ-\d{3}` match would silently
+                # keep only the first and drop every later one, leaving those requirements
+                # with no test-level mapping at all.
+                for group in re.findall(r"REQ-\d{3}(?:/\d{3})*", above):
+                    head, *rest = group.split("/")
+                    found.add(head)
+                    found.update(f"REQ-{number}" for number in rest)
                 cursor -= 1
                 continue
             break
@@ -225,6 +232,14 @@ for row in rows:
             tests_cited.add(leaf)
         elif leaf in suite_outcomes:
             suites_cited.add(leaf)
+        elif head in suite_outcomes and leaf != head:
+            # `Suite.member` has to name a real test in that suite. Crediting the suite and
+            # ignoring the member would let a citation keep pointing at a test that was renamed
+            # or deleted, which is the failure this gate exists to catch.
+            if leaf in declared:
+                never_executed.add(leaf)
+            else:
+                dangling_citations.add(name)
         elif head in suite_outcomes:
             suites_cited.add(head)
         elif leaf in declared:
@@ -232,6 +247,11 @@ for row in rows:
         elif name.startswith("Scripts/"):
             continue
         elif not all(part in source_tokens for part in name.split(".")):
+            # Deliberately a weak check, and it is the last one. A Verified-by cell legitimately
+            # names production types in prose (`NSTextStorage`, `EditorSession`), so an identifier
+            # that resolves to nothing in particular cannot be failed outright — only one that
+            # appears nowhere in the sources at all is provably stale. Precise staleness for test
+            # citations is covered by the `Suite.member` branch above.
             dangling_citations.add(name)
 
     if tests_cited or suites_cited or never_executed:
