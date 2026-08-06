@@ -218,7 +218,28 @@ Delivery order, and why it is this order:
    [Approved plan](plans/COR-33-crlf-code-block-projection.md); stage 2 remains blocked on
    `DISC-02`.
 
-Requirements currently `Correction` and the increment that clears each: REQ-113 (COR-33 stage 1).
+6. ⚪ **COR-37 — A block's own container is replaced, not composed, when it is nested.** Raised by
+   the separate-agent review of PR #35 and reproduced. `AttributedPresentationBuilder` sorts blocks
+   by descending `projectionRange.length` so containers apply before their children, but that
+   comparator only orders *strict* inequalities and Swift's sort is stable, so a container tied in
+   length with its only child applies **after** it. `.blockQuote` and `.codeBlock` then each assign
+   `style.textBlocks` wholesale, so whichever runs last wins outright.
+
+   Measured for `> ```\n> code here\n> ```\n`: quote and code block both occupy `{0, 10}`; the
+   installed style ends with the quote's rule and `backgroundColor == nil`, where an unnested code
+   block measures non-nil. The code block's padded container is silently lost — REQ-107 promises
+   it.
+
+   Pre-existing; COR-36 did not introduce it and deliberately did not widen scope to it, because
+   the fix is not merely an ordering change. Ordering alone reverses the loss (the code block would
+   then discard the quote's rule). The two treatments must **compose** — a code block inside a
+   quote wants both containers — which changes how `textBlocks` is derived and therefore needs an
+   approved plan rather than a build-time choice. Sequencing note: `nestedBlockQuotesComposeTheir-`
+   `Rules` currently asserts `textBlocks.count == max(1, depth)`, which encodes depth inside a
+   single block's assignment; a composing design has to restate that expectation.
+
+Requirements currently `Correction` and the increment that clears each: REQ-113 (COR-33 stage 1),
+REQ-107 (COR-37).
 
 Two findings are recorded but deliberately unplanned, so they are not mistaken for oversights:
 the plain Cmd+S/Save-panel cancellation gap already documented in `ENGINEERING.md` §9, which is a
