@@ -48,6 +48,13 @@ printf 'tests: %s passed, %s failed\n' \
     "$(grep -acE 'Test case .* passed' "$derived.log")" \
     "$(grep -acE 'Test case .* failed' "$derived.log")"
 
+step "proof results"
+# The same suite excluded above is declared to the gate, so its proofs are reported as not proven
+# by this run rather than counted as failures. The closing full run passes no `--skip-suite`, so
+# nothing is excused there — this is the short loop being honest about what it did not measure.
+FAST_CHECK_DERIVED_DATA="$derived" ./Scripts/check-proof-results.sh \
+    --skip-suite PerformanceBoundaryTests || failures=$((failures + 1))
+
 if (( failures > 0 )); then
     printf '\nfast-check: FAILED (%d step%s)\n' \
         "$failures" "$([[ $failures -eq 1 ]] && printf '' || printf 's')" >&2

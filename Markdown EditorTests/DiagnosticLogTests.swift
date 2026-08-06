@@ -19,6 +19,8 @@ struct DiagnosticLogTests {
         #expect(sampler.drainSummaries() == [.init(metric: .nativeInputCallback, count: 100, p50: 50, p95: 95, max: 100)])
     }
 
+    // Verifies: REQ-090 — the evidence type refuses a run with no executed samples, so a
+    // latency gate cannot be reported as satisfied by having measured nothing.
     @Test func performanceEvidenceRejectsZeroSamples() {
         let evidence = PerformanceEvidence(warmups: 5, samples: [])
         #expect(evidence.samples.isEmpty)
@@ -27,6 +29,7 @@ struct DiagnosticLogTests {
         #expect(evidence.failures == ["no performance samples"])
     }
 
+    // Verifies: REQ-103 — the bounded periodic summary records a budget breach.
     @Test func budgetExceededIsRecordedWhenP95OverBudget() {
         let trace = InMemoryEditorTrace()
         let sampler = PerformanceSampler(trace: trace)
@@ -35,6 +38,7 @@ struct DiagnosticLogTests {
         #expect(trace.events.contains(.budgetExceeded(metric: .modeTransition, p95Nanos: 20_000_000, budgetNanos: 16_000_000)))
     }
 
+    // Verifies: REQ-103 — summaries are emitted on flush and never per keystroke.
     @Test func performanceSummaryOmitsPerEventTimings() {
         let trace = InMemoryEditorTrace()
         let sampler = PerformanceSampler(trace: trace)

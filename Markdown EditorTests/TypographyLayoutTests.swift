@@ -135,6 +135,7 @@ struct TypographyLayoutTests {
         AttributedPresentationBuilder.build(model: model(for: source), theme: MarkdownTheme())
     }
 
+    // Verifies: REQ-107 — cumulative hanging indentation for nested lists.
     @Test func listParagraphStyleUsesCumulativeHangingIndentation() throws {
         let source = "- outer\n  - inner\n"
         let index = MarkdownSourceIndex(source: source, sourceVersion: 1)

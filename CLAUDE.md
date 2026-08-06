@@ -127,6 +127,7 @@ For docs/config only: commit and push directly on `main`, then run stale-work sw
   `// Verifies: REQ-012` are optional cross-references for important or cross-cutting contracts.
 - Every `REQ-###` comment that exists in code/tests resolves to a current requirement.
 - Every `Done` requirement has automated test evidence or a precise construction/framework proof.
+- Every `Done` requirement's cited proof must be **observed to pass** in the run that closes the increment; a suite that does not complete leaves every requirement citing it unproven, not proven. `Scripts/check-proof-results.sh` enforces this and also ensures no test fails unnoticed because nothing cites it (REQ-117/118).
 - Every affected `ARC-###` invariant has the proof named in ENGINEERING and the active plan.
 - Backward traceability: every `REQ-###` in code/tests exists in REQUIREMENTS.
 - Forward traceability: every Done row identifies current production responsibility and at least
@@ -259,6 +260,7 @@ Report ✅, ❌, or ➖ for:
 - CLAUDE.md/AGENTS.md self-check completed
 - Informed consent honored
 - User corrections propagated to durable current docs
+- Every `Done` requirement's cited proof observed passing in this run
 - Liveness proofs present for every user-invocable action touched
 - Gate scripts rehearsed failing before being trusted
 - Code-smell/quality analysis reported

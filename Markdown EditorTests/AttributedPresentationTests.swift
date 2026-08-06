@@ -93,6 +93,7 @@ struct AttributedPresentationTests {
     }
 
     // An image with no description still reads as a placeholder rather than an empty box.
+    // Verifies: REQ-107 — the approved image treatment.
     @Test func missingImageWithoutDescriptionStillCarriesALabel() throws {
         let model = try #require(makeModel("![](assets/nope.png)\n"))
         let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
@@ -128,6 +129,7 @@ struct AttributedPresentationTests {
         #expect(attachment?.attachmentCell is TaskCheckboxAttachmentCell)
     }
 
+    // Verifies: REQ-107 — full-measure separator and non-executing literal HTML treatments.
     @Test func thematicBreakAndLiteralHTMLUseSemanticAttachments() throws {
         let model = try #require(makeModel("---\n\n<div>literal</div>\n"))
         let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
@@ -139,6 +141,7 @@ struct AttributedPresentationTests {
         #expect(htmlFont?.isFixedPitch == true)
     }
 
+    // Verifies: REQ-107 — bounded, aspect-preserving image treatment.
     @Test func resolvedImageIsAspectPreservingAndBoundedByReadingMeasure() throws {
         let model = try #require(makeModel("![wide](image.png)\n"))
         let image = NSImage(size: NSSize(width: 1_440, height: 720))
@@ -154,6 +157,8 @@ struct AttributedPresentationTests {
         #expect((value?.attachmentCell as? ResolvedImageAttachmentCell) != nil)
     }
 
+    // Verifies: REQ-105, REQ-107 — heading typography and the table treatment both keep the
+    // inline traits a run already carries rather than flattening them.
     @Test func headingAndTableHeaderPreserveInlineFontTraits() throws {
         let heading = try #require(makeModel("# *italic* `code`\n"))
         let headingPresentation = AttributedPresentationBuilder.build(model: heading, theme: MarkdownTheme())
@@ -173,6 +178,7 @@ struct AttributedPresentationTests {
         #expect(fonts.contains { $0.isFixedPitch })
     }
 
+    // Verifies: REQ-107 — an image is bounded by the current reading measure, not a fixed width.
     @Test func resolvedImageUsesCurrentLineFragmentWidth() throws {
         let image = NSImage(size: NSSize(width: 400, height: 200))
         let cell = ResolvedImageAttachmentCell(image: image, description: "")
