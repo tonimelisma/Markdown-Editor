@@ -184,8 +184,7 @@ Delivery order, and why it is this order:
    four independently shippable corrections.
    [Approved plan](plans/COR-33-crlf-code-block-projection.md).
 
-Requirements currently `Correction` and the increment that clears each: REQ-109 (COR-34),
-REQ-113 (COR-33 stage 1).
+Requirements currently `Correction` and the increment that clears each: REQ-113 (COR-33 stage 1).
 
 Two findings are recorded but deliberately unplanned, so they are not mistaken for oversights:
 the plain Cmd+S/Save-panel cancellation gap already documented in `ENGINEERING.md` §9, which is a
