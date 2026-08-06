@@ -39,6 +39,41 @@ final class MarkdownSourceIndexTests: XCTestCase {
         XCTAssertGreaterThan(off, 0)
     }
 
+    // Verifies: REQ-055/078; ARC-007 — cmark reports a node whose content ends at a line boundary
+    // as (next line, column 0). That maps to the previous line's content end and **not one byte
+    // further**: the mapped span must stop after the item's own terminator, not absorb the blank
+    // line that follows it.
+    //
+    // Rehearsed failing: with `column == 0` returning `lineStart` instead of `lineStart - 1`, the
+    // caller's shared inclusive→exclusive `+ 1` produced "- [ ] Task\n\n". The task toggle still
+    // worked, so only an exact-span assertion catches it.
+    func testEndColumnZeroStopsAtThePreviousLineTerminator() throws {
+        let source = "- [ ] Task\n\nTrailing paragraph.\n"
+        let index = MarkdownSourceIndex(source: source, sourceVersion: 1)
+        let tree = try XCTUnwrap(MarkdownParser.parse(source, sourceVersion: 1).get())
+        let item = try XCTUnwrap(
+            first(tree.root, where: { if case .item = $0.kind { return true }; return false }),
+            "fixture produced no list item"
+        )
+        // Precondition: this fixture really does exercise the end-column-0 convention.
+        XCTAssertEqual(item.position.endColumn, 0, "fixture no longer reproduces end_column == 0")
+
+        let slice = try XCTUnwrap(index.substring(position: item.position).get())
+        XCTAssertEqual(slice, "- [ ] Task\n")
+
+        // The same convention under CRLF keeps the whole two-byte terminator and no more.
+        let crlf = "- [ ] Task\r\n\r\nTrailing paragraph.\r\n"
+        let crlfIndex = MarkdownSourceIndex(source: crlf, sourceVersion: 1)
+        let crlfTree = try XCTUnwrap(MarkdownParser.parse(crlf, sourceVersion: 1).get())
+        let crlfItem = try XCTUnwrap(
+            first(crlfTree.root, where: { if case .item = $0.kind { return true }; return false })
+        )
+        if crlfItem.position.endColumn == 0 {
+            let crlfSlice = try XCTUnwrap(crlfIndex.substring(position: crlfItem.position).get())
+            XCTAssertEqual(crlfSlice, "- [ ] Task\r\n")
+        }
+    }
+
     private func first(_ node: MarkdownNode, where predicate: (MarkdownNode) -> Bool) -> MarkdownNode? {
         if predicate(node) { return node }
         for child in node.children {

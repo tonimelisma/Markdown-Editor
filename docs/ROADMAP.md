@@ -150,12 +150,22 @@ Delivery order, and why it is this order:
    and the Release evidence has been re-recorded in full. The plan's working hypothesis — an
    *interaction* among the last five tests — was superseded: the hang was `committedComposition-`
    `UsesBoundedPatch` alone, because it is the only test that drives the real marked-text path.
-2. 🔵 **COR-34 — Attribute refresh escapes its semantic block.** A one-word formatting command
-   refreshes attributes across the whole document; `PresentationPatch.collectDifferences`
-   compares snapshot arrays by index, so one inserted run makes every later element mismatch.
-   Four failing tests, one cause. **Second because COR-32 makes these failures visible in every
-   run, and they are real product defects, not stale assertions.**
-   [Approved plan](plans/COR-34-attribute-refresh-scope.md).
+2. ✅ **COR-34 — Attribute refresh escapes its semantic block.** `PresentationPatch.collectDifferences`
+   now compares snapshot arrays **by projection position** instead of by array index, so an element
+   inserted, removed, or changed near the start no longer shifts every later element onto a wrong
+   counterpart: `hiddenDelimiterCommandRefreshesAttributesWithoutReplacing`,
+   `headingAndLinkCommandsRefreshOnlyTheirSelectedBlock`, and
+   `attributeRefreshScopeTracksInsertionsAndRemovalsByPosition` prove the refresh stays inside the
+   touched semantic blocks. The plan's "four tests, one cause" attribution was partially wrong:
+   `taskToggleRefreshesOnlyItsSemanticBlock` failed on a separate, pre-existing source-index
+   defect — cmark reports a loose-list item (one followed by a blank line) as ending at the next
+   line's column 0, which `MarkdownSourceIndex.utf8Offset` rejected, so the toggle *refused before
+   any refresh* in both modes; `MarkdownSourceIndex` now maps end-column-0 to the previous line's
+   content end. `resolvedImageRefreshesItsAttachmentOnlyWhenDisplayIdentityChanges` had an
+   over-strict assertion (the image block's terminator newline is legitimately refreshed); its
+   assertion now checks boundedness to the image block and exclusion of the trailing paragraph.
+   Full unified suite: 373 passed, 0 failed. **Second because COR-32 makes these failures visible
+   in every run, and they are real product defects, not stale assertions.**
 3. ⚪ **COR-35 — A cited proof must pass, not merely exist.** The systemic fix: correlate
    requirement rows with actual test results. **Third because it cannot go green until COR-32 and
    COR-34 land** — a gate asserting "every cited proof passed" fails while proofs are red or
@@ -174,8 +184,7 @@ Delivery order, and why it is this order:
    four independently shippable corrections.
    [Approved plan](plans/COR-33-crlf-code-block-projection.md).
 
-Requirements currently `Correction` and the increment that clears each: REQ-109 (COR-34),
-REQ-113 (COR-33 stage 1).
+Requirements currently `Correction` and the increment that clears each: REQ-113 (COR-33 stage 1).
 
 Two findings are recorded but deliberately unplanned, so they are not mistaken for oversights:
 the plain Cmd+S/Save-panel cancellation gap already documented in `ENGINEERING.md` §9, which is a

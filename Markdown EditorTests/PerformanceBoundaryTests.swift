@@ -180,6 +180,61 @@ struct PerformanceBoundaryTests {
         #expect(NSMaxRange(scope) <= tableStart)
     }
 
+    // Verifies: REQ-109 — an element inserted, removed, or changed near the start of a snapshot's
+    // ordered element arrays must not shift every later element onto a different counterpart and
+    // expand the attribute refresh across the document. A trailing block that is byte-identical
+    // and semantically identical in both snapshots must stay outside the refreshed scope.
+    //
+    // Every case pairs a hidden-delimiter spelling with its plain counterpart, so the rendered
+    // text is identical and `attributeRefreshScope` applies (it is the same-text refresh route).
+    @Test func attributeRefreshScopeTracksInsertionsAndRemovalsByPosition() throws {
+        let trailingBlockStart = ("Second paragraph.\n" as NSString).length
+
+        // Inserted at start: the first word's emphasis appears (run splits near position 0).
+        let insertedScope = try #require(
+            PresentationPatch.attributeRefreshScope(
+                current: try snapshot(source: "First paragraph.\n\nSecond paragraph.\n", id: 1, revision: 1),
+                next: try snapshot(source: "**First** paragraph.\n\nSecond paragraph.\n", id: 2, revision: 2)
+            )
+        )
+        #expect(NSMaxRange(insertedScope) <= trailingBlockStart,
+                "inserted element expanded refresh past the trailing block")
+
+        // Removed from start: the first word's emphasis disappears.
+        let removedScope = try #require(
+            PresentationPatch.attributeRefreshScope(
+                current: try snapshot(source: "**First** paragraph.\n\nSecond paragraph.\n", id: 3, revision: 3),
+                next: try snapshot(source: "First paragraph.\n\nSecond paragraph.\n", id: 4, revision: 4)
+            )
+        )
+        #expect(NSMaxRange(removedScope) <= trailingBlockStart,
+                "removed element expanded refresh past the trailing block")
+
+        // Changed in the middle: emphasis moves from the first word to the second word of the
+        // first paragraph — a same-text change whose split point is not at position 0.
+        let middleScope = try #require(
+            PresentationPatch.attributeRefreshScope(
+                current: try snapshot(source: "**First** paragraph.\n\nSecond paragraph.\n", id: 5, revision: 5),
+                next: try snapshot(source: "First **paragraph.**\n\nSecond paragraph.\n", id: 6, revision: 6)
+            )
+        )
+        #expect(NSMaxRange(middleScope) <= trailingBlockStart,
+                "changed element expanded refresh past the trailing block")
+
+        // Changed at the end: the trailing block itself changes, so the scope must cover it
+        // without leaking into the preceding block.
+        let endNext = try snapshot(source: "First paragraph.\n\n**Second** paragraph.\n", id: 8, revision: 8)
+        let endScope = try #require(
+            PresentationPatch.attributeRefreshScope(
+                current: try snapshot(source: "First paragraph.\n\nSecond paragraph.\n", id: 7, revision: 7),
+                next: endNext
+            )
+        )
+        let endTrailing = try #require(endNext.blocks.last?.projectionRange)
+        #expect(endScope.location >= endTrailing.location,
+                "changed trailing block produced a scope that leaked before it")
+    }
+
     // Verifies: REQ-109 — a decoded image replacing an otherwise identical placeholder expands
     // the attribute refresh to that attachment without rewriting document characters.
     @Test func resolvedImageLocationParticipatesInAttributeRefreshScope() throws {
@@ -214,8 +269,12 @@ struct PerformanceBoundaryTests {
         #expect(harness.storage.fullReplacements == 0)
         #expect(harness.storage.characterReplacements.isEmpty)
         #expect(!harness.storage.attributeReplacements.isEmpty)
+        // The image paragraph block contains the attachment character and its block terminator;
+        // the refresh may rebuild that whole block, but must never reach the trailing paragraph.
+        let imageBlockEnd = attachment.utf16Location + 2
         #expect(harness.storage.attributeReplacements.allSatisfy {
-            NSLocationInRange(attachment.utf16Location, $0)
+            $0.location >= attachment.utf16Location
+                && NSMaxRange($0) <= imageBlockEnd
                 && NSMaxRange($0) < (harness.textView.string as NSString).length
         })
 

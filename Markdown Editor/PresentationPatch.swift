@@ -231,6 +231,13 @@ struct PresentationPatch {
             }
     }
 
+    /// Compares two ordered, non-overlapping element arrays by projection position rather than
+    /// by array index. Both arrays are sorted by their ranges, so an element inserted or removed
+    /// near the start must not shift every later element onto a different counterpart: an element
+    /// whose range has no equal-range, equivalent counterpart in the other snapshot is changed,
+    /// and every element with a matching counterpart is unchanged regardless of how many elements
+    /// precede it. This is what keeps an attribute refresh bounded to the touched semantic blocks:
+    /// one run split by a formatting command must not cascade into an untouched trailing paragraph.
     private static func collectDifferences<Element>(
         _ current: [Element],
         _ next: [Element],
@@ -238,21 +245,41 @@ struct PresentationPatch {
         equivalent: (Element, Element) -> Bool,
         into changedRanges: inout [NSRange]
     ) {
-        let count = max(current.count, next.count)
-        for index in 0..<count {
-            switch (current.indices.contains(index) ? current[index] : nil,
-                    next.indices.contains(index) ? next[index] : nil) {
-            case let (.some(lhs), .some(rhs)) where equivalent(lhs, rhs):
+        var i = 0
+        var j = 0
+        while i < current.count || j < next.count {
+            if i >= current.count {
+                changedRanges.append(range(next[j]))
+                j += 1
                 continue
-            case let (.some(lhs), .some(rhs)):
-                changedRanges.append(range(lhs))
-                changedRanges.append(range(rhs))
-            case let (.some(lhs), .none):
-                changedRanges.append(range(lhs))
-            case let (.none, .some(rhs)):
-                changedRanges.append(range(rhs))
-            case (.none, .none):
+            }
+            if j >= next.count {
+                changedRanges.append(range(current[i]))
+                i += 1
                 continue
+            }
+            let currentRange = range(current[i])
+            let nextRange = range(next[j])
+            if currentRange == nextRange {
+                if equivalent(current[i], next[j]) {
+                    i += 1
+                    j += 1
+                } else {
+                    changedRanges.append(currentRange)
+                    changedRanges.append(nextRange)
+                    i += 1
+                    j += 1
+                }
+            } else if currentRange.location < nextRange.location
+                        || (currentRange.location == nextRange.location
+                            && currentRange.length < nextRange.length) {
+                // The current element occupies a span the next snapshot has no equal-range
+                // counterpart for (it may have been split, grown, or moved past).
+                changedRanges.append(currentRange)
+                i += 1
+            } else {
+                changedRanges.append(nextRange)
+                j += 1
             }
         }
     }
