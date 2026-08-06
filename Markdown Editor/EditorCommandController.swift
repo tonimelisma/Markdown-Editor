@@ -47,6 +47,18 @@ final class EditorCommandController: ObservableObject {
             guard selectionLength(in: session) > 0 else { return .disabled(.noSelection) }
             return session.mode == .wysiwyg && session.presentation == nil
                 ? .disabled(.unavailablePresentation) : .enabled
+        case .codeBlock:
+            guard session.mode == .source || isCurrentWYSIWYG(session) else {
+                return .disabled(.unavailablePresentation)
+            }
+            if session.mode == .wysiwyg {
+                let sel = currentSelection(in: session)
+                if !session.canPerformCodeBlock(at: sel) {
+                    return .disabled(.uneditableContent)
+                }
+            }
+            _ = document
+            return .enabled
         default:
             guard session.mode == .source || isCurrentWYSIWYG(session) else {
                 return .disabled(.unavailablePresentation)

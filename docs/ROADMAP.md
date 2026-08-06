@@ -198,25 +198,8 @@ Delivery order, and why it is this order:
    `quoteNestedInAListItemKeepsRuleAndIndent` covers the decorated case. `Scripts/Fixtures/`
    `smoke-rich.md` gained a list item with a continuation paragraph so the REQ-104 visual review
    can see this class at all.
-5. ⚪ **COR-33 — Code content is uneditable in CRLF documents.** Unchanged and still unimplemented.
-   A stage-1 attempt was written and **withdrawn as measured-wrong** rather than shipped; the
-   evidence is recorded here so the next attempt does not repeat it. The attempt disabled
-   `.codeBlock` whenever the WYSIWYG presentation contained any `.uneditable` segment. Measured
-   through the real `EditorCommandController`:
-   - `"First paragraph.\r\n\r\nSecond paragraph.\r\n"` — COR-33's own reproduction — has **no**
-     uneditable segment, so `.codeBlock` still reported `enabled` and then refused. The attempt
-     did not fix the defect it was written for.
-   - An ordinary **LF** document containing raw HTML *does* have an uneditable segment, so
-     `.codeBlock` was disabled document-wide there — a new silently-disabled command, the exact
-     class REQ-113 and the liveness matrix exist to prevent.
-
-   The unresolved design question is what projection fact identifies "the code content this
-   command would create cannot be projected editably" in a document that contains no code block
-   yet. The plan's stage-1 wording ("a segment classified `.uneditable` covering the target")
-   does not answer it, and inferring the document's line-ending convention from projection
-   segments is a new predicate that needs approval, not a build-time choice.
-   [Approved plan](plans/COR-33-crlf-code-block-projection.md); stage 2 remains blocked on
-   `DISC-02`.
+5. ✅ **COR-33 stage 1 — `.codeBlock` is honest about CRLF.** `EditorCommandController.availability` now dry-runs the same planner that would refuse the post-mutation caret (`SemanticEditEngine.plan` with a dummy next ID, including `AuthoritativePresentationBuilder`'s `rawBody == rendered` check that makes CRLF code content `.uneditable` and `coordinateMap.projectionRange(forSource:)` refuse the caret). A CRLF paragraph selection therefore reports `disabled(.uneditableContent)` and leaves source unchanged; the LF equivalent stays `enabled` and the LF-with-HTML case stays enabled (target-covering, not document-wide). The withdrawn `any .uneditable` attempt's failure mode is proven by `codeBlockStaysEnabledForLFWithUneditableHTML`. Stage 1 does not make CRLF code blocks editable — it makes the promise honest. Stage 2 (atomic `\r\n`↔`\n` decoder) remains blocked on `DISC-02`.
+   [Approved plan](plans/COR-33-crlf-code-block-projection.md) — **not deleted**: the plan deletes only when both stages have landed (see Deletion gate); stage 1 is done, stage 2 still needs the `ENGINEERING §15` discovery.
 
 6. ⚪ **COR-37 — A block's own container is replaced, not composed, when it is nested.** Raised by
    the separate-agent review of PR #35 and reproduced. `AttributedPresentationBuilder` sorts blocks
@@ -238,8 +221,7 @@ Delivery order, and why it is this order:
    `Rules` currently asserts `textBlocks.count == max(1, depth)`, which encodes depth inside a
    single block's assignment; a composing design has to restate that expectation.
 
-Requirements currently `Correction` and the increment that clears each: REQ-113 (COR-33 stage 1),
-REQ-107 (COR-37).
+Requirements currently `Correction` and the increment that clears each: REQ-107 (COR-37).
 
 Two findings are recorded but deliberately unplanned, so they are not mistaken for oversights:
 the plain Cmd+S/Save-panel cancellation gap already documented in `ENGINEERING.md` §9, which is a
