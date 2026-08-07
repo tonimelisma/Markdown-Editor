@@ -222,10 +222,20 @@ enum AttributedPresentationBuilder {
         case .blockQuote(let depth):
             // The rule and content inset are the block's own geometry, so nesting composes
             // without a second indentation mechanism disagreeing with it.
-            style.textBlocks = (0..<max(1, depth)).map { _ in typography.quoteBlock() }
+            // Composed: a code block inside a quote keeps both containers. Depth is total
+            // enclosing quote depth; existing quote blocks from outer quotes are preserved.
+            let existingBlocks = style.textBlocks ?? []
+            let existingQuoteCount = existingBlocks.filter { $0.backgroundColor == nil }.count
+            let needed = max(1, depth) - existingQuoteCount
+            if needed > 0 {
+                style.textBlocks = existingBlocks + (0..<needed).map { _ in typography.quoteBlock() }
+            } else if existingBlocks.isEmpty {
+                style.textBlocks = (0..<max(1, depth)).map { _ in typography.quoteBlock() }
+            }
             style.paragraphSpacing = typography.blockSpacing
         case .codeBlock:
-            style.textBlocks = [typography.codeBlock()]
+            let existingBlocks = style.textBlocks ?? []
+            style.textBlocks = existingBlocks + [typography.codeBlock()]
             style.paragraphSpacing = typography.blockSpacing
             storage.addAttribute(.font, value: typography.monoFont, range: range)
         case .table, .tableRow, .tableCell:

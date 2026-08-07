@@ -60,6 +60,31 @@ struct TypographyLayoutTests {
         }
     }
 
+    // Verifies: REQ-107 — COR-37: a code block that is the only child of a quote composes both containers.
+    // The two blocks share the identical projection range; the old wholesale assignment discarded whichever ran last.
+    @Test func codeInsideQuoteComposesBothContainers() throws {
+        let source = "> ```\n> code here\n> ```\n"
+        let built = try build(source)
+        let modelBlocks = model(for: source).blocks
+        let hasQuote = modelBlocks.contains { if case .blockQuote = $0.kind { return true }; return false }
+        let hasCode = modelBlocks.contains { if case .codeBlock = $0.kind { return true }; return false }
+        #expect(hasQuote && hasCode, "fixture must contain both quote and code blocks at {0,10}")
+        let style = try #require(
+            built.attributed.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        )
+        // Composed: quote rule + code padding/background.
+        #expect(style.textBlocks.count >= 2, "expected quote + code containers, got \(style.textBlocks.count)")
+        let hasQuoteBlock = style.textBlocks.contains { $0.borderColor(for: .minX) != nil || $0.width(for: .border, edge: .minX) == MarkdownTypography.quoteRuleWidth }
+        let hasCodeBlock = style.textBlocks.contains { $0.backgroundColor != nil }
+        #expect(hasQuoteBlock, "quote rule lost when code inside quote")
+        #expect(hasCodeBlock, "code container lost when inside quote (backgroundColor nil vs non-nil control)")
+        // Control: unnested code block still has background.
+        let control = try build("```\ncode here\n```\n")
+        let controlCode = try #require(model(for: "```\ncode here\n```\n").blocks.first { if case .codeBlock = $0.kind { return true }; return false })
+        let controlStyle = try #require(control.attributed.attribute(.paragraphStyle, at: controlCode.projectionRange.location, effectiveRange: nil) as? NSParagraphStyle)
+        #expect(controlStyle.textBlocks.first?.backgroundColor != nil, "control code block must have background")
+    }
+
     // Verifies: REQ-107 — the code block is a padded adaptive container, not just tinted text.
     @Test func codeBlockIsPaddedAdaptiveContainer() throws {
         let source = "```swift\nlet x = 1\n```\n"
