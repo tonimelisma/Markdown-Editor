@@ -37,16 +37,16 @@ final class EditorSession: ObservableObject {
     // drive reconciliation. The remaining state is session-owned (ARC-002) but unpublished:
     // publishing it would invalidate the view graph for a fact the graph never consumes.
     @Published private(set) var mode: EditorMode = .wysiwyg
-    @Published private(set) var presentation: PresentationSnapshot?
-    @Published private(set) var resolvedImages: [MarkdownNodeID: NSImage] = [:]
-    private(set) var authoritativeTree: MarkdownTree?
+    @Published var presentation: PresentationSnapshot?
+    @Published var resolvedImages: [MarkdownNodeID: NSImage] = [:]
+    var authoritativeTree: MarkdownTree?
     private(set) var sourceModeState = SourceModeState()
     private(set) var wysiwygModeState = WYSIWYGModeState()
     private(set) var pendingSelectionRestoration: PendingSelectionRestoration?
 
     let imageCache = LocalImageCache()
     let updateOrigin = EditorUpdateOriginScope()
-    private let snapshotIDs = PresentationSnapshotIDFactory()
+    let snapshotIDs = PresentationSnapshotIDFactory()
 
     /// Injected URL opener — defaults to NSWorkspace. Shared so tests can capture opens.
     var openURL: (URL) -> Void = { url in
@@ -57,12 +57,10 @@ final class EditorSession: ObservableObject {
 
     private weak var document: MarkdownDocument?
     private let performanceSamplerCoordinator: DiagnosticRunCoordinator
-    private var performanceSampler: PerformanceSampler?
-    private var parseTask: Task<Void, Never>?
-    private let parseScheduler = LatestParseScheduler()
+    var performanceSampler: PerformanceSampler?
+    let parseCoordinator: ParseCoordinator
     private var cancellables = Set<AnyCancellable>()
     private var publicationObserver: AnyCancellable?
-    private var operationGeneration: UInt64 = 0
 
     // MARK: - View reconciliation scope (REQ-094/096; ARC-015)
 
@@ -109,6 +107,7 @@ final class EditorSession: ObservableObject {
     ) {
         self.trapsOnReconciliationViolation = trapsOnReconciliationViolation
         self.performanceSamplerCoordinator = performanceSamplerCoordinator
+        self.parseCoordinator = ParseCoordinator(snapshotIDs: snapshotIDs)
         installPublicationObserver()
     }
 
@@ -126,8 +125,7 @@ final class EditorSession: ObservableObject {
 
     func attach(document: MarkdownDocument) {
         installPublicationObserver()
-        parseTask?.cancel()
-        parseScheduler.cancel()
+        parseCoordinator.cancel()
         performanceSampler?.invalidate()
         self.document = document
         document.updateCanonicalAssetReferences(CanonicalAssetReferences(values: []))
@@ -164,9 +162,7 @@ final class EditorSession: ObservableObject {
     /// Ends the window/session lifetime without retaining the document, sampler, timer, or
     /// Combine subscriptions. Repeated detach is intentionally harmless.
     func detach() {
-        parseTask?.cancel()
-        parseTask = nil
-        parseScheduler.cancel()
+        parseCoordinator.cancel()
         cancellables.removeAll()
         performanceSampler?.invalidate()
         performanceSampler = nil
@@ -192,8 +188,7 @@ final class EditorSession: ObservableObject {
     }
 
     private func invalidateDerivedState() {
-        operationGeneration &+= 1
-        parseTask?.cancel()
+        parseCoordinator.bumpGenerationAndCancel()
         presentation = nil
         authoritativeTree = nil
         resolvedImages = [:]
@@ -260,8 +255,7 @@ final class EditorSession: ObservableObject {
     /// // production path would have rejected, so those tests proved their behavior against
     /// // state the app can never actually reach.
     func installProjectionForTesting(_ model: MarkdownProjectionModel, tree: MarkdownTree) {
-        operationGeneration &+= 1
-        parseTask?.cancel()
+        parseCoordinator.bumpGenerationAndCancel()
         let snapshot = PresentationSnapshot.from(
             model: model,
             id: snapshotIDs.make(),
@@ -330,7 +324,7 @@ final class EditorSession: ObservableObject {
         document?.trace?.record(.modeToggle(toSource: toSource))
     }
 
-    private func installPresentation(
+    func installPresentation(
         _ snapshot: PresentationSnapshot,
         tree: MarkdownTree?,
         provisional: Bool
@@ -397,204 +391,10 @@ final class EditorSession: ObservableObject {
 
     func scheduleParse() {
         guard let document else { return }
-        let snapshot = document.sourceSnapshot()
-        operationGeneration &+= 1
-        let generation = operationGeneration
-        let currentPresentation = presentation
-
-        // If there is no current matching presentation, mark WYSIWYG unavailable.
-        if currentPresentation?.sourceRevision.value != snapshot.sourceVersion
-            || currentPresentation?.locationGeneration != snapshot.locationGeneration {
-            if currentPresentation == nil
-                || currentPresentation?.sourceRevision.value != snapshot.sourceVersion {
-                updateWYSIWYGModeState {
-                    $0.availability = .waitingForCurrentProjection(SourceRevision(value: snapshot.sourceVersion))
-                }
-            }
-        }
-
-        parseTask?.cancel()
-        let request = LatestParseRequest(source: snapshot, operationGeneration: generation)
-        guard parseScheduler.submit(request) else { return }
-        document.trace?.record(
-            .reconciliationScheduled(sourceRevision: snapshot.sourceVersion, generation: generation)
-        )
-        // REQ-099: recorded here, synchronously alongside reconciliationScheduled, rather than
-        // at the top of the detached task below — this is already a MainActor call site, so
-        // recording "off-main parse is starting" costs no extra hop on this frequent path.
-        document.trace?.record(
-            .parseStarted(sourceVersion: snapshot.sourceVersion, utf16Count: (snapshot.text as NSString).length)
-        )
-        let parseProjectionStart = DispatchTime.now().uptimeNanoseconds
-        let task = Task.detached(priority: .userInitiated) { [weak self] in
-            if Task.isCancelled {
-                await MainActor.run {
-                    self?.document?.trace?.record(.parseCancelled(sourceVersion: snapshot.sourceVersion))
-                }
-                return
-            }
-            let index = MarkdownSourceIndex(source: snapshot.text, sourceVersion: snapshot.sourceVersion)
-            let parseResult = MarkdownParser.parse(
-                snapshot.text,
-                sourceVersion: snapshot.sourceVersion,
-                isCancelled: { Task.isCancelled }
-            )
-            if Task.isCancelled {
-                await MainActor.run {
-                    self?.document?.trace?.record(.parseCancelled(sourceVersion: snapshot.sourceVersion))
-                }
-                return
-            }
-            guard case .success(let tree) = parseResult else {
-                await MainActor.run {
-                    guard let self else { return }
-                    guard self.document?.sourceVersion == snapshot.sourceVersion,
-                          self.operationGeneration == generation else {
-                        self.document?.trace?.record(
-                            .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .stale)
-                        )
-                        return
-                    }
-                    self.authoritativeTree = nil
-                    if self.presentation?.sourceRevision.value != snapshot.sourceVersion {
-                        self.presentation = nil
-                        self.updateWYSIWYGModeState {
-                            $0.availability = .waitingForCurrentProjection(SourceRevision(value: snapshot.sourceVersion))
-                            $0.selection = nil
-                        }
-                    }
-                    self.document?.trace?.record(
-                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .parseFailure)
-                    )
-                }
-                return
-            }
-            // REQ-099: the raw parser step itself succeeded — a fact independent of whether the
-            // projection model or snapshot it produces later passes oracle validation or is
-            // discarded as stale.
-            await MainActor.run {
-                self?.document?.trace?.record(.parseCompleted(sourceVersion: snapshot.sourceVersion))
-            }
-            let model = MarkdownProjectionModel.build(tree: tree, index: index)
-            if case .failure = ProjectionOracle.validate(model: model, sourceUTF16Count: (snapshot.text as NSString).length) {
-                await MainActor.run {
-                    self?.document?.trace?.record(
-                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .oracleModel)
-                    )
-                }
-                return
-            }
-            if Task.isCancelled {
-                await MainActor.run {
-                    self?.document?.trace?.record(.parseCancelled(sourceVersion: snapshot.sourceVersion))
-                }
-                return
-            }
-
-            let parseProjectionDuration = DispatchTime.now().uptimeNanoseconds &- parseProjectionStart
-            let imageResolutionStart = DispatchTime.now().uptimeNanoseconds
-            var descriptors: [LocalImageDescriptor] = []
-            // REQ-114: failures are collected rather than dropped. This loop runs off-main, so
-            // the reasons are recorded on the main actor below with the rest of the result.
-            var resolveFailures: [LocalImageResolveFailure] = []
-            for attachment in model.attachments {
-                if case .image(let destination, _) = attachment.kind {
-                    switch LocalImageResolver.resolve(
-                        destination: destination,
-                        documentURL: snapshot.fileURL,
-                        nodeID: attachment.nodeID,
-                        sourceVersion: snapshot.sourceVersion,
-                        locationGeneration: snapshot.locationGeneration
-                    ) {
-                    case .success(let desc):
-                        descriptors.append(desc)
-                    case .failure(let reason):
-                        // REQ-114: this branch previously did not exist. A reference the user
-                        // sees as a placeholder produced no diagnostic at all — eight typed
-                        // failure cases existed and none ever reached the run log.
-                        resolveFailures.append(reason)
-                    }
-                }
-            }
-            let imageResolutionDuration = DispatchTime.now().uptimeNanoseconds &- imageResolutionStart
-
-            await MainActor.run {
-                guard let self else { return }
-                guard self.document?.sourceVersion == snapshot.sourceVersion,
-                      self.document?.locationGeneration == snapshot.locationGeneration,
-                      self.operationGeneration == generation else {
-                    self.document?.trace?.record(
-                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .identityMismatch)
-                    )
-                    return
-                }
-
-                let authoritative = PresentationSnapshot.from(
-                    model: model,
-                    id: self.snapshotIDs.make(),
-                    locationGeneration: snapshot.locationGeneration,
-                    sourceText: snapshot.text
-                )
-                if case .failure = ProjectionOracle.validate(snapshot: authoritative) {
-                    self.document?.trace?.record(
-                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .oracleSnapshot)
-                    )
-                    return
-                }
-
-                self.authoritativeTree = tree
-                // REQ-114: recorded only for a result that passes identity checks, so a
-                // superseded reconciliation cannot report failures for a revision the user has
-                // already moved past.
-                for reason in resolveFailures {
-                    self.document?.trace?.record(.imageResolutionFailed(reason: reason))
-                }
-                self.document?.updateCanonicalAssetReferences(CanonicalAssetReferences.from(model: model))
-                let imageCacheLookupStart = DispatchTime.now().uptimeNanoseconds
-                var images: [MarkdownNodeID: NSImage] = [:]
-                for desc in descriptors {
-                    if let image = self.imageCache.image(for: desc) {
-                        images[desc.nodeID] = image
-                    }
-                }
-                self.resolvedImages = images
-                let imageResolutionTotal = imageResolutionDuration
-                    &+ (DispatchTime.now().uptimeNanoseconds &- imageCacheLookupStart)
-
-                let applicationStart = DispatchTime.now().uptimeNanoseconds
-                if self.presentation?.sourceRevision.value == authoritative.sourceRevision.value {
-                    // Replace provisional with authoritative under programmatic origin semantics.
-                    self.updateOrigin.with(.programmaticPresentation) {
-                        self.installPresentation(authoritative, tree: tree, provisional: false)
-                    }
-                } else {
-                    self.installPresentation(authoritative, tree: tree, provisional: false)
-                }
-                let authoritativeApplicationDuration = DispatchTime.now().uptimeNanoseconds &- applicationStart
-                self.performanceSampler?.record(.parseProjection, durationNanos: parseProjectionDuration)
-                self.performanceSampler?.record(.imageResolution, durationNanos: imageResolutionTotal)
-                self.performanceSampler?.record(.authoritativeApplication, durationNanos: authoritativeApplicationDuration)
-                self.document?.trace?.record(
-                    .reconciliationApplied(
-                        snapshotID: authoritative.id.value,
-                        sourceRevision: authoritative.sourceRevision.value,
-                        generation: generation,
-                        durationNanos: DispatchTime.now().uptimeNanoseconds &- parseProjectionStart
-                    )
-                )
-            }
-        }
-        parseTask = task
-        Task { @MainActor [weak self, task] in
-            await task.value
-            guard let self else { return }
-            if self.parseScheduler.finish(request) {
-                self.scheduleParse()
-            }
-        }
+        parseCoordinator.scheduleParse(session: self, document: document)
     }
 
-    /// Primary edit entry — returns accepted source+presentation transition or refusal.
+    /// Primary edit entry    /// Primary edit entry — returns accepted source+presentation transition or refusal.
     @discardableResult
     func perform(
         _ command: SemanticCommand,
