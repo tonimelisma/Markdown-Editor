@@ -749,8 +749,39 @@ nonisolated enum SemanticEditEngine {
             // Inline commands are unaffected: they wrap the selected span rather than reshaping
             // a line, so an atomic or synthetic endpoint stays legitimate for them.
             if command.reshapesWholeLine {
-                guard case .identityText = classification else {
-                    return refusal(for: classification)
+                // COR-40: total block identification — no exact-inverse gate for reshapesWholeLine.
+                // Table stays exact via classifier above.
+                if case .tableCell = classification {
+                    guard case .identityText = classification else {
+                        return refusal(for: classification)
+                    }
+                } else {
+                    let selRange = selection.range.utf16
+                    // Cross-block selection (range spanning >1 block) must still refuse — only collapsed caret is total.
+                    if selRange.length > 0 {
+                        let intersected = presentation.blocks.filter {
+                            NSIntersectionRange($0.projectionRange, selRange).length > 0
+                        }.filter {
+                            switch $0.kind {
+                            case .table, .tableRow, .tableCell: return false
+                            default: return true
+                            }
+                        }
+                        if intersected.count > 1 { return .refused(.ambiguousSelection) }
+                    }
+                    guard let enclosing = presentation.enclosingBlock(at: selRange.location) else {
+                        return .refused(.ambiguousSelection) // caret in no block — impossible when caret ∈ renderedString
+                    }
+                    guard let sourceRange = enclosing.sourceRange else {
+                        return .refused(.ambiguousSelection) // image/thematicBreak have no rewritable source line
+                    }
+                    let sourceSelection = SourceSelection(utf16: sourceRange, affinity: selection.affinity)
+                    return applySource(
+                        command: command,
+                        selection: sourceSelection,
+                        snapshot: snapshot,
+                        grouping: grouping
+                    )
                 }
             }
             guard let sourceRange = sourceRange(for: classification, affinity: selection.affinity)

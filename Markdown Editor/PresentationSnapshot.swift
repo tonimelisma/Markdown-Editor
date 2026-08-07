@@ -40,6 +40,23 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
         ProjectionAtom.toSegments(atoms)
     }
 
+    /// COR-40: Total block identification for `reshapesWholeLine` — `caretLocation ∈ projectionRange`.
+    /// Total when `caret ∈ renderedString`; `table`/`tableRow`/`tableCell` stay exact via classifier.
+    func enclosingBlock(at location: Int) -> PresentationBlock? {
+        let candidates = blocks.filter {
+            NSLocationInRange(location, $0.projectionRange) || location == NSMaxRange($0.projectionRange)
+        }
+        // Smallest enclosing wins (most specific block).
+        return candidates
+            .filter {
+                switch $0.kind {
+                case .table, .tableRow, .tableCell: return false
+                default: return true
+                }
+            }
+            .min(by: { $0.projectionRange.length < $1.projectionRange.length })
+    }
+
     /// Compatibility view used while planners still consume `MarkdownProjectionModel`.
     var asProjectionModel: MarkdownProjectionModel {
         MarkdownProjectionModel(
