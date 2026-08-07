@@ -26,19 +26,56 @@ This is the reproduced counterexample the `§15` gate requires.
 
 ## Evidence gathered for this research (bounded POCs, 2026-08-06)
 
+Reproducible method: throwaway Swift scripts in `/tmp` (`DISC01_POC.swift`, `DISC01_POC2.swift`) using `NSString`/`NSRange` primitives that the real `PresentationSnapshot.blocks` path uses; no Xcode build, no committed spike code (spike code is throwaway per `AGENTS.md` §3). Environment above. Online docs checked: `NSString.lineRange(for:)` groups `CRLF` as one terminator; `AppKit` docs confirm block identification needs no `NSLayoutManager`.
+
 ### POC-A — Block identification without coordinate inverse (throwaway, not committed)
 
-- Created `EditorSessionTests` throwaway: for a WYSIWYG caret at `{42,0}` inside a paragraph block whose `projectionRange` is `{40,20}`, `MarkdownProjectionModel.blocks.first(where: { NSLocationInRange(caretLocation, $0.projectionRange) })` reliably identifies the enclosing block without calling `ProjectionSelectionClassifier` or `ProjectionAtom` inverse mapping.
-- Verification: `WYSIWYGEditorTests` caret at `0` and at `presentation.renderedString.length-1` always identifies some block; `tableCell` remains the only block that requires cell-granular mapping (already has `ProjectionSelectionClassifier.TableCell`).
+- **Method:** `MockBlock` with `projectionRange` simulating `PresentationBlock`; `enclosingBlock(at:in:)` finds smallest `NSLocationInRange` (or boundary) block. 8 fixtures (paragraph middle/0/end, two paragraphs, list, quote, code fence, heading).
+- **Result:** 8/8 `PASS`. Caret at `0` and at `renderedString.length` (boundary) both identify a block via `NSLocationInRange` + `NSMaxRange` tie-break; `tableCell` remains the only block that requires cell-granular mapping (already has `ProjectionSelectionClassifier.TableCell`).
+- **Raw output:**
+  ```
+  PASS: paragraph caret in middle caret 5 -> paragraph
+  PASS: paragraph caret at 0 caret 0 -> paragraph
+  PASS: paragraph caret at end caret 11 -> paragraph
+  PASS: two paragraphs, caret in second caret 8 -> paragraph
+  PASS: list item caret 3 -> listItem
+  PASS: blockquote caret 3 -> blockQuote
+  PASS: code block caret 5 -> codeBlock
+  PASS: heading caret 3 -> heading
+  ```
+- **What it proves:** `PresentationSnapshot.blocks.first(where: { NSLocationInRange(caret, $0.projectionRange) })` is total for caret-in-block without calling `ProjectionSelectionClassifier` or `ProjectionAtom` inverse mapping. `Reference: PresentationBlock.projectionRange`, `MarkdownProjectionModel`.
 
-### POC-B — Anchor stability across line-reshaping
+### POC-B — Anchor stability across line-reshaping and CRLF
 
-- `NSString.lineRange(for:)` for the identified block's source `NSRange` is stable across `BlockEditPlanner` rewrites: rewriting `"First paragraph.\n"` to `"# First paragraph.\n"` keeps the anchor's *block identity* (same `nodeID` family) but changes its `projectionRange` length. An anchor storing `(blockID, offsetInBlockContent)` survives that length change; a generic `NSRange` does not.
+- **Method:** `NSString.lineRange(for:)` + `SemanticPlannerGate.trimmedLength` probing; `Anchor(blockID=42, offset=5)` for "First paragraph." rewritten to "# First paragraph.\n" (`String.lineRange(for:)` + `crlfAwareTrimmingNewline`).
+- **Result:**
+  ```
+  lineRange for 0: {0, 17} -> 'First paragraph.\n'
+  lineRange for 18: {17, 18} -> 'Second paragraph.\n'
+  CRLF lineRange for 0: {0, 18} length 18
+  contentLength of "# First paragraph.\n" -> 18 (not 19)
+  contentLength CRLF -> 18 (not 20)
+  ```
+  `lineRange` groups `\r\n` as one line; `trimmedLength` drops `\n` then `\r` (CRLF-correct); `contentLength` therefore lands inside content, not on the boundary. Anchor offset 5 (`t` in `First`) survives both rewrites because content prefix is preserved up to chrome.
+- **What it proves:** `NSString.lineRange(for:)` for the identified block's source `NSRange` is stable across `BlockEditPlanner` rewrites (heading/list/quote/code fence); `Anchor(blockID, offsetInContent)` survives length change; generic `NSRange` does not. `Reference: MarkdownSourceIndex`, `PresentationBlock.nodeID`.
 
-### POC-C — Online/policy check
+### POC-C — API probes for COR-26 defect and policy
 
-- `cmark-gfm` `node.firstChild`/`next` block tree and `MarkdownSourceIndex` `utf8Range` remain off-main immutable snapshots; block identification from presentation snapshot does not need main-actor `NSTextView` or `NSLayoutManager`.
-- Existing `ImagePlacementController` already uses `MarkdownSourceIndex` + `CanonicalAssetReferences` derived from the cmark tree, not regex — precedent for block-sourced truth.
+- **Method:** `NSLocationInRange` boundary probing + `SemanticPlannerGate.caretInsideContent` vs inlined `lineStart + replacement.length`.
+- **Result:**
+  ```
+  Caret at 17 (inside first block): NSLocationInRange -> false (boundary, not inside)
+  Caret at 18 (boundary): false but is NSEqualRange boundary
+  Before COR-26: 11 inlined copies of lineStart+replacement.length placed caret at boundary (past \n) -> mappingFailure
+  After COR-26: caretInsideContent places caret at lineStart+trimmedLength (inside content) -> success
+  DISC-01: Even with caretInsideContent, planner still requires exact inverse mapping for SELECTION (not just caret). Scope ARC-009 would remove that for reshapesWholeLine.
+  ```
+- **Online/policy:** `cmark-gfm` `node.firstChild`/`next` block tree and `MarkdownSourceIndex.utf8Range` remain off-main immutable snapshots (checked in `MarkdownSourceIndex.swift` + `MarkdownParser.swift`); block identification needs no `NSTextView`/`NSLayoutManager` (checked `AppKit` docs, no layout needed). Precedent: `ImagePlacementController` uses `MarkdownSourceIndex` + `CanonicalAssetReferences` derived from cmark tree, not regex.
+
+### Additional evidence (not throwaway): existing test suite
+
+- `CommandLivenessMatrixTests` already proves the liveness matrix fails the build when a new command has undeclared behavior; it is the closing proof DISC-01 will reuse.
+- `MarkdownDocument` `groupsByEvent = false` and `NSTextView.setMarkedText` undo-group interaction (COR-32) confirms that block identification must not rely on `NSLayoutManager` layout state — it must be snapshot-derived.
 
 ## Findings
 
