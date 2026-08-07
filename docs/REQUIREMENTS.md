@@ -28,6 +28,7 @@ how delivered behavior is verified. Current architecture is in
   construction/framework proof, and `Scripts/check-documentation-authority.sh` resolves each
   cited backticked identifier to a real test symbol or script. **Backward:** every `REQ-###`
   appearing in code/tests exists here.
+- **Exemptions (REQ-118):** three absence gates have no requirement to cite them and are exempt with stated reasons: `noUITestTargetInProject` (proves no XCUITest target exists, CLAUDE.md §4 forbids UI tests), `productionForcesNoTextKitLayout` (proves production never forces TextKit layout), `productionTestHooksAreInventoried` (proves no undeclared production test hook exists). `Scripts/check-proof-results.sh` reads this list as its `EXEMPT` source of truth rather than a hard-coded set, so documentation-authority and proof-results compose. A test that is not cited and not exempt fails REQ-118.
 - **Observed passing:** a `Done` requirement's cited proof must be **observed to pass** in the
   run that closes the increment; a suite that does not complete leaves every requirement citing it
   unproven, not proven. `Scripts/check-proof-results.sh` correlates `Done` rows with actual test

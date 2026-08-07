@@ -220,7 +220,7 @@ Stage 2 proved the vocabulary change via `AtomicRepresentationKind.normalizedCod
 ### Active: warm CRLF debt
 
 1. ✅ **COR-38 — Retire COR-33 stage-1 dry-run and make CRLF encoder per-line.** Stage-1 `canPerformCodeBlock` dry-run with dummy `ID(0)` re-proved via `SemanticEditEngine.plan` what the stage-2 `.normalizedCodeBlock` atomic now guarantees; retired to the default `availability` branch. `MarkdownLiteralEncoder` now carries per-line `originalSource` overload so mixed `LF`/`CRLF` preserves per-line terminators (`CRLFCodeBlockTests.mixedLineEndingsPreserveUntouchedTerminators`); uniform files remain uniform. Helpers `crlfAwareTrimmingNewline()` centralised (4 sites). `REQ-007`/`REQ-113` reconciled.
-2. 🔵 **COR-39 — Helpers and typed block-container predicate** — see [`docs/plans/COR-39-hardening.md`](plans/COR-39-hardening.md). Single `inclusive→exclusive` helper in `MarkdownSourceIndex`, typed `TextBlockIdentity` predicate in `AttributedPresentationBuilder`, and `REQ-118` `EXEMPT` moved from script to `REQUIREMENTS.md` so the gate composes with documentation authority.
+2. ✅ **COR-39 — Helpers and typed block-container predicate.** `MarkdownSourceIndex.inclusiveLastByteToExclusiveEnd` is single owner for inclusive→exclusive `+1` (ARC-007); `AttributedPresentationBuilder.isQuoteBlock(_:)` is typed predicate for `textBlocks` (was `backgroundColor == nil`); `REQ-118` `EXEMPT` now declared in `REQUIREMENTS.md` (spec is source of truth, script reads it, fallback warns). No `hasSuffix("\r\n")` duplication remains; no hard-coded EXEMPT source of truth.
 
 ### Next discovery unit, not yet researched
 

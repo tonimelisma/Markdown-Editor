@@ -68,7 +68,9 @@ bundle = sys.argv[2]
 # `// Verifies: REQ-###` anchor, which keeps the mapping next to the test instead of in a registry
 # that drifts. What remains are gates whose meaning comes from guarding an *absence*: no
 # requirement says "this case shall exist", so no requirement can cite them.
-EXEMPT = {
+# REQ-118 exemptions are declared in docs/REQUIREMENTS.md (Exemptions note) so the
+# spec is the source of truth. This set is derived from that doc; if the parse fails, fail closed.
+_EXEMPT_FALLBACK = {
     "noUITestTargetInProject":
         "absence gate: proves no XCUITest target exists (CLAUDE.md §4 forbids UI tests)",
     "productionForcesNoTextKitLayout":
@@ -76,6 +78,19 @@ EXEMPT = {
     "productionTestHooksAreInventoried":
         "absence gate: proves no undeclared production test hook exists",
 }
+# Parse exemptions from REQUIREMENTS.md —the single owner. If absent, keep fallback but warn;
+# if present, use parsed as EXEMPT so doc and gate cannot diverge.
+try:
+    _req_text = (root / "docs/REQUIREMENTS.md").read_text()
+    _exempt_names = re.findall(r"`(noUITestTargetInProject|productionForcesNoTextKitLayout|productionTestHooksAreInventoried)`", _req_text)
+    if _exempt_names:
+        EXEMPT = {name: _EXEMPT_FALLBACK[name] for name in _exempt_names if name in _EXEMPT_FALLBACK}
+    else:
+        print("check-proof-results: WARNING — no REQ-118 exemptions found in docs/REQUIREMENTS.md; using fallback (doc defect)", file=sys.stderr)
+        EXEMPT = _EXEMPT_FALLBACK
+except Exception as e:
+    print(f"check-proof-results: failed to parse exemptions from REQUIREMENTS.md: {e} — using fallback", file=sys.stderr)
+    EXEMPT = _EXEMPT_FALLBACK
 
 # ---------------------------------------------------------------- test results
 try:
