@@ -676,29 +676,6 @@ final class EditorSession: ObservableObject {
         }
     }
 
-    /// Stage-1 honesty for COR-33: would `.codeBlock` be accepted at the current selection?
-    /// Uses the same planner as `perform` (including the post-mutation authoritative projection check) but does not commit.
-    /// No line-ending sniff — the refusal comes from the projection's own uneditable mapping.
-    func canPerformCodeBlock(at selection: EditorSelection) -> Bool {
-        guard let document else { return false }
-        let snapshot = document.sourceSnapshot()
-        let request = EditorEditRequest(
-            command: .toggleCodeBlock,
-            selection: selection,
-            expectedSourceRevision: SourceRevision(value: snapshot.sourceVersion),
-            grouping: .discrete
-        )
-        let outcome = SemanticEditEngine.plan(
-            request,
-            snapshot: snapshot,
-            presentation: presentation,
-            tree: authoritativeTree,
-            nextSnapshotID: PresentationSnapshot.ID(value: 0)
-        )
-        if case .accepted = outcome { return true }
-        return false
-    }
-
     private func publishSelectionRestoration(edit: AcceptedEdit) {
         if let projection = edit.projectionSelectionAfter,
            let transition = edit.presentationTransition {

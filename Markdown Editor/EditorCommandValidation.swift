@@ -11,7 +11,6 @@ nonisolated enum EditorCommandDisabledReason: Equatable, Sendable {
     case unavailablePresentation
     case detached
     case staleSelection
-    case uneditableContent
 }
 
 nonisolated enum EditorCommandAvailability: Equatable, Sendable {

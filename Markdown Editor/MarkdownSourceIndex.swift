@@ -219,3 +219,23 @@ nonisolated struct MarkdownSourceIndex: Sendable {
         return .success((source as NSString).substring(with: range))
     }
 }
+
+// MARK: - CRLF helpers (COR-38)
+
+/// Single owner for CRLF-aware newline stripping — the 4 call sites in `SemanticEditPlanners`
+/// previously inlined `hasSuffix("\r\n") ? dropLast(2) : hasSuffix("\n") ? dropLast()`.
+/// Centralising prevents drift between BlockEditPlanner and ListEditPlanner.
+extension String {
+    /// Returns `(trimmed, hadNewline, terminator)` where `terminator` is the original line ending
+    /// (`"\r\n"`, `"\n"`, or `""`). Used by block-reshaping planners so a CRLF line does not
+    /// leave a stray `\r` inside fenced content.
+    func crlfAwareTrimmingNewline() -> (trimmed: String, hadNewline: Bool, terminator: String) {
+        if hasSuffix("\r\n") {
+            return (String(dropLast(2)), true, "\r\n")
+        }
+        if hasSuffix("\n") {
+            return (String(dropLast()), true, "\n")
+        }
+        return (self, false, "")
+    }
+}

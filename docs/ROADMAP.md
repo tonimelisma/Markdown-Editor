@@ -219,9 +219,7 @@ Stage 2 proved the vocabulary change via `AtomicRepresentationKind.normalizedCod
 
 ### Active: warm CRLF debt
 
-Approved for build in the order below — `COR-33` left debt while stage 1 was warm; this is the minimal debt-close that keeps `REQ-007`/`REQ-113` honest for mixed line endings.
-
-1. 🔵 **COR-38 — Retire COR-33 stage-1 dry-run and make CRLF encoder per-line** — see [`docs/plans/COR-38-crlf-cleanup.md`](plans/COR-38-crlf-cleanup.md). After the `.normalizedCodeBlock` atomic, `availability(for: .codeBlock)` no longer needs a full `SemanticEditEngine.plan` dry-run with dummy `ID(0)`, and `MarkdownLiteralEncoder.encode(decoded:kind:)` must carry per-line terminator kind rather than expanding every `\n` to `\r\n` uniformly. Warm, same-concern pairing.
+1. ✅ **COR-38 — Retire COR-33 stage-1 dry-run and make CRLF encoder per-line.** Stage-1 `canPerformCodeBlock` dry-run with dummy `ID(0)` re-proved via `SemanticEditEngine.plan` what the stage-2 `.normalizedCodeBlock` atomic now guarantees; retired to the default `availability` branch. `MarkdownLiteralEncoder` now carries per-line `originalSource` overload so mixed `LF`/`CRLF` preserves per-line terminators (`CRLFCodeBlockTests.mixedLineEndingsPreserveUntouchedTerminators`); uniform files remain uniform. Helpers `crlfAwareTrimmingNewline()` centralised (4 sites). `REQ-007`/`REQ-113` reconciled.
 2. 🔵 **COR-39 — Helpers and typed block-container predicate** — see [`docs/plans/COR-39-hardening.md`](plans/COR-39-hardening.md). Single `inclusive→exclusive` helper in `MarkdownSourceIndex`, typed `TextBlockIdentity` predicate in `AttributedPresentationBuilder`, and `REQ-118` `EXEMPT` moved from script to `REQUIREMENTS.md` so the gate composes with documentation authority.
 
 ### Next discovery unit, not yet researched

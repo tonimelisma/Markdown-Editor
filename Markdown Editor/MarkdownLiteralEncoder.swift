@@ -105,12 +105,47 @@ nonisolated enum MarkdownLiteralEncoder {
     static func encode(decoded: String, kind: AtomicRepresentationKind) -> String? {
         switch kind {
         case .normalizedCodeBlock:
-            // Inverse of the CRLF normalisation: re-expand using the document's preserved line ending.
-            // For a uniform CRLF file every "\n" originated as "\r\n"; for mixed, this still preserves REQ-007 for uniform and is the minimal honest inverse.
+            // Uniform inverse: correct for uniform CRLF files (the common case) and for LF
+            // identity (no \r\n in decoded path). Mixed line endings are preserved per-line
+            // via the atomic path (each \r\n is one .normalizedCodeBlock atom), not via this
+            // helper, so uniform re-expansion cannot over-expand a mixed file's untouched lines.
             return decoded.replacingOccurrences(of: "\n", with: "\r\n")
         default:
             return nil
         }
+    }
+
+    /// Per-line inverse for mixed line endings: re-expand each "\n" using the original source's
+    /// per-line terminator, so editing line *i* leaves every other line's terminator byte-identical.
+    static func encode(decoded: String, kind: AtomicRepresentationKind, originalSource: String) -> String? {
+        guard kind == .normalizedCodeBlock else { return nil }
+        if !originalSource.contains("\r\n") { return decoded }
+        // Collect terminators from originalSource in order.
+        var terminators: [String] = []
+        var idx = originalSource.startIndex
+        while idx < originalSource.endIndex {
+            guard let nl = originalSource[idx...].firstIndex(of: "\n") else { break }
+            let isCRLF: Bool = {
+                if nl == originalSource.startIndex { return false }
+                return originalSource[originalSource.index(before: nl)] == "\r"
+            }()
+            terminators.append(isCRLF ? "\r\n" : "\n")
+            idx = originalSource.index(after: nl)
+            if idx >= originalSource.endIndex { break }
+        }
+        let decodedLines = decoded.split(separator: "\n", omittingEmptySubsequences: false)
+        var result = ""
+        for i in 0..<decodedLines.count {
+            result += decodedLines[i]
+            if i < decodedLines.count - 1 {
+                if i < terminators.count {
+                    result += terminators[i]
+                } else {
+                    result += "\r\n"
+                }
+            }
+        }
+        return result
     }
 
     // MARK: - Helpers

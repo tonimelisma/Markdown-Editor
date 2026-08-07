@@ -48,17 +48,11 @@ final class EditorCommandController: ObservableObject {
             return session.mode == .wysiwyg && session.presentation == nil
                 ? .disabled(.unavailablePresentation) : .enabled
         case .codeBlock:
-            guard session.mode == .source || isCurrentWYSIWYG(session) else {
-                return .disabled(.unavailablePresentation)
-            }
-            if session.mode == .wysiwyg {
-                let sel = currentSelection(in: session)
-                if !session.canPerformCodeBlock(at: sel) {
-                    return .disabled(.uneditableContent)
-                }
-            }
-            _ = document
-            return .enabled
+            // COR-38: retired stage-1 dry-run. After .normalizedCodeBlock atomic, CRLF code is
+            // no longer .uneditable, so availability collapses to the default branch.
+            // Target-covering .uneditable (e.g. raw HTML at caret) is still refused by the
+            // planner via REQ-113, not by availability.
+            fallthrough
         default:
             guard session.mode == .source || isCurrentWYSIWYG(session) else {
                 return .disabled(.unavailablePresentation)
