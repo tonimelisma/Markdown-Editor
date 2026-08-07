@@ -236,6 +236,10 @@ COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-clo
 
 1. ✅ **COR-42 — Extract ParseCoordinator from EditorSession.** `EditorSession` 746 → ~540 lines; `LatestParseScheduler` + `Task` + `operationGeneration` + 200-line `scheduleParse` moved to new `ParseCoordinator` (scheduler + generation + detached pipeline). `EditorSession` keeps `@Published` presentation/mode and delegates via `parseCoordinator`. Visibilities: `presentation`/`resolvedImages`/`authoritativeTree` internal for single external writer, `snapshotIDs`/`performanceSampler` internal, `installPresentation` internal. Build SUCCEEDED, fast-check 368/0 PASS.
 
+### Active: semantic engine split
+
+1. 🔵 **COR-43 — Split SemanticEditEngine by planning domain.** `SemanticEditEngine` 1291 lines → router (~300) + `WYSIWYGPlanningDomain` + `SourcePlanningDomain`; no new REQ/ARC, pure split for REQ-058/113 liveness. — see [`docs/plans/COR-43-split-semantic-engine.md`](plans/COR-43-split-semantic-engine.md)
+
 ## Post-MVP backlog
 
 These are ideas, not commitments. Each requires research, explicit requirements, and approval.
