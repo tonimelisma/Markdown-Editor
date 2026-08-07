@@ -224,27 +224,9 @@ COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-clo
 1. ✅ **COR-38 — Retire COR-33 stage-1 dry-run and make CRLF encoder per-line.** Stage-1 `canPerformCodeBlock` dry-run with dummy `ID(0)` re-proved via `SemanticEditEngine.plan` what the stage-2 `.normalizedCodeBlock` atomic now guarantees; retired to the default `availability` branch. `MarkdownLiteralEncoder` now carries per-line `originalSource` overload so mixed `LF`/`CRLF` preserves per-line terminators (`CRLFCodeBlockTests.mixedLineEndingsPreserveUntouchedTerminators`); uniform files remain uniform. Helpers `crlfAwareTrimmingNewline()` centralised (4 sites). `REQ-007`/`REQ-113` reconciled.
 2. ✅ **COR-39 — Helpers and typed block-container predicate.** `MarkdownSourceIndex.inclusiveLastByteToExclusiveEnd` is single owner for inclusive→exclusive `+1` (ARC-007); `AttributedPresentationBuilder.isQuoteBlock(_:)` is typed predicate for `textBlocks` (was `backgroundColor == nil`); `REQ-118` `EXEMPT` now declared in `REQUIREMENTS.md` (spec is source of truth, script reads it, fallback warns). No `hasSuffix("\r\n")` duplication remains; no hard-coded EXEMPT source of truth.
 
-### Discovery unit, researched — pending build approval
+### Active: scope ARC-009 to content — semantic block identification is total
 
-**DISC-01 — Should semantic commands share the free-form edit coordinate machinery?** — **Researched 2026-08-06** in [`docs/research/DISC-01-semantic-selection-anchor.md`](research/DISC-01-semantic-selection-anchor.md) (evidence only; not yet architecture). Bounded POCs show block identification from `PresentationSnapshot.blocks` + caret is total for non-table blocks and does not need `ARC-007` exact inverse; anchor `(blockID, offsetInBlockContent)` survives line-reshaping by construction. Awaiting explicit `ENGINEERING §15` approval for `ARC-007`/`ARC-009` scoping and `COR-40` plan.
-
-COR-26 corrected the symptom within the current architecture and deliberately did not touch the
-cause. The cause is that "exact or refuse" — correct and load-bearing for arbitrary text edits,
-where a wrong mapping corrupts a document — is also applied to semantic command dispatch, where a
-refusal is not protection but a product defect. "Make this paragraph a list" does not need an
-exact inverse mapping of an arbitrary selection; it needs to identify which block the caret is
-in, which always succeeds for any caret inside a block.
-
-Two candidate directions, neither approved:
-
-- scope `ARC-009` to content mutation and introduce a separate, weaker, total rule for block
-  identification; and/or
-- introduce a **semantic selection anchor** — "offset *k* into the content of block *B*" — that
-  survives a block rewrite by construction, so no planner reasons about projection coordinates
-  and the eleven-call-site caret problem cannot exist.
-
-This changes `ARC-007`/`ARC-009` and therefore requires the full architecture change gate in
-`ENGINEERING.md` §15. COR-26's matrix supplies the reproduced counterexample it needs.
+1. 🔵 **COR-40 — Scope ARC-009 to content mutation; block identification is total for semantic commands** — see [`docs/plans/COR-40-scope-arc009-to-content.md`](plans/COR-40-scope-arc009-to-content.md). `ARC-009` exact-or-refuse stays for `insertText`/`deleteBackward`/`replaceTableCell`; `reshapesWholeLine` block rewrites identify the enclosing `PresentationBlock` by `caretLocation ∈ projectionRange` (total for caret in `renderedString`; `tableCell` stays exact). Bounded POCs `8/8 PASS`, scored 4.5/5 vs anchor 3.9/5; the anchor is deferred until a block kind needs it. `§15` gate (counterexample `CommandLivenessMatrixTests` COR-26, research, scored options, explicit approval 2026-08-06) satisfied for this scope change.
 
 ## Post-MVP backlog
 
