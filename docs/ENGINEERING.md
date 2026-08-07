@@ -156,7 +156,11 @@ The whole selected range is classified before an edit:
 - mixed/ambiguous content.
 
 Cross-cell table edits, mixed structural domains, unsupported normalized source, and any
-unprovable edit refuse atomically. Partial selection mutation is forbidden.
+unprovable edit refuse atomically for content mutation (`ARC-009`). For `reshapesWholeLine` block rewrites
+(setParagraph/setHeading/toggleOrderedList/UnorderedList/TaskList/BlockQuote/CodeBlock) the system
+identifies the enclosing `PresentationBlock` by `caretLocation ∈ projectionRange` (total when
+`caret ∈ renderedString`; `tableCell` stays exactly classified) and `SourceMutation.exact` on that
+block's `sourceRange` — the weaker total rule for block identification. Partial selection mutation is forbidden.
 
 ## 6. Projection model
 
@@ -621,7 +625,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-006 | Background reconciliation cannot overwrite newer state. | adversarial generation tests and traces |
 | ARC-007 | Coordinate conversion is exact or refused; never guessed or clamped. | typed APIs; projection oracle; generated fixtures |
 | ARC-008 | Literal typing and semantic formatting are separate commands. | punctuation/context fixtures; toolbar tests |
-| ARC-009 | Unsupported, mixed, cross-cell, and unprovable edits refuse atomically. | exhaustive selection-classification tests |
+| ARC-009 | Content mutation (insertText/deleteBackward/replaceTableCell) that is unsupported, mixed, cross-cell, or unprovable refuses atomically; `reshapesWholeLine` block identification is total via enclosing `PresentationBlock` (`caretLocation ∈ projectionRange`; `tableCell` stays exact). | exhaustive selection-classification tests + block-identification totality tests |
 | ARC-010 | All text changes and history use one document-owned source mutation path. | API restriction; history tests |
 | ARC-011 | Mutable document/AppKit state remains main-actor-owned; background work uses immutable values. | Swift 6 complete-concurrency clean build |
 | ARC-012 | Image entry points share one exact-copy, contained, non-destructive transaction. | route tests; filesystem adversarial suite |

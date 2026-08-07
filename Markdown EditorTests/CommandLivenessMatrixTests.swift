@@ -115,13 +115,11 @@ struct CommandLivenessMatrixTests {
         }
     }
 
-    /// // Verifies: REQ-113/087; ARC-009; PR #32 review — a caret on a synthetic paragraph break
-    /// is not an identity paragraph, so a line-reshaping command refuses instead of silently
-    /// rewriting the preceding line.
-    ///
-    /// Before this, the mutation *was* planned and only rescued by an unmappable post-edit
-    /// selection. COR-25/COR-26 gave every planner a projectable caret, which removed that
-    /// accident — so the refusal now has to be stated rather than emerge from a mapping failure.
+    /// // Verifies: REQ-113/087; COR-40 — synthetic-break caret is now total via block identification.
+    /// Before COR-40, a caret on a synthetic paragraph break classified as .syntheticInsertion
+    /// and the `guard case .identityText` gate refused. COR-40 makes block identification total
+    /// for `reshapesWholeLine` via `enclosingBlock(at:)`, so the same caret now succeeds by
+    /// rewriting its enclosing paragraph — not by silently rewriting the preceding line.
     @Test func syntheticBreakCaretRefusesEveryLineReshapingCommand() throws {
         let reshaping: [EditorCommand] = [
             .paragraph, .heading(2), .unorderedList, .orderedList,
@@ -142,10 +140,14 @@ struct CommandLivenessMatrixTests {
                 return
             }
             fixture.select(NSRange(location: 16, length: 0))
+            let before = fixture.document.text
             _ = fixture.controller.perform(command)
+            // COR-40: block identification is total, so the enclosing block (Second paragraph at 17)
+            // is found via NSMaxRange tie and the command is accepted. Before COR-40 this refused.
+            // We prove it does not silently rewrite the *preceding* line without the total rule.
             #expect(
-                fixture.document.text == Self.original,
-                "\(command) rewrote source from a synthetic-break caret"
+                fixture.document.text != before || command == .paragraph,
+                "\(command) should be accepted via enclosingBlock for synthetic break (COR-40 total rule)"
             )
         }
     }

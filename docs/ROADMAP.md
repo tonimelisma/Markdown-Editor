@@ -226,7 +226,7 @@ COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-clo
 
 ### Active: scope ARC-009 to content — semantic block identification is total
 
-1. 🔵 **COR-40 — Scope ARC-009 to content mutation; block identification is total for semantic commands** — see [`docs/plans/COR-40-scope-arc009-to-content.md`](plans/COR-40-scope-arc009-to-content.md). `ARC-009` exact-or-refuse stays for `insertText`/`deleteBackward`/`replaceTableCell`; `reshapesWholeLine` block rewrites identify the enclosing `PresentationBlock` by `caretLocation ∈ projectionRange` (total for caret in `renderedString`; `tableCell` stays exact). Bounded POCs `8/8 PASS`, scored 4.5/5 vs anchor 3.9/5; the anchor is deferred until a block kind needs it. `§15` gate (counterexample `CommandLivenessMatrixTests` COR-26, research, scored options, explicit approval 2026-08-06) satisfied for this scope change.
+1. ✅ **COR-40 — Scope ARC-009 to content mutation; block identification is total for semantic commands.** `ARC-009` now scoped: content mutation (`insertText`/`deleteBackward`/`replaceTableCell`) refuses atomically; `reshapesWholeLine` rewrites identify enclosing `PresentationBlock` by `caretLocation ∈ projectionRange` (total for caret in `renderedString`; `tableCell` stays exact via classifier). `PresentationSnapshot.enclosingBlock(at:)` / `MarkdownProjectionModel.enclosingBlock(at:)` are the single owners. `SemanticBlockIdentificationTests` proves totality at `0`/end and `tableCellStillRequiresExact`; `CommandLivenessMatrixTests` stays green (rehearsed failing via exact gate). Displaced path `guard case .identityText = classification` for `reshapesWholeLine` deleted in same build. `DISC-01` closed.
 
 ## Post-MVP backlog
 

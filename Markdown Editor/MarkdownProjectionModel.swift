@@ -104,6 +104,21 @@ nonisolated struct MarkdownProjectionModel: Sendable, Equatable {
     let segments: [ProjectionSegment]
     let listMarkers: [ProjectionListMarker]
     let sourceUTF16Count: Int
+
+    /// COR-40: total block identification (same as PresentationSnapshot).
+    func enclosingBlock(at location: Int) -> PresentationBlock? {
+        let candidates = blocks.filter {
+            NSLocationInRange(location, $0.projectionRange) || location == NSMaxRange($0.projectionRange)
+        }
+        return candidates
+            .filter {
+                switch $0.kind {
+                case .table, .tableRow, .tableCell: return false
+                default: return true
+                }
+            }
+            .min(by: { $0.projectionRange.length < $1.projectionRange.length })
+    }
     private let storedMap: ProjectionCoordinateMap?
 
     init(
