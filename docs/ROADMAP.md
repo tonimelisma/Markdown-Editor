@@ -232,6 +232,10 @@ COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-clo
 
 1. ✅ **COR-41 — Triage hygiene: remove hidden crash, boolean trap, and untestable geometry.** No new REQ, no ARC change — `MarkdownHighlighter` `try!` → checked `preconditionFailure`, `WYSIWYGEditor.applyProjectionIfNeeded(force:)` → `ApplyReason` enum, `installPerTextKitParagraph` → `ParagraphStyleInstaller.styles(for:range:text:)`. Proved by existing `ParagraphGeometryTests` at narrow/default/wide widths plus build. Displaced paths `try!` and `force: Bool` deleted; `ParagraphStyleInstaller` is single owner for per-paragraph style.
 
+### Active: session decomposition
+
+1. 🔵 **COR-42 — Extract ParseCoordinator from EditorSession.** `EditorSession` (746 lines, 6 subsystems) delegates `LatestParseScheduler` + `Task` + `operationGeneration` + `scheduleParse`/`cancel` to new `ParseCoordinator`; no new REQ/ARC, pure extraction for REQ-085/111. — see [`docs/plans/COR-42-extract-parse-coordinator.md`](plans/COR-42-extract-parse-coordinator.md)
+
 ## Post-MVP backlog
 
 These are ideas, not commitments. Each requires research, explicit requirements, and approval.
