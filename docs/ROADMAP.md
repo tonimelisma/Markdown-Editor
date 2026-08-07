@@ -238,7 +238,7 @@ COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-clo
 
 ### Active: semantic engine split
 
-1. 🔵 **COR-43 — Split SemanticEditEngine by planning domain.** `SemanticEditEngine` 1291 lines → router (~300) + `WYSIWYGPlanningDomain` + `SourcePlanningDomain`; no new REQ/ARC, pure split for REQ-058/113 liveness. — see [`docs/plans/COR-43-split-semantic-engine.md`](plans/COR-43-split-semantic-engine.md)
+1. ✅ **COR-43 — Split SemanticEditEngine by planning domain.** `SemanticEditEngine` 1291 → 591 lines router; `SourcePlanningDomain` (153) owns `applySource`, `WYSIWYGPlanningDomain` (576) owns `applyWYSIWYG`/`applyTableCellTyping`/`tablePresentationEdit` + 8 helpers. Engine retains shared helpers as internal and delegates via domains. Build SUCCEEDED, fast-check 368/0 PASS.
 
 ## Post-MVP backlog
 
