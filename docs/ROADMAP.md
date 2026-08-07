@@ -217,6 +217,13 @@ experiment has shown to produce a persistent wrong result.
 
 Stage 2 proved the vocabulary change via `AtomicRepresentationKind.normalizedCodeBlock` (proven `\r\n↔\n` decoder/encoder, `ProjectionAtom.concreteAtoms` per-line atomic). Fenced and indented code both generalise (same `\r` stripping); raw HTML blocks remain `literalFallback` (non-executing literal, no CRLF decoder needed — they are `muted monospaced` per ENGINEERING §7). Mixed line endings are preserved per-line: each `\r\n` inside code is one atomic, so editing one line leaves the others' `\r\n` byte-identical (REQ-007). The kind gained a case; the existing `htmlEntity`/`backslashEscape` vocabulary was insufficient.
 
+### Active: warm CRLF debt
+
+Approved for build in the order below — `COR-33` left debt while stage 1 was warm; this is the minimal debt-close that keeps `REQ-007`/`REQ-113` honest for mixed line endings.
+
+1. 🔵 **COR-38 — Retire COR-33 stage-1 dry-run and make CRLF encoder per-line** — see [`docs/plans/COR-38-crlf-cleanup.md`](plans/COR-38-crlf-cleanup.md). After the `.normalizedCodeBlock` atomic, `availability(for: .codeBlock)` no longer needs a full `SemanticEditEngine.plan` dry-run with dummy `ID(0)`, and `MarkdownLiteralEncoder.encode(decoded:kind:)` must carry per-line terminator kind rather than expanding every `\n` to `\r\n` uniformly. Warm, same-concern pairing.
+2. 🔵 **COR-39 — Helpers and typed block-container predicate** — see [`docs/plans/COR-39-hardening.md`](plans/COR-39-hardening.md). Single `inclusive→exclusive` helper in `MarkdownSourceIndex`, typed `TextBlockIdentity` predicate in `AttributedPresentationBuilder`, and `REQ-118` `EXEMPT` moved from script to `REQUIREMENTS.md` so the gate composes with documentation authority.
+
 ### Next discovery unit, not yet researched
 
 **DISC-01 — Should semantic commands share the free-form edit coordinate machinery?**
