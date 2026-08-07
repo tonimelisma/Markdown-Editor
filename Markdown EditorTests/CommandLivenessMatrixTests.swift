@@ -158,10 +158,7 @@ struct CommandLivenessMatrixTests {
     /// version of this test used source mode and passed against the defect.
     @Test func lineReshapingCommandsApplyInCRLFWYSIWYGDocuments() throws {
         let crlf = "First paragraph.\r\n\r\nSecond paragraph.\r\n"
-        // `.codeBlock` is deliberately excluded and tracked as COR-33: cmark normalises CRLF to
-        // LF, so fenced content is not an identity mapping in a CRLF document. That is a
-        // projection defect, not a caret one, and this fix does not claim it.
-        for command in [EditorCommand.unorderedList, .blockQuote, .heading(2)] {
+        for command in [EditorCommand.unorderedList, .blockQuote, .heading(2), .codeBlock] {
             let document = MarkdownDocument()
             document.installTextForTesting(crlf)
             let session = EditorSession()
@@ -204,21 +201,18 @@ struct CommandLivenessMatrixTests {
         }
     }
 
-    // Verifies: REQ-113 — COR-33 stage 1: `.codeBlock` is honest about CRLF.
-    // In a CRLF document code content would normalise (cmark literal "\\n" vs source "\\r\\n") and become `.uneditable`,
-    // so availability must be disabled rather than enabled-then-refused. LF remains enabled.
-    // No second line-ending parser: the disabled state comes from the same planner that would refuse the post-mutation caret.
-    @Test func codeBlockAvailabilityIsHonestForCRLF() throws {
+    // Verifies: REQ-113 — COR-33 stage 2: CRLF code content is now editable via atomic \r\n↔\n decoder.
+    // Stage 1 disabled .codeBlock in CRLF; stage 2 makes it enabled by fixing the planner's CRLF stripping and by representing fenced/indented code line breaks as .normalizedCodeBlock atoms.
+    @Test func codeBlockIsEditableInCRLFWYSIWYG() throws {
         let crlf = "First paragraph.\r\n\r\nSecond paragraph.\r\n"
         let lf = "First paragraph.\n\nSecond paragraph.\n"
 
-        func availability(for text: String) throws -> EditorCommandAvailability {
+        func fixture(for text: String) throws -> (MarkdownDocument, EditorSession, EditorCommandController, PresentationSnapshot) {
             let document = MarkdownDocument()
             document.installTextForTesting(text)
             let session = EditorSession()
             session.attach(document: document)
             session.setMode(.wysiwyg)
-            defer { session.detach() }
             let tree = try #require(MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion).get())
             session.installProjectionForTesting(
                 MarkdownProjectionModel.build(tree: tree, index: MarkdownSourceIndex(source: document.text, sourceVersion: document.sourceVersion)),
@@ -230,37 +224,21 @@ struct CommandLivenessMatrixTests {
             }
             let controller = EditorCommandController()
             controller.bind(document: document, session: session, actionRouter: EditorActionRouter(), window: nil)
-            return controller.availability(for: .codeBlock)
+            return (document, session, controller, presentation)
         }
 
-        let crlfAvail = try availability(for: crlf)
-        #expect(crlfAvail == .disabled(.uneditableContent), "codeBlock must be disabled in CRLF WYSIWYG, got \(crlfAvail)")
-        // Performing must not mutate, and must report disabled rather than refused.
-        do {
-            let document = MarkdownDocument()
-            document.installTextForTesting(crlf)
-            let session = EditorSession()
-            session.attach(document: document)
-            session.setMode(.wysiwyg)
+        // Both CRLF and LF must now be enabled and perform.
+        for text in [crlf, lf] {
+            let (document, session, controller, _) = try fixture(for: text)
             defer { session.detach() }
-            let tree = try #require(MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion).get())
-            session.installProjectionForTesting(
-                MarkdownProjectionModel.build(tree: tree, index: MarkdownSourceIndex(source: document.text, sourceVersion: document.sourceVersion)),
-                tree: tree
-            )
-            let presentation = try #require(session.presentation)
-            session.updateWYSIWYGModeState {
-                $0.selection = ProjectionSelection(utf16: NSRange(location: 0, length: 16), revision: presentation.projectionRevision)
+            #expect(controller.availability(for: .codeBlock) == .enabled, "codeBlock must be enabled for \(text.debugDescription.prefix(20))")
+            #expect(controller.perform(.codeBlock) == .accepted, "codeBlock must perform for \(text.debugDescription.prefix(20))")
+            #expect(document.text.contains("```\nFirst paragraph"), "codeBlock should produce fenced block")
+            // CRLF preservation: second paragraph's terminator stays \r\n, new fences are LF (the minimal honest encoding).
+            if text == crlf {
+                #expect(document.text.contains("Second paragraph.\r\n"), "CRLF second paragraph terminator must stay \r\n")
             }
-            let controller = EditorCommandController()
-            controller.bind(document: document, session: session, actionRouter: EditorActionRouter(), window: nil)
-            let outcome = controller.perform(.codeBlock)
-            #expect(outcome == .disabled(.uneditableContent), "CRLF codeBlock perform must be disabled, got \(outcome)")
-            #expect(document.text == crlf, "CRLF codeBlock must not mutate source when disabled")
         }
-
-        let lfAvail = try availability(for: lf)
-        #expect(lfAvail == .enabled, "codeBlock must stay enabled in LF WYSIWYG, got \(lfAvail)")
     }
 
     // Verifies: REQ-113 — `.codeBlock` stays enabled in an LF document that *does* contain an `.uneditable` elsewhere (raw HTML).

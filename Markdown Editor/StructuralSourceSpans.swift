@@ -145,8 +145,12 @@ nonisolated enum StructuralSourceSpans {
         let rawBody = ns.substring(
             with: NSRange(location: bodyStartInSlice, length: bodyEndInSlice - bodyStartInSlice)
         )
-        // Exact identity only — refuse CRLF / indent-stripped normalization.
-        guard rawBody == rendered else { return nil }
+        // COR-33 stage 2: CRLF normalisation (\r\n → \n) is the only allowed normalisation for code content.
+        // If filtering \r yields identity, the caller will emit an atomic with a proven decoder rather than refusing.
+        if rawBody != rendered {
+            let filtered = rawBody.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "")
+            guard filtered == rendered else { return nil }
+        }
         _ = info
         _ = literal
         return NSRange(

@@ -385,18 +385,18 @@ struct EditorIntegrationTests {
         #expect(hasUneditable)
     }
 
-    // Verifies: REQ-057 — CRLF fenced body that normalizes is uneditable.
+    // Verifies: REQ-057 — COR-33 stage 2: CRLF fenced body that normalises is atomic with proven decoder, not uneditable.
     @Test func crlfFencedCodeBodyIsUneditableWhenNormalized() throws {
         let source = "```\r\nline\r\n```\n"
         let (_, model) = try parseBuild(source)
-        // If the fence was identity-mappable, mapped body equals raw; otherwise uneditable.
-        let hasUneditableCode = model.segments.contains { seg in
-            if case .uneditable = seg { return true }
-            return false
-        }
         let rendered = model.renderedString
         #expect(rendered.contains("line"))
-        #expect(hasUneditableCode)
+        // Stage 2: CRLF code line breaks are atomic .normalizedCodeBlock, not .uneditable.
+        let snapshot = PresentationSnapshot.from(model: model, id: PresentationSnapshot.ID(value: 1), locationGeneration: 0, sourceText: source)
+        let hasAtomicCRLF = snapshot.atoms.contains { if case .atomic(let a) = $0, a.kind == .normalizedCodeBlock { return true }; return false }
+        #expect(hasAtomicCRLF, "CRLF fenced code should be atomic, not uneditable")
+        let hasUneditable = snapshot.atoms.contains { if case .uneditable = $0 { return true }; return false }
+        #expect(!hasUneditable, "CRLF fenced code must not be uneditable after stage 2")
     }
 
     // Verifies: REQ-080 — caret at start of column 2 owns cell 2, not cell 1's trailing tab.

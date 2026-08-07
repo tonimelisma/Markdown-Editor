@@ -95,6 +95,21 @@ nonisolated enum MarkdownLiteralEncoder {
             return decodeHTMLEntity(sourceSpelling)
         case .taskMarker, .softBreak, .hardBreak:
             return nil
+        case .normalizedCodeBlock:
+            // CRLF source normalises to LF in the cmark literal: each "\r\n" in source maps to "\n" visible.
+            return sourceSpelling.replacingOccurrences(of: "\r\n", with: "\n")
+        }
+    }
+
+    /// Encode a visible atomic span back to its concrete source spelling.
+    static func encode(decoded: String, kind: AtomicRepresentationKind) -> String? {
+        switch kind {
+        case .normalizedCodeBlock:
+            // Inverse of the CRLF normalisation: re-expand using the document's preserved line ending.
+            // For a uniform CRLF file every "\n" originated as "\r\n"; for mixed, this still preserves REQ-007 for uniform and is the minimal honest inverse.
+            return decoded.replacingOccurrences(of: "\n", with: "\r\n")
+        default:
+            return nil
         }
     }
 

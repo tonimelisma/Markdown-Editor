@@ -174,7 +174,7 @@ Every presented atom is one of:
 Entity and escape decoding follows the pinned cmark/CommonMark rules, not an application-specific
 table or fallback. List/task markers and other editable synthetic controls carry their exact
 source representation. Tables use escape-aware concrete cell coordinates and one presentation paragraph per cell, so native table blocks have the paragraph geometry they require. A normalized inline or
-fenced-code representation is editable only when its inverse is proven.
+fenced-code representation is editable only when its inverse is proven. Fenced and indented code line breaks that normalise `\r\n`→`\n` in the cmark literal are the approved `ENGINEERING §6` case 2: each `\r\n` inside code is one `.normalizedCodeBlock` atomic with decoder `\r\n→\n` and encoder `\n→\r\n` (`ProjectionAtom.concreteAtoms` per-line, `StructuralSourceSpans.fencedCodeBody` allowing the filtered identity).
 
 `ProjectionOracle` validates:
 

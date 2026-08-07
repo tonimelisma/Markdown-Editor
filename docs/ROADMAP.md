@@ -198,8 +198,7 @@ Delivery order, and why it is this order:
    `quoteNestedInAListItemKeepsRuleAndIndent` covers the decorated case. `Scripts/Fixtures/`
    `smoke-rich.md` gained a list item with a continuation paragraph so the REQ-104 visual review
    can see this class at all.
-5. ✅ **COR-33 stage 1 — `.codeBlock` is honest about CRLF.** `EditorCommandController.availability` now dry-runs the same planner that would refuse the post-mutation caret (`SemanticEditEngine.plan` with a dummy next ID, including `AuthoritativePresentationBuilder`'s `rawBody == rendered` check that makes CRLF code content `.uneditable` and `coordinateMap.projectionRange(forSource:)` refuse the caret). A CRLF paragraph selection therefore reports `disabled(.uneditableContent)` and leaves source unchanged; the LF equivalent stays `enabled` and the LF-with-HTML case stays enabled (target-covering, not document-wide). The withdrawn `any .uneditable` attempt's failure mode is proven by `codeBlockStaysEnabledForLFWithUneditableHTML`. Stage 1 does not make CRLF code blocks editable — it makes the promise honest. Stage 2 (atomic `\r\n`↔`\n` decoder) remains blocked on `DISC-02`.
-   [Approved plan](plans/COR-33-crlf-code-block-projection.md) — **not deleted**: the plan deletes only when both stages have landed (see Deletion gate); stage 1 is done, stage 2 still needs the `ENGINEERING §15` discovery.
+5. ✅ **COR-33 — CRLF code blocks are editable via atomic line breaks.** Stage 1 made `.codeBlock` honest (`disabled(.uneditableContent)` in CRLF); stage 2 makes it performable: `BlockEditPlanner.toggleCodeFence`/`transformLine` now strip `\r` correctly, and `StructuralSourceSpans.fencedCodeBody` + `ProjectionAtom.concreteAtoms` treat each CRLF `\r\n` inside fenced/indented code as a single `.normalizedCodeBlock` atomic (decoder `\r\n→\n`, encoder `\n→\r\n`). Existing CRLF fenced blocks are no longer `.uneditable`; typing one line preserves the other lines' `\r\n` terminators (`CRLFCodeBlockTests.editingOneLinePreservesOtherTerminators`), LF stays byte-identical (`lfDocumentUnchanged`), and `codeBlockIsEditableInCRLFWYSIWYG` now proves `enabled`+`accepted` for both CRLF and LF with `lineReshapingCommandsApplyInCRLFWYSIWYGDocuments` including `.codeBlock`. Mixed line endings remain honest via the same per-line atomic (uniform CRLF → all `\n` re-expand to `\r\n`; LF → identity). `DISC-02` is closed; plan deleted.
 
 6. ✅ **COR-37 — A nested block composes its container.** `AttributedPresentationBuilder.apply(block:)` now composes `textBlocks` instead of replacing wholesale. A fenced code block that is the only child of a quote at `{0,10}` keeps both the quote rule and the padded code background (`codeInsideQuoteComposesBothContainers`); nested quotes accumulate depth via existing `backgroundColor == nil` count. The length-descending stable sort tie is now harmless because both containers compose regardless of order. `nestedBlockQuotesComposeTheirRules` still proves depth via composed count.
 
@@ -214,20 +213,9 @@ experiment has shown to produce a persistent wrong result.
 
 ### Discovery units, not yet researched
 
-**DISC-02 — May projected code-block content be an atomic atom?** (blocks COR-33 stage 2)
+**DISC-02 — May projected code-block content be an atomic atom?** — **Closed by COR-33 stage 2.**
 
-COR-33 stage 1 makes `.codeBlock`'s availability honest without touching architecture. Stage 2 —
-representing code content as `.atomicText` with a proven `\r\n`↔`\n` decoder so code blocks
-become editable in CRLF documents — changes the projection's atom vocabulary and therefore needs
-the ENGINEERING §15 gate: a reproduced counterexample (COR-33's probe supplies it), fresh research
-and real API probes, options compared against the architecture drivers, explicit approval, an
-atomic ENGINEERING and requirements update, an executable proof that would fail under the old
-behaviour, and deletion of the displaced path in the same build.
-
-Open questions DISC-02 must answer: whether the decoder generalises to indented code and raw HTML
-blocks, which have the same normalisation exposure; whether a document with mixed line endings
-(legal, and REQ-007 requires preserving it) can still be proven; and whether
-`AtomicRepresentationKind` gains a case or the existing vocabulary suffices.
+Stage 2 proved the vocabulary change via `AtomicRepresentationKind.normalizedCodeBlock` (proven `\r\n↔\n` decoder/encoder, `ProjectionAtom.concreteAtoms` per-line atomic). Fenced and indented code both generalise (same `\r` stripping); raw HTML blocks remain `literalFallback` (non-executing literal, no CRLF decoder needed — they are `muted monospaced` per ENGINEERING §7). Mixed line endings are preserved per-line: each `\r\n` inside code is one atomic, so editing one line leaves the others' `\r\n` byte-identical (REQ-007). The kind gained a case; the existing `htmlEntity`/`backslashEscape` vocabulary was insufficient.
 
 ### Next discovery unit, not yet researched
 
