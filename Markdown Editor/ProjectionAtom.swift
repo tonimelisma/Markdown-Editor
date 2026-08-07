@@ -14,6 +14,7 @@ nonisolated enum AtomicRepresentationKind: Sendable, Equatable {
     case taskMarker
     case softBreak
     case hardBreak
+    case normalizedCodeBlock
 }
 
 nonisolated struct IdentityAtom: Sendable, Equatable {
@@ -165,6 +166,29 @@ nonisolated enum ProjectionAtom: Sendable, Equatable {
                     visibleOffset += visibleRange.length
                     continue
                 }
+            }
+
+            // COR-33 stage 2: CRLF in source normalises to LF in rendered code content.
+            if sourceOffset + 1 < sourceText.length,
+               sourceText.character(at: sourceOffset) == 0x0D,
+               sourceText.character(at: sourceOffset + 1) == 0x0A,
+               visibleCharacter == "\n" {
+                let atomSource = NSRange(location: sourceLocation + sourceOffset, length: 2)
+                atoms.append(
+                    .atomic(
+                        AtomicSourceAtom(
+                            kind: .normalizedCodeBlock,
+                            projection: NSRange(location: projectionLocation + visibleOffset, length: visibleRange.length),
+                            source: atomSource,
+                            insertionBefore: atomSource.location,
+                            insertionAfter: NSMaxRange(atomSource),
+                            decodedText: visibleCharacter
+                        )
+                    )
+                )
+                sourceOffset += 2
+                visibleOffset += visibleRange.length
+                continue
             }
 
             if sourceOffset < sourceText.length,

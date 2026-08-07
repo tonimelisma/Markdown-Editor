@@ -531,15 +531,21 @@ private nonisolated struct CompilerBuilder {
                 )
             }
             // Indented code: body is the node span only when identical to rendered.
-            if case .success(let slice) = map.substring(utf16: full), slice == rendered {
-                return full
+            // COR-33 stage 2: allow CRLF normalisation for indented code as well.
+            if case .success(let slice) = map.substring(utf16: full) {
+                if slice == rendered { return full }
+                if slice.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "") == rendered {
+                    return full
+                }
             }
             return nil
         default:
             break
         }
-        if case .success(let slice) = map.substring(utf16: full), slice == rendered {
-            return full
+        if case .success(let slice) = map.substring(utf16: full) {
+            if slice == rendered { return full }
+            // For generic nodes, CRLF normalisation is not an allowed atomic — only code blocks are.
+            // Keep exact identity here; code blocks already handled above.
         }
         return nil
     }
