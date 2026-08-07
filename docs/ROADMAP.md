@@ -228,6 +228,10 @@ COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-clo
 
 1. ✅ **COR-40 — Scope ARC-009 to content mutation; block identification is total for semantic commands.** `ARC-009` now scoped: content mutation (`insertText`/`deleteBackward`/`replaceTableCell`) refuses atomically; `reshapesWholeLine` rewrites identify enclosing `PresentationBlock` by `caretLocation ∈ projectionRange` (total for caret in `renderedString`; `tableCell` stays exact via classifier). `PresentationSnapshot.enclosingBlock(at:)` / `MarkdownProjectionModel.enclosingBlock(at:)` are the single owners. `SemanticBlockIdentificationTests` proves totality at `0`/end and `tableCellStillRequiresExact`; `CommandLivenessMatrixTests` stays green (rehearsed failing via exact gate). Displaced path `guard case .identityText = classification` for `reshapesWholeLine` deleted in same build. `DISC-01` closed.
 
+### Active: triage hygiene
+
+1. 🔵 **COR-41 — Triage hygiene: remove hidden crash, boolean trap, and untestable geometry.** No new REQ, no ARC change — `MarkdownHighlighter` `try!` → checked `preconditionFailure`, `WYSIWYGEditor.applyProjectionIfNeeded(force:)` → `ApplyReason` enum, `installPerTextKitParagraph` → `ParagraphStyleInstaller.styles(for:range:text:)`. Proved by existing `ParagraphGeometryTests` at narrow/default/wide widths plus build. — see [`docs/plans/COR-41-triage-hygiene.md`](plans/COR-41-triage-hygiene.md)
+
 ## Post-MVP backlog
 
 These are ideas, not commitments. Each requires research, explicit requirements, and approval.
