@@ -72,6 +72,14 @@ nonisolated struct MarkdownSourceIndex: Sendable {
     // MARK: - Position → absolute UTF-8
 
     /// Convert a one-based line/column (UTF-8 byte column) to an absolute UTF-8 offset.
+    /// Single owner for inclusive last-byte → exclusive end conversion (ARC-007).
+    /// Every cmark column (including the column==0 loose-item convention) returns the inclusive
+    /// offset of its last byte; `utf8Range` converts via `+1` to exclusive. Centralising the `+1`
+    /// prevents the `lineStart-1` branch from diverging from the normal path.
+    private func inclusiveLastByteToExclusiveEnd(_ inclusive: Int) -> Int {
+        min(inclusive + 1, utf8Count)
+    }
+
     func utf8Offset(line: Int, column: Int) -> Result<Int, SourceMappingFailure> {
         guard line > 0 else { return .failure(.outOfBoundsLine(line)) }
         guard line < lineStartUTF8.count || (line == lineStartUTF8.count && column == 1 && utf8Count == 0) else {
@@ -108,6 +116,7 @@ nonisolated struct MarkdownSourceIndex: Sendable {
             guard lineStart > 0 else {
                 return .failure(.outOfBoundsColumn(line: line, column: column))
             }
+            // Inclusive last byte of previous line's terminator; exclusive conversion happens in utf8Range.
             return .success(lineStart - 1)
         }
         guard column >= 1 else { return .failure(.outOfBoundsColumn(line: line, column: column)) }
@@ -137,7 +146,7 @@ nonisolated struct MarkdownSourceIndex: Sendable {
                 return .success(UTF8Range(start: s, end: s))
             }
             guard s <= e else { return .failure(.invalidUTF8Boundary) }
-            let exclusiveEnd = min(e + 1, utf8Count)
+            let exclusiveEnd = inclusiveLastByteToExclusiveEnd(e)
             guard s <= exclusiveEnd else { return .failure(.invalidUTF8Boundary) }
             return .success(UTF8Range(start: s, end: exclusiveEnd))
         case (.failure(let err), _):

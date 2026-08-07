@@ -225,7 +225,7 @@ enum AttributedPresentationBuilder {
             // Composed: a code block inside a quote keeps both containers. Depth is total
             // enclosing quote depth; existing quote blocks from outer quotes are preserved.
             let existingBlocks = style.textBlocks ?? []
-            let existingQuoteCount = existingBlocks.filter { $0.backgroundColor == nil }.count
+            let existingQuoteCount = existingBlocks.filter { Self.isQuoteBlock($0) }.count
             let needed = max(1, depth) - existingQuoteCount
             if needed > 0 {
                 style.textBlocks = existingBlocks + (0..<needed).map { _ in typography.quoteBlock() }
@@ -315,6 +315,15 @@ enum AttributedPresentationBuilder {
             }
             install(scoped, sub)
         }
+    }
+
+    // MARK: - Text block identity (COR-39)
+
+    /// Typed predicate for quote vs code block. Using `backgroundColor == nil` as kind tag worked
+    /// while only two `NSTextBlock` kinds existed, but a third container would collide.
+    private static func isQuoteBlock(_ block: NSTextBlock) -> Bool {
+        // Quote blocks have no background; code blocks have adaptive background.
+        block.backgroundColor == nil
     }
 
     private static func applyTable(
