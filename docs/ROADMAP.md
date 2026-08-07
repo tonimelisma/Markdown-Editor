@@ -230,7 +230,7 @@ COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-clo
 
 ### Active: triage hygiene
 
-1. 🔵 **COR-41 — Triage hygiene: remove hidden crash, boolean trap, and untestable geometry.** No new REQ, no ARC change — `MarkdownHighlighter` `try!` → checked `preconditionFailure`, `WYSIWYGEditor.applyProjectionIfNeeded(force:)` → `ApplyReason` enum, `installPerTextKitParagraph` → `ParagraphStyleInstaller.styles(for:range:text:)`. Proved by existing `ParagraphGeometryTests` at narrow/default/wide widths plus build. — see [`docs/plans/COR-41-triage-hygiene.md`](plans/COR-41-triage-hygiene.md)
+1. ✅ **COR-41 — Triage hygiene: remove hidden crash, boolean trap, and untestable geometry.** No new REQ, no ARC change — `MarkdownHighlighter` `try!` → checked `preconditionFailure`, `WYSIWYGEditor.applyProjectionIfNeeded(force:)` → `ApplyReason` enum, `installPerTextKitParagraph` → `ParagraphStyleInstaller.styles(for:range:text:)`. Proved by existing `ParagraphGeometryTests` at narrow/default/wide widths plus build. Displaced paths `try!` and `force: Bool` deleted; `ParagraphStyleInstaller` is single owner for per-paragraph style.
 
 ## Post-MVP backlog
 
