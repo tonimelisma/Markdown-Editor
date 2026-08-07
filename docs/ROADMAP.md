@@ -234,7 +234,7 @@ COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-clo
 
 ### Active: session decomposition
 
-1. 🔵 **COR-42 — Extract ParseCoordinator from EditorSession.** `EditorSession` (746 lines, 6 subsystems) delegates `LatestParseScheduler` + `Task` + `operationGeneration` + `scheduleParse`/`cancel` to new `ParseCoordinator`; no new REQ/ARC, pure extraction for REQ-085/111. — see [`docs/plans/COR-42-extract-parse-coordinator.md`](plans/COR-42-extract-parse-coordinator.md)
+1. ✅ **COR-42 — Extract ParseCoordinator from EditorSession.** `EditorSession` 746 → ~540 lines; `LatestParseScheduler` + `Task` + `operationGeneration` + 200-line `scheduleParse` moved to new `ParseCoordinator` (scheduler + generation + detached pipeline). `EditorSession` keeps `@Published` presentation/mode and delegates via `parseCoordinator`. Visibilities: `presentation`/`resolvedImages`/`authoritativeTree` internal for single external writer, `snapshotIDs`/`performanceSampler` internal, `installPresentation` internal. Build SUCCEEDED, fast-check 368/0 PASS.
 
 ## Post-MVP backlog
 
