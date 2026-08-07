@@ -1,6 +1,6 @@
 # COR-41 — Triage hygiene: remove hidden crash, boolean trap, and untestable geometry
 
-- **Status:** Approved
+- **Status:** Approved; not implemented
 - **Requirements:** REQ-041/051 (highlighter within bounds), REQ-106/107 (spacing/geometry), REQ-109 (bounded patch) — no new REQ, correctness-preserving refactor
 - **ARC invariants:** ARC-018/019 (typography/patch) unchanged; ARC-015 (view reconciliation) unchanged
 
