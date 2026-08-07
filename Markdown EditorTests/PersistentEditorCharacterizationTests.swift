@@ -221,7 +221,7 @@ struct PersistentEditorCharacterizationTests {
         textView.documentActions = document
         textView.session = session
         coord.textView = textView
-        coord.applyProjectionIfNeeded(force: true)
+        coord.applyProjectionIfNeeded(reason: .reapplyIfDrift)
 
         // Drive composition state without relying on system IME panels.
         coord.input.beginMarkedText(
@@ -275,7 +275,7 @@ struct PersistentEditorCharacterizationTests {
         textView.documentActions = document
         textView.session = session
         coordinator.textView = textView
-        coordinator.applyProjectionIfNeeded(force: true)
+        coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
 
         coordinator.input.beginMarkedText(
             sourceVersion: document.sourceVersion,
@@ -624,7 +624,7 @@ struct PersistentEditorCharacterizationTests {
         textView.delegate = coord
         textView.inputCoordinator = coord.input
         coord.textView = textView
-        coord.applyProjectionIfNeeded(force: true)
+        coord.applyProjectionIfNeeded(reason: .reapplyIfDrift)
 
         guard let attachment = session.presentation?.attachments.first(where: {
             if case .task = $0.kind { return true }

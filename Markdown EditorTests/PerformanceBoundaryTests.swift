@@ -264,7 +264,7 @@ struct PerformanceBoundaryTests {
         try harness.installAuthoritativeProjection()
         harness.storage.resetSpy()
 
-        harness.coordinator.applyProjectionIfNeeded(force: false)
+        harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
 
         #expect(harness.storage.fullReplacements == 0)
         #expect(harness.storage.characterReplacements.isEmpty)
@@ -280,7 +280,7 @@ struct PerformanceBoundaryTests {
 
         harness.storage.resetSpy()
         try harness.installAuthoritativeProjection()
-        harness.coordinator.applyProjectionIfNeeded(force: false)
+        harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
 
         #expect(harness.storage.attributeReplacements.isEmpty)
     }
@@ -295,7 +295,7 @@ struct PerformanceBoundaryTests {
         harness.select(NSRange(location: 0, length: 5))
 
         #expect(controller.perform(.bold) == .accepted)
-        harness.coordinator.applyProjectionIfNeeded(force: false)
+        harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
 
         #expect(harness.document.text.hasPrefix("**First**"))
         // Bold hides its delimiters, so the projection text is identical and no character may be
@@ -328,7 +328,7 @@ struct PerformanceBoundaryTests {
         harness.select(NSRange(location: 0, length: 16))
 
         #expect(controller.perform(.unorderedList) == .accepted)
-        harness.coordinator.applyProjectionIfNeeded(force: false)
+        harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
 
         #expect(harness.document.text == "- First paragraph.\n\nSecond paragraph.\n")
         #expect(harness.textView.string == harness.session.presentation?.renderedString)
@@ -357,7 +357,7 @@ struct PerformanceBoundaryTests {
 
         // IME completion and task attachment presses use force: true. A newer snapshot must
         // still patch rather than treating force as permission for a whole-storage replacement.
-        harness.coordinator.applyProjectionIfNeeded(force: true)
+        harness.coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
 
         #expect(harness.storage.fullReplacements == 0, "a newer snapshot replaced the whole storage")
         #expect(harness.storage.characterReplacements.count == 1)
@@ -404,7 +404,7 @@ struct PerformanceBoundaryTests {
             } else {
                 #expect(controller.perform(command) == .accepted)
             }
-            harness.coordinator.applyProjectionIfNeeded(force: false)
+            harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
 
             #expect(harness.storage.fullReplacements == 0)
             #expect(harness.storage.characterReplacements.isEmpty)
@@ -475,7 +475,7 @@ struct PerformanceBoundaryTests {
         let next = try #require(harness.session.presentation)
         #expect(next.renderedString == applied.renderedString)
 
-        harness.coordinator.applyProjectionIfNeeded(force: false)
+        harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
 
         #expect(harness.storage.fullReplacements == 0)
         #expect(harness.storage.characterReplacements.isEmpty, "unchanged text was rewritten")
@@ -489,7 +489,7 @@ struct PerformanceBoundaryTests {
         let harness = try EditorHarness(source: "First paragraph.\n", trace: trace)
         harness.storage.resetSpy()
 
-        harness.coordinator.applyProjectionIfNeeded(force: true)
+        harness.coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
 
         #expect(harness.storage.fullReplacements == 0)
         #expect(trace.eventsMatching {
@@ -520,7 +520,7 @@ struct PerformanceBoundaryTests {
             MarkdownProjectionModel.build(tree: tree, index: index),
             tree: tree
         )
-        harness.coordinator.applyProjectionIfNeeded(force: false)
+        harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
 
         let recovered = trace.eventsMatching {
             if case .presentationRecovered = $0 { return true }
@@ -589,7 +589,7 @@ struct PerformanceBoundaryTests {
             textView.session = session
             textView.adapterCoordinator = coordinator
             coordinator.textView = textView
-            coordinator.applyProjectionIfNeeded(force: true)
+            coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
             storage.resetSpy()
         }
 
