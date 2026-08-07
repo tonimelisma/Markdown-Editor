@@ -73,6 +73,27 @@ struct CRLFCodeBlockTests {
         #expect(after.contains("```\r\n") || after.contains("```\n"), "fence terminator preserved")
     }
 
+    // Verifies: REQ-007 — mixed LF/CRLF line endings preserve per-line terminators via per-line atomic.
+    @Test func mixedLineEndingsPreserveUntouchedTerminators() throws {
+        let mixed = "```\nline LF\nline CRLF\r\n```\n"
+        // Simulate editing first line while preserving second line's CRLF
+        // Use the per-line encoder: decoded is "line LF\nline CRLF\n", original has LF then CRLF
+        let decoded = "line LF\nline CRLF\n"
+        let original = "line LF\nline CRLF\r\n"
+        let encoded = MarkdownLiteralEncoder.encode(decoded: decoded, kind: .normalizedCodeBlock, originalSource: original)
+        #expect(encoded == original, "per-line encoder must preserve mixed terminators, got \(String(describing: encoded))")
+        // Uniform fallback must still work for uniform CRLF
+        let uniformDecoded = "a\nb\n"
+        let uniformCRLF = "a\r\nb\r\n"
+        let uniformEncoded = MarkdownLiteralEncoder.encode(decoded: uniformDecoded, kind: .normalizedCodeBlock, originalSource: uniformCRLF)
+        #expect(uniformEncoded == uniformCRLF)
+        // LF-only stays LF
+        let lfDecoded = "a\nb\n"
+        let lfSrc = "a\nb\n"
+        let lfEncoded = MarkdownLiteralEncoder.encode(decoded: lfDecoded, kind: .normalizedCodeBlock, originalSource: lfSrc)
+        #expect(lfEncoded == lfSrc)
+    }
+
     // Verifies: REQ-007 — LF documents produce byte-identical output to today (provably scoped to CRLF).
     @Test func lfDocumentUnchanged() throws {
         let lf = "```\nlet a = 1\nlet b = 2\n```\n"

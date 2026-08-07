@@ -238,13 +238,8 @@ nonisolated enum BlockEditPlanner {
             return .refused(.ambiguousSelection)
         }
         var body = content
-        // REQ-007; COR-33 stage 2: lineRange for a CRLF line includes "\r\n" — dropping only "\n" leaves a stray "\r" inside the fenced content, which then normalises to LF and becomes .uneditable.
-        let hadNewline = body.hasSuffix("\n")
-        if body.hasSuffix("\r\n") {
-            body = String(body.dropLast(2))
-        } else if hadNewline {
-            body = String(body.dropLast())
-        }
+        let (trimmedBody, hadNewline, _) = body.crlfAwareTrimmingNewline()
+        body = trimmedBody
         let openingFence = "```\n"
         let replacement = openingFence + body + "\n```" + (hadNewline ? "\n" : "")
         return SemanticPlannerGate.commitIfValid(
@@ -281,12 +276,8 @@ nonisolated enum BlockEditPlanner {
         let ns = snapshot.text as NSString
         let line = ns.lineRange(for: range)
         var content = ns.substring(with: line)
-        let hadNewline = content.hasSuffix("\n")
-        if content.hasSuffix("\r\n") {
-            content = String(content.dropLast(2))
-        } else if hadNewline {
-            content = String(content.dropLast())
-        }
+        let (trimmedContent, hadNewline, _) = content.crlfAwareTrimmingNewline()
+        content = trimmedContent
         let replacement = transform(content, hadNewline)
         return SemanticPlannerGate.commitIfValid(
             snapshot: snapshot,
@@ -320,12 +311,8 @@ nonisolated enum ListEditPlanner {
         let ns = snapshot.text as NSString
         let line = ns.lineRange(for: range)
         var content = ns.substring(with: line)
-        let hadNewline = content.hasSuffix("\n")
-        if content.hasSuffix("\r\n") {
-            content = String(content.dropLast(2))
-        } else if hadNewline {
-            content = String(content.dropLast())
-        }
+        let (trimmedContent, hadNewline, _) = content.crlfAwareTrimmingNewline()
+        content = trimmedContent
         let (quotePrefix, rest) = splitLeadingQuotes(content)
         let stripped = stripMatchingListPrefix(rest, matching: prefix)
         let replacement: String
@@ -360,12 +347,8 @@ nonisolated enum ListEditPlanner {
         let ns = snapshot.text as NSString
         let line = ns.lineRange(for: range)
         var content = ns.substring(with: line)
-        let hadNewline = content.hasSuffix("\n")
-        if content.hasSuffix("\r\n") {
-            content = String(content.dropLast(2))
-        } else if hadNewline {
-            content = String(content.dropLast())
-        }
+        let (trimmedContent, hadNewline, _) = content.crlfAwareTrimmingNewline()
+        content = trimmedContent
         let replacement: String
         if content.hasPrefix("> ") {
             replacement = String(content.dropFirst(2)) + (hadNewline ? "\n" : "")
