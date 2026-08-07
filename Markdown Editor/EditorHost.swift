@@ -223,7 +223,7 @@ struct EditorHostView: NSViewRepresentable {
             wScroll.documentView = wText
             wysiwygCoordinator?.textView = wText
             wysiwygCoordinator?.scrollView = wScroll
-            wysiwygCoordinator?.applyProjectionIfNeeded(force: true)
+            wysiwygCoordinator?.applyProjectionIfNeeded(reason: .reapplyIfDrift)
 
             for scroll in [sScroll, wScroll] {
                 scroll.translatesAutoresizingMaskIntoConstraints = false
@@ -358,7 +358,7 @@ struct EditorHostView: NSViewRepresentable {
                     }
                 }
             } else {
-                wysiwygCoordinator?.applyProjectionIfNeeded(force: false)
+                wysiwygCoordinator?.applyProjectionIfNeeded(reason: .newSnapshot)
             }
             applyPendingSelectionIfNeeded()
         }

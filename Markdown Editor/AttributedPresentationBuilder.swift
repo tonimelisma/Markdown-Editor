@@ -256,64 +256,57 @@ enum AttributedPresentationBuilder {
     /// Installs one semantic block's paragraph style across the **TextKit paragraphs** its
     /// rendered text actually contains.
     ///
-    /// // REQ-106/107; COR-27: `NSParagraphStyle.paragraphSpacing` is applied after every TextKit
-    /// // paragraph, and TextKit ends a paragraph at every `\n`. A semantic block is not always
-    /// // one TextKit paragraph: a formal hard break puts a real newline *inside* one CommonMark
-    /// // paragraph, and a fenced code block is one semantic block spanning many lines. Applying
-    /// // the block's style uniformly therefore gave a hard break the same vertical gap as a
-    /// // paragraph boundary, and spaced a code block's own lines apart.
-    /// //
-    /// // Spacing belongs to a **semantic** boundary: only the last TextKit paragraph in the block
-    /// // carries `paragraphSpacing`, and only the first carries `paragraphSpacingBefore`.
-    /// //
-    /// // COR-36: `firstLineHeadIndent` is likewise not uniform. It is the hanging indent that
-    /// // positions the list marker, so only the block's first TextKit paragraph may carry it;
-    /// // every later paragraph is continuation content and begins at `headIndent`. `headIndent`,
-    /// // tab stops, text blocks, and alignment *are* identical across the block, so nesting,
-    /// // quote rules, and code containers are unchanged.
+    /// // REQ-106/107; COR-27/36: spacing and hanging indent belong to semantic boundaries, not to
+    /// // every `\n`. Extracted so the style-array logic is testable without constructing a view.
     private static func installPerTextKitParagraph(
         _ style: NSMutableParagraphStyle,
         to storage: NSMutableAttributedString,
         range: NSRange
     ) {
-        func install(_ value: NSMutableParagraphStyle, _ target: NSRange) {
-            storage.addAttribute(.paragraphStyle, value: value.copy() as! NSParagraphStyle, range: target)
+        let styles = ParagraphStyleInstaller.styles(for: style, range: range, text: storage.string as NSString)
+        for (sub, scoped) in styles {
+            storage.addAttribute(.paragraphStyle, value: scoped.copy() as! NSParagraphStyle, range: sub)
         }
-        guard range.length > 1 else {
-            install(style, range)
-            return
-        }
-        let text = storage.string as NSString
-        // A newline at the very end of the block terminates the block's own last paragraph, so it
-        // does not start another one. Interior newlines do.
-        var starts = [range.location]
-        for index in range.location..<(NSMaxRange(range) - 1) where text.character(at: index) == 0x0A {
-            starts.append(index + 1)
-        }
-        guard starts.count > 1 else {
-            install(style, range)
-            return
-        }
-        starts.append(NSMaxRange(range))
-        for position in 0..<(starts.count - 1) {
-            let sub = NSRange(
-                location: starts[position],
-                length: starts[position + 1] - starts[position]
-            )
-            guard sub.length > 0 else { continue }
-            let scoped = style.mutableCopy() as! NSMutableParagraphStyle
-            if position != starts.count - 2 { scoped.paragraphSpacing = 0 }
-            if position != 0 {
-                scoped.paragraphSpacingBefore = 0
-                // COR-36: `firstLineHeadIndent` is the *hanging* indent — it positions the line
-                // that carries the list marker, and it is smaller than `headIndent` by exactly one
-                // indent step. Only the block's first TextKit paragraph carries that marker. Every
-                // later one is continuation content, so it starts at the content indent; leaving it
-                // at the marker indent drew a list item's second paragraph, and a quote nested in a
-                // list item, flush to the reading margin as though they had left the list.
-                scoped.firstLineHeadIndent = scoped.headIndent
+    }
+
+    /// Pure per-paragraph style computation — no `NSTextStorage` side effect, so a unit test can
+    /// assert on the array without constructing a `NSTextView`.
+    enum ParagraphStyleInstaller {
+        static func styles(
+            for style: NSMutableParagraphStyle,
+            range: NSRange,
+            text: NSString
+        ) -> [(NSRange, NSMutableParagraphStyle)] {
+            func copy(_ s: NSMutableParagraphStyle) -> NSMutableParagraphStyle {
+                s.mutableCopy() as! NSMutableParagraphStyle
             }
-            install(scoped, sub)
+            guard range.length > 1 else {
+                return [(range, copy(style))]
+            }
+            var starts = [range.location]
+            for index in range.location..<(NSMaxRange(range) - 1) where text.character(at: index) == 0x0A {
+                starts.append(index + 1)
+            }
+            guard starts.count > 1 else {
+                return [(range, copy(style))]
+            }
+            starts.append(NSMaxRange(range))
+            var out: [(NSRange, NSMutableParagraphStyle)] = []
+            for position in 0..<(starts.count - 1) {
+                let sub = NSRange(
+                    location: starts[position],
+                    length: starts[position + 1] - starts[position]
+                )
+                guard sub.length > 0 else { continue }
+                let scoped = copy(style)
+                if position != starts.count - 2 { scoped.paragraphSpacing = 0 }
+                if position != 0 {
+                    scoped.paragraphSpacingBefore = 0
+                    scoped.firstLineHeadIndent = scoped.headIndent
+                }
+                out.append((sub, scoped))
+            }
+            return out
         }
     }
 

@@ -386,7 +386,7 @@ struct AcceptedEditTransactionTests {
         textView.session = session
         textView.documentActions = doc
         coordinator.textView = textView
-        coordinator.applyProjectionIfNeeded(force: true)
+        coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
 
         let allowNative = coordinator.textView(
             textView,
@@ -425,7 +425,7 @@ struct AcceptedEditTransactionTests {
         textView.documentActions = doc
         textView.adapterCoordinator = coordinator
         coordinator.textView = textView
-        coordinator.applyProjectionIfNeeded(force: true)
+        coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
         textView.setSelectedRange(NSRange(location: 0, length: 0))
 
         let applied = textView.pastePlainText("*")

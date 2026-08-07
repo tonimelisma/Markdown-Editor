@@ -88,7 +88,13 @@ enum WYSIWYGEditor {
             self.placementController = placementController
         }
 
-        func applyProjectionIfNeeded(force: Bool) {
+        enum ApplyReason: Sendable {
+            case newSnapshot
+            case reapplyIfDrift
+        }
+
+        func applyProjectionIfNeeded(reason: ApplyReason) {
+            let force = (reason == .reapplyIfDrift)
             guard let textView else { return }
             guard let presentation = session.presentation else {
                 textView.isEditable = false
@@ -306,7 +312,7 @@ enum WYSIWYGEditor {
                 // Applied storage is not the snapshot this keystroke targets. Resynchronizing is
                 // a full replacement, so it is recorded for the same reason a post-commit
                 // recovery is: storage drift must never be silent.
-                applyProjectionIfNeeded(force: true)
+                applyProjectionIfNeeded(reason: .reapplyIfDrift)
                 return false
             }
             let appliedPresentation = presentation
@@ -462,7 +468,7 @@ enum WYSIWYGEditor {
                 selection: .projection(selection),
                 expectedSourceRevision: presentation.sourceRevision
             )
-            applyProjectionIfNeeded(force: true)
+            applyProjectionIfNeeded(reason: .reapplyIfDrift)
         }
 
         // REQ-079: open any URL via injected opener — do not restrict schemes.
@@ -660,7 +666,7 @@ final class MarkdownWYSIWYGTextView: NSTextView {
                 performNativeUnmark()
                 input.allowingMarkedText = false
                 input.committingComposition = false
-                adapterCoordinator?.applyProjectionIfNeeded(force: true)
+                adapterCoordinator?.applyProjectionIfNeeded(reason: .reapplyIfDrift)
             case .refused:
                 input.cancel()
                 performNativeUnmark()
@@ -735,7 +741,7 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             }
             input.allowingMarkedText = false
             input.committingComposition = false
-            adapterCoordinator?.applyProjectionIfNeeded(force: true)
+            adapterCoordinator?.applyProjectionIfNeeded(reason: .reapplyIfDrift)
         case .refused:
             input.cancel()
             unmarkText()

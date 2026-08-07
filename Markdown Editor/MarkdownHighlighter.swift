@@ -21,8 +21,11 @@ actor MarkdownHighlighter {
 
     init() {
         func re(_ pattern: String) -> NSRegularExpression {
-            // Patterns are compile-time constants; a failure here is a programmer error.
-            try! NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines])
+            do {
+                return try NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines])
+            } catch {
+                preconditionFailure("invalid highlight pattern: \(pattern) — \(error)")
+            }
         }
         headingRegex = re(#"^(#{1,6})[ \t]+\S.*$"#)
         inlineCodeRegex = re(#"`[^`\n]+`"#)
