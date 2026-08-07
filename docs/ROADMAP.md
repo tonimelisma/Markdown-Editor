@@ -217,14 +217,16 @@ experiment has shown to produce a persistent wrong result.
 
 Stage 2 proved the vocabulary change via `AtomicRepresentationKind.normalizedCodeBlock` (proven `\r\n↔\n` decoder/encoder, `ProjectionAtom.concreteAtoms` per-line atomic). Fenced and indented code both generalise (same `\r` stripping); raw HTML blocks remain `literalFallback` (non-executing literal, no CRLF decoder needed — they are `muted monospaced` per ENGINEERING §7). Mixed line endings are preserved per-line: each `\r\n` inside code is one atomic, so editing one line leaves the others' `\r\n` byte-identical (REQ-007). The kind gained a case; the existing `htmlEntity`/`backslashEscape` vocabulary was insufficient.
 
-### Active: warm CRLF debt
+### Delivered: warm CRLF debt
+
+COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-close that keeps `REQ-007`/`REQ-113` honest for mixed line endings.
 
 1. ✅ **COR-38 — Retire COR-33 stage-1 dry-run and make CRLF encoder per-line.** Stage-1 `canPerformCodeBlock` dry-run with dummy `ID(0)` re-proved via `SemanticEditEngine.plan` what the stage-2 `.normalizedCodeBlock` atomic now guarantees; retired to the default `availability` branch. `MarkdownLiteralEncoder` now carries per-line `originalSource` overload so mixed `LF`/`CRLF` preserves per-line terminators (`CRLFCodeBlockTests.mixedLineEndingsPreserveUntouchedTerminators`); uniform files remain uniform. Helpers `crlfAwareTrimmingNewline()` centralised (4 sites). `REQ-007`/`REQ-113` reconciled.
 2. ✅ **COR-39 — Helpers and typed block-container predicate.** `MarkdownSourceIndex.inclusiveLastByteToExclusiveEnd` is single owner for inclusive→exclusive `+1` (ARC-007); `AttributedPresentationBuilder.isQuoteBlock(_:)` is typed predicate for `textBlocks` (was `backgroundColor == nil`); `REQ-118` `EXEMPT` now declared in `REQUIREMENTS.md` (spec is source of truth, script reads it, fallback warns). No `hasSuffix("\r\n")` duplication remains; no hard-coded EXEMPT source of truth.
 
-### Next discovery unit, not yet researched
+### Discovery unit, researched — pending build approval
 
-**DISC-01 — Should semantic commands share the free-form edit coordinate machinery?**
+**DISC-01 — Should semantic commands share the free-form edit coordinate machinery?** — **Researched 2026-08-06** in [`docs/research/DISC-01-semantic-selection-anchor.md`](research/DISC-01-semantic-selection-anchor.md) (evidence only; not yet architecture). Bounded POCs show block identification from `PresentationSnapshot.blocks` + caret is total for non-table blocks and does not need `ARC-007` exact inverse; anchor `(blockID, offsetInBlockContent)` survives line-reshaping by construction. Awaiting explicit `ENGINEERING §15` approval for `ARC-007`/`ARC-009` scoping and `COR-40` plan.
 
 COR-26 corrected the symptom within the current architecture and deliberately did not touch the
 cause. The cause is that "exact or refuse" — correct and load-bearing for arbitrary text edits,
