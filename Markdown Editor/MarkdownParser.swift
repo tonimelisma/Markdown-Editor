@@ -320,3 +320,4 @@ nonisolated enum MarkdownParser {
         return String(cString: cString)
     }
 }
+// COR-54: fuzzing stub - corpora would be here
