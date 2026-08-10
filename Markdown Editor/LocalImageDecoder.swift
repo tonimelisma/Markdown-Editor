@@ -233,3 +233,4 @@ final class LocalImageByteCache {
         totalBytes = 0
     }
 }
+// COR-47: image identity stub - ImageFileIdentity would be here
