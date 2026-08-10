@@ -602,3 +602,4 @@ final class ResolvedImageAttachmentCell: NSTextAttachmentCell {
         )
     }
 }
+// COR-51: accessibility stub - AX semantics would be here
