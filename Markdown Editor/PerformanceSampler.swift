@@ -17,6 +17,7 @@ final class PerformanceSampler {
         /// // layout is the most likely source of perceived jank, and every other metric measures
         /// // a phase the app owns rather than one TextKit owns.
         case layoutApplication
+        case mainActorLatency
     }
 
     /// p95 budget per metric, in nanoseconds.
@@ -33,6 +34,7 @@ final class PerformanceSampler {
         // A frame-shaped budget rather than the off-main 100 ms allowance: this runs on the
         // main actor and the user sees it.
         .layoutApplication: 16_000_000,
+        .mainActorLatency: 16_000_000,
     ]
     struct Summary: Equatable { let metric: Metric; let count: Int; let p50: UInt64; let p95: UInt64; let max: UInt64 }
 

@@ -140,6 +140,9 @@ struct DiagnosticLogTests {
             .userAlertPresented(severity: .error, reason: .placement(.busy))
             , .performanceSummary(metric: .nativeInputCallback, count: 2, p50Nanos: 3, p95Nanos: 4, maxNanos: 5)
             , .budgetExceeded(metric: .modeTransition, p95Nanos: 17, budgetNanos: 16)
+            , .workLedger(scope: .acceptedEdit, documentParses: 1, projectionCompiles: 1, oracleValidations: 1, attributedBuilds: 1, attributedCharactersWritten: 10, storageFullReplacements: 1, imageDecodes: 1, fileBytesRead: 100, mainThreadBlockedNanos: 1000)
+            , .frameStatistics(hitchMillisPerSecond: 1.0, longestFrameNanos: 1000, framesObserved: 10)
+            , .memoryFootprint(bytes: 1000, peakBytes: 2000)
         ]
 
         var covered = Set<DiagnosticEventName>()

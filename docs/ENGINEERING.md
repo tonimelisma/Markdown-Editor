@@ -641,6 +641,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-022 | Superseded pending parses do not enter source-copy/cmark work after the parser lock becomes available. | deterministic scheduler/lock test with controlled generations |
 | ARC-023 | Image display rejects over-limit encoded files before bulk read/hash/decode and derives references from the canonical parse tree. | file-operation spy; over-limit sparse-file test; scanner deletion gate |
 | ARC-024 | Menu and native toolbar are presentations of one window-scoped command model with shared validation. | command-router tests; menu/toolbar construction inspection |
+| ARC-026 | Work per unit of user intent is counted, attributed to a closed scope set, and bounded. | `WorkLedger`; `WorkLedgerRecorder`; `WorkLedgerTests`; ledger matrix gate |
 
 ## 15. Architecture change gate
 

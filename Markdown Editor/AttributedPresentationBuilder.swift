@@ -68,6 +68,7 @@ enum AttributedPresentationBuilder {
         onTaskPress: ((MarkdownNodeID) -> Void)? = nil,
         scope: NSRange
     ) -> Scoped {
+        WorkLedgerRecorder.add { $0.attributedBuilds += 1; $0.attributedCharactersWritten += scope.length }
         let typography = MarkdownTypography()
         let rendered = model.renderedString as NSString
         let scope = NSRange(
