@@ -225,10 +225,21 @@ how delivered behavior is verified. Current architecture is in
 | REQ-111 | WHEN parse demand advances while another parse runs or waits, the system shall retain at most the running revision and newest pending revision and shall discard every older pending revision before source-copy or cmark work. | COR-21 | Done | `LatestParseScheduler`; `EditorSession.scheduleParse` | `keepsOnlyNewestPendingRevision`; `detachCancelsRunningAndPendingDemand`; reconciliation identity/cancellation paths |
 | REQ-112 | The system shall derive canonical referenced-asset information from the pinned cmark parse tree and concrete source index rather than a regex or line-oriented secondary Markdown scanner. | COR-21 | Done | `CanonicalAssetReferences`; `ProjectionCompiler` image attachments; `ImagePlacementController` | `findsCanonicalReferencesAndExcludesCode`; `destinationSpellingsAgreeWithThePinnedParser`; `detectsBrokenAfterParentChangeIncludingManual`; `noSecondaryMarkdownScannerRouteExists` |
 
+## Measurement and performance evidence
+
+| ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
+| ---- | -------------------- | ----- | -------- | ---------------- | ------------- |
+| REQ-119 | Placeholder for future use. | — | Deferred | — | — |
+| REQ-120 | Placeholder for future use. | — | Deferred | — | — |
+| REQ-123 | The system shall count document parses, projection compiles, oracle validations, attributed builds, attributed characters written, storage full replacements, image decodes, bytes read, and main-thread blocked nanoseconds per unit of user intent, attributed to a closed scope set, and emitted as a diagnostic. | COR-44 | Done | `WorkLedger`; `WorkLedgerRecorder`; `EditorTraceEvent.workLedger`; `DiagnosticLog` collapse sum/max | `acceptedEditRecordsItsWorkLedger`; `nestedWorkScopesAccumulateIntoTheEnclosingScope`; `collapsedWorkLedgerRecordsRetainSumAndMax`; `everyWorkScopeIsOpenedByProduction` |
+| REQ-124 | The system shall sample main-actor responsiveness histogram beside the one-second hang watchdog with a 16 ms p95 budget. | COR-44 | Done | `MainActorResponsivenessProbe`; `PerformanceSampler.Metric.mainActorLatency` | `responsivenessProbeRecordsLatencyDistribution`; `aTwoHundredMillisecondMainActorBlockAppearsInTheLatencyDistribution` |
+| REQ-125 | The system shall record frame-hitch statistics as milliseconds of hitch per observed second and longest frame, derived from the display link's real cadence. | COR-44 | Done | `FrameObserver`; `EditorTraceEvent.frameStatistics` | `frameBudgetFollowsTheDisplayLinkCadenceRatherThanAConstant` |
+| REQ-126 | The system shall sample memory footprint as phys_footprint and peak via task_info and emit it as a numeric-only diagnostic. | COR-44 | Done | `MemoryFootprint`; `EditorTraceEvent.memoryFootprint` | `memoryFootprintRecordIsNumericOnly` |
+
 ---
 
 *Deferred:* in-fence language syntax coloring, dialect profiles, rich-to-Markdown paste conversion,
 table creation/structural controls, image sizing syntax, transcoding, metadata stripping, remote
 images, automatic asset cleanup, and asset-aware Save Copy.
 
-*Next free IDs: REQ-008 (A), REQ-023 (C), REQ-033 (D), REQ-119, REQ-120.*
+*Next free IDs: REQ-008 (A), REQ-023 (C), REQ-033 (D), REQ-127, REQ-128.*

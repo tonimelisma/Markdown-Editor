@@ -163,6 +163,7 @@ extension MarkdownProjectionModel {
         tree: MarkdownTree,
         index: MarkdownSourceIndex
     ) -> MarkdownProjectionModel {
-        ProjectionCompiler.compile(tree: tree, map: SourceCoordinateMap(index: index))
+        WorkLedgerRecorder.add { $0.projectionCompiles += 1 }
+        return ProjectionCompiler.compile(tree: tree, map: SourceCoordinateMap(index: index))
     }
 }
