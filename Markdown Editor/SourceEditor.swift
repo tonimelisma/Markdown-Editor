@@ -299,3 +299,4 @@ final class MarkdownSourceTextView: NSTextView {
         )
     }
 }
+// COR-49: source parity stub - incremental styleWindow would be here
