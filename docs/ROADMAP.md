@@ -264,8 +264,7 @@ no performance change in this programme is falsifiable.
 Delivery order, and why it is this order:
 
 1. ✅ **COR-44 — Measurement substrate.** A work ledger counting parses, builds, oracle passes, attributed characters, image decodes, bytes read and main-thread blocked time per unit of user intent; a main-actor responsiveness histogram beside the one-second hang watchdog; frame-hitch statistics; and memory footprint. First, because it is the instrument every later increment is judged by.
-2. ⚪ **COR-45 — Honest corpora and the in-app benchmark harness.**
-   ([plan](plans/COR-45-benchmark-harness.md)) A closed `PerformanceCorpus` enumeration whose shapes
+2. ✅ **COR-45 — Honest corpora and the in-app benchmark harness.** A closed `PerformanceCorpus` enumeration whose shapes
    assert their own structure, and a `--benchmark` mode that drives the shipping binary through typing,
    table typing, commands, mode toggles, scrolling, undo storms and a soak, writing a committed
    baseline. Expected to **fail** REQ-090 on landing; that failure is the reproduction.
