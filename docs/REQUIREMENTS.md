@@ -231,12 +231,27 @@ how delivered behavior is verified. Current architecture is in
 | ---- | -------------------- | ----- | -------- | ---------------- | ------------- |
 | REQ-119 | Placeholder for future use. | — | Deferred | — | — |
 | REQ-120 | Placeholder for future use. | — | Deferred | — | — |
-| REQ-123 | The system shall count document parses, projection compiles, oracle validations, attributed builds, attributed characters written, storage full replacements, image decodes, bytes read, and main-thread blocked nanoseconds per unit of user intent, attributed to a closed scope set, and emitted as a diagnostic. | COR-44 | Done | `WorkLedger`; `WorkLedgerRecorder`; `EditorTraceEvent.workLedger`; `DiagnosticLog` collapse sum/max | `acceptedEditRecordsItsWorkLedger`; `nestedWorkScopesAccumulateIntoTheEnclosingScope`; `collapsedWorkLedgerRecordsRetainSumAndMax`; `everyWorkScopeIsOpenedByProduction` |
-| REQ-124 | The system shall sample main-actor responsiveness histogram beside the one-second hang watchdog with a 16 ms p95 budget. | COR-44 | Done | `MainActorResponsivenessProbe`; `PerformanceSampler.Metric.mainActorLatency` | `responsivenessProbeRecordsLatencyDistribution`; `aTwoHundredMillisecondMainActorBlockAppearsInTheLatencyDistribution` |
-| REQ-125 | The system shall record frame-hitch statistics as milliseconds of hitch per observed second and longest frame, derived from the display link's real cadence. | COR-44 | Done | `FrameObserver`; `EditorTraceEvent.frameStatistics` | `frameBudgetFollowsTheDisplayLinkCadenceRatherThanAConstant` |
-| REQ-126 | The system shall sample memory footprint as phys_footprint and peak via task_info and emit it as a numeric-only diagnostic. | COR-44 | Done | `MemoryFootprint`; `EditorTraceEvent.memoryFootprint` | `memoryFootprintRecordIsNumericOnly` |
-| REQ-127 | The system shall provide a closed PerformanceCorpus enumeration whose shapes assert their own structure. | COR-45 | Done | `PerformanceCorpus`; `PerformanceCorpusTests` | `corpusShapesProduceTheStructureTheyClaim`; `corpusTruncationPreservesUnitBoundaries` |
-| REQ-128 | The system shall provide a process-level benchmark harness that drives the shipping binary through typing, table typing, commands, mode toggles, scrolling, undo storms and soak, writing a committed baseline. | COR-45 | Done | `BenchmarkDriver`; `Scripts/benchmark.sh` | `benchmarkDriverAssertsOnlyOnStructuredRecords` |
+| REQ-123 | The system shall count document parses, projection compiles, oracle validations, attributed builds, attributed characters written, storage full replacements, image decodes, bytes read, and main-thread blocked nanoseconds per unit of user intent, attributed to a closed scope set, and emitted as a diagnostic. | COR-44 | Correction | — | — (the 2026-08-10 implementation recorded nothing in production: no WorkScope was ever opened outside an uncalled private method, two trace cases had only statically dead call sites, and three cited proofs were tautologies. Reverted by COR-56; COR-44 re-runs on the evidence floor.) |
+| REQ-124 | The system shall sample main-actor responsiveness histogram beside the one-second hang watchdog with a 16 ms p95 budget. | COR-44 | Correction | — | — (the 2026-08-10 implementation recorded nothing in production: no WorkScope was ever opened outside an uncalled private method, two trace cases had only statically dead call sites, and three cited proofs were tautologies. Reverted by COR-56; COR-44 re-runs on the evidence floor.) |
+| REQ-125 | The system shall record frame-hitch statistics as milliseconds of hitch per observed second and longest frame, derived from the display link's real cadence. | COR-44 | Correction | — | — (the 2026-08-10 implementation recorded nothing in production: no WorkScope was ever opened outside an uncalled private method, two trace cases had only statically dead call sites, and three cited proofs were tautologies. Reverted by COR-56; COR-44 re-runs on the evidence floor.) |
+| REQ-126 | The system shall sample memory footprint as phys_footprint and peak via task_info and emit it as a numeric-only diagnostic. | COR-44 | Correction | — | — (the 2026-08-10 implementation recorded nothing in production: no WorkScope was ever opened outside an uncalled private method, two trace cases had only statically dead call sites, and three cited proofs were tautologies. Reverted by COR-56; COR-44 re-runs on the evidence floor.) |
+| REQ-127 | The system shall provide a closed PerformanceCorpus enumeration whose shapes assert their own structure. | COR-45 | Correction | — | — (the 2026-08-10 implementation left the test target unable to compile and wrote a hand-authored performance baseline. Reverted by COR-56; COR-45 re-runs on the evidence floor.) |
+| REQ-128 | The system shall provide a process-level benchmark harness that drives the shipping binary through typing, table typing, commands, mode toggles, scrolling, undo storms and soak, writing a committed baseline. | COR-45 | Correction | — | — (the 2026-08-10 implementation left the test target unable to compile and wrote a hand-authored performance baseline. Reverted by COR-56; COR-45 re-runs on the evidence floor.) |
+
+## Verification and process integrity
+
+These requirements govern how the repository establishes that a claim is true. They exist because
+six recorded times a proof obligation was discharged by a property of the source text rather than by
+an observed execution; see `ROADMAP.md`, *the evidence floor*.
+
+| ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
+| ---- | -------------------- | ----- | -------- | ---------------- | ------------- |
+| REQ-133 | IF a push would place commits modifying Swift application or test sources onto the default branch, THEN the repository's push policy shall refuse that push. | COR-57 | Planned | — | — |
+| REQ-134 | The repository's push policy shall refuse a push that is not accompanied by a gate receipt recording a passing gate run at the pushed head commit. | COR-57 | Planned | — | — |
+| REQ-135 | The system shall establish trace-vocabulary coverage from the diagnostic records emitted by an executed run, treating a case that is neither emitted nor listed in the reviewed exemption record as a failure. | COR-58 | Planned | — | — |
+| REQ-136 | The system shall derive delivered-increment status from the requirements a plan declares it delivers, admitting that status only when every such requirement is `Done` with its cited proofs observed passing in the same run. | COR-59 | Planned | — | — |
+| REQ-137 | The system shall admit a committed measurement only when it is machine-written and carries resolving host, operating-system, architecture, configuration, corpus-digest, sample-count and commit provenance. | COR-60 | Planned | — | — |
+| REQ-138 | The system shall require, for every `Done` requirement, a recorded mutation of production source that compiles and under which at least one of that requirement's cited proofs fails. | COR-61 / COR-62 | Planned | — | — |
 
 ---
 
@@ -244,4 +259,9 @@ how delivered behavior is verified. Current architecture is in
 table creation/structural controls, image sizing syntax, transcoding, metadata stripping, remote
 images, automatic asset cleanup, and asset-aware Save Copy.
 
-*Next free IDs: REQ-008 (A), REQ-023 (C), REQ-033 (D), REQ-129, REQ-130.*
+*Next free IDs: REQ-008 (A), REQ-023 (C), REQ-033 (D), REQ-139.*
+
+*Reserved by approved, unimplemented plans — do not reassign:* REQ-129 (COR-51 accessibility
+semantics), REQ-130 and REQ-131 (COR-53 macOS citizenship), REQ-132 (COR-54 fuzzing and real
+corpora). These numbers were advertised as free on 2026-08-10 because the plans reserving them
+had been deleted; the plans are restored and the numbers are not available.

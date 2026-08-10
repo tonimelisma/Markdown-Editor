@@ -46,7 +46,12 @@ There is no ADR system and no documentation archive.
 - Do not retain obsolete guidance behind “superseded”, “corrected by”, “historical”, or warning
   banners.
 - Implemented plans are deleted in the implementing change. Multiple approved pending plans may
-  coexist.
+  coexist. **Deletion is a consequence of delivery, never evidence of it.** A plan's absence proves
+  nothing about whether anything was built; only its requirements being `Done` on proofs observed
+  passing does. On 2026-08-10 ten increments were marked delivered by reading the arrow backwards —
+  ten commits containing one comment line each deleted their plans, and a reconcile commit inferred
+  delivery from the missing files. Restoring a plan from Git is the correct response to discovering
+  it was deleted without being built.
 - Research may remain when facts are still valid, useful, and expensive to reproduce. Each
   research file states evidence-only authority, first-researched/last-verified dates, environment,
   reproducible method, and refresh triggers.
@@ -212,6 +217,39 @@ was discharged by a property of the artifact — a command *reports* enabled, a 
 the enumeration is the proof, and adding a member of the class must fail the build until its
 behaviour is declared.
 
+### A gate that reads text is satisfied by text
+
+The three rules above each fixed an instance. On 2026-08-10 the same pattern arrived three more
+times in one day, and the common mechanism finally became legible: **every gate in this repository
+asked a question about source text, and source text is the cheapest thing to produce.** Each gate was
+quietly teaching the shape of its own defeat.
+
+- `check-instrumentation-coverage.sh` asked whether a `record` call *appears in source*. It was
+  satisfied by `let trace: (any EditorTraceSink)? = nil; trace?.record(...)` — a receiver bound to
+  `nil` in the same scope, so the call can never execute — with a comment naming the script it
+  existed to satisfy. This was the gate's **second** defeat; the first, in July (PR #20), was a
+  same-named unrelated symbol, and it was fixed as an instance rather than as a class.
+- `check-documentation-authority.sh` and `check-proof-results.sh` together asked whether a cited
+  proof *exists* and *passes*. Both are perfectly satisfied by `#expect(Bool(true))`. Three of six
+  proofs cited by new `Done` rows were literal tautologies.
+- The increment lifecycle asked whether a plan file was *absent*. It was satisfied by deleting it.
+
+The rule, which supersedes nothing above but sits underneath all of it:
+
+> **A proof obligation is discharged by an observed execution, never by a property of the source
+> text.** Coverage means a run emitted the record. Delivery means a requirement is `Done` on proofs
+> that executed. Discrimination means a recorded, compiling mutation of production source turns a
+> cited proof red.
+
+The last clause is the operative one, because it is the only mechanical difference between a real
+proof and a tautology: *under what change to production code does this test fail?* If the answer is
+"none", it proves nothing. Every `Done` requirement therefore carries a recorded falsifying mutation
+(REQ-138), and a requirement whose proofs cannot be made to fail cannot be `Done`.
+
+When a gate is found defeated, replace the question it asks — do not add a second gate beside it.
+Two gates where one is known-defeatable is the "individually sound and jointly blind" shape §6
+already records as the cause of COR-25 and four silently refusing commands.
+
 ### Proofs must assert the thing the requirement is about
 
 A proof asserting a model value or an attribute value does not discharge a requirement about
@@ -225,7 +263,17 @@ layout remains a component test.
 ## 5. Git workflow
 
 - Docs-only and project-config changes commit directly to `main`; no branch, worktree, or PR.
-- Swift application/test changes use a worktree, branch, PR, and squash merge.
+- Swift application/test changes use a worktree, branch, PR, and squash merge. **This is enforced,
+  not merely expected.** `Scripts/hooks/pre-push` (enabled by `Scripts/install-hooks.sh`, which sets
+  `core.hooksPath`) refuses a push that carries Swift changes to `main`, and refuses any push without
+  a gate receipt recording a passing run at the pushed head. Run the installer in every clone. On
+  2026-08-10, twelve Swift-bearing commits reached `main` with no branch, no PR and no gate run,
+  because this rule had only ever been enforced by intent. `--no-verify` still bypasses the hook and
+  a fresh clone is unprotected until the installer runs; server-side branch protection needs GitHub
+  Pro or a public repository and is an open decision recorded in ROADMAP.
+- Never mark work delivered that you have not observed pass. If an increment cannot be completed,
+  leave its row ⚪ and its plan in place; a stub commit is not a delivery and must not be committed
+  as one.
 - Branch names: `inc-NN-slug`, `cor-NN-slug`, or `fix-slug`.
 - Reconcile specs before opening the PR so code and current truth are reviewed together.
 - Never destroy work. Resolve ownership and merged/obsolete status before cleanup.
@@ -302,7 +350,12 @@ Report ✅, ❌, or ➖ for:
 - User corrections propagated to durable current docs
 - Every `Done` requirement's cited proof observed passing in this run
 - Liveness proofs present for every user-invocable action touched
-- Gate scripts rehearsed failing before being trusted
+- Falsifying mutation recorded for every requirement moved to `Done`, and observed turning a cited
+  proof red
+- Gate scripts rehearsed failing before being trusted — and, where a gate was found defeated,
+  rehearsed against the artifact that defeated it
+- Every ROADMAP status change derived from requirements, never asserted
+- Build actually compiles, tests actually ran: report the gate output, not the intention
 - Code-smell/quality analysis reported
 
 Any ❌ means the task is not complete and must be explained plainly.

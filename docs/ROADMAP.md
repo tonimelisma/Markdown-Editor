@@ -231,7 +231,97 @@ COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-clo
 3. ✅ **COR-42 — Extract ParseCoordinator from EditorSession.** `EditorSession` 746 → ~540 lines; `LatestParseScheduler` + `Task` + `operationGeneration` + 200-line `scheduleParse` moved to new `ParseCoordinator` (scheduler + generation + detached pipeline). `EditorSession` keeps `@Published` presentation/mode and delegates via `parseCoordinator`. Visibilities: `presentation`/`resolvedImages`/`authoritativeTree` internal for single external writer, `snapshotIDs`/`performanceSampler` internal, `installPresentation` internal. Build SUCCEEDED, fast-check 368/0 PASS.
 4. ✅ **COR-43 — Split SemanticEditEngine by planning domain.** `SemanticEditEngine` 1291 → 591 lines router; `SourcePlanningDomain` (153) owns `applySource`, `WYSIWYGPlanningDomain` (576) owns `applyWYSIWYG`/`applyTableCellTyping`/`tablePresentationEdit` + 8 helpers. Engine retains shared helpers as internal and delegates via domains. Build SUCCEEDED, fast-check 368/0 PASS.
 
+## Active: the evidence floor
+
+On 2026-08-10, twelve commits landed directly on `main` — no branch, no worktree, no pull request,
+no review, contrary to §5, which has required all four since this repository was created. Ten of
+them contain no implementation at all: COR-46 through COR-55 are one comment line each
+(`// COR-48: parse scope stub - bounded block reparse would be here`) plus the deletion of their
+approved plan. A reconcile commit then read the plans' absence as evidence of delivery and promoted
+all ten ROADMAP rows to ✅. COR-44 and COR-45 did land code, but the parts discharging their
+requirements were not real: statically dead trace call sites written to satisfy the coverage script,
+five empty `WorkScope` closures in an uncalled `private` method, three cited proofs that are
+`#expect(Bool(true))`, a fabricated performance baseline, and a duplicated file that left the **test
+target unable to compile** — `Scripts/fast-check.sh` reporting `FAILED (2 steps)`, `tests: 0 passed,
+0 failed`, while the application target still built green.
+
+Every gate the repository owns passed. `documentation-authority: PASS`.
+`instrumentation-coverage: PASS`. Only `check-proof-results.sh` failed, and only because it fails
+closed on a stale bundle — it was never run.
+
+**The systemic finding governs the ordering of this programme and supersedes the ordering rationale
+of the one below.** The table in that section records three occasions on which a proof obligation was
+discharged by a property of the artifact rather than by the behaviour the requirement is about. There
+are now six, and the three new ones share a mechanism the first three only hinted at:
+
+| | Contract | What was checked | What was missed |
+| --- | --- | --- | --- |
+| COR-26 | REQ-058, commands available in both modes | a command reports `enabled` | that it *performs* |
+| COR-35 | a `Done` row cites a proof | the proof *exists* | that it *passes* |
+| COR-45 | REQ-090, p95 under 8 ms on the approved corpus | a p95 *is measured* | that the corpus is a *document* |
+| COR-58 | every trace case has a production call site | a `record` call *appears in source* | that it can *execute* |
+| COR-61 | a cited proof discriminates its invariant | the proof *passes* | that it *can fail* |
+| COR-59 | an increment is delivered | its plan file is *absent* | that anything was *built* |
+
+Six instances of one pattern is one unfixed design, not six bugs. **Every gate in this repository
+asks a question about text, and text is the cheapest thing to produce.** Each gate has been silently
+teaching the shape of its own defeat. The instrumentation-coverage script has now been defeated
+twice by two different mechanisms — once in July by a same-named unrelated symbol (PR #20), once in
+August by a `nil`-bound receiver — because the first defeat was fixed as an instance and never as a
+class, which is exactly the failure §6 exists to prevent.
+
+The correction is a single principle, and it is why this programme is expensive: **every proof
+obligation must be discharged by an observed execution, never by a property of the source text.**
+
+Delivery order, and why it is this order:
+
+1. ⚪ **COR-56 — Restore the record.** ([plan](plans/COR-56-restore-the-record.md)) Revert the ten
+   stub commits and COR-44/45, restore a compiling test target, and leave REQ-123..128 standing as
+   `Correction` rather than deleting them, since their IDs are cited by the restored plans and
+   `CLAUDE.md` §4 never reuses an ID. The twelve deleted plans are already restored to
+   `docs/plans/`. First, because every later increment reasons about a `main` that currently
+   reports work it did not do.
+2. ⚪ **COR-57 — Enforcement floor.** ([plan](plans/COR-57-enforcement-floor.md)) A tracked
+   `pre-push` hook via `core.hooksPath`, a push policy that refuses Swift changes going straight to
+   the default branch, and gate receipts binding a green run to the SHA it ran against. Second,
+   because it is hours of work and it would have refused all twelve commits. **Open decision:**
+   server-side branch protection needs GitHub Pro or a public repository — the free private plan
+   returns `403` — so the hook is enforcement by default, bypassable with `--no-verify` and
+   per-clone. The server-side choice is deliberately unresolved, not overlooked.
+3. ⚪ **COR-58 — Coverage by observed emission.** ([plan](plans/COR-58-observed-emission-coverage.md))
+   Delete the substring scan; require every `EditorTraceEvent` case to appear in the JSON Lines
+   output of a real run, with a small reviewed exemption list that must shrink. Third, because it is
+   the gate defeated twice and the cheapest of the four to make honest.
+4. ⚪ **COR-59 — Delivery status is derived, not written.**
+   ([plan](plans/COR-59-derived-delivery-status.md)) Plans and ROADMAP rows declare `Delivers:`; a ✅
+   must resolve to requirements that are `Done` and observed passing; a plan may only be deleted when
+   its delivered set is proven in the same run. Makes the 2026-08-10 promotion unrepresentable rather
+   than merely discouraged.
+5. ⚪ **COR-60 — Measurements carry their provenance.**
+   ([plan](plans/COR-60-measurement-provenance.md)) Baselines are machine-written with host, OS,
+   arch, configuration, corpus digest, sample counts and commit SHA; no committed measurement may
+   contain an unexpanded `$(`; `--check` re-runs and compares, so invented numbers are contradicted
+   by the first honest run instead of becoming the reference.
+6. ⚪ **COR-61 — Every promise has a recorded way to break it.**
+   ([plan](plans/COR-61-falsification-manifest.md)) A `Falsification/REQ-###.json` per `Done`
+   requirement declaring a plausible defect under which its cited proofs must go red; the gate
+   applies it, builds, runs only those proofs, requires failure, reverts. This is what makes a
+   tautological proof structurally impossible to keep. Largest increment in the programme; `--all`
+   costs 1.5–3.5 hours and never enters the inner loop.
+7. ⚪ **COR-62 — Audit the proof floor.** ([plan](plans/COR-62-proof-floor-audit.md)) All 100 `Done`
+   rows re-verified against the new gates, hardest-consequence first. Expected to produce a
+   substantial `Correction` backlog — that is the deliverable, not the failure mode. Records
+   findings; fixes nothing it finds.
+
+Only after COR-62 does the performance programme below resume, because until then no measurement it
+produces is falsifiable.
+
 ## Active: measure, then make it fast, native, and reachable
+
+**Status, corrected 2026-08-10:** every increment in this section is ⚪. The ✅ markers recorded
+against COR-44..COR-55 on 2026-08-10 were false; see *the evidence floor* above. The plans are
+restored and unchanged — nothing in the analysis below was invalidated, only the claim that it had
+been acted on.
 
 The August whole-application review read every increment merged that month against `VISION.md`,
 `ENGINEERING.md` and `REQUIREMENTS.md`, and against the behaviour of the built application over
@@ -263,41 +353,49 @@ no performance change in this programme is falsifiable.
 
 Delivery order, and why it is this order:
 
-1. ✅ **COR-44 — Measurement substrate.** A work ledger counting parses, builds, oracle passes, attributed characters, image decodes, bytes read and main-thread blocked time per unit of user intent; a main-actor responsiveness histogram beside the one-second hang watchdog; frame-hitch statistics; and memory footprint. First, because it is the instrument every later increment is judged by.
-2. ✅ **COR-45 — Honest corpora and the in-app benchmark harness.** A closed `PerformanceCorpus` enumeration whose shapes
+1. ⚪ **COR-44 — Measurement substrate.** ([plan](plans/COR-44-measurement-substrate.md)) A work ledger counting parses, builds, oracle passes, attributed characters, image decodes, bytes read and main-thread blocked time per unit of user intent; a main-actor responsiveness histogram beside the one-second hang watchdog; frame-hitch statistics; and memory footprint. First, because it is the instrument every later increment is judged by.
+2. ⚪ **COR-45 — Honest corpora and the in-app benchmark harness.**
+   ([plan](plans/COR-45-benchmark-harness.md)) A closed `PerformanceCorpus` enumeration whose shapes
    assert their own structure, and a `--benchmark` mode that drives the shipping binary through typing,
    table typing, commands, mode toggles, scrolling, undo storms and a soak, writing a committed
    baseline. Expected to **fail** REQ-090 on landing; that failure is the reproduction.
-3. ✅ **COR-46 — One document build per keystroke.** One inserted character currently builds the
+3. ⚪ **COR-46 — One document build per keystroke.**
+   ([plan](plans/COR-46-single-build-per-keystroke.md)) One inserted character currently builds the
    whole document two to four times and validates the same immutable snapshot twice. Pure
    de-duplication, no architecture change — bankable immediately.
-4. ✅ **COR-47 — Image identity, sampled digest, and Retina decode.** The display cache keys on a content digest, so
+4. ⚪ **COR-47 — Image identity, sampled digest, and Retina decode.**
+   ([plan](plans/COR-47-image-identity-and-decode.md)) The display cache keys on a content digest, so
    the expensive work is a *precondition* of the lookup and the cache prevents nothing: every
    referenced image is re-mapped, re-hashed and re-decoded on every reconciliation while the user
    types. Stat identity gates the read; images decode at the backing scale instead of 512 px.
-5. ✅ **COR-48 — Remove the whole-document parse from the keystroke path.** The real fix. Opens with a POC comparing "trust the
+5. ⚪ **COR-48 — Remove the whole-document parse from the keystroke path.**
+   ([plan](plans/COR-48-keystroke-parse-scope.md)) The real fix. Opens with a POC comparing "trust the
    encoder, verify offline" against "bounded block reparse", with a decision table that selects a
    branch mechanically. `ARC-005` does not move; the synchronous work gets small, it does not become
    asynchronous.
-6. ✅ **COR-49 — Source-mode performance parity.** Source
+6. ⚪ **COR-49 — Source-mode performance parity.** ([plan](plans/COR-49-source-mode-parity.md)) Source
    mode restyles the whole document on the main actor 120 ms after every keystroke, with no metric, no
    budget and no test. Two genuine editors; one instrumented to the millisecond, one not at all.
-7. ✅ **COR-50 — Semantic bullets.** WYSIWYG renders the
+7. ⚪ **COR-50 — Semantic bullets.** ([plan](plans/COR-50-semantic-bullets.md)) WYSIWYG renders the
    literal source marker, so one semantic list renders three ways depending on whether the author typed
    `-`, `*` or `+`. `**bold**` hides its delimiters; `- item` does not.
-8. ✅ **COR-51 — Accessibility semantics and an AX audit harness.** Six of nine WYSIWYG constructs convey meaning by
+8. ⚪ **COR-51 — Accessibility semantics and an AX audit harness.**
+   ([plan](plans/COR-51-accessibility-semantics.md)) Six of nine WYSIWYG constructs convey meaning by
    font, colour and indentation alone. A VoiceOver user cannot navigate by heading. REQ-032 is `Done`
    on a proof covering one construct.
-9. ✅ **COR-52 — Visual and layout verification loop.** Dark appearance and Source mode have never been
+9. ⚪ **COR-52 — Visual and layout verification loop.**
+   ([plan](plans/COR-52-visual-verification-loop.md)) Dark appearance and Source mode have never been
    visually reviewed. Adds diffable layout goldens as the gate and extends ARC-Q13's single capture to
    a declared passive matrix.
-10. ✅ **COR-53 — macOS citizenship.** Window frame memory
+10. ⚪ **COR-53 — macOS citizenship.** ([plan](plans/COR-53-macos-citizenship.md)) Window frame memory
     and cascading, Print, heading and block shortcuts, Return continuing a list, a toolbar that fits
     the app's own default window, an Insert menu, and ⌘K with no selection.
-11. ✅ **COR-54 — Correctness fuzzing and real-world corpora.** Every fixture in the repository is hand-written.
+11. ⚪ **COR-54 — Correctness fuzzing and real-world corpora.**
+    ([plan](plans/COR-54-fuzzing-and-real-corpora.md)) Every fixture in the repository is hand-written.
     Adds the CommonMark and GFM specifications' own example sets, a coordinate round-trip property, edit
     and undo fuzzing, and a differential check against the pinned parser's own renderer.
-12. ✅ **COR-55 — Correctness and hygiene sweep.** Two crash paths COR-41 missed, a silent paste
+12. ⚪ **COR-55 — Correctness and hygiene sweep.**
+    ([plan](plans/COR-55-correctness-and-hygiene.md)) Two crash paths COR-41 missed, a silent paste
     failure with no diagnostic, a layout metric dominated by caret blinks, a duplicated IME commit, and
     the `MarkdownTheme` compatibility facade `ENGINEERING.md` §15 forbids.
 
