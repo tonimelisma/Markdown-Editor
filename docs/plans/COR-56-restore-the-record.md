@@ -3,6 +3,14 @@
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-123, REQ-124, REQ-125, REQ-126, REQ-127, REQ-128 (all `Correction`; COR-44/45 clear them when they re-run)
 - **ARC invariants:** ARC-026 unchanged in intent, currently unestablished. No architecture change — this removes production paths that were never real.
+- **Executor:** any agent. Mechanical; every command and every expected outcome is stated below and was rehearsed.
+- **Runs without enforcement — accept this consciously.** COR-57 installs the pre-push hook, but its
+  gate receipt requires a passing `Scripts/fast-check.sh`, and `fast-check.sh` cannot pass until
+  *this* increment repairs the test target. The dependency is real and unavoidable, so COR-56 is the
+  one increment in the programme that runs under the same conditions that produced the defects it
+  cleans up. What compensates: it adds no behaviour, deletes only code that is dead or uncompilable,
+  and its success condition is a **green gate run that anyone can reproduce** — not a judgement call.
+  Do not skip the PR. Do not self-approve.
 
 ## Context
 
@@ -92,17 +100,66 @@ The project uses `fileSystemSynchronizedGroups`, so deleting a file removes it f
 no `project.pbxproj` edit. That mechanism is also how the duplicated `PerformanceCorpus.swift`
 joined the test target and broke the build without anyone adding it.
 
-### 3. Reconcile the documentation conflicts by hand
+### 3. Resolve the documentation conflicts — exact commands
 
-The mechanical revert will fight the documentation increment. Resolve as follows, and do not accept
-the mechanical result for any of these files:
+Steps 1 and 2 above were rehearsed against `7da1dfb` in a throwaway worktree, so what follows is
+observed behaviour, not expectation.
 
-| File | Resolution |
+**Step 1 applies cleanly with no conflict.** Git recognises that the plan files the ten stub commits
+deleted are already present at HEAD with identical content, so re-adding them is a no-op. Only nine
+Swift files change (ten stubs, because `AttributedPresentationBuilder.swift` received two).
+
+**Step 2 conflicts, every time, on three documentation files.** `git revert` of `4803d25` conflicts
+on `ROADMAP.md` and `REQUIREMENTS.md`; `b241f9d` then conflicts on those two plus `ENGINEERING.md`.
+In all five cases the resolution is the same and it is **`--ours`**:
+
+```bash
+git revert --no-commit 4803d25
+git checkout --ours docs/REQUIREMENTS.md docs/ROADMAP.md
+git add docs/REQUIREMENTS.md docs/ROADMAP.md
+
+git revert --no-commit b241f9d
+git checkout --ours docs/ENGINEERING.md docs/REQUIREMENTS.md docs/ROADMAP.md
+git add docs/ENGINEERING.md docs/REQUIREMENTS.md docs/ROADMAP.md
+```
+
+`--ours` during a revert means **HEAD** — the documentation increment `7da1dfb` — not the commit
+being reverted. This inverts the intuition most people carry from a merge, and getting it backwards
+silently discards the correction. Verify rather than trust the flag:
+
+```bash
+diff <(git show HEAD:docs/ROADMAP.md) docs/ROADMAP.md        # must be empty
+diff <(git show HEAD:docs/REQUIREMENTS.md) docs/REQUIREMENTS.md
+diff <(git show HEAD:docs/ENGINEERING.md) docs/ENGINEERING.md
+```
+
+What each file must end up containing, so the resolution can be checked by reading rather than by
+trusting a command:
+
+| File | Must retain |
 | --- | --- |
-| `docs/ROADMAP.md` | **Keep the working-tree version.** It already carries the ⚪ rows, the restored plan links, and the COR-56..COR-62 programme. |
-| `docs/REQUIREMENTS.md` | **Keep the working-tree version.** REQ-123..128 stay as `Correction` rows — they are approved behaviour that is not built. Do **not** let the revert delete them: `CLAUDE.md` §4 assigns IDs sequentially and never reuses them, and the restored COR-44/45 plans cite these numbers. |
-| `docs/ENGINEERING.md` | Take the revert: the `ARC-026` row is removed. COR-44's restored plan reintroduces it with a proof that discriminates. |
-| `docs/plans/` | **Keep the working tree.** All nineteen plans stay. |
+| `docs/ROADMAP.md` | the ⚪ rows for COR-44..COR-55, their restored plan links, and the *evidence floor* section |
+| `docs/REQUIREMENTS.md` | REQ-123..128 as `Correction` — **the revert wants to delete these rows and must not be allowed to.** `CLAUDE.md` §4 never reuses an ID, and the restored COR-44/45 plans cite these numbers. Also the REQ-133..138 section and the reservation note. |
+| `docs/ENGINEERING.md` | the reserved-identifier table. The `ARC-026` invariant row is **already removed** by `7da1dfb`; an earlier draft of this plan said to take the revert here, which was wrong — doing so deletes the reservation table and re-opens the identifier collision. |
+| `docs/plans/` | all nineteen plans, untouched |
+
+**Expected final file set** (verify with `git status --porcelain`; anything outside this list means
+something went wrong):
+
+- deleted: `BenchmarkDriver.swift`, `PerformanceCorpus.swift`, `WorkLedger.swift`,
+  `FrameObserver.swift`, `MainActorResponsivenessProbe.swift`, `MemoryFootprint.swift` (app target);
+  `PerformanceCorpus.swift`, `PerformanceCorpusTests.swift`, `WorkLedgerTests.swift` (test target);
+  `Scripts/benchmark.sh`;
+- modified: `AttributedPresentationBuilder`, `DiagnosticRecord`, `DiagnosticValue`,
+  `EditorSemanticWorker`, `EditorSession`, `EditorTrace`, `JSONLinesEditorTrace`,
+  `LocalImageDecoder`, `MarkdownDocument`, `MarkdownParser`, `MarkdownProjectionModel`,
+  `ParseCoordinator`, `PerformanceSampler`, `ProjectionCompiler`, `ProjectionOracle`,
+  `SemanticEditEngine`, `SourceEditor`, `TextStorageApplier`, `WYSIWYGEditor`,
+  `WYSIWYGPlanningDomain`, `DiagnosticLogTests`.
+
+**Line references in the other plans survive this increment.** All ten stub comments sit on the last
+line of their file, so removing them shifts nothing above. The `file.swift:NNN` citations in
+COR-46..COR-55 were checked against `7da1dfb` and land on the constructs they describe.
 
 ### 4. Delete the untracked fabricated baseline
 

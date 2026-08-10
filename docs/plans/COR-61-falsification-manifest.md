@@ -3,6 +3,13 @@
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-138 (new, `Planned`); REQ-117, REQ-118 unchanged
 - **ARC invariants:** ARC-027 (completed); ARC-Q22 (new)
+- **Executor:** phases 1 and 3 (the tooling) — any agent. Phase 2 (**authoring mutations**) —
+  **not junior work, and not unattended agent work.** A mutation must be a plausible defect in the
+  direction the requirement forbids; a mutation aimed at a trivial branch satisfies the gate and
+  proves nothing, and *the gate cannot tell the difference*. This is the one place in the programme
+  where the verification system's own quality depends on judgement rather than on a check. Every
+  mutation is reviewed by a second agent against the four questions in COR-62, and the first ~15 are
+  reviewed by the user before the pattern is applied at scale.
 
 ## Context
 

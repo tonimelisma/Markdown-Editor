@@ -3,6 +3,10 @@
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-137 (new, `Planned`); REQ-090, REQ-128 unchanged in intent
 - **ARC invariants:** ARC-027 (strengthened); ARC-Q05 unchanged
+- **Executor:** any agent for §2 (the gate). §1 and §3 touch `Scripts/benchmark.sh`, which does not
+  exist until COR-45 re-runs — land §2 alone if COR-45 has not yet landed, and say so in the PR.
+- **Partially blocked on COR-45.** The gate in §2 stands alone and guards `docs/research/` today.
+  Emission (§1) and comparison (§3) need the harness COR-45 owns.
 
 ## Context
 

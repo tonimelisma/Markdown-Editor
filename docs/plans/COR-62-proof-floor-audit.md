@@ -3,6 +3,12 @@
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-138 (satisfied across the whole corpus); every current `Done` row is in scope
 - **ARC invariants:** every `ARC-###` and `ARC-Q##` re-verified against its named proof
+- **Executor:** **not junior work.** Answering the four questions below is the same judgement that
+  COR-61 phase 2 requires, applied a hundred times. An agent that answers them optimistically
+  reproduces 2026-08-10 with better paperwork — the failure mode here is a green audit, not a red
+  one. Run in batches with user review of each batch's demotions, and treat a batch that demotes
+  nothing as a signal to re-examine the batch, not as good news.
+- **Blocked on COR-61** phases 1–3.
 
 ## Context
 

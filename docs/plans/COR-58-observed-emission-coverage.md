@@ -3,6 +3,10 @@
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-099, REQ-135 (new, `Planned`)
 - **ARC invariants:** ARC-027 (strengthened); ARC-Q10 unchanged
+- **Executor:** any agent. Shell and test authoring; no production behaviour changes.
+- **Scope is discovered, not declared.** Phase 1 runs the new gate and records which cases fail.
+  That list is the increment's real size and is unknown until it is run — it is what the old gate
+  was hiding. If it is large, say so and re-plan with the user rather than quietly exempting.
 
 ## Context
 

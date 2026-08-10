@@ -3,6 +3,11 @@
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-133, REQ-134 (both new, `Planned`)
 - **ARC invariants:** ARC-027 (new; established here in its weakest form and strengthened by COR-58..COR-61)
+- **Executor:** any agent. Shell only, no Swift, no application behaviour.
+- **Blocked on COR-56.** A receipt records `result: pass` only when the gate set passes, and
+  `fast-check.sh` cannot pass while the test target does not compile. Do not attempt to land this
+  first, and do not "temporarily" let the receipt accept a failing run to break the cycle — that
+  inverts the gate into one that certifies red builds, which is worse than having no gate.
 
 ## Context
 
