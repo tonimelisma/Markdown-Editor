@@ -222,23 +222,96 @@ Stage 2 proved the vocabulary change via `AtomicRepresentationKind.normalizedCod
 COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-close that keeps `REQ-007`/`REQ-113` honest for mixed line endings.
 
 1. ✅ **COR-38 — Retire COR-33 stage-1 dry-run and make CRLF encoder per-line.** Stage-1 `canPerformCodeBlock` dry-run with dummy `ID(0)` re-proved via `SemanticEditEngine.plan` what the stage-2 `.normalizedCodeBlock` atomic now guarantees; retired to the default `availability` branch. `MarkdownLiteralEncoder` now carries per-line `originalSource` overload so mixed `LF`/`CRLF` preserves per-line terminators (`CRLFCodeBlockTests.mixedLineEndingsPreserveUntouchedTerminators`); uniform files remain uniform. Helpers `crlfAwareTrimmingNewline()` centralised (4 sites). `REQ-007`/`REQ-113` reconciled.
-2. ✅ **COR-39 — Helpers and typed block-container predicate.** `MarkdownSourceIndex.inclusiveLastByteToExclusiveEnd` is single owner for inclusive→exclusive `+1` (ARC-007); `AttributedPresentationBuilder.isQuoteBlock(_:)` is typed predicate for `textBlocks` (was `backgroundColor == nil`); `REQ-118` `EXEMPT` now declared in `REQUIREMENTS.md` (spec is source of truth, script reads it, fallback warns). No `hasSuffix("\r\n")` duplication remains; no hard-coded EXEMPT source of truth.
+2. ✅ **COR-39 — Helpers and single-owner inclusive→exclusive conversion.** `MarkdownSourceIndex.inclusiveLastByteToExclusiveEnd` is single owner for the inclusive→exclusive `+1` (ARC-007); `REQ-118` `EXEMPT` is declared in `REQUIREMENTS.md` (spec is source of truth, script reads it, fallback warns). No `hasSuffix("\r\n")` duplication remains; no hard-coded EXEMPT source of truth. **Correction, recorded 2026-08-09:** this increment also claimed `AttributedPresentationBuilder.isQuoteBlock(_:)` was a *typed* predicate for `textBlocks`. It is not — the implementation is still `block.backgroundColor == nil` behind a function name, which a third container kind would collide with. Naming a predicate is not typing it. COR-55 introduces `QuoteTextBlock`/`CodeTextBlock` and makes the claim true.
 
-### Active: scope ARC-009 to content — semantic block identification is total
+### Delivered: block identification, hygiene, and decomposition
 
 1. ✅ **COR-40 — Scope ARC-009 to content mutation; block identification is total for semantic commands.** `ARC-009` now scoped: content mutation (`insertText`/`deleteBackward`/`replaceTableCell`) refuses atomically; `reshapesWholeLine` rewrites identify enclosing `PresentationBlock` by `caretLocation ∈ projectionRange` (total for caret in `renderedString`; `tableCell` stays exact via classifier). `PresentationSnapshot.enclosingBlock(at:)` / `MarkdownProjectionModel.enclosingBlock(at:)` are the single owners. `SemanticBlockIdentificationTests` proves totality at `0`/end and `tableCellStillRequiresExact`; `CommandLivenessMatrixTests` stays green (rehearsed failing via exact gate). Displaced path `guard case .identityText = classification` for `reshapesWholeLine` deleted in same build. `DISC-01` closed.
+2. ✅ **COR-41 — Triage hygiene: remove hidden crash, boolean trap, and untestable geometry.** No new REQ, no ARC change — `MarkdownHighlighter` `try!` → checked `preconditionFailure`, `WYSIWYGEditor.applyProjectionIfNeeded(force:)` → `ApplyReason` enum, `installPerTextKitParagraph` → `ParagraphStyleInstaller.styles(for:range:text:)`. Proved by existing `ParagraphGeometryTests` at narrow/default/wide widths plus build. Displaced paths `try!` and `force: Bool` deleted; `ParagraphStyleInstaller` is single owner for per-paragraph style. The sweep was not exhaustive: the August review found a force-unwrapped weak document in `ParseCoordinator` and two force-unwrapped UTF-16 alignments in `MarkdownSourceIndex` still present, both scheduled in COR-55.
+3. ✅ **COR-42 — Extract ParseCoordinator from EditorSession.** `EditorSession` 746 → ~540 lines; `LatestParseScheduler` + `Task` + `operationGeneration` + 200-line `scheduleParse` moved to new `ParseCoordinator` (scheduler + generation + detached pipeline). `EditorSession` keeps `@Published` presentation/mode and delegates via `parseCoordinator`. Visibilities: `presentation`/`resolvedImages`/`authoritativeTree` internal for single external writer, `snapshotIDs`/`performanceSampler` internal, `installPresentation` internal. Build SUCCEEDED, fast-check 368/0 PASS.
+4. ✅ **COR-43 — Split SemanticEditEngine by planning domain.** `SemanticEditEngine` 1291 → 591 lines router; `SourcePlanningDomain` (153) owns `applySource`, `WYSIWYGPlanningDomain` (576) owns `applyWYSIWYG`/`applyTableCellTyping`/`tablePresentationEdit` + 8 helpers. Engine retains shared helpers as internal and delegates via domains. Build SUCCEEDED, fast-check 368/0 PASS.
 
-### Active: triage hygiene
+## Active: measure, then make it fast, native, and reachable
 
-1. ✅ **COR-41 — Triage hygiene: remove hidden crash, boolean trap, and untestable geometry.** No new REQ, no ARC change — `MarkdownHighlighter` `try!` → checked `preconditionFailure`, `WYSIWYGEditor.applyProjectionIfNeeded(force:)` → `ApplyReason` enum, `installPerTextKitParagraph` → `ParagraphStyleInstaller.styles(for:range:text:)`. Proved by existing `ParagraphGeometryTests` at narrow/default/wide widths plus build. Displaced paths `try!` and `force: Bool` deleted; `ParagraphStyleInstaller` is single owner for per-paragraph style.
+The August whole-application review read every increment merged that month against `VISION.md`,
+`ENGINEERING.md` and `REQUIREMENTS.md`, and against the behaviour of the built application over
+`Scripts/Fixtures/smoke-rich.md`. It found the ownership model, the refusal discipline and the
+diagnostic plumbing sound. It also found four things a green 368-test suite with every gate passing
+could not see.
 
-### Active: session decomposition
+**The systemic finding governs the ordering.** Three times now a proof obligation has been discharged
+by a property of the artifact rather than by the behaviour the requirement is about:
 
-1. ✅ **COR-42 — Extract ParseCoordinator from EditorSession.** `EditorSession` 746 → ~540 lines; `LatestParseScheduler` + `Task` + `operationGeneration` + 200-line `scheduleParse` moved to new `ParseCoordinator` (scheduler + generation + detached pipeline). `EditorSession` keeps `@Published` presentation/mode and delegates via `parseCoordinator`. Visibilities: `presentation`/`resolvedImages`/`authoritativeTree` internal for single external writer, `snapshotIDs`/`performanceSampler` internal, `installPresentation` internal. Build SUCCEEDED, fast-check 368/0 PASS.
+| | Contract | What was checked | What was missed |
+| --- | --- | --- | --- |
+| COR-26 | REQ-058, commands available in both modes | a command reports `enabled` | that it *performs* |
+| COR-35 | a `Done` row cites a proof | the proof *exists* | that it *passes* |
+| now | REQ-090, p95 under 8 ms on the approved corpus | a p95 *is measured* | that the corpus is a *document* |
 
-### Active: semantic engine split
+`nativeInputCallbackP95Under8ms` measures `String(repeating: "word ", count: 20_000)` — 100,000 UTF-16
+units with no newline, no heading, no list, no table, producing exactly one projection block and one
+run. Meanwhile `parseIndexProjectionP95Under100msAt100k`, on a structured corpus of the same size,
+measures the same parse-and-project work at 13.9 ms — and `SemanticEditEngine.plan` performs that work
+synchronously inside every insertion, with the main thread blocked on `EditorSemanticWorker.sync`'s
+semaphore, under cmark's process-wide mutex. The 8 ms budget passes because the corpus is
+structurally degenerate.
 
-1. ✅ **COR-43 — Split SemanticEditEngine by planning domain.** `SemanticEditEngine` 1291 → 591 lines router; `SourcePlanningDomain` (153) owns `applySource`, `WYSIWYGPlanningDomain` (576) owns `applyWYSIWYG`/`applyTableCellTyping`/`tablePresentationEdit` + 8 helpers. Engine retains shared helpers as internal and delegates via domains. Build SUCCEEDED, fast-check 368/0 PASS.
+Nothing in the application counts work, which is why the other findings were equally invisible:
+duration metrics cannot distinguish "this document is large" from "this keystroke parsed it four
+times". **Measurement therefore comes first.** Until the instruments exist and the corpora are honest,
+no performance change in this programme is falsifiable.
+
+Delivery order, and why it is this order:
+
+1. ⚪ **COR-44 — Measurement substrate.** ([plan](plans/COR-44-measurement-substrate.md)) A work
+   ledger counting parses, builds, oracle passes, attributed characters, image decodes, bytes read and
+   main-thread blocked time per unit of user intent; a main-actor responsiveness histogram beside the
+   one-second hang watchdog; frame-hitch statistics; and memory footprint. First, because it is the
+   instrument every later increment is judged by.
+2. ⚪ **COR-45 — Honest corpora and the in-app benchmark harness.**
+   ([plan](plans/COR-45-benchmark-harness.md)) A closed `PerformanceCorpus` enumeration whose shapes
+   assert their own structure, and a `--benchmark` mode that drives the shipping binary through typing,
+   table typing, commands, mode toggles, scrolling, undo storms and a soak, writing a committed
+   baseline. Expected to **fail** REQ-090 on landing; that failure is the reproduction.
+3. ⚪ **COR-46 — One document build per keystroke.**
+   ([plan](plans/COR-46-single-build-per-keystroke.md)) One inserted character currently builds the
+   whole document two to four times and validates the same immutable snapshot twice. Pure
+   de-duplication, no architecture change — bankable immediately.
+4. ⚪ **COR-47 — Image identity, sampled digest, and Retina decode.**
+   ([plan](plans/COR-47-image-identity-and-decode.md)) The display cache keys on a content digest, so
+   the expensive work is a *precondition* of the lookup and the cache prevents nothing: every
+   referenced image is re-mapped, re-hashed and re-decoded on every reconciliation while the user
+   types. Stat identity gates the read; images decode at the backing scale instead of 512 px.
+5. ⚪ **COR-48 — Remove the whole-document parse from the keystroke path.**
+   ([plan](plans/COR-48-keystroke-parse-scope.md)) The real fix. Opens with a POC comparing "trust the
+   encoder, verify offline" against "bounded block reparse", with a decision table that selects a
+   branch mechanically. `ARC-005` does not move; the synchronous work gets small, it does not become
+   asynchronous.
+6. ⚪ **COR-49 — Source-mode performance parity.** ([plan](plans/COR-49-source-mode-parity.md)) Source
+   mode restyles the whole document on the main actor 120 ms after every keystroke, with no metric, no
+   budget and no test. Two genuine editors; one instrumented to the millisecond, one not at all.
+7. ⚪ **COR-50 — Semantic bullets.** ([plan](plans/COR-50-semantic-bullets.md)) WYSIWYG renders the
+   literal source marker, so one semantic list renders three ways depending on whether the author typed
+   `-`, `*` or `+`. `**bold**` hides its delimiters; `- item` does not.
+8. ⚪ **COR-51 — Accessibility semantics and an AX audit harness.**
+   ([plan](plans/COR-51-accessibility-semantics.md)) Six of nine WYSIWYG constructs convey meaning by
+   font, colour and indentation alone. A VoiceOver user cannot navigate by heading. REQ-032 is `Done`
+   on a proof covering one construct.
+9. ⚪ **COR-52 — Visual and layout verification loop.**
+   ([plan](plans/COR-52-visual-verification-loop.md)) Dark appearance and Source mode have never been
+   visually reviewed. Adds diffable layout goldens as the gate and extends ARC-Q13's single capture to
+   a declared passive matrix.
+10. ⚪ **COR-53 — macOS citizenship.** ([plan](plans/COR-53-macos-citizenship.md)) Window frame memory
+    and cascading, Print, heading and block shortcuts, Return continuing a list, a toolbar that fits
+    the app's own default window, an Insert menu, and ⌘K with no selection.
+11. ⚪ **COR-54 — Correctness fuzzing and real-world corpora.**
+    ([plan](plans/COR-54-fuzzing-and-real-corpora.md)) Every fixture in the repository is hand-written.
+    Adds the CommonMark and GFM specifications' own example sets, a coordinate round-trip property, edit
+    and undo fuzzing, and a differential check against the pinned parser's own renderer.
+12. ⚪ **COR-55 — Correctness and hygiene sweep.**
+    ([plan](plans/COR-55-correctness-and-hygiene.md)) Two crash paths COR-41 missed, a silent paste
+    failure with no diagnostic, a layout metric dominated by caret blinks, a duplicated IME commit, and
+    the `MarkdownTheme` compatibility facade `ENGINEERING.md` §15 forbids.
 
 ## Post-MVP backlog
 

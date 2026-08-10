@@ -89,6 +89,23 @@ There is no ADR system and no documentation archive.
 Discovery and build never mix. Spike code is throwaway and is never merged. If implementation
 contradicts ENGINEERING, stop the build and return to a separately approved discovery unit.
 
+### Embedded discovery
+
+A build unit may open with a **Stage 0 POC** when the approved plan states, *before execution*: the
+exact probes, a decision table mapping every plausible outcome to a branch, and the full content of
+every branch. The unit then runs without stopping to ask: it executes the probes, applies the
+decision table mechanically, writes the findings to `docs/research/`, deletes the POC code, rewrites
+the plan's remaining stages (and any downstream plan the outcome changes) in place, commits that
+rewrite on the branch before any production code, and continues.
+
+The rule being preserved is *no unresearched decision reaches production*, not *research and building
+happen in different weeks*. Two constraints keep it honest:
+
+- A plan whose decision table does not cover an observed outcome **fails the increment** and returns
+  to a separate discovery unit. Every such plan must therefore contain an explicit "no branch
+  applies" row, and taking it is a success of the process rather than a failure of the increment.
+- POC code is still throwaway and is still never merged. Its findings are the deliverable.
+
 ### Architecture change gate
 
 An implementation plan cannot redefine architecture. Changing an `ARC-###` invariant requires:
@@ -176,6 +193,24 @@ asserted availability, window scoping, or refusal.
 - Where the set of actions is closed (`EditorCommand.allCases`, `EditorTraceEvent`), the proof is
   a structural matrix over that set, so a newly added member fails the build until its behavior
   is declared. A hand-written list of examples silently omits the case nobody thought of.
+
+### A proof's inputs are part of the proof
+
+A measurement is evidence only for the input it was measured on. Any requirement that quantifies over
+a class of inputs — "a document", "any command", "every block kind", "either appearance" — is proved
+by a **structural enumeration of that class**, not by one representative the author chose.
+
+REQ-090 promised a p95 under 8 ms "on the approved performance corpus" and was satisfied for months
+by a corpus of `String(repeating: "word ", count: 20_000)`: 100,000 UTF-16 units containing no
+newline, no heading, no list and no table, which cmark parses as a single paragraph and the projection
+compiles into one block and one run. The number was real. It described a document nobody has, while a
+sibling proof measured the same work on structured text at three times the cost.
+
+This is the same shape as the two rules above, one level further out. Each time, a proof obligation
+was discharged by a property of the artifact — a command *reports* enabled, a proof *exists*, a p95
+*is measured* — rather than by the behaviour the requirement is about. When a requirement quantifies,
+the enumeration is the proof, and adding a member of the class must fail the build until its
+behaviour is declared.
 
 ### Proofs must assert the thing the requirement is about
 
