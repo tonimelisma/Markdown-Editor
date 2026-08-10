@@ -589,3 +589,4 @@ nonisolated enum SemanticEditEngine {
         return nil
     }
 }
+// COR-48: parse scope stub - bounded block reparse would be here
