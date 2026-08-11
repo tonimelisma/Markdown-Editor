@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-100",
+  "mutations": [
+    {
+      "rationale": "Inverting the initial-load classification would report an ordinary open as a revert and violate the document lifecycle diagnostic contract.",
+      "file": "Markdown Editor/MarkdownDocument.swift",
+      "find": "if isInitialLoad {",
+      "replace": "if !isInitialLoad {",
+      "expect_red": ["documentLoadThroughURLRecordsNoFailure", "documentLoadFailureIsRecorded"]
+    }
+  ]
+}

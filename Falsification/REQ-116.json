@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-116",
+  "mutations": [
+    {
+      "rationale": "Changing the layout metric's frame-shaped budget makes the declared periodic layout summary contract drift from the approved threshold.",
+      "file": "Markdown Editor/PerformanceSampler.swift",
+      "find": ".layoutApplication: 16_000_000,",
+      "replace": ".layoutApplication: 100_000_000,",
+      "expect_red": ["budgetsMatchTheApprovedRequirementValues"]
+    }
+  ]
+}

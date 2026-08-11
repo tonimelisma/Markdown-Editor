@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-001",
+  "mutations": [
+    {
+      "rationale": "A document type identifier regression would make Markdown documents unavailable to the document controller.",
+      "file": "Markdown Editor/MarkdownDocumentData.swift",
+      "find": "nonisolated static let identifier = \"net.daringfireball.markdown\"",
+      "replace": "nonisolated static let identifier = \"public.plain-text\"",
+      "expect_red": ["markdownUTTypeIdentifier", "readableWritableTypesAreMarkdown"]
+    }
+  ]
+}

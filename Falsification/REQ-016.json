@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-016",
+  "mutations": [
+    {
+      "rationale": "Accepting a mutation only when its expected revision is stale would invert the document transaction guard.",
+      "file": "Markdown Editor/MarkdownDocument.swift",
+      "find": "guard mutation.expectedRevision == sourceVersion else {",
+      "replace": "guard mutation.expectedRevision != sourceVersion else {",
+      "expect_red": ["exactUTF16ReplaceAdvancesVersion", "SourceIntegrityCharacterizationTests"]
+    }
+  ]
+}
