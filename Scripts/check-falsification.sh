@@ -130,6 +130,19 @@ for requirement in sorted(selected):
         target = root / mutation.get("file", "")
         needle = mutation.get("find", "")
         replacement = mutation.get("replace", "")
+        file_value = mutation.get("file", "")
+        if not isinstance(file_value, str) or pathlib.Path(file_value).is_absolute() or ".." in pathlib.Path(file_value).parts:
+            problems.append(f"{label}: target file must be a relative in-repository path")
+            continue
+        if not file_value.startswith("Markdown Editor/"):
+            problems.append(f"{label}: target file must be production source under Markdown Editor/")
+            continue
+        target = (root / file_value).resolve()
+        try:
+            target.relative_to(root.resolve())
+        except ValueError:
+            problems.append(f"{label}: target file escapes repository root")
+            continue
         if not target.is_file():
             problems.append(f"{label}: target file does not exist: {mutation.get('file')}")
         elif target.read_text().count(needle) != 1:
@@ -138,7 +151,7 @@ for requirement in sorted(selected):
             problems.append(f"{label}: replacement is a degenerate kill mutation")
         if replacement.count("\n") - needle.count("\n") > 5 or needle.count("\n") - replacement.count("\n") > 5:
             problems.append(f"{label}: replacement changes more than five lines")
-        if not isinstance(mutation.get("expect_red"), list) or not all(isinstance(item, str) and item for item in mutation["expect_red"]):
+        if not isinstance(mutation.get("expect_red"), list) or not mutation["expect_red"] or not all(isinstance(item, str) and item for item in mutation["expect_red"]):
             problems.append(f"{label}: expect_red must name at least one proof")
 
 for manifest_id in sorted(manifest_ids - done):
