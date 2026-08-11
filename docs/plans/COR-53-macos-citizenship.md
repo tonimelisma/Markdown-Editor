@@ -2,6 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-014 (standard document behaviour — gains Print), REQ-020 (tabs — moves from `inherent` to `test`), REQ-058 and REQ-108 (command surface — extended); new REQ-130 (Return continues and ends a list), REQ-131 (window frame restored, documents cascade)
+- **Delivers:** REQ-130, REQ-131
 - **ARC invariants:** ARC-024 (one window-scoped command model) unchanged and reused — list continuation routes through it rather than becoming a second path. No architecture change.
 
 ## Context

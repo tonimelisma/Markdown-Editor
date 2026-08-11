@@ -12,6 +12,7 @@ documentation_gate=pass
 instrumentation_gate=pass
 tests_gate=pass
 proof_gate=pass
+delivery_gate=pass
 coverage_dir="$derived/instrumentation-coverage"
 test_coverage_dir="${TMPDIR%/}/MarkdownEditorTraceCoverage"
 
@@ -31,6 +32,7 @@ printf '%s\n' '── smoke-log verifier fixtures'
 ./Scripts/test-verify-smoke-log.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 printf '%s\n' '── push-policy fixtures'
 ./Scripts/test-check-push-policy.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
+./Scripts/test-check-delivery-status.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 printf '%s\n' '── complete test suite'
 xcodebuild test \
     -project "Markdown Editor.xcodeproj" \
@@ -59,11 +61,16 @@ if ! ./Scripts/check-proof-results.sh "$bundle"; then
     proof_gate=fail
     failures=$((failures + 1))
 fi
+printf '%s\n' '── derived delivery status'
+if ! ./Scripts/check-delivery-status.sh "$bundle"; then
+    delivery_gate=fail
+    failures=$((failures + 1))
+fi
 
 receipt_result=pass
 (( failures > 0 )) && receipt_result=fail
 if ! ./Scripts/write-gate-receipt.sh full "$receipt_result" \
-    "$documentation_gate" "$instrumentation_gate" "$tests_gate" "$proof_gate"; then
+    "$documentation_gate" "$instrumentation_gate" "$tests_gate" "$proof_gate" "$delivery_gate"; then
     echo "full-check: failed to write .gate-receipt.json" >&2
     failures=$((failures + 1))
 fi

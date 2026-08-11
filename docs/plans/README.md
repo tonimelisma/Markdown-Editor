@@ -8,6 +8,8 @@ Plans implement the current architecture in `../ENGINEERING.md`. They do not red
 plan must name:
 
 - requirements and `ARC-###` invariants;
+- a machine-readable **Delivers:** line naming the requirements this plan is expected to move to
+  `Done`, or `none (refactor; no requirement changes status)`;
 - architecture impact (`none` unless separately researched and approved);
 - exact production files/types/routes to add, modify, and delete;
 - ordered implementation phases;

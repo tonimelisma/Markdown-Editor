@@ -2,6 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-007, REQ-011, REQ-016, REQ-047, REQ-054, REQ-056, REQ-083, REQ-091; new REQ-132 (dialect conformance proved against the named specification's own example set)
+- **Delivers:** REQ-132
 - **ARC invariants:** ARC-007 (exact or refused, never a different exact answer) and ARC-009 (atomic refusal) get their first adversarial proofs. No architecture change.
 
 ## Context

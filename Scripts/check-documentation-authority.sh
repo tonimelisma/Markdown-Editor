@@ -149,39 +149,6 @@ for problem in problems:
 sys.exit(1 if problems else 0)
 FORWARD_EOF
 
-# ── Status consistency (COR-31) ──────────────────────────────────────────────────────────────
-# A Done requirement must not be contradicted by an increment ROADMAP still lists as active, nor
-# by an open-defect section naming it. Before COR-26, REQ-058 was Done while ROADMAP carried a
-# reproduced defect against it and the row itself named the in-flight correction.
-python3 - "$PWD" <<'STATUS_EOF' || failures=$((failures + 1))
-import pathlib, re, sys
-root = pathlib.Path(sys.argv[1])
-roadmap = (root / "docs/ROADMAP.md").read_text()
-rows = [l for l in (root / "docs/REQUIREMENTS.md").read_text().splitlines()
-        if re.match(r"^\| REQ-\d{3} ", l)]
-active = set(re.findall(r"🔵\s*\*\*((?:COR|INC|DISC)-\d+)", roadmap))
-problems = []
-for row in rows:
-    cols = row.split("|")
-    if len(cols) < 7:
-        continue
-    rid, inc, status = cols[1].strip(), cols[3].strip(), cols[4].strip()
-    if status != "Done":
-        continue
-    for increment in re.findall(r"(?:COR|INC|DISC)-\d+", inc):
-        if increment in active:
-            problems.append(f"{rid} is Done but {increment} is still active in ROADMAP")
-if "### Open defect" in roadmap:
-    section = roadmap.split("### Open defect", 1)[1]
-    for rid in set(re.findall(r"REQ-\d{3}", section)):
-        row = next((r for r in rows if r.split("|")[1].strip() == rid), None)
-        if row and row.split("|")[4].strip() == "Done":
-            problems.append(f"{rid} is Done but named in ROADMAP's open-defect section")
-for problem in problems:
-    print(f"documentation-authority: {problem}", file=sys.stderr)
-sys.exit(1 if problems else 0)
-STATUS_EOF
-
 if [[ ! -L AGENTS.md ]] || [[ "$(readlink AGENTS.md)" != "CLAUDE.md" ]]; then
     fail "AGENTS.md must remain a symlink to CLAUDE.md"
 fi

@@ -34,11 +34,11 @@ git -C "$fixture" commit -qm docs
 docs_head="$(git -C "$fixture" rev-parse HEAD)"
 
 write_receipt() {
-    local head="$1" scope="$2" result="$3"
+    local head="$1" scope="$2" result="$3" delivery="${4:-pass}"
     local tree
     tree="$(git -C "$fixture" rev-parse "$head^{tree}")"
-    jq -n --arg head "$head" --arg tree "$tree" --arg scope "$scope" --arg result "$result" \
-        '{head:$head,tree:$tree,scope:$scope,result:$result,gates:{"documentation-authority":"pass","instrumentation-coverage":"pass",tests:"pass","proof-results":"pass"}}' \
+    jq -n --arg head "$head" --arg tree "$tree" --arg scope "$scope" --arg result "$result" --arg delivery "$delivery" \
+        '{head:$head,tree:$tree,scope:$scope,result:$result,gates:{"documentation-authority":"pass","instrumentation-coverage":"pass",tests:"pass","proof-results":"pass","delivery-status":$delivery}}' \
         > "$fixture/.gate-receipt.json"
 }
 expect_refused() { if (cd "$fixture" && "$fixture/Scripts/check-push-policy.sh" "$@") 2>/dev/null; then echo "expected refusal: $*" >&2; exit 1; fi; }
@@ -53,9 +53,11 @@ diagnostic="$(cd "$fixture" && "$fixture/Scripts/check-push-policy.sh" --remote-
 write_receipt "$docs_head" full pass
 expect_allowed --remote-ref refs/heads/main --range "$swift_head..$docs_head"
 write_receipt "$swift_head" fast pass
+expect_refused --remote-ref refs/heads/cor-99-x --range "$base..$swift_head"
+write_receipt "$swift_head" fast pass structural
 expect_allowed --remote-ref refs/heads/cor-99-x --range "$base..$swift_head"
 write_receipt "$swift_head" fast pass
-expect_refused --remote-ref refs/heads/main --range "$base..$swift_head"
+expect_refused --remote-ref refs/heads/cor-99-x --range "$base..$swift_head"
 write_receipt "$base" full pass
 expect_refused --remote-ref refs/heads/cor-99-x --range "$base..$swift_head"
 write_receipt "$swift_head" fast fail
@@ -77,7 +79,7 @@ git -C "$fixture" worktree add -q -b linked "$linked" "$base"
     echo "linked-worktree installer did not set a local hook path" >&2
     exit 1
 }
-write_receipt "$swift_head" fast pass
+write_receipt "$swift_head" fast pass structural
 zero="0000000000000000000000000000000000000000"
 printf 'refs/heads/cor-99-x %s refs/heads/cor-99-x %s\n' "$swift_head" "$zero" |
     (cd "$fixture" && ./Scripts/hooks/pre-push)
@@ -105,7 +107,7 @@ fi
 mutated_receipt="$root/mutated-receipt-policy.sh"
 sed -e 's|\.head == \$head|true|g' -e 's|\.tree == \$tree|true|g' "$policy_source" > "$mutated_receipt"
 chmod +x "$mutated_receipt"
-write_receipt "$base" full pass
+write_receipt "$base" fast pass structural
 if (cd "$fixture" && "$mutated_receipt" --remote-ref refs/heads/cor-99-x --range "$base..$swift_head") >/dev/null 2>&1; then
     echo "falsifying mutation REQ-134: PASS (the mutated policy made the stale-receipt proof go green)"
 else
