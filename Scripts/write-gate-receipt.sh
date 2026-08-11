@@ -2,8 +2,8 @@
 # COR-57: write the one machine-readable receipt consumed by the pre-push policy.
 set -euo pipefail
 
-if [[ $# -ne 7 ]]; then
-    echo "usage: write-gate-receipt.sh <fast|full> <pass|fail> <doc> <instrumentation> <tests> <proof> <delivery>" >&2
+if [[ $# -ne 8 ]]; then
+    echo "usage: write-gate-receipt.sh <fast|full> <pass|fail> <doc> <instrumentation> <tests> <proof> <delivery> <falsification>" >&2
     exit 2
 fi
 
@@ -14,8 +14,9 @@ instrumentation="$4"
 tests="$5"
 proof="$6"
 delivery="$7"
-case "$scope:$result:$doc:$instrumentation:$tests:$proof:$delivery" in
-    fast:pass:pass:pass:pass:pass:structural|fast:fail:*|full:pass:pass:pass:pass:pass:pass|full:fail:pass:pass:pass:pass:pass|full:fail:*) ;;
+falsification="$8"
+case "$scope:$result:$doc:$instrumentation:$tests:$proof:$delivery:$falsification" in
+    fast:pass:pass:pass:pass:pass:structural:pass|fast:fail:*|full:pass:pass:pass:pass:pass:pass:pass|full:fail:pass:pass:pass:pass:pass:pass|full:fail:*) ;;
     *) echo "write-gate-receipt: invalid receipt values" >&2; exit 2 ;;
 esac
 
@@ -41,7 +42,9 @@ jq -n \
     --arg tests "$tests" \
     --arg proof "$proof" \
     --arg delivery "$delivery" \
+    --arg falsification "$falsification" \
     '{head:$head, tree:$tree, ran:$ran, scope:$scope, result:$result,
       gates:{"documentation-authority":$doc, "instrumentation-coverage":$instrumentation,
-             tests:$tests, "proof-results":$proof, "delivery-status":$delivery}}' > "$tmp"
+             tests:$tests, "proof-results":$proof, "delivery-status":$delivery,
+             falsification:$falsification}}' > "$tmp"
 mv "$tmp" "$repo_root/.gate-receipt.json"

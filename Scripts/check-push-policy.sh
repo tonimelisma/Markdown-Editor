@@ -71,9 +71,9 @@ jq -e \
      ((.scope == "fast") or (.scope == "full")) and
      (($required_scope == "fast") or (.scope == "full")) and
      (.gates | type == "object") and
-     (.gates | has("documentation-authority") and has("instrumentation-coverage") and
-               has("tests") and has("proof-results") and has("delivery-status")) and
-     (.gates | ([to_entries[] | select(.key != "delivery-status") | .value] | length == 4 and all(. == "pass"))) and
+    (.gates | has("documentation-authority") and has("instrumentation-coverage") and
+               has("tests") and has("proof-results") and has("delivery-status") and has("falsification")) and
+     (.gates | ([to_entries[] | select(.key != "delivery-status") | .value] | length == 5 and all(. == "pass"))) and
      ((.gates["delivery-status"] == "pass" and $required_scope == "full") or
       (.gates["delivery-status"] == "structural" and $required_scope == "fast"))' \
     "$receipt" >/dev/null 2>&1 || {

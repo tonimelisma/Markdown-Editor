@@ -13,6 +13,7 @@ instrumentation_gate=pass
 tests_gate=pass
 proof_gate=pass
 delivery_gate=pass
+falsification_gate=pass
 coverage_dir="$derived/instrumentation-coverage"
 test_coverage_dir="${TMPDIR%/}/MarkdownEditorTraceCoverage"
 
@@ -36,6 +37,12 @@ printf '%s\n' '── smoke-log verifier fixtures'
 printf '%s\n' '── push-policy fixtures'
 ./Scripts/test-check-push-policy.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 ./Scripts/test-check-delivery-status.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
+printf '%s\n' '── changed-scope falsification'
+falsification_base="${FALSIFICATION_BASE:-$(git merge-base origin/main HEAD 2>/dev/null || git rev-parse HEAD)}"
+./Scripts/check-falsification.sh --changed "$falsification_base..HEAD" || {
+    falsification_gate=fail
+    failures=$((failures + 1))
+}
 printf '%s\n' '── complete test suite'
 xcodebuild test \
     -project "Markdown Editor.xcodeproj" \
@@ -73,7 +80,7 @@ fi
 receipt_result=pass
 (( failures > 0 )) && receipt_result=fail
 if ! ./Scripts/write-gate-receipt.sh full "$receipt_result" \
-    "$documentation_gate" "$instrumentation_gate" "$tests_gate" "$proof_gate" "$delivery_gate"; then
+    "$documentation_gate" "$instrumentation_gate" "$tests_gate" "$proof_gate" "$delivery_gate" "$falsification_gate"; then
     echo "full-check: failed to write .gate-receipt.json" >&2
     failures=$((failures + 1))
 fi
