@@ -289,10 +289,11 @@ Delivery order, and why it is this order:
    server-side branch protection needs GitHub Pro or a public repository — the free private plan
    returns `403` — so the hook is enforcement by default, bypassable with `--no-verify` and
    per-clone. The server-side choice is deliberately unresolved, not overlooked.
-3. ⚪ **COR-58 — Coverage by observed emission.** ([plan](plans/COR-58-observed-emission-coverage.md))
-   Delete the substring scan; require every `EditorTraceEvent` case to appear in the JSON Lines
-   output of a real run, with a small reviewed exemption list that must shrink. Third, because it is
-   the gate defeated twice and the cheapest of the four to make honest.
+3. ✅ **COR-58 — Coverage by observed emission.** *(Delivers: REQ-099, REQ-135)* The substring
+   scan is deleted; `Scripts/check-instrumentation-coverage.sh` requires all 46
+   `EditorTraceEvent` cases in the union of process-smoke and test-run JSON Lines, with a reviewed
+   exemption record. Its fixtures reject missing, empty, unknown, and nil-receiver-only evidence.
+   Third, because it is the gate defeated twice and the cheapest of the four to make honest.
 4. ⚪ **COR-59 — Delivery status is derived, not written.**
    ([plan](plans/COR-59-derived-delivery-status.md)) Plans and ROADMAP rows declare `Delivers:`; a ✅
    must resolve to requirements that are `Done` and observed passing; a plan may only be deleted when

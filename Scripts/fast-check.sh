@@ -6,8 +6,8 @@
 # main-actor contention rather than the edit path. A quality system with a 25-minute inner loop
 # gets run less often than one with a short one.
 #
-# A green fast check is NOT a release gate. It does not run the performance corpus and does not
-# run either process-level smoke verification. The closing sequence in CLAUDE.md §3 is unchanged.
+# A green fast check is NOT a release gate. It does not run the performance corpus. COR-58 adds a
+# bounded process smoke run because observed trace coverage cannot be established from source text.
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,6 +18,11 @@ documentation_gate=pass
 instrumentation_gate=pass
 tests_gate=pass
 proof_gate=pass
+derived="${FAST_CHECK_DERIVED_DATA:-$repo_root/.fast-check-build}"
+coverage_dir="$derived/instrumentation-coverage"
+mkdir -p "$coverage_dir"
+test_coverage_dir="${TMPDIR%/}/MarkdownEditorTraceCoverage"
+rm -rf "$test_coverage_dir"
 step() {
     printf '\n── %s\n' "$1"
 }
@@ -25,8 +30,13 @@ step() {
 step "documentation authority"
 ./Scripts/check-documentation-authority.sh || { documentation_gate=fail; failures=$((failures + 1)); }
 
-step "instrumentation coverage"
-./Scripts/check-instrumentation-coverage.sh || { instrumentation_gate=fail; failures=$((failures + 1)); }
+step "observed instrumentation coverage"
+SMOKE_DERIVED_DATA="$derived/smoke" SMOKE_LOG_COPY_DIR="$coverage_dir/smoke" \
+    ./Scripts/smoke-test.sh >"$coverage_dir/smoke.log" 2>&1 || {
+    instrumentation_gate=fail
+    tests_gate=fail
+    failures=$((failures + 1))
+}
 
 step "smoke-log verifier fixtures"
 ./Scripts/test-verify-smoke-log.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
@@ -37,7 +47,6 @@ step "push-policy fixtures"
 step "non-performance test suites"
 # Excluded on purpose: PerformanceBoundaryTests owns the 100,000-UTF-16 corpus gates, which are
 # the slow part and which REQ-090 requires be run focused rather than alongside everything else.
-derived="${FAST_CHECK_DERIVED_DATA:-$repo_root/.fast-check-build}"
 xcodebuild test \
     -project "Markdown Editor.xcodeproj" \
     -scheme "Markdown Editor" \
@@ -55,6 +64,12 @@ fi
 printf 'tests: %s passed, %s failed\n' \
     "$(grep -acE 'Test case .* passed' "$derived.log")" \
     "$(grep -acE 'Test case .* failed' "$derived.log")"
+
+step "observed instrumentation coverage gate"
+./Scripts/check-instrumentation-coverage.sh \
+    --log-dir "$coverage_dir/smoke" \
+    --log-dir "$test_coverage_dir" || { instrumentation_gate=fail; failures=$((failures + 1)); }
+./Scripts/test-check-instrumentation-coverage.sh || { instrumentation_gate=fail; failures=$((failures + 1)); }
 
 step "proof results"
 # The same suite excluded above is declared to the gate, so its proofs are reported as not proven

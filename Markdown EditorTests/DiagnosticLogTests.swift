@@ -66,6 +66,8 @@ struct DiagnosticLogTests {
         return text.split(separator: "\n").map(String.init)
     }
 
+    // Verifies: REQ-135 — this existing closed mapping matrix is also emitted through the
+    // production JSON-lines sink when the coverage gate requests a test-run artefact.
     // Verifies: REQ-089; ARC-016 — the payload value type has no string case, so document
     // content, URLs, filenames, and paths are unrepresentable rather than merely omitted.
     @Test func diagnosticPayloadHasNoStringCase() {
@@ -87,7 +89,7 @@ struct DiagnosticLogTests {
     // Verifies: REQ-089; ARC-016 — every event name in the vocabulary is reachable from a
     // mapping whose payload fields are numbers, booleans, or closed symbols, and every
     // emitted line survives JSON parsing.
-    @Test func everyTraceEventMapsToSymbolicPayload() {
+    @Test func everyTraceEventMapsToSymbolicPayload() async {
         let events: [EditorTraceEvent] = [
             .mutationRequested(id: UUID(), revision: 1, location: 0, length: 1, replacementLength: 2),
             .mutationCommitted(id: UUID(), newRevision: 2, location: 0, length: 1, replacementLength: 2),
@@ -159,6 +161,22 @@ struct DiagnosticLogTests {
             let decoded = object(record.jsonLine)
             #expect(decoded != nil, "mapped record is not valid JSON: \(record.jsonLine)")
         }
+
+        let requestedPath = ProcessInfo.processInfo.environment["EDITOR_TRACE_COVERAGE_LOG_DIR"]
+        let coveragePath = requestedPath.flatMap { $0.isEmpty ? nil : $0 }
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+                .appendingPathComponent("MarkdownEditorTraceCoverage", isDirectory: true)
+                .path
+        let coverageLog = DiagnosticLog(
+            directory: URL(fileURLWithPath: coveragePath, isDirectory: true),
+            hostKind: .unitTest
+        )
+        let sink = JSONLinesEditorTrace(log: coverageLog)
+        for event in events {
+            sink.record(event)
+        }
+        coverageLog.finish()
+        await coverageLog.drain()
 
         // Produced outside the EditorTraceEvent mapping: the log's own lifecycle events, plus
         // mainActorStall, which the app delegate's watchdog records directly through

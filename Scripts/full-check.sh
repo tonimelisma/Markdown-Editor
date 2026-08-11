@@ -12,12 +12,21 @@ documentation_gate=pass
 instrumentation_gate=pass
 tests_gate=pass
 proof_gate=pass
+coverage_dir="$derived/instrumentation-coverage"
+test_coverage_dir="${TMPDIR%/}/MarkdownEditorTraceCoverage"
 
 mkdir -p "$derived"
+mkdir -p "$coverage_dir"
+rm -rf "$test_coverage_dir"
 printf '%s\n' '── documentation authority'
 ./Scripts/check-documentation-authority.sh || { documentation_gate=fail; failures=$((failures + 1)); }
-printf '%s\n' '── instrumentation coverage'
-./Scripts/check-instrumentation-coverage.sh || { instrumentation_gate=fail; failures=$((failures + 1)); }
+printf '%s\n' '── observed instrumentation coverage'
+SMOKE_DERIVED_DATA="$derived/smoke" SMOKE_LOG_COPY_DIR="$coverage_dir/smoke" \
+    ./Scripts/smoke-test.sh >"$coverage_dir/smoke.log" 2>&1 || {
+    instrumentation_gate=fail
+    tests_gate=fail
+    failures=$((failures + 1))
+}
 printf '%s\n' '── smoke-log verifier fixtures'
 ./Scripts/test-verify-smoke-log.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 printf '%s\n' '── push-policy fixtures'
@@ -40,6 +49,11 @@ fi
 printf 'tests: %s passed, %s failed\n' \
     "$(grep -acE 'Test case .* passed' "$log" 2>/dev/null || true)" \
     "$(grep -acE 'Test case .* failed' "$log" 2>/dev/null || true)"
+printf '%s\n' '── observed instrumentation coverage gate'
+./Scripts/check-instrumentation-coverage.sh \
+    --log-dir "$coverage_dir/smoke" \
+    --log-dir "$test_coverage_dir" || { instrumentation_gate=fail; failures=$((failures + 1)); }
+./Scripts/test-check-instrumentation-coverage.sh || { instrumentation_gate=fail; failures=$((failures + 1)); }
 printf '%s\n' '── proof results'
 if ! ./Scripts/check-proof-results.sh "$bundle"; then
     proof_gate=fail
