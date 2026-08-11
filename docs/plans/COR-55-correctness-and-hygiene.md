@@ -2,7 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-085, REQ-095, REQ-098, REQ-102, REQ-103, REQ-105, REQ-110, REQ-116; ARC-017's alert-recording guarantee extended to a paste failure that currently presents nothing
-- **Delivers:** REQ-085, REQ-095, REQ-098, REQ-102, REQ-103, REQ-105, REQ-110, REQ-116
+- **Delivers:** none
 - **ARC invariants:** ARC-007 (exact or typed refusal) applied to two force-unwraps that trap instead; ARC-011 (main-actor ownership) applied to a `deinit`; ARC-017, ARC-018 and ARC-020 unchanged and re-proved. No architecture change.
 
 ## Context

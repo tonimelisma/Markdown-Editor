@@ -2,7 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** new REQ-123 (work ledger), REQ-124 (main-actor responsiveness), REQ-125 (frame statistics), REQ-126 (memory footprint)
-- **Delivers:** REQ-124, REQ-125, REQ-126
+- **Delivers:** REQ-123, REQ-124, REQ-125, REQ-126
 - **ARC invariants:** new ARC-026 (work per unit of user intent is counted, attributed to a closed scope set, and bounded); ARC-016 (payloads cannot represent content) unchanged and reused; ARC-020 (samples lifetime-owned, bounded, honestly named) extended to the new metrics
 
 ## Context

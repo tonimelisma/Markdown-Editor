@@ -2,7 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-081 (bounded display decode), REQ-085 (off-main work), REQ-067 (asset naming — explicitly unchanged), REQ-107 (image presentation), REQ-123 (`fileBytesRead` gate)
-- **Delivers:** REQ-081, REQ-085, REQ-107
+- **Delivers:** none
 - **ARC invariants:** ARC-023 restated as "rejects over-limit encoded files **and satisfies cache hits** before bulk read, hash, or decode"; ARC-012 (one exact-copy placement transaction) unchanged
 
 ## Context

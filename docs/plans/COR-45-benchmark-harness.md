@@ -2,7 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-090 (moves to `Correction` in this increment), REQ-045; new REQ-127 (corpus-shape enumeration), REQ-128 (process-level benchmark with a committed baseline); REQ-123 (COR-44) gets its gate here
-- **Delivers:** REQ-123, REQ-127, REQ-128
+- **Delivers:** REQ-127, REQ-128
 - **ARC invariants:** ARC-Q05 restated as "on every approved corpus shape"; ARC-Q12 extended to benchmark scenarios; ARC-026 (COR-44) proved here; ARC-014 (no manual or UI testing) unchanged and explicitly re-argued for the scroll scenario
 
 ## Context

@@ -2,7 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-104 (screenshot verification — extended from one capture to a declared matrix), REQ-105, REQ-106, REQ-107
-- **Delivers:** REQ-104, REQ-105, REQ-106, REQ-107
+- **Delivers:** none
 - **ARC invariants:** ARC-Q13 amended from "exactly one screenshot" to a declared passive capture matrix — an architecture change, argued under `ENGINEERING.md` §15 below. ARC-Q14 and ARC-Q15 gain laid-out-geometry golden proofs. ARC-014 unchanged: no capture drives, reads, or asserts on the UI.
 
 ## Context

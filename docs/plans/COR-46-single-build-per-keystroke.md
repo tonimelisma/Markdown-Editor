@@ -2,7 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-090 (stays `Correction`; COR-48 clears it), REQ-109, REQ-123
-- **Delivers:** REQ-109
+- **Delivers:** none
 - **ARC invariants:** ARC-005/007/009/019 unchanged. No architecture change — this removes redundant work only.
 
 ## Context

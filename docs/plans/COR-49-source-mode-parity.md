@@ -2,7 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-045 (moves to `Correction`, then `Done` with real `test` verification), REQ-040, REQ-051, REQ-090, REQ-123
-- **Delivers:** REQ-040, REQ-045, REQ-051
+- **Delivers:** none
 - **ARC invariants:** ARC-Q05 extended to the source boundary; ARC-020 (samples honestly named and lifetime-owned) applies to the new metric; ARC-018 (styling never changes source) unchanged and re-proved
 
 ## Context

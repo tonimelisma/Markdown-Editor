@@ -355,48 +355,48 @@ no performance change in this programme is falsifiable.
 
 Delivery order, and why it is this order:
 
-1. ⚪ **COR-44 — Measurement substrate.** (Delivers: REQ-124, REQ-125, REQ-126) ([plan](plans/COR-44-measurement-substrate.md)) A work ledger counting parses, builds, oracle passes, attributed characters, image decodes, bytes read and main-thread blocked time per unit of user intent; a main-actor responsiveness histogram beside the one-second hang watchdog; frame-hitch statistics; and memory footprint. First, because it is the instrument every later increment is judged by.
-2. ⚪ **COR-45 — Honest corpora and the in-app benchmark harness.** (Delivers: REQ-123, REQ-127, REQ-128)
+1. ⚪ **COR-44 — Measurement substrate.** (Delivers: REQ-123, REQ-124, REQ-125, REQ-126) ([plan](plans/COR-44-measurement-substrate.md)) A work ledger counting parses, builds, oracle passes, attributed characters, image decodes, bytes read and main-thread blocked time per unit of user intent; a main-actor responsiveness histogram beside the one-second hang watchdog; frame-hitch statistics; and memory footprint. First, because it is the instrument every later increment is judged by.
+2. ⚪ **COR-45 — Honest corpora and the in-app benchmark harness.** (Delivers: REQ-127, REQ-128)
    ([plan](plans/COR-45-benchmark-harness.md)) A closed `PerformanceCorpus` enumeration whose shapes
    assert their own structure, and a `--benchmark` mode that drives the shipping binary through typing,
    table typing, commands, mode toggles, scrolling, undo storms and a soak, writing a committed
    baseline. Expected to **fail** REQ-090 on landing; that failure is the reproduction.
-3. ⚪ **COR-46 — One document build per keystroke.** (Delivers: REQ-109)
+3. ⚪ **COR-46 — One document build per keystroke.** (Delivers: none)
    ([plan](plans/COR-46-single-build-per-keystroke.md)) One inserted character currently builds the
    whole document two to four times and validates the same immutable snapshot twice. Pure
    de-duplication, no architecture change — bankable immediately.
-4. ⚪ **COR-47 — Image identity, sampled digest, and Retina decode.** (Delivers: REQ-081, REQ-085, REQ-107)
+4. ⚪ **COR-47 — Image identity, sampled digest, and Retina decode.** (Delivers: none)
    ([plan](plans/COR-47-image-identity-and-decode.md)) The display cache keys on a content digest, so
    the expensive work is a *precondition* of the lookup and the cache prevents nothing: every
    referenced image is re-mapped, re-hashed and re-decoded on every reconciliation while the user
    types. Stat identity gates the read; images decode at the backing scale instead of 512 px.
-5. ⚪ **COR-48 — Remove the whole-document parse from the keystroke path.** (Delivers: REQ-090, REQ-091, REQ-092, REQ-109, REQ-113)
+5. ⚪ **COR-48 — Remove the whole-document parse from the keystroke path.** (Delivers: REQ-090)
    ([plan](plans/COR-48-keystroke-parse-scope.md)) The real fix. Opens with a POC comparing "trust the
    encoder, verify offline" against "bounded block reparse", with a decision table that selects a
    branch mechanically. `ARC-005` does not move; the synchronous work gets small, it does not become
    asynchronous.
-6. ⚪ **COR-49 — Source-mode performance parity.** (Delivers: REQ-040, REQ-045, REQ-051) ([plan](plans/COR-49-source-mode-parity.md)) Source
+6. ⚪ **COR-49 — Source-mode performance parity.** (Delivers: none) ([plan](plans/COR-49-source-mode-parity.md)) Source
    mode restyles the whole document on the main actor 120 ms after every keystroke, with no metric, no
    budget and no test. Two genuine editors; one instrumented to the millisecond, one not at all.
-7. ⚪ **COR-50 — Semantic bullets.** (Delivers: REQ-054, REQ-056, REQ-057, REQ-078, REQ-107) ([plan](plans/COR-50-semantic-bullets.md)) WYSIWYG renders the
+7. ⚪ **COR-50 — Semantic bullets.** (Delivers: none) ([plan](plans/COR-50-semantic-bullets.md)) WYSIWYG renders the
    literal source marker, so one semantic list renders three ways depending on whether the author typed
    `-`, `*` or `+`. `**bold**` hides its delimiters; `- item` does not.
-8. ⚪ **COR-51 — Accessibility semantics and an AX audit harness.** (Delivers: REQ-032, REQ-084, REQ-107, REQ-129)
+8. ⚪ **COR-51 — Accessibility semantics and an AX audit harness.** (Delivers: REQ-129)
    ([plan](plans/COR-51-accessibility-semantics.md)) Six of nine WYSIWYG constructs convey meaning by
    font, colour and indentation alone. A VoiceOver user cannot navigate by heading. REQ-032 is `Done`
    on a proof covering one construct.
-9. ⚪ **COR-52 — Visual and layout verification loop.** (Delivers: REQ-104, REQ-105, REQ-106, REQ-107)
+9. ⚪ **COR-52 — Visual and layout verification loop.** (Delivers: none)
    ([plan](plans/COR-52-visual-verification-loop.md)) Dark appearance and Source mode have never been
    visually reviewed. Adds diffable layout goldens as the gate and extends ARC-Q13's single capture to
    a declared passive matrix.
-10. ⚪ **COR-53 — macOS citizenship.** (Delivers: REQ-014, REQ-020, REQ-058, REQ-108, REQ-130, REQ-131) ([plan](plans/COR-53-macos-citizenship.md)) Window frame memory
+10. ⚪ **COR-53 — macOS citizenship.** (Delivers: REQ-130, REQ-131) ([plan](plans/COR-53-macos-citizenship.md)) Window frame memory
     and cascading, Print, heading and block shortcuts, Return continuing a list, a toolbar that fits
     the app's own default window, an Insert menu, and ⌘K with no selection.
-11. ⚪ **COR-54 — Correctness fuzzing and real-world corpora.** (Delivers: REQ-007, REQ-011, REQ-016, REQ-047, REQ-054, REQ-056, REQ-083, REQ-091, REQ-132)
+11. ⚪ **COR-54 — Correctness fuzzing and real-world corpora.** (Delivers: REQ-132)
     ([plan](plans/COR-54-fuzzing-and-real-corpora.md)) Every fixture in the repository is hand-written.
     Adds the CommonMark and GFM specifications' own example sets, a coordinate round-trip property, edit
     and undo fuzzing, and a differential check against the pinned parser's own renderer.
-12. ⚪ **COR-55 — Correctness and hygiene sweep.** (Delivers: REQ-085, REQ-095, REQ-098, REQ-102, REQ-103, REQ-105, REQ-110, REQ-116)
+12. ⚪ **COR-55 — Correctness and hygiene sweep.** (Delivers: none)
     ([plan](plans/COR-55-correctness-and-hygiene.md)) Two crash paths COR-41 missed, a silent paste
     failure with no diagnostic, a layout metric dominated by caret blinks, a duplicated IME commit, and
     the `MarkdownTheme` compatibility facade `ENGINEERING.md` §15 forbids.

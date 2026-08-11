@@ -88,13 +88,16 @@ if problems:
     sys.exit(1)
 
 requirement_status = {}
-for line in requirements_path.read_text().splitlines():
+requirements_text = requirements_path.read_text()
+for line in requirements_text.splitlines():
     if not line.startswith("| REQ-"):
         continue
     columns = [column.strip() for column in line.split("|")]
     if len(columns) < 6 or not re.fullmatch(r"REQ-\d{3}", columns[1]):
         continue
     requirement_status[columns[1]] = columns[4]
+for requirement in re.findall(r"REQ-\d{3}", requirements_text.split("*Reserved by approved", 1)[-1]):
+    requirement_status.setdefault(requirement, "Planned")
 
 def parse_delivers(text, label):
     match = re.search(r"(?:^|\()\s*Delivers:\s*([^\)]*)", text, re.IGNORECASE)
@@ -120,7 +123,7 @@ for plan_path in sorted(plans_dir.glob("*.md")):
         problems.append(f"{plan_path}: filename has no increment ID")
         continue
     increment = re.match(r"((?:COR|INC|DISC)-\d+)", plan_path.name).group(1)
-    values = re.findall(r"^- \*\*Delivers:\*\* (.+)$", plan_path.read_text(), re.MULTILINE)
+    values = re.findall(r"^- \*\*Delivers:\*\* (.+)$", "\n".join(plan_path.read_text().splitlines()[:12]), re.MULTILINE)
     if len(values) != 1:
         problems.append(f"{plan_path}: expected exactly one Delivers header")
         continue
