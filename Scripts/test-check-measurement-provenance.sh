@@ -28,25 +28,27 @@ expect_failure() {
 }
 
 write_file "$table\nHost: \$(hostname)"
-expect_failure 'unexpanded shell construct' "$gate" --research-root "$root/docs/research" --expected-corpus-digest "$digest"
+expect_failure 'unexpanded shell construct' "$gate" --fixture-root "$root" --expected-corpus-digest "$digest"
 
 write_file "$table"
-expect_failure 'missing provenance block' "$gate" --research-root "$root/docs/research" --expected-corpus-digest "$digest"
+expect_failure 'missing provenance block' "$gate" --fixture-root "$root" --expected-corpus-digest "$digest"
 
 write_file "$table\nHost: stub\nOS: macOS\nOS build: 1\nArchitecture: arm64\nConfiguration: Release\nXcode: Xcode\nCorpus digest: $digest\nWarmup: 1\nSamples: 1\nInterval: 1ms\nCommit: $commit\nRun ID: run"
-expect_failure 'placeholder field' "$gate" --research-root "$root/docs/research" --expected-corpus-digest "$digest"
+expect_failure 'placeholder field' "$gate" --fixture-root "$root" --expected-corpus-digest "$digest"
 
 write_file "$table\nHost: host\nOS: macOS\nOS build: 1\nArchitecture: arm64\nConfiguration: Release\nXcode: Xcode\nCorpus digest: deadbeef\nWarmup: 1\nSamples: 1\nInterval: 1ms\nCommit: $commit\nRun ID: run"
-expect_failure 'corpus mismatch' "$gate" --research-root "$root/docs/research" --expected-corpus-digest "$digest"
+expect_failure 'corpus mismatch' "$gate" --fixture-root "$root" --expected-corpus-digest "$digest"
 
 write_file "$table\nHost: host\nOS: macOS\nOS build: 1\nArchitecture: arm64\nConfiguration: Release\nXcode: Xcode\nCorpus digest: $digest\nWarmup: 1\nSamples: 1\nInterval: 1ms\nCommit: 0000000000000000000000000000000000000000\nRun ID: run"
-expect_failure 'unknown commit' "$gate" --research-root "$root/docs/research" --expected-corpus-digest "$digest"
+expect_failure 'unknown commit' "$gate" --fixture-root "$root" --expected-corpus-digest "$digest"
 
 write_file "$table\nHost: host\nOS: macOS\nOS build: 1\nArchitecture: arm64\nConfiguration: Release\nXcode: Xcode\nCorpus digest: $digest\nWarmup: 1\nSamples: 1\nInterval: 1ms\nCommit: $commit\nRun ID: run"
-"$gate" --research-root "$root/docs/research" --expected-corpus-digest "$digest" >/dev/null
+"$gate" --fixture-root "$root" --expected-corpus-digest "$digest" >/dev/null
+
+expect_failure 'production digest override' "$gate" --research-root "$root/docs/research" --expected-corpus-digest "$digest"
 
 printf '# prose only\nNo measurement table here.\n' >"$root/docs/research/prose.md"
 rm "$root/docs/research/performance-baseline.md"
-"$gate" --research-root "$root/docs/research" --expected-corpus-digest "$digest" >/dev/null
+"$gate" --fixture-root "$root" --expected-corpus-digest "$digest" >/dev/null
 
 echo "test-check-measurement-provenance: PASS (failure and liveness fixtures observed)"

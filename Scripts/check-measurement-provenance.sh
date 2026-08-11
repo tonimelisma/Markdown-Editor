@@ -6,22 +6,29 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 research_root="$repo_root/docs/research"
 fixture_root=""
 expected_digest=""
+fixture_mode=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --research-root)
-            [[ $# -ge 2 ]] || { echo "usage: check-measurement-provenance.sh [--research-root DIR] [--expected-corpus-digest DIGEST]" >&2; exit 2; }
+            [[ $# -ge 2 ]] || { echo "usage: check-measurement-provenance.sh [--research-root DIR] [--fixture-root DIR] [--expected-corpus-digest DIGEST]" >&2; exit 2; }
             research_root="$2"
+            shift 2
+            ;;
+        --fixture-root)
+            [[ $# -ge 2 ]] || { echo "usage: check-measurement-provenance.sh [--research-root DIR] [--fixture-root DIR] [--expected-corpus-digest DIGEST]" >&2; exit 2; }
             fixture_root="$2"
+            research_root="$2/docs/research"
+            fixture_mode=1
             shift 2
             ;;
         --expected-corpus-digest)
-            [[ $# -ge 2 ]] || { echo "usage: check-measurement-provenance.sh [--research-root DIR] [--expected-corpus-digest DIGEST]" >&2; exit 2; }
+            [[ $# -ge 2 ]] || { echo "usage: check-measurement-provenance.sh [--research-root DIR] [--fixture-root DIR] [--expected-corpus-digest DIGEST]" >&2; exit 2; }
             expected_digest="$2"
             shift 2
             ;;
         --help)
-            echo "usage: check-measurement-provenance.sh [--research-root DIR] [--expected-corpus-digest DIGEST]"
+            echo "usage: check-measurement-provenance.sh [--research-root DIR] [--fixture-root DIR] [--expected-corpus-digest DIGEST]"
             exit 0
             ;;
         *)
@@ -31,8 +38,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [[ -n "$expected_digest" && "$fixture_mode" -ne 1 ]]; then
+    echo "check-measurement-provenance: --expected-corpus-digest is fixture-only" >&2
+    exit 2
+fi
+
 python3 - "$repo_root" "$research_root" "$fixture_root" "$expected_digest" <<'PY'
-import hashlib
 import pathlib
 import re
 import subprocess
@@ -49,13 +60,9 @@ if not research.is_dir():
     print(f"check-measurement-provenance: missing research directory: {research}", file=sys.stderr)
     sys.exit(1)
 
-corpus_file = (fixture_root or repo) / "Markdown EditorTests/PerformanceCorpus.swift"
-if expected_digest:
-    corpus_digest = expected_digest
-elif corpus_file.is_file():
-    corpus_digest = hashlib.sha256(corpus_file.read_bytes()).hexdigest()
-else:
-    corpus_digest = ""
+# COR-45 owns the executable PerformanceCorpus digest producer. Until it exists, a committed
+# benchmark table must fail closed rather than treating a source-file hash as a corpus digest.
+corpus_digest = expected_digest if fixture_root else ""
 
 def has_results_table(text):
     # This is the benchmark schema, not every ordinary evidence table in research. COR-45 owns
