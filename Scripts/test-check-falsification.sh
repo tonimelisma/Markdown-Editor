@@ -50,6 +50,16 @@ printf 'return .bounded(range: changed)\n' >"$root/Markdown Editor/Fixture.swift
 write_manifest 'return .bounded(range: changed)' 'return .full(range: changed)' ''
 expect_failure 'missing expected red proof' 'expect_red must name at least one proof' "$gate" --all --fixture-root "$root"
 
+write_manifest 'return .bounded(range: changed)' 'return .full(range: changed)' fixtureProof
+jq '.mutations[0].expect_red = []' "$root/Falsification/REQ-001.json" >"$root/Falsification/REQ-001.json.tmp"
+mv "$root/Falsification/REQ-001.json.tmp" "$root/Falsification/REQ-001.json"
+expect_failure 'empty expected red array' 'expect_red must name at least one proof' "$gate" --all --fixture-root "$root"
+
+write_manifest 'return .bounded(range: changed)' 'return .full(range: changed)' fixtureProof
+jq '.mutations[0].file = 7' "$root/Falsification/REQ-001.json" >"$root/Falsification/REQ-001.json.tmp"
+mv "$root/Falsification/REQ-001.json.tmp" "$root/Falsification/REQ-001.json"
+expect_failure 'malformed mutation field type' 'target file must be a string' "$gate" --all --fixture-root "$root"
+
 write_manifest 'return .bounded(range: changed)' 'return .full(range: changed)' fixtureProof /tmp/Fixture.swift
 expect_failure 'absolute mutation path' 'target file must be a relative in-repository path' "$gate" --all --fixture-root "$root"
 

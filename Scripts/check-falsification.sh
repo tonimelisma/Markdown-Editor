@@ -127,11 +127,19 @@ for requirement in sorted(selected):
         for field in ("rationale", "file", "find", "replace", "expect_red"):
             if not mutation.get(field):
                 problems.append(f"{label}: missing {field}")
-        target = root / mutation.get("file", "")
+        file_value = mutation.get("file", "")
         needle = mutation.get("find", "")
         replacement = mutation.get("replace", "")
-        file_value = mutation.get("file", "")
-        if not isinstance(file_value, str) or pathlib.Path(file_value).is_absolute() or ".." in pathlib.Path(file_value).parts:
+        if not isinstance(file_value, str):
+            problems.append(f"{label}: target file must be a string")
+            continue
+        if not isinstance(needle, str):
+            problems.append(f"{label}: find must be a string")
+            continue
+        if not isinstance(replacement, str):
+            problems.append(f"{label}: replace must be a string")
+            continue
+        if pathlib.Path(file_value).is_absolute() or ".." in pathlib.Path(file_value).parts:
             problems.append(f"{label}: target file must be a relative in-repository path")
             continue
         if not file_value.startswith("Markdown Editor/"):
