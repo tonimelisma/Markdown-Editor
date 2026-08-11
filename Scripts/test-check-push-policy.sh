@@ -79,7 +79,7 @@ git -C "$fixture" worktree add -q -b linked "$linked" "$base"
     echo "linked-worktree installer did not set a local hook path" >&2
     exit 1
 }
-write_receipt "$swift_head" fast pass
+write_receipt "$swift_head" fast pass structural
 zero="0000000000000000000000000000000000000000"
 printf 'refs/heads/cor-99-x %s refs/heads/cor-99-x %s\n' "$swift_head" "$zero" |
     (cd "$fixture" && ./Scripts/hooks/pre-push)
@@ -107,7 +107,7 @@ fi
 mutated_receipt="$root/mutated-receipt-policy.sh"
 sed -e 's|\.head == \$head|true|g' -e 's|\.tree == \$tree|true|g' "$policy_source" > "$mutated_receipt"
 chmod +x "$mutated_receipt"
-write_receipt "$base" full pass
+write_receipt "$base" fast pass structural
 if (cd "$fixture" && "$mutated_receipt" --remote-ref refs/heads/cor-99-x --range "$base..$swift_head") >/dev/null 2>&1; then
     echo "falsifying mutation REQ-134: PASS (the mutated policy made the stale-receipt proof go green)"
 else
