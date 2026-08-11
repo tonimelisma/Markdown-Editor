@@ -15,7 +15,7 @@ tests="$5"
 proof="$6"
 delivery="$7"
 case "$scope:$result:$doc:$instrumentation:$tests:$proof:$delivery" in
-    fast:pass:pass:pass:pass:pass:structural|fast:pass:pass:pass:pass:pass:pass|fast:fail:*|full:pass:pass:pass:pass:pass:pass|full:fail:pass:pass:pass:pass:pass|full:fail:*) ;;
+    fast:pass:pass:pass:pass:pass:structural|fast:fail:*|full:pass:pass:pass:pass:pass:pass|full:fail:pass:pass:pass:pass:pass|full:fail:*) ;;
     *) echo "write-gate-receipt: invalid receipt values" >&2; exit 2 ;;
 esac
 

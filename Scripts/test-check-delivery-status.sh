@@ -69,13 +69,95 @@ expect_failure "ROADMAP and plan Delivers mismatch" "$checker" --fixture-root "$
 make_fixture "⚪" "REQ-001" "Done" present matching REQ-001
 expect_failure "active row already-Done requirement" "$checker" --fixture-root "$fixture_root" --fixture-proof-status pass
 
-make_fixture "✅" "none (refactor)" "Planned" absent
-expect_failure "deleted plan without production change" "$checker" --fixture-root "$fixture_root" --fixture-proof-status pass --fixture-deletion-change none
-
-make_fixture "✅" "none (refactor)" "Planned" absent
-"$checker" --fixture-root "$fixture_root" --fixture-proof-status pass --fixture-deletion-change production >/dev/null
-
 make_fixture "⚪" "REQ-001" "Planned" present
 "$checker" --fixture-root "$fixture_root" --fixture-proof-status pass >/dev/null
+
+# Row-local link proof: the matching COR-98 link and an extraneous COR-99 link are in the first
+# row, while the second row has no link. A repository-wide substring search would incorrectly
+# accept COR-99; the checker must parse each increment's own row block.
+rm -rf -- "$fixture_root/docs"
+mkdir -p "$fixture_root/docs/plans"
+cat >"$fixture_root/docs/ROADMAP.md" <<'EOF'
+# ROADMAP
+
+1. ⚪ **COR-98 — Other fixture.** (Delivers: none) ([plan](plans/COR-98-fixture.md)) ([other](plans/COR-99-fixture.md))
+2. ⚪ **COR-99 — Fixture.** (Delivers: REQ-001)
+EOF
+cat >"$fixture_root/docs/REQUIREMENTS.md" <<'EOF'
+| REQ-001 | fixture | COR-99 | Planned | implementation | Scripts/test-check-delivery-status.sh |
+EOF
+cat >"$fixture_root/docs/plans/COR-98-fixture.md" <<'EOF'
+# COR-98 — Other fixture
+- **Delivers:** none
+EOF
+cat >"$fixture_root/docs/plans/COR-99-fixture.md" <<'EOF'
+# COR-99 — Fixture
+- **Delivers:** REQ-001
+EOF
+expect_failure "row-local plan link" "$checker" --fixture-root "$fixture_root" --fixture-proof-status pass
+
+# The deletion proof uses a real temporary Git history. The plan is deleted in the same commit
+# that changes a production path, then the checker reads the parent plan and compares its
+# Delivers declaration with the delivered ROADMAP row.
+git_fixture="$fixture_root/git-fixture"
+mkdir -p "$git_fixture/docs/plans" "$git_fixture/Sources"
+git -C "$git_fixture" init -q
+git -C "$git_fixture" config user.email test@example.invalid
+git -C "$git_fixture" config user.name delivery-test
+cat >"$git_fixture/docs/ROADMAP.md" <<'EOF'
+# ROADMAP
+
+1. ⚪ **COR-99 — Fixture.** (Delivers: REQ-001) ([plan](plans/COR-99-fixture.md))
+EOF
+cat >"$git_fixture/docs/REQUIREMENTS.md" <<'EOF'
+| REQ-001 | fixture | COR-99 | Planned | implementation | Sources/Fixture.swift |
+EOF
+cat >"$git_fixture/docs/plans/COR-99-fixture.md" <<'EOF'
+# COR-99 — Fixture
+- **Delivers:** REQ-001
+EOF
+git -C "$git_fixture" add .
+git -C "$git_fixture" commit -qm baseline
+cat >"$git_fixture/docs/ROADMAP.md" <<'EOF'
+# ROADMAP
+
+1. ✅ **COR-99 — Fixture.** (Delivers: REQ-001)
+EOF
+cat >"$git_fixture/docs/REQUIREMENTS.md" <<'EOF'
+| REQ-001 | fixture | COR-99 | Done | implementation | Sources/Fixture.swift |
+EOF
+rm "$git_fixture/docs/plans/COR-99-fixture.md"
+printf 'implemented\n' >"$git_fixture/Sources/Fixture.swift"
+git -C "$git_fixture" add -A
+git -C "$git_fixture" commit -qm delivered
+"$checker" --fixture-root "$git_fixture" --git-root "$git_fixture" --fixture-proof-status pass >/dev/null
+
+# The same real-history proof must reject a deletion-only commit.
+cat >"$git_fixture/docs/ROADMAP.md" <<'EOF'
+# ROADMAP
+
+1. ⚪ **COR-99 — Fixture.** (Delivers: REQ-001) ([plan](plans/COR-99-fixture.md))
+EOF
+cat >"$git_fixture/docs/REQUIREMENTS.md" <<'EOF'
+| REQ-001 | fixture | COR-99 | Planned | implementation | Sources/Fixture.swift |
+EOF
+cat >"$git_fixture/docs/plans/COR-99-fixture.md" <<'EOF'
+# COR-99 — Fixture
+- **Delivers:** REQ-001
+EOF
+git -C "$git_fixture" add .
+git -C "$git_fixture" commit -qm restored-plan
+cat >"$git_fixture/docs/ROADMAP.md" <<'EOF'
+# ROADMAP
+
+1. ✅ **COR-99 — Fixture.** (Delivers: REQ-001)
+EOF
+cat >"$git_fixture/docs/REQUIREMENTS.md" <<'EOF'
+| REQ-001 | fixture | COR-99 | Done | implementation | Sources/Fixture.swift |
+EOF
+rm "$git_fixture/docs/plans/COR-99-fixture.md"
+git -C "$git_fixture" add -A
+git -C "$git_fixture" commit -qm deletion-without-production
+expect_failure "real deletion without production change" "$checker" --fixture-root "$git_fixture" --git-root "$git_fixture" --fixture-proof-status pass
 
 echo "test-check-delivery-status: PASS (failure and liveness fixtures observed)"

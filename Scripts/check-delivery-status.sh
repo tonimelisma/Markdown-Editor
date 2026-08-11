@@ -6,7 +6,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 bundle=""
 fixture_root=""
 fixture_proof_status=""
-fixture_deletion_change=""
+git_root_override=""
 structural_only=0
 proof_args=()
 
@@ -34,9 +34,9 @@ while [[ $# -gt 0 ]]; do
             fixture_proof_status="$2"
             shift 2
             ;;
-        --fixture-deletion-change)
+        --git-root)
             [[ $# -ge 2 ]] || { usage; exit 2; }
-            fixture_deletion_change="$2"
+            git_root_override="$2"
             shift 2
             ;;
         --structural-only)
@@ -75,7 +75,7 @@ else
     fi
 fi
 
-python3 - "$repo_root" "$fixture_root" "$fixture_proof_status" "$fixture_deletion_change" <<'PY'
+python3 - "$repo_root" "$fixture_root" "$fixture_proof_status" "$git_root_override" <<'PY'
 import pathlib
 import re
 import subprocess
@@ -84,8 +84,9 @@ import sys
 repo = pathlib.Path(sys.argv[1])
 fixture_root = pathlib.Path(sys.argv[2]) if sys.argv[2] else None
 fixture_proof_status = sys.argv[3]
-fixture_deletion_change = sys.argv[4]
+git_root_override = pathlib.Path(sys.argv[4]) if sys.argv[4] else None
 root = fixture_root or repo
+git_root = git_root_override or repo
 roadmap_path = root / "docs/ROADMAP.md"
 requirements_path = root / "docs/REQUIREMENTS.md"
 plans_dir = root / "docs/plans"
@@ -156,20 +157,28 @@ for path in sorted(plans_dir.glob("*.md")):
 
 roadmap_rows = []
 row_pattern = re.compile(r"^\s*\d+\.\s+(✅|🔵|⚪|🅿️)\s+\*\*((?:COR|INC|DISC)-\d+)\s+—")
-for line_number, line in enumerate(roadmap_path.read_text().splitlines(), 1):
+roadmap_lines = roadmap_path.read_text().splitlines()
+for index, line in enumerate(roadmap_lines):
     match = row_pattern.match(line)
     if not match:
         continue
     status, increment = match.groups()
-    delivers = parse_delivers(line, f"ROADMAP:{line_number}:{increment}")
+    block_lines = [line]
+    following = index + 1
+    while following < len(roadmap_lines) and not row_pattern.match(roadmap_lines[following]):
+        block_lines.append(roadmap_lines[following])
+        following += 1
+    block = "\n".join(block_lines)
+    line_number = index + 1
+    delivers = parse_delivers(block, f"ROADMAP:{line_number}:{increment}")
     if delivers is not None:
-        roadmap_rows.append((line_number, status, increment, delivers))
+        roadmap_rows.append((line_number, status, increment, delivers, block))
 
 if not roadmap_rows:
     problems.append("ROADMAP contains zero numbered increment rows")
 
 seen = set()
-for line_number, status, increment, delivers in roadmap_rows:
+for line_number, status, increment, delivers, block in roadmap_rows:
     if increment in seen:
         problems.append(f"ROADMAP:{line_number}:{increment}: duplicate increment row")
     seen.add(increment)
@@ -185,7 +194,7 @@ for line_number, status, increment, delivers in roadmap_rows:
             problems.append(f"{increment}: ROADMAP Delivers does not match plan Delivers")
         if declared_plan is None and plans:
             problems.append(f"{increment}: plan Delivers could not be resolved")
-        if plans and f"(plans/{plans[0].name})" not in roadmap_path.read_text():
+        if plans and f"(plans/{plans[0].name})" not in block:
             problems.append(f"{increment}: ROADMAP does not link its matching plan {plans[0].name}")
         for requirement in sorted(delivers):
             if requirement not in requirement_status:
@@ -195,16 +204,25 @@ for line_number, status, increment, delivers in roadmap_rows:
     elif status == "✅":
         if plans:
             problems.append(f"ROADMAP:{line_number}:{increment}: delivered row still has a plan file")
-        elif fixture_root:
-            if fixture_deletion_change == "none":
-                problems.append(f"{increment}: deleted-plan fixture has no production change")
-        else:
-            head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=False).stdout.strip()
+        elif not fixture_root or git_root_override:
+            head = subprocess.run(["git", "-C", str(git_root), "rev-parse", "HEAD"], capture_output=True, text=True, check=False).stdout.strip()
             changed = subprocess.run(
-                ["git", "-C", str(repo), "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", head],
+                ["git", "-C", str(git_root), "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", head],
                 capture_output=True, text=True, check=False
             ).stdout.splitlines()
-            if f"docs/plans/{increment}-" in "\n".join(changed):
+            deleted_plans = [p for p in changed if p.startswith(f"docs/plans/{increment}-") and p.endswith(".md")]
+            if deleted_plans:
+                original = subprocess.run(
+                    ["git", "-C", str(git_root), "show", f"{head}^:{deleted_plans[0]}"],
+                    capture_output=True, text=True, check=False
+                ).stdout
+                original_values = re.findall(r"^- \*\*Delivers:\*\* (.+)$", "\n".join(original.splitlines()[:12]), re.MULTILINE)
+                if len(original_values) != 1:
+                    problems.append(f"{increment}: deleted plan has no single Delivers declaration")
+                else:
+                    original_delivers = parse_delivers(f"Delivers: {original_values[0]}", f"deleted plan {deleted_plans[0]}")
+                    if original_delivers is not None and original_delivers != delivers:
+                        problems.append(f"{increment}: ROADMAP Delivers does not match the deleted plan's Delivers")
                 production = [p for p in changed if p and not p.startswith("docs/") and p not in {"CLAUDE.md", "AGENTS.md"}]
                 if not production:
                     problems.append(f"{increment}: plan deletion commit {head[:12]} contains no production change")
