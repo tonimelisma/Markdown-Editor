@@ -21,6 +21,9 @@ mkdir -p "$coverage_dir"
 rm -rf "$test_coverage_dir"
 printf '%s\n' '── documentation authority'
 ./Scripts/check-documentation-authority.sh || { documentation_gate=fail; failures=$((failures + 1)); }
+printf '%s\n' '── measurement provenance'
+./Scripts/check-measurement-provenance.sh || { failures=$((failures + 1)); }
+./Scripts/test-check-measurement-provenance.sh || { failures=$((failures + 1)); }
 printf '%s\n' '── observed instrumentation coverage'
 SMOKE_DERIVED_DATA="$derived/smoke" SMOKE_LOG_COPY_DIR="$coverage_dir/smoke" \
     ./Scripts/smoke-test.sh >"$coverage_dir/smoke.log" 2>&1 || {
