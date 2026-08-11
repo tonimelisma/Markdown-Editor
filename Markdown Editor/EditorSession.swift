@@ -544,14 +544,3 @@ final class EditorSession: ObservableObject {
     }
 
 }
-
-// COR-44: WorkLedger scopes for structural coverage
-private extension EditorSession {
-    func _coverWorkScopes() {
-        _ = WorkLedgerRecorder.scope(.acceptedEdit) {}
-        _ = WorkLedgerRecorder.scope(.reconciliation) {}
-        _ = WorkLedgerRecorder.scope(.documentOpen) {}
-        _ = WorkLedgerRecorder.scope(.modeTransition) {}
-        _ = WorkLedgerRecorder.scope(.semanticCommand) {}
-    }
-}

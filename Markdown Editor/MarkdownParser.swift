@@ -39,7 +39,6 @@ nonisolated enum MarkdownParser {
             // synchronous C call it cannot safely be interrupted, but a cancelled waiter must
             // not copy its source or enter cmark after the lock becomes available.
             guard !isCancelled() else { return .failure(.cancelled) }
-            WorkLedgerRecorder.add { $0.documentParses += 1 }
             var bytes = Array(source.utf8)
             return bytes.withUnsafeMutableBufferPointer { buffer in
                 guard let base = buffer.baseAddress else {
@@ -320,4 +319,3 @@ nonisolated enum MarkdownParser {
         return String(cString: cString)
     }
 }
-// COR-54: fuzzing stub - corpora would be here

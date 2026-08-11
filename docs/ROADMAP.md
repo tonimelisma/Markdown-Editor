@@ -275,12 +275,11 @@ obligation must be discharged by an observed execution, never by a property of t
 
 Delivery order, and why it is this order:
 
-1. ⚪ **COR-56 — Restore the record.** ([plan](plans/COR-56-restore-the-record.md)) Revert the ten
-   stub commits and COR-44/45, restore a compiling test target, and leave REQ-123..128 standing as
+1. ✅ **COR-56 — Restore the record.** *(Delivers: none; record correction)* Reverted the ten
+   stub commits and COR-44/45, restored a compiling test target, and left REQ-123..128 standing as
    `Correction` rather than deleting them, since their IDs are cited by the restored plans and
-   `CLAUDE.md` §4 never reuses an ID. The twelve deleted plans are already restored to
-   `docs/plans/`. First, because every later increment reasons about a `main` that currently
-   reports work it did not do.
+   `CLAUDE.md` §4 never reuses an ID. The restored plan is deleted with this implementation. First,
+   because every later increment reasons about a `main` that currently reports work it did not do.
 2. ⚪ **COR-57 — Enforcement floor.** ([plan](plans/COR-57-enforcement-floor.md)) A tracked
    `pre-push` hook via `core.hooksPath`, a push policy that refuses Swift changes going straight to
    the default branch, and gate receipts binding a green run to the SHA it ran against. Second,

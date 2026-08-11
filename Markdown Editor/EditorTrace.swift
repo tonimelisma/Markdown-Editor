@@ -272,9 +272,6 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case userAlertPresented(severity: AlertSeverity, reason: AlertReason)
     case performanceSummary(metric: PerformanceSampler.Metric, count: Int, p50Nanos: UInt64, p95Nanos: UInt64, maxNanos: UInt64)
     case budgetExceeded(metric: PerformanceSampler.Metric, p95Nanos: UInt64, budgetNanos: UInt64)
-    case workLedger(scope: WorkScope, documentParses: Int, projectionCompiles: Int, oracleValidations: Int, attributedBuilds: Int, attributedCharactersWritten: Int, storageFullReplacements: Int, imageDecodes: Int, fileBytesRead: Int, mainThreadBlockedNanos: UInt64)
-    case frameStatistics(hitchMillisPerSecond: Double, longestFrameNanos: UInt64, framesObserved: Int)
-    case memoryFootprint(bytes: UInt64, peakBytes: UInt64)
 }
 
 nonisolated enum HistoryDirection: Sendable, Equatable {
@@ -368,7 +365,6 @@ extension PerformanceSampler.Metric {
         case .imageResolution: return .imageResolution
         case .authoritativeApplication: return .authoritativeApplication
         case .layoutApplication: return .layoutApplication
-        case .mainActorLatency: return .mainActorLatency
         }
     }
 }

@@ -157,21 +157,6 @@ nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
     case updatesPerSecond
     case utf16Count
     case windowMillis
-    case scope
-    case documentParses
-    case projectionCompiles
-    case oracleValidations
-    case attributedBuilds
-    case attributedCharactersWritten
-    case storageFullReplacements
-    case imageDecodes
-    case fileBytesRead
-    case mainThreadBlockedNanos
-    case hitchMillisPerSecond
-    case longestFrameNanos
-    case framesObserved
-    case bytes
-    case peakBytes
 }
 
 /// Closed vocabulary of event names.
@@ -240,9 +225,6 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
     case hostUpdateStorm
     case viewReconciliationViolation
     case mainActorStall
-    case workLedger
-    case frameStatistics
-    case memoryFootprint
 }
 
 /// ISO-8601 formatting with millisecond resolution, computed without a shared formatter.

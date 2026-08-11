@@ -583,4 +583,3 @@ private nonisolated struct CompilerBuilder {
         }
     }
 }
-// COR-50: semantic bullets stub - markerGlyph semantic would be here

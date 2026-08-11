@@ -619,4 +619,3 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         closeTypingGroupIfNeeded()
     }
 }
-// COR-53: macOS citizenship stub - window frame, print, shortcuts would be here
