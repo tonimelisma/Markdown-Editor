@@ -132,6 +132,37 @@ git -C "$git_fixture" add -A
 git -C "$git_fixture" commit -qm delivered
 "$checker" --fixture-root "$git_fixture" --git-root "$git_fixture" --fixture-proof-status pass >/dev/null
 
+# The same real-history proof must reject a deleted parent plan whose Delivers set does not match
+# the final ROADMAP row. This is separate from the production-change check so removing either
+# comparison would make this fixture pass.
+cat >"$git_fixture/docs/ROADMAP.md" <<'EOF'
+# ROADMAP
+
+1. ⚪ **COR-99 — Fixture.** (Delivers: REQ-001) ([plan](plans/COR-99-fixture.md))
+EOF
+cat >"$git_fixture/docs/REQUIREMENTS.md" <<'EOF'
+| REQ-001 | fixture | COR-99 | Planned | implementation | Sources/Fixture.swift |
+EOF
+cat >"$git_fixture/docs/plans/COR-99-fixture.md" <<'EOF'
+# COR-99 — Fixture
+- **Delivers:** none
+EOF
+git -C "$git_fixture" add .
+git -C "$git_fixture" commit -qm mismatching-parent-plan
+cat >"$git_fixture/docs/ROADMAP.md" <<'EOF'
+# ROADMAP
+
+1. ✅ **COR-99 — Fixture.** (Delivers: REQ-001)
+EOF
+cat >"$git_fixture/docs/REQUIREMENTS.md" <<'EOF'
+| REQ-001 | fixture | COR-99 | Done | implementation | Sources/Fixture.swift |
+EOF
+rm "$git_fixture/docs/plans/COR-99-fixture.md"
+printf 'mismatch\n' >>"$git_fixture/Sources/Fixture.swift"
+git -C "$git_fixture" add -A
+git -C "$git_fixture" commit -qm mismatching-delivery
+expect_failure "deleted plan Delivers mismatch" "$checker" --fixture-root "$git_fixture" --git-root "$git_fixture" --fixture-proof-status pass
+
 # The same real-history proof must reject a deletion-only commit.
 cat >"$git_fixture/docs/ROADMAP.md" <<'EOF'
 # ROADMAP
