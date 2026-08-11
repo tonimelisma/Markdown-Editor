@@ -271,6 +271,9 @@ layout remains a component test.
   because this rule had only ever been enforced by intent. `--no-verify` still bypasses the hook and
   a fresh clone is unprotected until the installer runs; server-side branch protection needs GitHub
   Pro or a public repository and is an open decision recorded in ROADMAP.
+- Every clone/worktree must enable the tracked hook before pushing: run `Scripts/install-hooks.sh`.
+  `Scripts/fast-check.sh` produces the topic-branch receipt; `Scripts/full-check.sh` produces the
+  full-scope receipt required for a push to `main`.
 - Never mark work delivered that you have not observed pass. If an increment cannot be completed,
   leave its row ⚪ and its plan in place; a stub commit is not a delivery and must not be committed
   as one.

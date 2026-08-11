@@ -641,6 +641,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-022 | Superseded pending parses do not enter source-copy/cmark work after the parser lock becomes available. | deterministic scheduler/lock test with controlled generations |
 | ARC-023 | Image display rejects over-limit encoded files before bulk read/hash/decode and derives references from the canonical parse tree. | file-operation spy; over-limit sparse-file test; scanner deletion gate |
 | ARC-024 | Menu and native toolbar are presentations of one window-scoped command model with shared validation. | command-router tests; menu/toolbar construction inspection |
+| ARC-027 | Every proof obligation is discharged by an observed execution artefact — an emitted diagnostic record, a results bundle, or a compiling mutant that turns a cited proof red — never by a property of the source text. | `Scripts/test-check-push-policy.sh`; passing `.gate-receipt.json` bound to the pushed head |
 
 **Reserved identifiers — approved but not yet true, and therefore not invariants of this
 architecture.** They are recorded here so no later increment reassigns them, which is the defect
@@ -650,7 +651,6 @@ that took `REQ-129` after COR-51's plan was deleted:
 | --- | --- | --- |
 | `ARC-025` | COR-51 (accessibility semantics) | that increment lands |
 | `ARC-026` | COR-44 (work ledger) | that increment lands. A row asserting this invariant was added on 2026-08-10 and removed on the same day: the implementation opened no scope outside an uncalled `private` method, so nothing was counted, and the cited `WorkLedgerTests` proofs were tautologies. |
-| `ARC-027` | COR-57..COR-61 (the evidence floor) | COR-57 lands its procedural half. Reads: *every proof obligation is discharged by an observed execution artefact — an emitted diagnostic record, a results bundle, or a compiling mutant that turns a cited proof red — never by a property of the source text.* |
 | `ARC-Q21` | COR-51 (accessibility semantics) | that increment lands |
 | `ARC-Q22` | COR-61 (falsification manifest) | that increment lands |
 

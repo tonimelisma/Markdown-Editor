@@ -280,9 +280,11 @@ Delivery order, and why it is this order:
    `Correction` rather than deleting them, since their IDs are cited by the restored plans and
    `CLAUDE.md` §4 never reuses an ID. The restored plan is deleted with this implementation. First,
    because every later increment reasons about a `main` that currently reports work it did not do.
-2. ⚪ **COR-57 — Enforcement floor.** ([plan](plans/COR-57-enforcement-floor.md)) A tracked
+2. ✅ **COR-57 — Enforcement floor.** *(Delivers: REQ-133, REQ-134)* A tracked
    `pre-push` hook via `core.hooksPath`, a push policy that refuses Swift changes going straight to
-   the default branch, and gate receipts binding a green run to the SHA it ran against. Second,
+   the default branch, and gate receipts binding a green run to the SHA it ran against. Implemented
+   with fixture-tested branch/refusal and receipt checks; `Scripts/install-hooks.sh` enables it per
+   clone. Second,
    because it is hours of work and it would have refused all twelve commits. **Open decision:**
    server-side branch protection needs GitHub Pro or a public repository — the free private plan
    returns `403` — so the hook is enforcement by default, bypassable with `--no-verify` and

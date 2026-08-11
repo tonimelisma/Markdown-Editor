@@ -246,8 +246,8 @@ an observed execution; see `ROADMAP.md`, *the evidence floor*.
 
 | ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
 | ---- | -------------------- | ----- | -------- | ---------------- | ------------- |
-| REQ-133 | IF a push would place commits modifying Swift application or test sources onto the default branch, THEN the repository's push policy shall refuse that push. | COR-57 | Planned | — | — |
-| REQ-134 | The repository's push policy shall refuse a push that is not accompanied by a gate receipt recording a passing gate run at the pushed head commit. | COR-57 | Planned | — | — |
+| REQ-133 | IF a push would place commits modifying Swift application or test sources onto the default branch, THEN the repository's push policy shall refuse that push. | COR-57 | Done | `Scripts/hooks/pre-push`; `Scripts/check-push-policy.sh` | `Scripts/test-check-push-policy.sh`; observed fixture run |
+| REQ-134 | The repository's push policy shall refuse a push that is not accompanied by a gate receipt recording a passing gate run at the pushed head commit. | COR-57 | Done | `Scripts/hooks/pre-push`; `Scripts/check-push-policy.sh`; `Scripts/write-gate-receipt.sh` | `Scripts/test-check-push-policy.sh`; observed fixture run |
 | REQ-135 | The system shall establish trace-vocabulary coverage from the diagnostic records emitted by an executed run, treating a case that is neither emitted nor listed in the reviewed exemption record as a failure. | COR-58 | Planned | — | — |
 | REQ-136 | The system shall derive delivered-increment status from the requirements a plan declares it delivers, admitting that status only when every such requirement is `Done` with its cited proofs observed passing in the same run. | COR-59 | Planned | — | — |
 | REQ-137 | The system shall admit a committed measurement only when it is machine-written and carries resolving host, operating-system, architecture, configuration, corpus-digest, sample-count and commit provenance. | COR-60 | Planned | — | — |
