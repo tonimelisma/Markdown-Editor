@@ -255,7 +255,7 @@ def resolve_xcode_proof(mutant_root, proof):
             if match:
                 current_type = match.group(1)
             if declaration.search(line) and current_type:
-                return f"{source.parent.name}/{current_type}/{proof}"
+                return f"{source.parent.name}/{current_type}/{proof}()"
     for source in sorted(test_root.rglob("*.swift")):
         try:
             if re.search(rf"\b(?:struct|class|enum)\s+{re.escape(proof)}\b", source.read_text()):
