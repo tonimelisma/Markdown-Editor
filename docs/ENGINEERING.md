@@ -641,7 +641,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-022 | Superseded pending parses do not enter source-copy/cmark work after the parser lock becomes available. | deterministic scheduler/lock test with controlled generations |
 | ARC-023 | Image display rejects over-limit encoded files before bulk read/hash/decode and derives references from the canonical parse tree. | file-operation spy; over-limit sparse-file test; scanner deletion gate |
 | ARC-024 | Menu and native toolbar are presentations of one window-scoped command model with shared validation. | command-router tests; menu/toolbar construction inspection |
-| ARC-027 | Every proof obligation is discharged by an observed execution artefact — an emitted diagnostic record, a results bundle, or a compiling mutant that turns a cited proof red — never by a property of the source text. | `Scripts/test-check-push-policy.sh`; passing `.gate-receipt.json` bound to the pushed head |
+| ARC-027 | The repository's procedural evidence floor requires a passing, observed gate artefact bound to the exact pushed commit and tree before local publication; later increments make each class of proof authoritative. | `Scripts/test-check-push-policy.sh`; `Scripts/fast-check.sh`; `Scripts/full-check.sh`; passing `.gate-receipt.json` bound to the pushed head and tree |
 
 **Reserved identifiers — approved but not yet true, and therefore not invariants of this
 architecture.** They are recorded here so no later increment reassigns them, which is the defect

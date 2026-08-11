@@ -20,6 +20,8 @@ printf '%s\n' '── instrumentation coverage'
 ./Scripts/check-instrumentation-coverage.sh || { instrumentation_gate=fail; failures=$((failures + 1)); }
 printf '%s\n' '── smoke-log verifier fixtures'
 ./Scripts/test-verify-smoke-log.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
+printf '%s\n' '── push-policy fixtures'
+./Scripts/test-check-push-policy.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 printf '%s\n' '── complete test suite'
 xcodebuild test \
     -project "Markdown Editor.xcodeproj" \

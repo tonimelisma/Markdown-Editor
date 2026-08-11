@@ -31,6 +31,9 @@ step "instrumentation coverage"
 step "smoke-log verifier fixtures"
 ./Scripts/test-verify-smoke-log.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 
+step "push-policy fixtures"
+./Scripts/test-check-push-policy.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
+
 step "non-performance test suites"
 # Excluded on purpose: PerformanceBoundaryTests owns the 100,000-UTF-16 corpus gates, which are
 # the slow part and which REQ-090 requires be run focused rather than alongside everything else.

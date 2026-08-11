@@ -19,13 +19,19 @@ case "$scope:$result:$doc:$instrumentation:$tests:$proof" in
 esac
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+if ! git -C "$repo_root" diff --quiet || ! git -C "$repo_root" diff --cached --quiet || [[ -n "$(git -C "$repo_root" status --porcelain --untracked-files=all)" ]]; then
+    echo "write-gate-receipt: refusing to certify a dirty worktree" >&2
+    exit 1
+fi
 head="$(git -C "$repo_root" rev-parse HEAD)"
+tree="$(git -C "$repo_root" rev-parse 'HEAD^{tree}')"
 ran="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 tmp="$repo_root/.gate-receipt.json.tmp.$$"
 trap 'rm -f "$tmp"' EXIT
 
 jq -n \
     --arg head "$head" \
+    --arg tree "$tree" \
     --arg ran "$ran" \
     --arg scope "$scope" \
     --arg result "$result" \
@@ -33,7 +39,7 @@ jq -n \
     --arg instrumentation "$instrumentation" \
     --arg tests "$tests" \
     --arg proof "$proof" \
-    '{head:$head, ran:$ran, scope:$scope, result:$result,
+    '{head:$head, tree:$tree, ran:$ran, scope:$scope, result:$result,
       gates:{"documentation-authority":$doc, "instrumentation-coverage":$instrumentation,
              tests:$tests, "proof-results":$proof}}' > "$tmp"
 mv "$tmp" "$repo_root/.gate-receipt.json"
