@@ -235,6 +235,36 @@ def test_was_executed(output):
     ))
 
 
+def resolve_xcode_proof(mutant_root, proof):
+    """Resolve a manifest's human-readable proof name to Xcode's test identifier."""
+    if "/" in proof:
+        return proof
+    test_root = mutant_root / "Markdown EditorTests"
+    declaration = re.compile(
+        rf"(?:@Test[^\n]*\n\s*)?(?:func|static func)\s+{re.escape(proof)}\s*\("
+    )
+    type_declaration = re.compile(r"\b(?:struct|class|enum)\s+([A-Za-z_][A-Za-z0-9_]*)")
+    for source in sorted(test_root.rglob("*.swift")):
+        try:
+            lines = source.read_text().splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        current_type = None
+        for line in lines:
+            match = type_declaration.search(line)
+            if match:
+                current_type = match.group(1)
+            if declaration.search(line) and current_type:
+                return f"{source.parent.name}/{current_type}/{proof}"
+    for source in sorted(test_root.rglob("*.swift")):
+        try:
+            if re.search(rf"\b(?:struct|class|enum)\s+{re.escape(proof)}\b", source.read_text()):
+                return f"{source.parent.name}/{proof}"
+        except (OSError, UnicodeDecodeError):
+            continue
+    return f"{test_root.name}/{proof}"
+
+
 def command_driver(mutant_root, execution_root):
     package = mutant_root / "Package.swift"
     if package.is_file():
@@ -271,7 +301,7 @@ def command_driver(mutant_root, execution_root):
             "build": common + ["build"],
             "test": lambda proof, result: common + [
                 "-resultBundlePath", str(result), "test",
-                f"-only-testing:{project.stem}Tests/{proof}",
+                f"-only-testing:{resolve_xcode_proof(mutant_root, proof)}",
             ],
         }
 
