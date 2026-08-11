@@ -17,6 +17,10 @@ else
 fi
 logdir="$(mktemp -d)"
 cleanup() {
+    if [[ -n "${SMOKE_LOG_COPY_DIR:-}" && -d "$logdir" ]]; then
+        mkdir -p "$SMOKE_LOG_COPY_DIR"
+        cp -f "$logdir"/run-*.jsonl "$SMOKE_LOG_COPY_DIR"/ 2>/dev/null || true
+    fi
     rm -rf "$logdir" "${workdir:-}"
     [[ "$cleanup_derived" -eq 1 ]] && rm -rf "$derived"
     [[ -n "${app_pid:-}" ]] && kill -0 "$app_pid" 2>/dev/null && kill "$app_pid" 2>/dev/null
