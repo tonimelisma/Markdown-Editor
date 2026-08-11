@@ -12,6 +12,7 @@ documentation_gate=pass
 instrumentation_gate=pass
 tests_gate=pass
 proof_gate=pass
+delivery_gate=pass
 coverage_dir="$derived/instrumentation-coverage"
 test_coverage_dir="${TMPDIR%/}/MarkdownEditorTraceCoverage"
 
@@ -57,6 +58,11 @@ printf '%s\n' '── observed instrumentation coverage gate'
 printf '%s\n' '── proof results'
 if ! ./Scripts/check-proof-results.sh "$bundle"; then
     proof_gate=fail
+    failures=$((failures + 1))
+fi
+printf '%s\n' '── derived delivery status'
+if ! ./Scripts/check-delivery-status.sh "$bundle"; then
+    delivery_gate=fail
     failures=$((failures + 1))
 fi
 

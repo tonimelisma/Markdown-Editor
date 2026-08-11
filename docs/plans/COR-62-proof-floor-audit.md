@@ -2,6 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-138 (satisfied across the whole corpus); every current `Done` row is in scope
+- **Delivers:** REQ-138
 - **ARC invariants:** every `ARC-###` and `ARC-Q##` re-verified against its named proof
 - **Executor:** **not junior work.** Answering the four questions below is the same judgement that
   COR-61 phase 2 requires, applied a hundred times. An agent that answers them optimistically

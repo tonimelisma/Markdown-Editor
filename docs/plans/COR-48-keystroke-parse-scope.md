@@ -2,6 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-090 (returns to `Done`), REQ-091, REQ-092, REQ-109, REQ-113, REQ-123
+- **Delivers:** REQ-090, REQ-091, REQ-092, REQ-109, REQ-113
 - **ARC invariants:** ARC-005, ARC-007, ARC-Q07 unchanged and load-bearing. ARC-Q06 gains a liveness clause ("off the main actor **and without blocking it**"). Whether the projection scope changes is decided by Phase 0's decision table; if it does, `ENGINEERING.md` §6 is amended atomically with the build, per §15.
 
 ## Context

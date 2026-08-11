@@ -2,6 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-136 (new, `Planned`); REQ-117, REQ-118 unchanged
+- **Delivers:** REQ-136
 - **ARC invariants:** ARC-027 (strengthened)
 - **Executor:** any agent. Shell and documentation; no Swift.
 - **Expect rejected rows.** Phase 2 runs the gate against existing history and will reject rows

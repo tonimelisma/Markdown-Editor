@@ -18,6 +18,7 @@ documentation_gate=pass
 instrumentation_gate=pass
 tests_gate=pass
 proof_gate=pass
+delivery_gate=pass
 derived="${FAST_CHECK_DERIVED_DATA:-$repo_root/.fast-check-build}"
 coverage_dir="$derived/instrumentation-coverage"
 mkdir -p "$coverage_dir"
@@ -77,6 +78,10 @@ step "proof results"
 # nothing is excused there — this is the short loop being honest about what it did not measure.
 FAST_CHECK_DERIVED_DATA="$derived" ./Scripts/check-proof-results.sh \
     --skip-suite PerformanceBoundaryTests || { proof_gate=fail; failures=$((failures + 1)); }
+
+step "derived delivery status"
+FAST_CHECK_DERIVED_DATA="$derived" ./Scripts/check-delivery-status.sh \
+    --skip-suite PerformanceBoundaryTests || { delivery_gate=fail; failures=$((failures + 1)); }
 
 receipt_result=pass
 (( failures > 0 )) && receipt_result=fail

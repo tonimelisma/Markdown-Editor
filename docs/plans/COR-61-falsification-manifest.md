@@ -2,6 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-138 (new, `Planned`); REQ-117, REQ-118 unchanged
+- **Delivers:** none (tooling; REQ-138 completes in COR-62)
 - **ARC invariants:** ARC-027 (completed); ARC-Q22 (new)
 - **Executor:** phases 1 and 3 (the tooling) — any agent. Phase 2 (**authoring mutations**) —
   **not junior work, and not unattended agent work.** A mutation must be a plausible defect in the

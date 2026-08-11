@@ -2,6 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-054 (render every supported construct), REQ-056 (omit parsed control characters), REQ-057 (smallest proven unit), REQ-078 (task checkbox), REQ-107 (approved semantic block treatment)
+- **Delivers:** REQ-054, REQ-056, REQ-057, REQ-078, REQ-107
 - **ARC invariants:** ARC-007 (exact conversion) and ARC-009 (refusal) unchanged. `ENGINEERING.md` §6 is amended to state that a list marker is an atomic atom whose *displayed* glyph is semantic and whose *source* spelling is carried, not shown — a clarification of an existing case, not a new one.
 
 ## Context

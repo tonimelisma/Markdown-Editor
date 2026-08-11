@@ -2,6 +2,7 @@
 
 - **Status:** Approved; not implemented
 - **Requirements:** REQ-032 (moves to `Correction`, then `Done` with a matrix proof), REQ-084, REQ-107; new REQ-129 (semantic blocks expose role, level and structural position)
+- **Delivers:** REQ-032, REQ-084, REQ-107, REQ-129
 - **ARC invariants:** new ARC-025 (every semantic block kind exposes AX semantics or a declared exemption); new ARC-Q21 (reading the accessibility tree is permitted **only** where accessibility is the requirement under test); ARC-014 (no manual or UI testing) unchanged and explicitly re-argued below
 
 ## Context
