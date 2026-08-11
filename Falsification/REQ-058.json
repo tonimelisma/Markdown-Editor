@@ -6,7 +6,7 @@
       "file": "Markdown Editor/EditorCommandController.swift",
       "find": "if case .accepted = outcome { return .accepted }",
       "replace": "if case .refused = outcome { return .accepted }",
-      "expect_red": ["everyEnabledCommandPerformsInSourceMode", "everyEnabledCommandPerformsInWYSIWYGMode"]
+      "expect_red": ["controllerRoutesFormattingThroughBoundWindowSession"]
     }
   ]
 }
