@@ -16,6 +16,7 @@ import UniformTypeIdentifiers
 /// // REQ-011/016/018/083/088/089: content-validated HistoryPatch undo;
 /// // privacy-safe traces; Swift 6 complete concurrency.
 final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterface {
+    weak var currentPrintView: NSTextView?
     // MARK: - Readable types
     // Hardcoded UTI string: class getters are called from AppKit autosave on arbitrary
     // executor contexts under Swift 6; avoid any cross-type static access here.
@@ -143,6 +144,24 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         window.tabbingIdentifier = "MarkdownDocument"
         window.tabbingMode = .preferred
         addWindowController(controller)
+    }
+
+    override func printOperation(
+        withSettings printSettings: [NSPrintInfo.AttributeKey: Any]
+    ) throws -> NSPrintOperation {
+        guard let currentPrintView else {
+            throw NSError(
+                domain: "MarkdownEditor.Print",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "No visible editor is available to print"]
+            )
+        }
+        let printInfo = (NSPrintInfo.shared.copy() as? NSPrintInfo) ?? NSPrintInfo()
+        printInfo.leftMargin = 36
+        printInfo.rightMargin = 36
+        printInfo.topMargin = 36
+        printInfo.bottomMargin = 36
+        return NSPrintOperation(view: currentPrintView, printInfo: printInfo)
     }
 
     // REQ-100: the one override AppKit routes every save through — manual Save, Save As,

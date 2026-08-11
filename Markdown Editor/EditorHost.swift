@@ -316,6 +316,7 @@ struct EditorHostView: NSViewRepresentable {
             let showSource = (mode == .source)
             sourceScroll.isHidden = !showSource
             wysiwygScroll.isHidden = showSource
+            document.currentPrintView = showSource ? sourceText : wysiwygText
             let shouldFocus = focus || (modeChanged && hadEditorFocus)
             lastAppliedMode = mode
             session.updateOrigin.with(.modeRestoration) {
