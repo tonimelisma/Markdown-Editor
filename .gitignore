@@ -27,6 +27,12 @@ DerivedData/
 .fast-check-build/
 .fast-check-build.log
 
+# Push-policy gate receipt and full-check artifacts
+.gate-receipt.json
+.gate-receipt.json.tmp.*
+.full-check-build/
+.full-check-build.log
+
 # Swift Package Manager
 .build/
 .swiftpm/

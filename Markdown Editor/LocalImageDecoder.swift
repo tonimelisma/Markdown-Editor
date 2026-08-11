@@ -75,7 +75,6 @@ nonisolated enum LocalImageDecoder {
         guard let fileData = try? Data(contentsOf: resolved, options: [.mappedIfSafe]) else {
             return .failure(.missingFile)
         }
-        WorkLedgerRecorder.add { $0.imageDecodes += 1; $0.fileBytesRead += fileData.count }
         let contentDigest = ImageAssetPolicy.sha256Hex(fileData)
 
         guard let source = CGImageSourceCreateWithData(
@@ -233,4 +232,3 @@ final class LocalImageByteCache {
         totalBytes = 0
     }
 }
-// COR-47: image identity stub - ImageFileIdentity would be here
