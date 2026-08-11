@@ -56,9 +56,9 @@ if [[ -n "$fixture_root" ]]; then
     }
 else
     if [[ -n "$bundle" ]]; then
-        ./Scripts/check-proof-results.sh "$bundle" "${proof_args[@]}"
+        ./Scripts/check-proof-results.sh "$bundle" "${proof_args[@]+${proof_args[@]}}"
     else
-        ./Scripts/check-proof-results.sh "${proof_args[@]}"
+        ./Scripts/check-proof-results.sh "${proof_args[@]+${proof_args[@]}}"
     fi
 fi
 
