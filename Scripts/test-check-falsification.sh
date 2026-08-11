@@ -135,7 +135,7 @@ rg -q 'return 1' "$root/Markdown Editor/Fixture.swift" || {
 }
 
 write_manifest 'return 1' 'return 2' missingProof
-expect_failure 'unmatched expected proof' 'did not execute' "$gate" --all --fixture-root "$root"
+expect_failure 'unmatched expected proof' 'did not produce an observed named pass/fail outcome' "$gate" --all --fixture-root "$root"
 
 # Restore a valid entry before the changed-range rehearsal. The preceding case is intentionally
 # invalid and must not contaminate the fixture's later baseline commit.

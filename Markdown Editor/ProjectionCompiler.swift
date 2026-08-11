@@ -194,7 +194,7 @@ private nonisolated struct CompilerBuilder {
         } else {
         switch info.kind {
         case .bullet:
-            markerText = markerGlyph(info.marker) + " "
+            markerText = markerGlyph(info.marker, nesting: nesting) + " "
         case .ordered(let start, let delimiter):
             let delim = delimiter == .period ? "." : ")"
             // REQ / review: each item shows start + index, not the list start alone.
@@ -574,12 +574,11 @@ private nonisolated struct CompilerBuilder {
         }
     }
 
-    func markerGlyph(_ marker: MarkdownListMarker) -> String {
-        switch marker {
-        case .dash: return "-"
-        case .plus: return "+"
-        case .asterisk: return "*"
-        case .other: return "-"
-        }
+    func markerGlyph(_ marker: MarkdownListMarker, nesting: Int) -> String {
+        // Source spelling remains in the atomic marker's source boundaries; the reader sees
+        // semantic list depth, never the delimiter chosen by the author.
+        _ = marker
+        let glyphs = MarkdownTypography.listMarkerGlyphs
+        return glyphs[((max(nesting, 0) % glyphs.count) + glyphs.count) % glyphs.count]
     }
 }

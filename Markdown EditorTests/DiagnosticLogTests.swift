@@ -45,7 +45,15 @@ struct DiagnosticLogTests {
         sampler.record(.parseProjection, durationNanos: 1)
         #expect(trace.events.isEmpty)
         sampler.flush()
-        #expect(trace.events.count == 1)
+        #expect(trace.events.contains { event in
+            if case .performanceSummary(metric: .parseProjection, count: 1, _, _, _) = event { return true }
+            return false
+        })
+        #expect(trace.events.allSatisfy { event in
+            if case .performanceSummary = event { return true }
+            if case .memoryFootprint = event { return true }
+            return false
+        })
     }
 
     private func makeTemporaryDirectory() -> URL {
@@ -64,6 +72,31 @@ struct DiagnosticLogTests {
         await log.drain()
         let text = (try? String(contentsOf: log.fileURL, encoding: .utf8)) ?? ""
         return text.split(separator: "\n").map(String.init)
+    }
+
+    // Verifies: REQ-123 — collapsing rapid accepted-edit work records retains both the total and
+    // worst observed work instead of reducing the ledger to an event count.
+    @Test func collapsedWorkLedgerRecordsRetainSumAndMax() async {
+        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
+        for value in 1...40 {
+            log.record(
+                .workLedger,
+                category: .diagnostics,
+                data: [
+                    (.documentParses, .uint(UInt64(value))),
+                    (.projectionCompiles, .uint(2))
+                ]
+            )
+        }
+        log.finish()
+        let records = await lines(of: log)
+        let summaries = records.compactMap(object).filter { ($0["ev"] as? String) == "repeated" }
+        let data = summaries.compactMap { $0["data"] as? [String: Any] }.first
+        #expect((data?["count"] as? Int) == 20)
+        #expect((data?["sumDocumentParses"] as? Int) == 610)
+        #expect((data?["maxDocumentParses"] as? Int) == 40)
+        #expect((data?["sumProjectionCompiles"] as? Int) == 40)
+        #expect((data?["maxProjectionCompiles"] as? Int) == 2)
     }
 
     // Verifies: REQ-135 — this existing closed mapping matrix is also emitted through the
@@ -142,6 +175,9 @@ struct DiagnosticLogTests {
             .userAlertPresented(severity: .error, reason: .placement(.busy))
             , .performanceSummary(metric: .nativeInputCallback, count: 2, p50Nanos: 3, p95Nanos: 4, maxNanos: 5)
             , .budgetExceeded(metric: .modeTransition, p95Nanos: 17, budgetNanos: 16)
+            , .workLedger(scope: .acceptedEdit, documentParses: 1, projectionCompiles: 1, oracleValidations: 1, attributedBuilds: 1, attributedCharactersWritten: 10, storageFullReplacements: 1, imageDecodes: 1, fileBytesRead: 100, mainThreadBlockedNanos: 1000)
+            , .frameStatistics(hitchMillisPerSecond: 1.0, longestFrameNanos: 1000, framesObserved: 10)
+            , .memoryFootprint(bytes: 1000, peakBytes: 2000)
         ]
 
         var covered = Set<DiagnosticEventName>()

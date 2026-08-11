@@ -115,6 +115,8 @@ struct ProductionTestHookInventoryTests {
             "clearProjectionForTesting",
             "installResolvedImagesForTesting",
             "trapsOnReconciliationViolation", // lets a suite provoke ARC-015 without trapping
+            "currentForTesting",              // observes the active work-ledger frame
+            "resetForTesting",                // clears test-owned ledger state between cases
         ]
         for hook in hooks {
             #expect(source.contains(hook), "inventoried hook \(hook) no longer exists")

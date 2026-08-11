@@ -140,9 +140,6 @@ struct EditorHostView: NSViewRepresentable {
 
         deinit {
             NotificationCenter.default.removeObserver(self)
-            MainActor.assumeIsolated {
-                session.detach()
-            }
         }
 
         /// Records one completed host update and reports a sustained storm.
@@ -209,6 +206,9 @@ struct EditorHostView: NSViewRepresentable {
             let sText = MarkdownSourceTextView(usingTextLayoutManager: false)
             configureSource(sText)
             sText.delegate = sourceCoordinator
+            sText.markNextNativeEditDiscrete = { [weak sourceCoordinator] in
+                sourceCoordinator?.nextNativeEditIsDiscrete()
+            }
             sScroll.documentView = sText
             sourceCoordinator?.textView = sText
             sourceCoordinator?.highlight()
@@ -278,6 +278,16 @@ struct EditorHostView: NSViewRepresentable {
         }
 
         func applyMode(_ mode: EditorMode, focus: Bool) {
+            if lastAppliedMode != nil && lastAppliedMode != mode {
+                WorkLedgerRecorder.scope(.modeTransition) {
+                    applyModeBody(mode, focus: focus)
+                }
+            } else {
+                applyModeBody(mode, focus: focus)
+            }
+        }
+
+        private func applyModeBody(_ mode: EditorMode, focus: Bool) {
             let performanceStart = DispatchTime.now().uptimeNanoseconds
             guard let sourceScroll, let wysiwygScroll, let sourceText, let wysiwygText else { return }
             let modeChanged = lastAppliedMode != nil && lastAppliedMode != mode
@@ -405,7 +415,7 @@ struct EditorHostView: NSViewRepresentable {
             textView.documentActions = document
             textView.isRichText = false
             textView.allowsUndo = false
-            textView.font = MarkdownTheme().baseFont
+            textView.font = MarkdownTypography().bodyFont
             textView.isAutomaticQuoteSubstitutionEnabled = false
             textView.isAutomaticDashSubstitutionEnabled = false
             textView.isAutomaticTextReplacementEnabled = false

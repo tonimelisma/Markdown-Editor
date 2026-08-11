@@ -23,6 +23,8 @@ nonisolated enum EditorSemanticWorker {
     static func sync<Value: Sendable>(
         _ work: @escaping @Sendable () -> Value
     ) -> Value {
+        let isMain = Thread.isMainThread
+        let t0 = isMain ? DispatchTime.now().uptimeNanoseconds : 0
         let completion = DispatchSemaphore(value: 0)
         let box = SemanticWorkerResultBox<Value>()
         queue.async {
@@ -31,6 +33,10 @@ nonisolated enum EditorSemanticWorker {
             completion.signal()
         }
         completion.wait()
+        if isMain {
+            let dt = DispatchTime.now().uptimeNanoseconds &- t0
+            WorkLedgerRecorder.add { $0.mainThreadBlockedNanos &+= dt }
+        }
         guard let value = box.value else {
             preconditionFailure("Semantic worker completed without producing a value")
         }

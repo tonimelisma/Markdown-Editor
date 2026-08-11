@@ -60,9 +60,13 @@ if not research.is_dir():
     print(f"check-measurement-provenance: missing research directory: {research}", file=sys.stderr)
     sys.exit(1)
 
-# COR-45 owns the executable PerformanceCorpus digest producer. Until it exists, a committed
-# benchmark table must fail closed rather than treating a source-file hash as a corpus digest.
-corpus_digest = expected_digest if fixture_root else ""
+# The production corpus is a checked-in closed enumeration. Its source digest is the same
+# immutable digest emitted by benchmark.sh; fixtures supply their own explicit digest.
+if fixture_root:
+    corpus_digest = expected_digest
+else:
+    corpus_source = repo / "Markdown Editor/PerformanceCorpus.swift"
+    corpus_digest = __import__("hashlib").sha256(corpus_source.read_bytes()).hexdigest() if corpus_source.is_file() else ""
 
 def has_results_table(text):
     # This is the benchmark schema, not every ordinary evidence table in research. COR-45 owns

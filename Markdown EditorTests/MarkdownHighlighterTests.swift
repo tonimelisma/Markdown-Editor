@@ -221,7 +221,7 @@ struct MarkdownThemeTests {
 
     // Verifies: REQ-041/047
     @Test func returnsAttributesPerStyle() {
-        let theme = MarkdownTheme()
+        let theme = MarkdownTypography()
         #expect(theme.attributes(for: .bold)[.font] != nil)
         #expect(theme.attributes(for: .heading(level: 1))[.font] != nil)
         #expect(theme.attributes(for: .inlineCode)[.font] != nil)
@@ -249,7 +249,7 @@ struct StylingFidelityTests {
     @Test func attributeStylingLeavesStringUnchanged() async throws {
         let text = "# Title\n**bold** and `code`, a [link](url), ![img](<a b>), ~one~, ~~two~~, ==hi== [^1] x^2^.\r\nSecond line.\n"
         let storage = NSTextStorage(string: text)
-        let theme = MarkdownTheme()
+        let theme = MarkdownTypography()
         let tokens = try await MarkdownHighlighter().tokens(for: text)
         let full = NSRange(location: 0, length: storage.length)
         storage.beginEditing()

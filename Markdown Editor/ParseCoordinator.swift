@@ -42,6 +42,7 @@ final class ParseCoordinator {
         operationGeneration &+= 1
         let generation = operationGeneration
         let currentPresentation = session.presentation
+        let cachedImageIdentities = session.imageCache.currentIdentities()
 
         if currentPresentation?.sourceRevision.value != snapshot.sourceVersion
             || currentPresentation?.locationGeneration != snapshot.locationGeneration {
@@ -64,6 +65,7 @@ final class ParseCoordinator {
         )
         let parseProjectionStart = DispatchTime.now().uptimeNanoseconds
         let task = Task.detached(priority: .userInitiated) { [weak session, weak document] in
+            await WorkLedgerRecorder.scope(.reconciliation) {
             if Task.isCancelled {
                 await MainActor.run {
                     document?.trace?.record(.parseCancelled(sourceVersion: snapshot.sourceVersion))
@@ -127,18 +129,28 @@ final class ParseCoordinator {
             let parseProjectionDuration = DispatchTime.now().uptimeNanoseconds &- parseProjectionStart
             let imageResolutionStart = DispatchTime.now().uptimeNanoseconds
             var descriptors: [LocalImageDescriptor] = []
+            var cachedImageNodes: [MarkdownNodeID: LocalImageDecoder.ImageFileIdentity] = [:]
             var resolveFailures: [LocalImageResolveFailure] = []
             for attachment in model.attachments {
                 if case .image(let destination, _) = attachment.kind {
-                    switch LocalImageResolver.resolve(
+                    switch LocalImageDecoder.identity(
                         destination: destination,
                         documentURL: snapshot.fileURL,
-                        nodeID: attachment.nodeID,
-                        sourceVersion: snapshot.sourceVersion,
                         locationGeneration: snapshot.locationGeneration
                     ) {
-                    case .success(let desc):
-                        descriptors.append(desc)
+                    case .success(let identity) where cachedImageIdentities.contains(identity):
+                        cachedImageNodes[attachment.nodeID] = identity
+                    case .success:
+                        switch LocalImageResolver.resolve(
+                            destination: destination,
+                            documentURL: snapshot.fileURL,
+                            nodeID: attachment.nodeID,
+                            sourceVersion: snapshot.sourceVersion,
+                            locationGeneration: snapshot.locationGeneration
+                        ) {
+                        case .success(let desc): descriptors.append(desc)
+                        case .failure(let reason): resolveFailures.append(reason)
+                        }
                     case .failure(let reason):
                         resolveFailures.append(reason)
                     }
@@ -174,6 +186,11 @@ final class ParseCoordinator {
                 document?.updateCanonicalAssetReferences(CanonicalAssetReferences.from(model: model))
                 let imageCacheLookupStart = DispatchTime.now().uptimeNanoseconds
                 var images: [MarkdownNodeID: NSImage] = [:]
+                for (nodeID, identity) in cachedImageNodes {
+                    if let image = session.imageCache.image(for: identity) {
+                        images[nodeID] = image
+                    }
+                }
                 for desc in descriptors {
                     if let image = session.imageCache.image(for: desc) {
                         images[desc.nodeID] = image
@@ -203,13 +220,14 @@ final class ParseCoordinator {
                     )
                 )
             }
+            }
         }
         parseTask = task
         Task { @MainActor [weak session, weak document, weak self] in
             await task.value
             guard let session, let self else { return }
-            if self.parseScheduler.finish(request) {
-                self.scheduleParse(session: session, document: document!)
+            if self.parseScheduler.finish(request), let document {
+                self.scheduleParse(session: session, document: document)
             }
         }
     }

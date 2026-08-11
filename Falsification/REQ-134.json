@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-134",
+  "mutations": [
+    {
+      "rationale": "Removing head equality lets a receipt for another commit certify the pushed head, the stale-receipt defect this requirement forbids.",
+      "file": "Scripts/check-push-policy.sh",
+      "find": ".head == $head",
+      "replace": "true",
+      "expect_red": ["Scripts/test-check-push-policy.sh"]
+    }
+  ]
+}

@@ -470,6 +470,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// // `fileURL` is not reliable either — NSDocument's own opening machinery may already
     /// // have set it before `read(from:ofType:)` runs even on the very first load.
     private func installLoadedText(_ value: String) {
+        WorkLedgerRecorder.scope(.documentOpen) {
         closeTypingGroupIfNeeded()
         let isInitialLoad = !hasCompletedInitialLoad && !isRevertingViaAppKit
         hasCompletedInitialLoad = true
@@ -486,6 +487,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             trace?.record(.documentLoaded(utf16Count: utf16Count, sourceRevision: sourceVersion))
         } else {
             trace?.record(.documentReverted(sourceRevision: sourceVersion, utf16Count: utf16Count))
+        }
         }
     }
 

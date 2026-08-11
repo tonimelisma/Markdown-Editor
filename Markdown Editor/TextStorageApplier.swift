@@ -14,6 +14,7 @@ final class TextStorageApplier {
     private(set) var attachmentNodes: [Int: MarkdownNodeID] = [:]
 
     func applyInitialPresentation(_ built: AttributedPresentation, to textView: NSTextView) {
+        WorkLedgerRecorder.add { $0.storageFullReplacements += 1 }
         replaceEverything(with: built, in: textView)
     }
 
@@ -75,6 +76,7 @@ final class TextStorageApplier {
     /// Rebuilds everything after an invariant violation. Architecturally exceptional: callers
     /// record a typed reason so a recovery can never pass for an ordinary edit.
     func applyRecoveryPresentation(_ built: AttributedPresentation, to textView: NSTextView) {
+        WorkLedgerRecorder.add { $0.storageFullReplacements += 1 }
         replaceEverything(with: built, in: textView)
     }
 

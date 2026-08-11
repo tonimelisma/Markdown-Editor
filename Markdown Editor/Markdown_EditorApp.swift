@@ -132,6 +132,9 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
 
     /// Detects an unresponsive main actor for the process lifetime (REQ-096).
     private var watchdog: MainActorWatchdog?
+    private var responsivenessProbe: MainActorResponsivenessProbe?
+    private var frameObserver: FrameObserver?
+    private var applicationSampler: PerformanceSampler?
 
     override init() {
         // REQ-098: window-state restoration is vetoed for smoke runs by Scripts/smoke-test.sh
@@ -173,6 +176,25 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         let watchdog = MainActorWatchdog(report: report)
         watchdog.start()
         self.watchdog = watchdog
+        if let log = DiagnosticLog.shared {
+            let trace = JSONLinesEditorTrace(log: log)
+            let sampler = PerformanceSampler(trace: trace)
+            applicationSampler = sampler
+            let probe = MainActorResponsivenessProbe(sampler: sampler)
+            probe.start()
+            responsivenessProbe = probe
+            let observer = FrameObserver(sampler: sampler, trace: trace)
+            observer.start()
+            frameObserver = observer
+        }
+
+        if BenchmarkDriver.runIfRequested() {
+            if let fixture = Self.smokeFixtureURL {
+                NSDocumentController.shared.openDocument(withContentsOf: fixture, display: true) { _, _, _ in }
+            }
+            Task { @MainActor in await BenchmarkDriver.run() }
+            return
+        }
 
         if Self.isSmokeRun {
             if let fixture = Self.smokeFixtureURL {
@@ -233,6 +255,12 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         DiagnosticRunCoordinator.shared.flushAndInvalidateAll()
+        responsivenessProbe?.stop()
+        frameObserver?.stop()
+        applicationSampler?.invalidate()
+        responsivenessProbe = nil
+        frameObserver = nil
+        applicationSampler = nil
         watchdog?.stop()
         // REQ-095: the terminating record distinguishes a clean exit from a crash.
         DiagnosticLog.shared?.finishSynchronously()
@@ -244,6 +272,7 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         // REQ-098: a smoke run opens exactly its fixture; a second untitled document would
         // change the host-update count the smoke script asserts on.
         if Self.isSmokeRun { return false }
+        if BenchmarkDriver.isRequested { return false }
         return true
     }
 

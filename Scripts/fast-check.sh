@@ -52,11 +52,22 @@ step "push-policy fixtures"
 ./Scripts/test-check-delivery-status.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 
 step "changed-scope falsification"
-falsification_base="${FALSIFICATION_BASE:-$(git merge-base origin/main HEAD 2>/dev/null || git rev-parse HEAD)}"
+if [[ -n "${FALSIFICATION_BASE:-}" ]]; then
+    falsification_base="$FALSIFICATION_BASE"
+elif git rev-parse --verify origin/main >/dev/null 2>&1; then
+    falsification_base="$(git merge-base origin/main HEAD)"
+else
+    echo "fast-check: cannot determine falsification base; origin/main is missing" >&2
+    falsification_gate=fail
+    failures=$((failures + 1))
+    falsification_base=""
+fi
+if [[ -n "$falsification_base" ]]; then
 ./Scripts/check-falsification.sh --changed "$falsification_base..HEAD" || {
     falsification_gate=fail
     failures=$((failures + 1))
 }
+fi
 
 step "non-performance test suites"
 # Excluded on purpose: PerformanceBoundaryTests owns the 100,000-UTF-16 corpus gates, which are

@@ -15,7 +15,7 @@ import UniformTypeIdentifiers
 nonisolated enum LocalImageDecoder {
     static let maxPixelDimension = 8_192
     static let maxEncodedFileBytes = 256 * 1024 * 1024
-    static let maxDisplayEdge: CGFloat = 512
+    static let maxDisplayEdge: CGFloat = MarkdownTypography.maximumReadingMeasure * 2
     static let allowedUTIs: Set<String> = [
         UTType.png.identifier,
         UTType.jpeg.identifier,
@@ -24,6 +24,14 @@ nonisolated enum LocalImageDecoder {
         UTType.heif.identifier,
         "public.png", "public.jpeg", "public.gif", "public.heic", "public.heif"
     ]
+
+    struct ImageFileIdentity: Hashable, Sendable {
+        let path: String
+        let fileSize: Int64
+        let modificationTime: TimeInterval
+        let inode: UInt64
+        let locationGeneration: UInt64
+    }
 
     struct DecodedImage: Sendable {
         let cgImage: CGImage
@@ -34,47 +42,62 @@ nonisolated enum LocalImageDecoder {
         let fileModificationDate: Date?
         /// SHA-256 hex of file bytes — real content identity for the display cache.
         let contentDigest: String
+        let fileIdentity: ImageFileIdentity
     }
 
-    static func decode(
+    static func identity(
         destination: String,
-        documentURL: URL?
-    ) -> Result<DecodedImage, LocalImageResolveFailure> {
+        documentURL: URL?,
+        locationGeneration: UInt64
+    ) -> Result<ImageFileIdentity, LocalImageResolveFailure> {
         if let url = URL(string: destination), let scheme = url.scheme?.lowercased(),
            ["http", "https", "ftp"].contains(scheme) {
             return .failure(.remoteURL)
         }
-        if destination.lowercased().hasPrefix("//") {
-            return .failure(.remoteURL)
-        }
+        if destination.lowercased().hasPrefix("//") { return .failure(.remoteURL) }
         guard let documentURL else { return .failure(.missingFile) }
-        let folder = documentURL.deletingLastPathComponent()
-        let resolved = URL(fileURLWithPath: destination, relativeTo: folder).standardizedFileURL
-
+        let resolved = URL(fileURLWithPath: destination, relativeTo: documentURL.deletingLastPathComponent()).standardizedFileURL
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: resolved.path, isDirectory: &isDir), !isDir.boolValue else {
             return .failure(.missingFile)
         }
-
-        let ext = resolved.pathExtension.lowercased()
-        guard ["png", "jpg", "jpeg", "gif", "heic", "heif"].contains(ext) else {
+        guard ["png", "jpg", "jpeg", "gif", "heic", "heif"].contains(resolved.pathExtension.lowercased()) else {
             return .failure(.unsupportedType)
         }
-
-        let attributes = try? FileManager.default.attributesOfItem(atPath: resolved.path)
-        guard let attributes,
-              let fileType = attributes[.type] as? FileAttributeType,
-              fileType == .typeRegular,
-              let fileSize = attributes[.size] as? NSNumber else {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: resolved.path),
+              attributes[.type] as? FileAttributeType == .typeRegular,
+              let size = (attributes[.size] as? NSNumber)?.int64Value,
+              let modified = attributes[.modificationDate] as? Date,
+              let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value else {
             return .failure(.missingFile)
         }
-        guard fileSize.int64Value <= Int64(maxEncodedFileBytes) else {
-            return .failure(.encodedFileTooLarge)
+        guard size <= Int64(maxEncodedFileBytes) else { return .failure(.encodedFileTooLarge) }
+        return .success(ImageFileIdentity(
+            path: resolved.path,
+            fileSize: size,
+            modificationTime: modified.timeIntervalSinceReferenceDate,
+            inode: inode,
+            locationGeneration: locationGeneration
+        ))
+    }
+
+    static func decode(
+        destination: String,
+        documentURL: URL?,
+        identity suppliedIdentity: ImageFileIdentity? = nil,
+        locationGeneration: UInt64 = 0
+    ) -> Result<DecodedImage, LocalImageResolveFailure> {
+        let fileIdentity: ImageFileIdentity
+        switch suppliedIdentity.map(Result.success) ?? identity(destination: destination, documentURL: documentURL, locationGeneration: locationGeneration) {
+        case .failure(let error): return .failure(error)
+        case .success(let value): fileIdentity = value
         }
+        let resolved = URL(fileURLWithPath: fileIdentity.path)
 
         guard let fileData = try? Data(contentsOf: resolved, options: [.mappedIfSafe]) else {
             return .failure(.missingFile)
         }
+        WorkLedgerRecorder.add { $0.imageDecodes += 1; $0.fileBytesRead += fileData.count }
         let contentDigest = ImageAssetPolicy.sha256Hex(fileData)
 
         guard let source = CGImageSourceCreateWithData(
@@ -117,7 +140,8 @@ nonisolated enum LocalImageDecoder {
                 pixelHeight: height,
                 byteCost: cost,
                 fileModificationDate: modDate,
-                contentDigest: contentDigest
+                contentDigest: contentDigest,
+                fileIdentity: fileIdentity
             )
         )
     }
@@ -131,12 +155,8 @@ final class LocalImageByteCache {
     static let maxBytes = 64 * 1024 * 1024
 
     private struct Key: Hashable {
-        let path: String
-        let locationGeneration: UInt64
-        let modificationTime: TimeInterval
+        let identity: LocalImageDecoder.ImageFileIdentity
         let displayEdge: Int
-        /// SHA-256 of file bytes — metadata alone can collide for same-size replacements.
-        let contentDigest: String
     }
 
     private struct Entry {
@@ -149,20 +169,15 @@ final class LocalImageByteCache {
     private var order: [Key] = []
     private(set) var totalBytes = 0
 
+    func identities() -> Set<LocalImageDecoder.ImageFileIdentity> {
+        Set(map.keys.map(\.identity))
+    }
+
     func image(
-        path: String,
-        locationGeneration: UInt64,
-        modification: Date?,
-        contentDigest: String,
+        identity: LocalImageDecoder.ImageFileIdentity,
         displayEdge: Int = Int(LocalImageDecoder.maxDisplayEdge)
     ) -> CGImage? {
-        let key = Key(
-            path: path,
-            locationGeneration: locationGeneration,
-            modificationTime: modification?.timeIntervalSinceReferenceDate ?? 0,
-            displayEdge: displayEdge,
-            contentDigest: contentDigest
-        )
+        let key = Key(identity: identity, displayEdge: displayEdge)
         guard let entry = map[key] else { return nil }
         if let idx = order.firstIndex(of: key) {
             order.remove(at: idx)
@@ -172,19 +187,10 @@ final class LocalImageByteCache {
     }
 
     func displayImage(
-        path: String,
-        locationGeneration: UInt64,
-        modification: Date?,
-        contentDigest: String,
+        identity: LocalImageDecoder.ImageFileIdentity,
         displayEdge: Int = Int(LocalImageDecoder.maxDisplayEdge)
     ) -> NSImage? {
-        let key = Key(
-            path: path,
-            locationGeneration: locationGeneration,
-            modificationTime: modification?.timeIntervalSinceReferenceDate ?? 0,
-            displayEdge: displayEdge,
-            contentDigest: contentDigest
-        )
+        let key = Key(identity: identity, displayEdge: displayEdge)
         guard let entry = map[key] else { return nil }
         if let idx = order.firstIndex(of: key) {
             order.remove(at: idx)
@@ -197,19 +203,10 @@ final class LocalImageByteCache {
         _ image: CGImage,
         displayImage: NSImage,
         cost: Int,
-        path: String,
-        locationGeneration: UInt64,
-        modification: Date?,
-        contentDigest: String,
+        identity: LocalImageDecoder.ImageFileIdentity,
         displayEdge: Int = Int(LocalImageDecoder.maxDisplayEdge)
     ) {
-        let key = Key(
-            path: path,
-            locationGeneration: locationGeneration,
-            modificationTime: modification?.timeIntervalSinceReferenceDate ?? 0,
-            displayEdge: displayEdge,
-            contentDigest: contentDigest
-        )
+        let key = Key(identity: identity, displayEdge: displayEdge)
         if let old = map[key] {
             totalBytes -= old.cost
             map.removeValue(forKey: key)

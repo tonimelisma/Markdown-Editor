@@ -119,7 +119,7 @@ struct PerformanceBoundaryTests {
             transition: transition,
             current: fixture.current,
             buildScope: { model, scope in
-                AttributedPresentationBuilder.buildScoped(model: model, theme: MarkdownTheme(), scope: scope)
+                AttributedPresentationBuilder.buildScoped(model: model, theme: MarkdownTypography(), scope: scope)
             }
         )
         #expect(patch == nil)
@@ -143,7 +143,7 @@ struct PerformanceBoundaryTests {
             transition: transition,
             current: fixture.current,
             buildScope: { model, scope in
-                AttributedPresentationBuilder.buildScoped(model: model, theme: MarkdownTheme(), scope: scope)
+                AttributedPresentationBuilder.buildScoped(model: model, theme: MarkdownTypography(), scope: scope)
             }
         )
         #expect(patch == nil)

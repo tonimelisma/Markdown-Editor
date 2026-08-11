@@ -21,12 +21,13 @@ enum SourceEditor {
 
         var document: MarkdownDocument
         var session: EditorSession?
-        let theme = MarkdownTheme()
+        let theme = MarkdownTypography()
         let placementController: ImagePlacementController
         private let highlighter = MarkdownHighlighter()
         weak var textView: MarkdownSourceTextView?
         var nativeStorageState: NativeStorageState = .idle
-        var nextNativeGrouping: MutationGrouping?
+        private var nextNativeGrouping: MutationGrouping?
+        private var pendingStyleRange: NSRange?
         private var version = 0
         private var task: Task<Void, Never>?
 
@@ -63,6 +64,9 @@ enum SourceEditor {
             }
             let grouping = nextNativeGrouping ?? .typing
             nextNativeGrouping = nil
+            let replacementLength = (replacement as NSString).length
+            let changed = NSRange(location: affectedCharRange.location, length: max(affectedCharRange.length, replacementLength))
+            pendingStyleRange = union(pendingStyleRange, changed)
             let selectionBefore = session?.sourceModeState.selection
                 ?? SourceSelection(
                     utf16: textView.selectedRange(),
@@ -102,6 +106,10 @@ enum SourceEditor {
                 )
             }
             highlight(debounced: true)
+        }
+
+        func nextNativeEditIsDiscrete() {
+            nextNativeGrouping = .discrete
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -153,12 +161,41 @@ enum SourceEditor {
                   let textView, textView.string == expectedText,
                   let storage = textView.textStorage else { return }
             let full = NSRange(location: 0, length: storage.length)
+            let target = styleWindow(for: pendingStyleRange ?? full, in: storage)
+            pendingStyleRange = nil
+            let started = DispatchTime.now().uptimeNanoseconds
             storage.beginEditing()
-            storage.setAttributes(theme.baseAttributes, range: full)
+            if target.length > 0 { storage.setAttributes(theme.baseAttributes, range: target) }
             for token in tokens where NSMaxRange(token.range) <= full.length {
-                storage.addAttributes(theme.attributes(for: token.style), range: token.range)
+                let intersection = NSIntersectionRange(token.range, target)
+                guard intersection.length > 0 else { continue }
+                storage.addAttributes(theme.attributes(for: token.style), range: intersection)
             }
             storage.endEditing()
+            session?.recordPerformance(.sourceHighlightApplication, durationNanos: DispatchTime.now().uptimeNanoseconds &- started)
+        }
+
+        private func styleWindow(for edited: NSRange, in storage: NSTextStorage) -> NSRange {
+            let full = NSRange(location: 0, length: storage.length)
+            guard edited.location != NSNotFound, edited.location >= 0 else { return full }
+            let lower = max(0, min(edited.location, storage.length))
+            let upper = min(storage.length, max(lower, NSMaxRange(edited)))
+            let text = storage.string as NSString
+            var start = lower
+            while start > 0 && text.character(at: start - 1) != 10 { start -= 1 }
+            var end = upper
+            while end < text.length && text.character(at: end) != 10 { end += 1 }
+            // Fence changes have unbounded lexical effect below the edited line; widen the
+            // pass so a newly opened/closed fence cannot leave stale styles below it.
+            let line = text.substring(with: NSRange(location: start, length: max(0, end - start)))
+            if line.contains("```") || line.contains("~~~") { return full }
+            return NSRange(location: start, length: max(0, end - start))
+        }
+
+        private func union(_ lhs: NSRange?, _ rhs: NSRange) -> NSRange {
+            guard let lhs else { return rhs }
+            let lower = min(lhs.location, rhs.location)
+            return NSRange(location: lower, length: max(NSMaxRange(lhs), NSMaxRange(rhs)) - lower)
         }
     }
 }
@@ -169,6 +206,7 @@ final class MarkdownSourceTextView: NSTextView {
     weak var placementController: ImagePlacementController?
     weak var documentActions: DocumentActionInterface?
     var documentURL: URL?
+    var markNextNativeEditDiscrete: (() -> Void)?
 
     /// Prefer the document-owned undo manager so Edit ▸ Undo reaches source transactions.
     override var undoManager: UndoManager? {
@@ -231,10 +269,10 @@ final class MarkdownSourceTextView: NSTextView {
             if let plain = PastePolicy.plainText(from: .general) {
                 let range = selectedRange()
                 // Paste must not coalesce into the open typing undo group (REQ-016).
-                (delegate as? SourceEditor.Coordinator)?.nextNativeGrouping = .discrete
+                markNextNativeEditDiscrete?()
                 insertText(plain, replacementRange: range)
             } else {
-                (delegate as? SourceEditor.Coordinator)?.nextNativeGrouping = .discrete
+                markNextNativeEditDiscrete?()
                 super.pasteAsPlainText(sender)
             }
         }

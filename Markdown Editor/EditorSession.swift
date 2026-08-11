@@ -394,7 +394,7 @@ final class EditorSession: ObservableObject {
         parseCoordinator.scheduleParse(session: self, document: document)
     }
 
-    /// Primary edit entry    /// Primary edit entry — returns accepted source+presentation transition or refusal.
+    /// Primary edit entry — returns accepted source+presentation transition or refusal.
     @discardableResult
     func perform(
         _ command: SemanticCommand,
@@ -403,6 +403,7 @@ final class EditorSession: ObservableObject {
         grouping groupingOverride: MutationGrouping? = nil
     ) -> EditorEditOutcome {
         guard let document else { return .refused(.unavailable) }
+        return WorkLedgerRecorder.scope(.acceptedEdit) {
         let snapshot = document.sourceSnapshot()
         let grouping = groupingOverride ?? SemanticEditEngine.defaultGrouping(for: command)
         let request = EditorEditRequest(
@@ -473,6 +474,7 @@ final class EditorSession: ObservableObject {
         case .refused(let refusal):
             document.trace?.record(.editRefused(category: .refusal(refusal)))
             return .refused(refusal)
+        }
         }
     }
 

@@ -5,6 +5,9 @@
 
 import AppKit
 
+final class QuoteTextBlock: NSTextBlock {}
+final class CodeTextBlock: NSTextBlock {}
+
 /// The single source of truth for the approved native reading typography.
 ///
 /// // REQ-105/107; ARC-018/ARC-Q14/ARC-Q15: semantic builders consume these tokens rather than
@@ -18,6 +21,7 @@ struct MarkdownTypography {
     nonisolated static let minimumVerticalInset: CGFloat = 20
     nonisolated static let paragraphSpacingEm: CGFloat = 0.7
     nonisolated static let listIndent: CGFloat = 24
+    nonisolated static let listMarkerGlyphs = ["•", "◦", "▪"]
     nonisolated static let quoteRuleWidth: CGFloat = 3
     nonisolated static let quoteInset: CGFloat = 17
     nonisolated static let inlineCodeScale: CGFloat = 0.93
@@ -36,6 +40,29 @@ struct MarkdownTypography {
 
     var bodyFont: NSFont { .systemFont(ofSize: Self.bodyPointSize, weight: .regular) }
     var monoFont: NSFont { .monospacedSystemFont(ofSize: Self.bodyPointSize, weight: .regular) }
+    var baseFontSize: CGFloat { Self.bodyPointSize }
+    var baseFont: NSFont { bodyFont }
+
+    var baseAttributes: [NSAttributedString.Key: Any] {
+        [.font: bodyFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraphStyle()]
+    }
+
+    func attributes(for style: TokenStyle) -> [NSAttributedString.Key: Any] {
+        switch style {
+        case .heading(let level): return [.font: font(for: level), .foregroundColor: NSColor.labelColor]
+        case .bold: return [.font: NSFont.systemFont(ofSize: baseFontSize, weight: .bold)]
+        case .italic: return [.font: NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)]
+        case .inlineCode, .table: return [.font: inlineCodeFont(), .foregroundColor: NSColor.secondaryLabelColor]
+        case .codeBlock: return [.font: monoFont, .foregroundColor: NSColor.labelColor,
+                                  .backgroundColor: NSColor.quaternaryLabelColor.withAlphaComponent(0.18)]
+        case .link, .image: return [.foregroundColor: NSColor.linkColor]
+        case .listMarker, .taskMarker, .thematicBreak, .blockquote:
+            return [.foregroundColor: NSColor.secondaryLabelColor]
+        case .strikethrough:
+            return [.strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                    .foregroundColor: NSColor.secondaryLabelColor]
+        }
+    }
 
     func font(for headingLevel: Int) -> NSFont {
         let index = max(0, min(headingLevel - 1, Self.headingPointSizes.count - 1))
@@ -68,7 +95,7 @@ struct MarkdownTypography {
     /// One nesting level of the blockquote decoration: an adaptive leading rule plus content
     /// padding, expressed as a native `NSTextBlock` so AppKit lays out and draws it.
     func quoteBlock() -> NSTextBlock {
-        let block = NSTextBlock()
+        let block = QuoteTextBlock()
         // Without an explicit content width the block lays out at effectively zero width and
         // wraps one character per line. The screenshot review caught this; attribute-level tests
         // could not, because the border and padding values were correct all along.
@@ -81,7 +108,7 @@ struct MarkdownTypography {
 
     /// The padded adaptive code-block container.
     func codeBlock() -> NSTextBlock {
-        let block = NSTextBlock()
+        let block = CodeTextBlock()
         block.setContentWidth(100, type: .percentageValueType)
         block.setWidth(Self.codeBlockPadding, type: .absoluteValueType, for: .padding)
         block.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.18)

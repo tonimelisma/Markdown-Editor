@@ -89,6 +89,12 @@ for path in manifest_paths:
 selected = done
 git_root = root if fixture and (root / ".git").exists() else repo
 if mode == "changed" and (not fixture or (root / ".git").exists()):
+    dirty = subprocess.run(
+        ["git", "-C", str(git_root), "status", "--porcelain", "--untracked-files=all"],
+        capture_output=True, text=True, check=False,
+    )
+    if dirty.returncode or dirty.stdout.strip():
+        problems.append("changed-scope execution requires a clean working tree")
     changed = subprocess.run(
         ["git", "-C", str(git_root), "diff", "--name-only", range_value],
         capture_output=True, text=True, check=False
@@ -132,17 +138,7 @@ if mode == "changed" and (not fixture or (root / ".git").exists()):
 
     selected = set()
     for requirement in done:
-        manifest = manifest_dir / f"{requirement}.json"
-        if manifest.exists() and str(manifest.relative_to(root)) in touched:
-            selected.add(requirement)
         if implementation_intersects(requirement):
-            selected.add(requirement)
-        try:
-            data = json.loads(manifest.read_text()) if manifest.exists() else {}
-            for mutation in data.get("mutations", []):
-                if mutation.get("file") in touched:
-                    selected.add(requirement)
-        except (json.JSONDecodeError, OSError):
             selected.add(requirement)
 
 validated_manifests = {}
@@ -185,8 +181,8 @@ for requirement in sorted(selected):
         if pathlib.Path(file_value).is_absolute() or ".." in pathlib.Path(file_value).parts:
             problems.append(f"{label}: target file must be a relative in-repository path")
             continue
-        if not file_value.startswith("Markdown Editor/"):
-            problems.append(f"{label}: target file must be production source under Markdown Editor/")
+        if not (file_value.startswith("Markdown Editor/") or file_value.startswith("Scripts/")):
+            problems.append(f"{label}: target file must be production source under Markdown Editor/ or executable gate under Scripts/")
             continue
         target = (root / file_value).resolve()
         try:
@@ -200,8 +196,10 @@ for requirement in sorted(selected):
             problems.append(f"{label}: find must match exactly once in {mutation.get('file')}")
         if any(token in replacement for token in ("fatalError", "preconditionFailure", "FIXME", "abort(", "while true")):
             problems.append(f"{label}: replacement is a degenerate kill mutation")
-        if replacement.count("\n") - needle.count("\n") > 5 or needle.count("\n") - replacement.count("\n") > 5:
-            problems.append(f"{label}: replacement changes more than five lines")
+        find_lines = needle.count("\n") + 1
+        replacement_lines = replacement.count("\n") + 1
+        if find_lines > 5 or replacement_lines > 5:
+            problems.append(f"{label}: mutation must touch at most five lines (find={find_lines}, replace={replacement_lines})")
         if not isinstance(mutation.get("expect_red"), list) or not mutation["expect_red"] or not all(isinstance(item, str) and item for item in mutation["expect_red"]):
             problems.append(f"{label}: expect_red must name at least one proof")
     if not any(problem.startswith(f"{path}:") for problem in problems):
@@ -223,16 +221,25 @@ def describe_output(output):
     return "\n".join(lines)
 
 
-def test_was_executed(output):
+def proof_outcome(output, proof):
     if re.search(r"no tests? found|no matching tests?", output, re.IGNORECASE):
-        return False
-    return bool(re.search(
-        r"(?:Test run with [1-9][0-9]* test|Executed [1-9][0-9]* test|"
-        r"Test (?:Suite|Case) .+ (?:started|passed|failed)|"
-        r"[◇▶] Test .+ started)",
+        return None
+    leaf = proof.rsplit("/", 1)[-1].removesuffix("()")
+    matches = re.findall(
+        rf"(?:Test case|Test Case|[◇▶✘✔] Test) [^\n]*\b{re.escape(leaf)}(?:\(\))?[^\n]*\b(passed|failed)\b",
         output,
         re.IGNORECASE,
-    ))
+    )
+    if not matches and "/" not in proof:
+        # A suite filter has one or more case lines whose identifiers carry the suite name.
+        matches = re.findall(
+            rf"(?:Test case|Test Case|[◇▶✘✔] Test) [^\n]*\b{re.escape(proof)}(?:/|\.)[^\n]*\b(passed|failed)\b",
+            output,
+            re.IGNORECASE,
+        )
+    if not matches:
+        return None
+    return matches[-1].lower()
 
 
 def resolve_xcode_proof(mutant_root, proof):
@@ -265,7 +272,17 @@ def resolve_xcode_proof(mutant_root, proof):
     return f"{test_root.name}/{proof}"
 
 
-def command_driver(mutant_root, execution_root):
+def command_driver(mutant_root, execution_root, mutation_file=""):
+    # Repository policy requirements are proved by their executable fixture, not by an
+    # application test target.  Keep this driver explicit so a script mutation still has a
+    # compile step (shell syntax validation) and an observed process-level proof outcome.
+    if mutation_file.startswith("Scripts/"):
+        return {
+            "kind": "shell",
+            "build": ["bash", "-n", str(mutant_root / mutation_file)],
+            "test": lambda proof, result: ["bash", str(mutant_root / proof)],
+        }
+
     package = mutant_root / "Package.swift"
     if package.is_file():
         scratch = execution_root / "swift-build"
@@ -320,7 +337,13 @@ def run_command(command, cwd, environment):
             stderr=subprocess.STDOUT,
             text=True,
             check=False,
+            timeout=float(environment.get("FALSIFICATION_TIMEOUT_SECONDS", "600")),
         )
+    except subprocess.TimeoutExpired as error:
+        output = error.stdout or ""
+        if isinstance(output, bytes):
+            output = output.decode(errors="replace")
+        return subprocess.CompletedProcess(command, 124, output + "\nfalsification command timed out")
     except OSError as error:
         return subprocess.CompletedProcess(command, 127, str(error))
 
@@ -361,7 +384,7 @@ def execute_mutation(requirement, mutation_index, mutation):
         environment["TMPDIR"] = str(isolated_tmp)
 
         try:
-            driver = command_driver(mutant_root, execution_root)
+            driver = command_driver(mutant_root, execution_root, file_value)
         except RuntimeError as error:
             return False, f"{requirement} mutation {mutation_index}: {error}"
 
@@ -376,13 +399,19 @@ def execute_mutation(requirement, mutation_index, mutation):
         for proof_index, proof in enumerate(mutation["expect_red"], 1):
             result = execution_root / f"result-{proof_index}.xcresult"
             test = run_command(driver["test"](proof, result), mutant_root, environment)
-            if not test_was_executed(test.stdout):
+            if driver["kind"] == "shell":
+                # Shell fixtures expose a positive PASS marker only when the complete fixture
+                # reaches its end.  A non-zero process is the named proof turning red.
+                outcome = "failed" if test.returncode else ("passed" if "PASS" in test.stdout else None)
+            else:
+                outcome = proof_outcome(test.stdout, proof)
+            if outcome is None:
                 return False, (
                     f"{requirement} mutation {mutation_index}: expect_red proof {proof!r} "
-                    "did not execute\n"
+                    "did not produce an observed named pass/fail outcome\n"
                     f"{describe_output(test.stdout)}"
                 )
-            if test.returncode:
+            if outcome == "failed":
                 red_proofs.append(proof)
 
         if not red_proofs:

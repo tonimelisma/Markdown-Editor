@@ -176,7 +176,7 @@ enum WYSIWYGEditor {
                     refreshed = textStorageApplier.applyAttributeRefresh(
                         AttributedPresentationBuilder.buildScoped(
                             model: presentation.asProjectionModel,
-                            theme: MarkdownTheme(),
+                            theme: MarkdownTypography(),
                             images: session.resolvedImages,
                             onTaskPress: { [weak self] nodeID in self?.performTaskToggle(nodeID: nodeID) },
                             scope: scope
@@ -203,7 +203,7 @@ enum WYSIWYGEditor {
                 buildScope: { [weak self] model, scope in
                     AttributedPresentationBuilder.buildScoped(
                         model: model,
-                        theme: MarkdownTheme(),
+                        theme: MarkdownTypography(),
                         images: self?.session.resolvedImages ?? [:],
                         onTaskPress: { nodeID in self?.performTaskToggle(nodeID: nodeID) },
                         scope: scope
@@ -232,7 +232,7 @@ enum WYSIWYGEditor {
         private func buildPresentation(_ snapshot: PresentationSnapshot) -> AttributedPresentation {
             AttributedPresentationBuilder.build(
                 model: snapshot.asProjectionModel,
-                theme: MarkdownTheme(),
+                theme: MarkdownTypography(),
                 images: session.resolvedImages,
                 onTaskPress: { [weak self] nodeID in
                     self?.performTaskToggle(nodeID: nodeID)
@@ -363,7 +363,7 @@ enum WYSIWYGEditor {
                 buildScope: { [weak self] model, scope in
                     AttributedPresentationBuilder.buildScoped(
                         model: model,
-                        theme: MarkdownTheme(),
+                        theme: MarkdownTypography(),
                         images: self?.session.resolvedImages ?? [:],
                         onTaskPress: { nodeID in self?.performTaskToggle(nodeID: nodeID) },
                         scope: scope
@@ -415,7 +415,7 @@ enum WYSIWYGEditor {
             textView.isEditable = false
             let built = AttributedPresentationBuilder.build(
                 model: snapshot.asProjectionModel,
-                theme: MarkdownTheme(),
+                theme: MarkdownTypography(),
                 images: session.resolvedImages,
                 onTaskPress: { [weak self] nodeID in
                     self?.performTaskToggle(nodeID: nodeID)
@@ -879,7 +879,12 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             }
             // REQ-059: always paste plain text even when RTF/HTML are available.
             if let plain = PastePolicy.plainText(from: .general) {
-                _ = pastePlainText(plain)
+                if !pastePlainText(plain) {
+                    placementController?.presentAlert(
+                        .error("The document changed before the pasted text could be inserted."),
+                        reason: .stalePresentation
+                    )
+                }
             }
         }
     }
@@ -919,14 +924,20 @@ final class MarkdownWYSIWYGTextView: NSTextView {
         let url = documentActions?.sourceSnapshot().fileURL
         if let receivers = pb.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver],
            !receivers.isEmpty {
-            guard let target = imagePlacementTarget() else { return false }
+            guard let target = imagePlacementTarget() else {
+                placementController?.presentAlert(.error("Could not resolve image insertion point."), reason: .noInsertionTarget)
+                return false
+            }
             placementController?.handleFilePromises(receivers, target: target, documentURL: url)
             return true
         }
         let classification = ImagePasteboardClassifier.classifyDragInfo(sender)
         switch classification {
         case .images(let claims):
-            guard let target = imagePlacementTarget() else { return false }
+            guard let target = imagePlacementTarget() else {
+                placementController?.presentAlert(.error("Could not resolve image insertion point."), reason: .noInsertionTarget)
+                return false
+            }
             placementController?.handleImageAction(
                 intent: ImagePlacementIntent(target: target, claims: claims),
                 documentURL: url
