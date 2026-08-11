@@ -2,7 +2,7 @@
   "requirement": "REQ-109",
   "mutations": [
     {
-      "rationale": "Inverting the scoped-range validation would reject the bounded patch that ordinary WYSIWYG edits require.",
+      "rationale": "Inverting the scoped-range validation would reject the bounded patch that ordinary WYSIWYG edits require on the native input path.",
       "file": "Markdown Editor/PresentationPatch.swift",
       "find": "guard scoped.range == nextRange,",
       "replace": "guard scoped.range != nextRange,",

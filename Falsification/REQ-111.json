@@ -2,7 +2,7 @@
   "requirement": "REQ-111",
   "mutations": [
     {
-      "rationale": "Dropping the newest pending request violates the scheduler's running-plus-newest-pending bound and loses current parse demand.",
+      "rationale": "Dropping the newest pending request violates the scheduler's running-plus-newest-pending bound and loses current parse demand during typing.",
       "file": "Markdown Editor/LatestParseScheduler.swift",
       "find": "pending = request",
       "replace": "pending = nil",
