@@ -264,6 +264,7 @@ def command_driver(mutant_root, execution_root):
             "-configuration", "Debug", "-derivedDataPath", str(derived_data),
             "-clonedSourcePackagesDirPath", str(source_packages),
             "-parallel-testing-enabled", "NO",
+            "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO", "CODE_SIGN_IDENTITY=",
         ]
         return {
             "kind": "xcode",
