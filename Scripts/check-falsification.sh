@@ -98,6 +98,11 @@ if mode == "changed" and (not fixture or (root / ".git").exists()):
     touched = set(changed.stdout.splitlines())
 
     def changed_file_contains(token, relative_path):
+        # Traceability symbols are resolved against production source. Searching manifests,
+        # prose, or gate scripts would select unrelated requirements merely because a rationale
+        # mentions the same type name.
+        if not relative_path.endswith(".swift"):
+            return False
         path = root / relative_path
         if not path.is_file():
             return False
