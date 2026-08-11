@@ -69,7 +69,7 @@ fi
 receipt_result=pass
 (( failures > 0 )) && receipt_result=fail
 if ! ./Scripts/write-gate-receipt.sh full "$receipt_result" \
-    "$documentation_gate" "$instrumentation_gate" "$tests_gate" "$proof_gate"; then
+    "$documentation_gate" "$instrumentation_gate" "$tests_gate" "$proof_gate" "$delivery_gate"; then
     echo "full-check: failed to write .gate-receipt.json" >&2
     failures=$((failures + 1))
 fi

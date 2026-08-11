@@ -38,7 +38,7 @@ write_receipt() {
     local tree
     tree="$(git -C "$fixture" rev-parse "$head^{tree}")"
     jq -n --arg head "$head" --arg tree "$tree" --arg scope "$scope" --arg result "$result" \
-        '{head:$head,tree:$tree,scope:$scope,result:$result,gates:{"documentation-authority":"pass","instrumentation-coverage":"pass",tests:"pass","proof-results":"pass"}}' \
+        '{head:$head,tree:$tree,scope:$scope,result:$result,gates:{"documentation-authority":"pass","instrumentation-coverage":"pass",tests:"pass","proof-results":"pass","delivery-status":"pass"}}' \
         > "$fixture/.gate-receipt.json"
 }
 expect_refused() { if (cd "$fixture" && "$fixture/Scripts/check-push-policy.sh" "$@") 2>/dev/null; then echo "expected refusal: $*" >&2; exit 1; fi; }

@@ -294,8 +294,8 @@ Delivery order, and why it is this order:
    `EditorTraceEvent` cases in the union of process-smoke and test-run JSON Lines, with a reviewed
    exemption record. Its fixtures reject missing, empty, unknown, and nil-receiver-only evidence.
    Third, because it is the gate defeated twice and the cheapest of the four to make honest.
-4. ⚪ **COR-59 — Delivery status is derived, not written.** (Delivers: REQ-136)
-   ([plan](plans/COR-59-derived-delivery-status.md)) Plans and ROADMAP rows declare `Delivers:`; a ✅
+4. ✅ **COR-59 — Delivery status is derived, not written.** (Delivers: REQ-136)
+   Plans and ROADMAP rows declare `Delivers:`; a ✅
    must resolve to requirements that are `Done` and observed passing; a plan may only be deleted when
    its delivered set is proven in the same run. Makes the 2026-08-10 promotion unrepresentable rather
    than merely discouraged.

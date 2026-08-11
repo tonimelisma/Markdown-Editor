@@ -9,12 +9,14 @@ trap 'rm -rf -- "$fixture_root"' EXIT
 
 make_fixture() {
     local status="$1" delivers="$2" requirement_status="$3" plan_state="$4"
+    local link_state="${5:-matching}" plan_delivers="${6:-}"
+    [[ -n "$plan_delivers" ]] || plan_delivers="$delivers"
     rm -rf -- "$fixture_root/docs"
     mkdir -p "$fixture_root/docs/plans"
     cat >"$fixture_root/docs/ROADMAP.md" <<EOF
 # ROADMAP
 
-1. $status **COR-99 — Fixture.** (Delivers: $delivers)
+1. $status **COR-99 — Fixture.** (Delivers: $delivers) $([[ "$link_state" == matching ]] && echo '([plan](plans/COR-99-fixture.md))' || [[ "$link_state" == wrong ]] && echo '([plan](plans/COR-98-fixture.md))')
 EOF
     cat >"$fixture_root/docs/REQUIREMENTS.md" <<EOF
 | REQ-001 | fixture | COR-99 | $requirement_status | implementation | Scripts/test-check-delivery-status.sh |
@@ -23,7 +25,7 @@ EOF
         present)
             cat >"$fixture_root/docs/plans/COR-99-fixture.md" <<EOF
 # COR-99 — Fixture
-- **Delivers:** $delivers
+- **Delivers:** $plan_delivers
 EOF
             ;;
         absent|none) ;;
@@ -55,8 +57,23 @@ expect_failure "undeleted plan" "$checker" --fixture-root "$fixture_root" --fixt
 make_fixture "⚪" "REQ-001" "Planned" absent
 expect_failure "active row without plan" "$checker" --fixture-root "$fixture_root" --fixture-proof-status pass
 
+make_fixture "⚪" "REQ-001" "Planned" present missing
+expect_failure "active row missing plan link" "$checker" --fixture-root "$fixture_root" --fixture-proof-status pass
+
+make_fixture "⚪" "REQ-001" "Planned" present wrong
+expect_failure "active row wrong plan link" "$checker" --fixture-root "$fixture_root" --fixture-proof-status pass
+
+make_fixture "⚪" "REQ-001" "Planned" present matching none
+expect_failure "ROADMAP and plan Delivers mismatch" "$checker" --fixture-root "$fixture_root" --fixture-proof-status pass
+
+make_fixture "⚪" "REQ-001" "Done" present matching REQ-001
+expect_failure "active row already-Done requirement" "$checker" --fixture-root "$fixture_root" --fixture-proof-status pass
+
 make_fixture "✅" "none (refactor)" "Planned" absent
-"$checker" --fixture-root "$fixture_root" --fixture-proof-status pass >/dev/null
+expect_failure "deleted plan without production change" "$checker" --fixture-root "$fixture_root" --fixture-proof-status pass --fixture-deletion-change none
+
+make_fixture "✅" "none (refactor)" "Planned" absent
+"$checker" --fixture-root "$fixture_root" --fixture-proof-status pass --fixture-deletion-change production >/dev/null
 
 make_fixture "⚪" "REQ-001" "Planned" present
 "$checker" --fixture-root "$fixture_root" --fixture-proof-status pass >/dev/null

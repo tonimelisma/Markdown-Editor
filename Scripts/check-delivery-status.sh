@@ -6,6 +6,8 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 bundle=""
 fixture_root=""
 fixture_proof_status=""
+fixture_deletion_change=""
+structural_only=0
 proof_args=()
 
 usage() {
@@ -32,6 +34,15 @@ while [[ $# -gt 0 ]]; do
             fixture_proof_status="$2"
             shift 2
             ;;
+        --fixture-deletion-change)
+            [[ $# -ge 2 ]] || { usage; exit 2; }
+            fixture_deletion_change="$2"
+            shift 2
+            ;;
+        --structural-only)
+            structural_only=1
+            shift
+            ;;
         --help)
             usage >&1
             exit 0
@@ -55,21 +66,25 @@ if [[ -n "$fixture_root" ]]; then
         exit 2
     }
 else
-    if [[ -n "$bundle" ]]; then
-        ./Scripts/check-proof-results.sh "$bundle" "${proof_args[@]+${proof_args[@]}}"
-    else
-        ./Scripts/check-proof-results.sh "${proof_args[@]+${proof_args[@]}}"
+    if (( structural_only == 0 )); then
+        if [[ -n "$bundle" ]]; then
+            ./Scripts/check-proof-results.sh "$bundle" "${proof_args[@]+${proof_args[@]}}"
+        else
+            ./Scripts/check-proof-results.sh "${proof_args[@]+${proof_args[@]}}"
+        fi
     fi
 fi
 
-python3 - "$repo_root" "$fixture_root" "$fixture_proof_status" <<'PY'
+python3 - "$repo_root" "$fixture_root" "$fixture_proof_status" "$fixture_deletion_change" <<'PY'
 import pathlib
 import re
+import subprocess
 import sys
 
 repo = pathlib.Path(sys.argv[1])
 fixture_root = pathlib.Path(sys.argv[2]) if sys.argv[2] else None
 fixture_proof_status = sys.argv[3]
+fixture_deletion_change = sys.argv[4]
 root = fixture_root or repo
 roadmap_path = root / "docs/ROADMAP.md"
 requirements_path = root / "docs/REQUIREMENTS.md"
@@ -170,6 +185,8 @@ for line_number, status, increment, delivers in roadmap_rows:
             problems.append(f"{increment}: ROADMAP Delivers does not match plan Delivers")
         if declared_plan is None and plans:
             problems.append(f"{increment}: plan Delivers could not be resolved")
+        if plans and f"(plans/{plans[0].name})" not in roadmap_path.read_text():
+            problems.append(f"{increment}: ROADMAP does not link its matching plan {plans[0].name}")
         for requirement in sorted(delivers):
             if requirement not in requirement_status:
                 problems.append(f"{increment}: Delivers names unknown requirement {requirement}")
@@ -178,6 +195,19 @@ for line_number, status, increment, delivers in roadmap_rows:
     elif status == "✅":
         if plans:
             problems.append(f"ROADMAP:{line_number}:{increment}: delivered row still has a plan file")
+        elif fixture_root:
+            if fixture_deletion_change == "none":
+                problems.append(f"{increment}: deleted-plan fixture has no production change")
+        else:
+            head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=False).stdout.strip()
+            changed = subprocess.run(
+                ["git", "-C", str(repo), "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", head],
+                capture_output=True, text=True, check=False
+            ).stdout.splitlines()
+            if f"docs/plans/{increment}-" in "\n".join(changed):
+                production = [p for p in changed if p and not p.startswith("docs/") and p not in {"CLAUDE.md", "AGENTS.md"}]
+                if not production:
+                    problems.append(f"{increment}: plan deletion commit {head[:12]} contains no production change")
         for requirement in sorted(delivers):
             if requirement not in requirement_status:
                 problems.append(f"{increment}: Delivers names unknown requirement {requirement}")

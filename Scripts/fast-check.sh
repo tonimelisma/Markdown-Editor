@@ -79,14 +79,13 @@ step "proof results"
 FAST_CHECK_DERIVED_DATA="$derived" ./Scripts/check-proof-results.sh \
     --skip-suite PerformanceBoundaryTests || { proof_gate=fail; failures=$((failures + 1)); }
 
-step "derived delivery status"
-FAST_CHECK_DERIVED_DATA="$derived" ./Scripts/check-delivery-status.sh \
-    --skip-suite PerformanceBoundaryTests || { delivery_gate=fail; failures=$((failures + 1)); }
+delivery_gate=structural
+./Scripts/check-delivery-status.sh --structural-only || { delivery_gate=fail; failures=$((failures + 1)); }
 
 receipt_result=pass
 (( failures > 0 )) && receipt_result=fail
 if ! ./Scripts/write-gate-receipt.sh fast "$receipt_result" \
-    "$documentation_gate" "$instrumentation_gate" "$tests_gate" "$proof_gate"; then
+    "$documentation_gate" "$instrumentation_gate" "$tests_gate" "$proof_gate" "$delivery_gate"; then
     echo "fast-check: failed to write .gate-receipt.json" >&2
     failures=$((failures + 1))
 fi

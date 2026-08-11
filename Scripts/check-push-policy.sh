@@ -72,8 +72,9 @@ jq -e \
      (($required_scope == "fast") or (.scope == "full")) and
      (.gates | type == "object") and
      (.gates | has("documentation-authority") and has("instrumentation-coverage") and
-               has("tests") and has("proof-results")) and
-     (.gates | [.[]] | length == 4 and all(.[]; . == "pass"))' \
+               has("tests") and has("proof-results") and has("delivery-status")) and
+     (.gates | ([to_entries[] | select(.key != "delivery-status") | .value] | length == 4 and all(. == "pass"))) and
+     (.gates["delivery-status"] == "pass" or ($required_scope == "fast" and .gates["delivery-status"] == "structural"))' \
     "$receipt" >/dev/null 2>&1 || {
         echo "push-policy: REFUSED — receipt does not prove a passing $required_scope run at $head" >&2
         exit 1
