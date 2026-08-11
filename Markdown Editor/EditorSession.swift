@@ -262,7 +262,7 @@ final class EditorSession: ObservableObject {
             locationGeneration: document?.locationGeneration ?? 0,
             sourceText: document?.text ?? ""
         )
-        if case .failure = ProjectionOracle.validate(snapshot: snapshot) {
+        if !snapshot.isOracleValid {
             assertionFailure("installProjectionForTesting was given an oracle-invalid snapshot")
             return
         }

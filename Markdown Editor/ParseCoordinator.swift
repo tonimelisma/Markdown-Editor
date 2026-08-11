@@ -173,7 +173,7 @@ final class ParseCoordinator {
                     locationGeneration: snapshot.locationGeneration,
                     sourceText: snapshot.text
                 )
-                if case .failure = ProjectionOracle.validate(snapshot: authoritative) {
+                if !authoritative.isOracleValid {
                     document?.trace?.record(
                         .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .oracleSnapshot)
                     )

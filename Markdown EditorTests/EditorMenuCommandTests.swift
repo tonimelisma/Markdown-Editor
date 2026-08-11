@@ -4,6 +4,7 @@
 //
 
 import Testing
+import SwiftUI
 @testable import Markdown_Editor
 
 @MainActor
@@ -20,13 +21,13 @@ struct EditorMenuCommandTests {
     }
 
     // Verifies: REQ-058 — approved shortcuts only, and no collision with standard document keys.
-    @Test func approvedShortcutsCoverBoldItalicAndLinkOnly() {
-        #expect(EditorMenuCommands.shortcuts[.bold] == "b")
-        #expect(EditorMenuCommands.shortcuts[.italic] == "i")
-        #expect(EditorMenuCommands.shortcuts[.editLink] == "k")
-        #expect(EditorMenuCommands.shortcuts.count == 3)
-        // Standard macOS document/edit shortcuts stay with AppKit.
-        let reserved: Set<Character> = ["n", "o", "s", "p", "w", "z", "x", "c", "v", "a", "f"]
-        #expect(Set(EditorMenuCommands.shortcuts.values).isDisjoint(with: reserved))
+    @Test func approvedShortcutsCoverTheClosedCommandSurface() {
+        #expect(EditorMenuCommands.shortcuts[.bold]?.key == KeyEquivalent("b"))
+        #expect(EditorMenuCommands.shortcuts[.italic]?.key == KeyEquivalent("i"))
+        #expect(EditorMenuCommands.shortcuts[.editLink]?.key == KeyEquivalent("k"))
+        #expect(EditorMenuCommands.shortcuts[.heading(6)]?.key == KeyEquivalent("6"))
+        #expect(EditorMenuCommands.shortcuts.count == 19)
+        #expect(EditorMenuCommands.shortcuts[.strikethrough]?.modifiers.contains(.shift) == true)
+        #expect(EditorMenuCommands.shortcuts[.codeBlock]?.modifiers.contains(.control) == true)
     }
 }

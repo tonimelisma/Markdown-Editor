@@ -469,7 +469,10 @@ enum WYSIWYGPlanningDomain {
         _ rhs: [ProjectionListMarker]
     ) -> Bool {
         lhs.count == rhs.count && zip(lhs, rhs).allSatisfy {
-            $0.text == $1.text && $0.nesting == $1.nesting && $0.kind == $1.kind
+            $0.displayedText == $1.displayedText
+                && $0.sourceText == $1.sourceText
+                && $0.nesting == $1.nesting
+                && $0.kind == $1.kind
         }
     }
 

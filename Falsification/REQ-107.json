@@ -4,8 +4,8 @@
     {
       "rationale": "Misclassifying quote containers prevents quote rules and nested semantic block composition from being installed in the presentation.",
       "file": "Markdown Editor/AttributedPresentationBuilder.swift",
-      "find": "block.backgroundColor == nil",
-      "replace": "block.backgroundColor != nil",
+      "find": "block is QuoteTextBlock",
+      "replace": "block is CodeTextBlock",
       "expect_red": ["blockQuoteUsesLeadingRuleAndContentInset", "codeInsideQuoteComposesBothContainers"]
     }
   ]

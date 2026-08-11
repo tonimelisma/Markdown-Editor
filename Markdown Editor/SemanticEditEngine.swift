@@ -274,7 +274,7 @@ nonisolated enum SemanticEditEngine {
         ) else {
             return .refused(.unprovable)
         }
-        if case .failure = ProjectionOracle.validate(snapshot: transition.nextSnapshot) {
+        if !transition.nextSnapshot.isOracleValid {
             return .refused(.unprovable)
         }
         return .accepted(
@@ -323,7 +323,7 @@ nonisolated enum SemanticEditEngine {
             ) else { return .refused(.unprovable) }
             nextFixed = built
         }
-        if case .failure = ProjectionOracle.validate(snapshot: nextFixed) {
+        if !nextFixed.isOracleValid {
             return .refused(.unprovable)
         }
         let sourceAfter = activeMutation.selectionAfter.range.utf16

@@ -134,9 +134,14 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         // width is what the reading measure and the untruncated toolbar are reviewed against.
         window.setContentSize(NSSize(width: 720, height: MarkdownAppDelegate.smokeWindowHeight ?? 560))
         window.minSize = NSSize(width: 320, height: 240)
-        window.center()
         let controller = NSWindowController(window: window)
         controller.contentViewController = hosting
+        controller.shouldCascadeWindows = true
+        if !MarkdownAppDelegate.isSmokeRun {
+            controller.windowFrameAutosaveName = "MarkdownDocumentWindow"
+        }
+        window.tabbingIdentifier = "MarkdownDocument"
+        window.tabbingMode = .preferred
         addWindowController(controller)
     }
 

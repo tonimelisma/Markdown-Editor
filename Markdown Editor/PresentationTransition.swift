@@ -508,7 +508,8 @@ nonisolated enum PresentationTransitionPlanner {
                 return ProjectionListMarker(
                     nodeID: marker.nodeID,
                     utf16Range: NSRange(location: r.location + delta, length: r.length),
-                    text: marker.text,
+                    displayedText: marker.displayedText,
+                    sourceText: marker.sourceText,
                     nesting: marker.nesting,
                     kind: marker.kind
                 )
