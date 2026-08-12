@@ -653,6 +653,10 @@ that took `REQ-129` after COR-51's plan was deleted:
 | `ARC-026` | COR-44 (work ledger) | that increment lands. A row asserting this invariant was added on 2026-08-10 and removed on the same day: the implementation opened no scope outside an uncalled `private` method, so nothing was counted, and the cited `WorkLedgerTests` proofs were tautologies. |
 | `ARC-Q21` | COR-51 (accessibility semantics) | that increment lands |
 | `ARC-Q22` | COR-61 (falsification manifest) | that increment lands |
+| `ARC-Q23` | COR-63 (contrast conformance) | that increment lands |
+| `ARC-Q24` | COR-64 (text-scaling boundary) | that increment lands |
+| `ARC-Q25` | COR-65 (reduced motion/transparency/increase contrast) | that increment lands |
+| `ARC-Q26` | COR-66 (leak-free process verification) | that increment lands |
 
 ## 15. Architecture change gate
 
@@ -691,6 +695,13 @@ supersession documents. The working tree states current truth; Git records histo
   to the smallest complete affected semantic blocks and otherwise choose explicit recovery.
 - Image placement interacts with external files and asynchronous providers; containment and
   identity-pinned rollback remain mandatory.
+- macOS's Accessibility ▸ Display ▸ Text Size preference has no documented, observable third-party
+  API (`docs/research/DISC-08-macos-text-scaling.md`); the approved fixed typography default
+  (§7) has no platform-provided route to user scaling. `COR-64` records this as a guarded boundary
+  rather than a silent gap. Any future animation or translucent view must gate on
+  `NSWorkspace.shared.accessibilityDisplayShouldReduceMotion` /
+  `...ShouldReduceTransparency`; `COR-65`'s absence proof must be replaced with a presence-of-the-
+  gate proof in the same change that adds the first instance.
 
 ## 17. Glossary
 

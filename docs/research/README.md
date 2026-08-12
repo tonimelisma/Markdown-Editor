@@ -26,4 +26,5 @@ Current evidence:
 - [Native Markdown typography](native-markdown-typography.md)
 - [DISC-01 — Semantic selection anchor vs scoped ARC-009](DISC-01-semantic-selection-anchor.md)
 - [COR-62 — Proof-floor audit](COR-62-proof-floor-audit.md)
+- [DISC-08 — Does AppKit's Dynamic Type route reach this app's editor content?](DISC-08-macos-text-scaling.md)
 - [Performance baseline](performance-baseline.md)

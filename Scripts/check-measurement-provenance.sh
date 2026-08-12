@@ -1,5 +1,5 @@
 #!/bin/bash
-# COR-60 / REQ-137: committed benchmark tables must carry machine-verifiable provenance.
+# COR-60 / REQ-137: committed benchmark tables must carry machine-verifiable provenance — delivered.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"

@@ -22,9 +22,33 @@ delivery_gate=pass
 falsification_gate=pass
 derived="${FAST_CHECK_DERIVED_DATA:-$repo_root/.fast-check-build}"
 coverage_dir="$derived/instrumentation-coverage"
+# Isolate trace coverage per checkout so concurrent worktree gate runs cannot
+# read each other's diagnostic output. Previous value was a single shared
+# ${TMPDIR%/}/MarkdownEditorTraceCoverage. Now per-checkout via FNV-1a hash of
+# repo_root (matching Markdown EditorTests/DiagnosticLogTests.swift fallback) and
+# overrideable via EDITOR_TRACE_COVERAGE_LOG_DIR (same pattern as
+# FAST_CHECK_DERIVED_DATA / FULL_CHECK_DERIVED_DATA). The hash is computed both
+# in Swift (#filePath) and here, so no environment propagation is required for
+# xcodebuild test hosts.
+if [[ -n "${EDITOR_TRACE_COVERAGE_LOG_DIR:-}" ]]; then
+    test_coverage_dir="$EDITOR_TRACE_COVERAGE_LOG_DIR"
+else
+    _coverage_hash=$(python3 - "$repo_root" <<'PYEOF'
+import sys
+repo = sys.argv[1]
+h = 1469598103934665603
+for b in repo.encode():
+    h ^= b
+    h = (h * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+print(f"{h & 0xFFFFFFFF:08x}")
+PYEOF
+)
+    test_coverage_dir="${TMPDIR%/}/MarkdownEditorTraceCoverage-${_coverage_hash}"
+fi
 mkdir -p "$coverage_dir"
-test_coverage_dir="${TMPDIR%/}/MarkdownEditorTraceCoverage"
-rm -rf "$test_coverage_dir"
+mkdir -p "$test_coverage_dir"
+rm -rf "$test_coverage_dir"/*
+export EDITOR_TRACE_COVERAGE_LOG_DIR="$test_coverage_dir"
 step() {
     printf '\n── %s\n' "$1"
 }

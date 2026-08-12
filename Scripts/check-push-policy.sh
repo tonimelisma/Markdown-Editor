@@ -60,22 +60,53 @@ fi
 
 receipt="$repo_root/.gate-receipt.json"
 [[ -r "$receipt" ]] || { echo "push-policy: REFUSED — missing $receipt" >&2; exit 1; }
+
+# A push to main normally needs a full-scope receipt (the complete test suite and performance
+# corpus). A range whose diff touches nothing but prose documentation, and that introduces no new
+# "Done"/"✅" delivery claim, makes no assertion a build or test could contradict — CLAUDE.md §5
+# already describes docs-only changes as committing "directly to main; no branch, worktree, or
+# PR", and a full xcodebuild+test run for a plan-writing change is exactly the mismatch that
+# claim describes. The Done/✅ scan is deliberately broad (the bare word "Done" anywhere newly
+# added to either status file, not just inside a table cell) because a false positive here only
+# costs an unnecessary full run, while a false negative would let a delivery claim reach main
+# without the run that REQ-136/COR-59 exists to require.
+is_pure_docs_range() {
+    local scan_range="$1" commit path
+    while IFS= read -r commit; do
+        while IFS= read -r path; do
+            case "$path" in
+                docs/*.md|CLAUDE.md|AGENTS.md|.markdownlint-cli2.jsonc) ;;
+                *) return 1 ;;
+            esac
+        done < <(git diff-tree --root --no-commit-id --name-only -r "$commit")
+    done < <(git rev-list "$scan_range")
+    if git diff "$scan_range" -- docs/REQUIREMENTS.md docs/ROADMAP.md 2>/dev/null \
+        | grep -qE '^\+.*(✅|Done)'; then
+        return 1
+    fi
+    return 0
+}
+
 required_scope=fast
-[[ "$remote_ref" == refs/heads/main ]] && required_scope=full
+if [[ "$remote_ref" == refs/heads/main ]]; then
+    required_scope=full
+    is_pure_docs_range "$range" && required_scope=fast
+fi
 
 jq -e \
     --arg head "$head" \
     --arg tree "$tree" \
     --arg required_scope "$required_scope" \
     'type == "object" and .head == $head and .tree == $tree and .result == "pass" and
-     ((.scope == "fast") or (.scope == "full")) and
-     (($required_scope == "fast") or (.scope == "full")) and
      (.gates | type == "object") and
-    (.gates | has("documentation-authority") and has("instrumentation-coverage") and
-               has("tests") and has("proof-results") and has("delivery-status") and has("falsification")) and
+     (.gates | has("documentation-authority") and has("instrumentation-coverage") and
+               has("tests") and has("proof-results") and has("delivery-status") and
+               has("falsification")) and
      (.gates | ([to_entries[] | select(.key != "delivery-status") | .value] | length == 5 and all(. == "pass"))) and
-     ((.gates["delivery-status"] == "pass" and $required_scope == "full") or
-      (.gates["delivery-status"] == "structural" and $required_scope == "fast"))' \
+     (
+       (.scope == "full" and .gates["delivery-status"] == "pass") or
+       ($required_scope == "fast" and .scope == "fast" and .gates["delivery-status"] == "structural")
+     )' \
     "$receipt" >/dev/null 2>&1 || {
         echo "push-policy: REFUSED — receipt does not prove a passing $required_scope run at $head" >&2
         exit 1

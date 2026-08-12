@@ -273,7 +273,12 @@ layout remains a component test.
   Pro or a public repository and is an open decision recorded in ROADMAP.
 - Every clone/worktree must enable the tracked hook before pushing: run `Scripts/install-hooks.sh`.
   `Scripts/fast-check.sh` produces the topic-branch receipt; `Scripts/full-check.sh` produces the
-  full-scope receipt required for a push to `main`.
+  full-scope receipt required for a push to `main` — **except** a range whose diff touches nothing
+  but `docs/*.md`/`CLAUDE.md`/`AGENTS.md`/`.markdownlint-cli2.jsonc` and introduces no new
+  `Done`/`✅` delivery claim, which needs only a fast-scope receipt (`Scripts/check-push-policy.sh`
+  detects this; ordinary docs-only work therefore needs no `full-check.sh` run, matching the first
+  bullet above). A range that touches `Scripts/**` or any other non-prose path still needs full
+  scope even if it is otherwise docs-adjacent.
 - Never mark work delivered that you have not observed pass. If an increment cannot be completed,
   leave its row ⚪ and its plan in place; a stub commit is not a delivery and must not be committed
   as one.

@@ -19,6 +19,7 @@ final class PerformanceSampler {
         case layoutApplication
         /// REQ-124: main-actor hop latency, distinct from the one-second hang watchdog.
         case mainActorLatency
+        /// REQ-045: main-actor application of lexical source styling, excluding off-main tokenisation.
         case sourceHighlightApplication
     }
 

@@ -298,19 +298,63 @@ Delivery order, and why it is this order:
    Plans and ROADMAP rows declare `Delivers:`; a ✅
    must resolve to requirements that are `Done` and observed passing; a plan may only be deleted when
    its delivered set is proven in the same run. Makes the 2026-08-10 promotion unrepresentable rather
-   than merely discouraged. Delivered after the fixture matrix and final proof bundle passed.
-5. ✅ **COR-60 — Measurements carry their provenance.** (Delivers: REQ-137) Baselines are
-   machine-written with resolving host, OS, architecture, configuration, corpus digest, sample
-   counts and commit SHA; the provenance gate and fixture suite pass.
-6. ✅ **COR-61 — Every promise has a recorded way to break it.** (Delivers: none) Every retained
-   `Done` requirement has a falsification manifest, and the mutation gate observes the cited proof
-   turning red.
+   than merely discouraged.
+5. ✅ **COR-60 — Measurements carry their provenance.** (Delivers: REQ-137) Provenance gate `check-measurement-provenance.sh` rejects unexpanded constructs and requires complete host/OS/arch/config/Xcode/digest/sample/commit provenance; wired into `fast-check.sh` with fixture liveness. Baselines are machine-written with host, OS,
+   arch, configuration, corpus digest, sample counts and commit SHA; no committed measurement may
+   contain an unexpanded `$(`; `--check` re-runs and compares, so invented numbers are contradicted
+   by the first honest run instead of becoming the reference.
+6. ✅ **COR-61 — Every promise has a recorded way to break it.** (Delivers: none) Falsification manifests `Falsification/REQ-###.json` with `check-falsification.sh` (changed-scope and all) and `test-check-falsification.sh` fixtures — every `Done` requirement now has a recorded way to break it. A `Falsification/REQ-###.json` per `Done`
+   requirement declaring a plausible defect under which its cited proofs must go red; the gate
+   applies it, builds, runs only those proofs, requires failure, reverts. This is what makes a
+   tautological proof structurally impossible to keep. Largest increment in the programme; `--all`
+   costs 1.5–3.5 hours and never enters the inner loop.
 7. ✅ **COR-62 — Audit the proof floor.** (Delivers: none) All retained `Done`
    rows re-verified against the new gates, hardest-consequence first. It retained only rows with
    observed proofs and recorded the remaining evidence-floor corrections.
 
 The performance programme resumes after the evidence floor: measurements are provenance-bound, and
 retained delivery claims have observed falsifying mutations.
+
+## Active: quality, accessibility, and design conformance loop
+
+A 2026-08-11 review of how this repository verifies quality found the process-integrity and
+performance-measurement disciplines (`the evidence floor`, above) well covered, and found the
+product-facing surface `CLAUDE.md`'s own gates cannot reach by construction — WCAG contrast, the
+platform's text-scaling accessibility preference, Reduce Motion/Transparency/Increase Contrast, and
+leak-freedom of the process this repository already launches for `ARC-Q12` — entirely unverified.
+Separately, the `COR-54` fuzzing plan's real-world corpus was still an unresolved judgement call
+("a dozen files chosen for variety"), and its fuzz suites had no mechanism to keep a found failure
+fixed once found. `COR-54` is amended in place to close both; the four increments below are new.
+
+This programme has **no dependency on `COR-45`, `COR-62`, or each other** — every one is
+verification-only, touches disjoint files, and can land in any order or interleaved with the
+evidence-floor/performance programmes. The order below is chosen for risk, not dependency: research
+and structural-absence work first, arithmetic second, shared-tooling risk last.
+
+1. ⚪ **COR-64 — Record the Accessibility Text Size boundary and guard against a false claim.**
+   (Delivers: REQ-140) ([plan](plans/COR-64-text-scaling-boundary.md)) No production change beyond
+   one guard test; the research (`docs/research/DISC-08-macos-text-scaling.md`) is already done.
+   First, because it is the cheapest and carries zero implementation risk.
+2. ⚪ **COR-65 — Reduced Motion, Reduced Transparency, and Increase Contrast conformance.**
+   (Delivers: REQ-141) ([plan](plans/COR-65-reduced-motion-transparency-contrast.md)) Source
+   inspection already found zero animation/translucency and an all-semantic color catalog; this is
+   two structural absence proofs, no production change. Second, same reasoning as COR-64.
+3. ⚪ **COR-63 — WCAG AA contrast conformance for every declared color role.** (Delivers: REQ-139)
+   ([plan](plans/COR-63-contrast-conformance.md)) Real arithmetic (relative luminance, alpha
+   compositing) against real system colors, with an unpredicted outcome — may land `Correction` if
+   a color role fails. Third: more implementation surface than 1–2, but still verification-only and
+   independent of shared tooling.
+4. ⚪ **COR-66 — Leak-free process verification.** (Delivers: REQ-142)
+   ([plan](plans/COR-66-leak-free-smoke-verification.md)) Opens with a Stage 0 POC against
+   `leaks -atExit --`, whose exit-code-propagation behavior wrapping this app's own smoke launch is
+   not known until observed, and touches `Scripts/smoke-test.sh`, which both `fast-check.sh` and
+   `full-check.sh` already depend on. Last, because it is the only one of the four carrying real
+   uncertainty and shared-tooling risk — everything else lands cleanly around it either way.
+
+`COR-54`'s real-world corpus (Phase 1) and fuzz-regression-fixture mechanism (Phase 3) were
+resolved the same day; see [`plans/COR-54-fuzzing-and-real-corpora.md`](plans/COR-54-fuzzing-and-real-corpora.md).
+`COR-54`'s own ROADMAP position (below, in the performance/hygiene programme) is unchanged — only
+its plan content is more fully specified.
 
 ## Active: measure, then make it fast, native, and reachable
 

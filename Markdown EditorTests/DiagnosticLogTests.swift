@@ -189,10 +189,30 @@ struct DiagnosticLogTests {
         }
 
         let requestedPath = ProcessInfo.processInfo.environment["EDITOR_TRACE_COVERAGE_LOG_DIR"]
-        let coveragePath = requestedPath.flatMap { $0.isEmpty ? nil : $0 }
-            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-                .appendingPathComponent("MarkdownEditorTraceCoverage", isDirectory: true)
+        // Fallback is kept for manual Xcode runs outside fast-check/full-check.
+        // The gate always sets EDITOR_TRACE_COVERAGE_LOG_DIR to a per-derivedData
+        // directory (Scripts/fast-check.sh, Scripts/full-check.sh) so two worktrees
+        // never read each other's logs. For manual runs without the env var, derive
+        // a per-checkout directory from this source file's location so concurrent
+        // manual runs from different worktrees also do not collide on the single
+        // shared ${TMPDIR%/}/MarkdownEditorTraceCoverage.
+        let fallbackPath: String = {
+            let filePath = #filePath as NSString
+            // #filePath is .../<checkout>/Markdown EditorTests/DiagnosticLogTests.swift
+            // Two components up is the checkout root.
+            let testsDir = filePath.deletingLastPathComponent as NSString
+            let repoRoot = testsDir.deletingLastPathComponent
+            var hash: UInt64 = 1469598103934665603 // FNV-1a 64-bit offset
+            for byte in repoRoot.utf8 {
+                hash ^= UInt64(byte)
+                hash &*= 1099511628211
+            }
+            let suffix = String(format: "%08x", UInt32(truncatingIfNeeded: hash))
+            return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+                .appendingPathComponent("MarkdownEditorTraceCoverage-\(suffix)", isDirectory: true)
                 .path
+        }()
+        let coveragePath = requestedPath.flatMap { $0.isEmpty ? nil : $0 } ?? fallbackPath
         let coverageLog = DiagnosticLog(
             directory: URL(fileURLWithPath: coveragePath, isDirectory: true),
             hostKind: .unitTest
