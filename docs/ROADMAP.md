@@ -94,11 +94,11 @@ satisfied by a build in which four formatting commands reported `enabled` and si
 and nine of twelve semantic commands had never been executed through the WYSIWYG route — the
 product's default mode — in any test.
 
-1. 🔵 **COR-26 — Enabled implies performable.** (Delivers: REQ-113) ([plan](plans/COR-26-command-liveness.md)) The post-command caret rule is one shared helper
+1. ✅ **COR-26 — Enabled implies performable.** (Delivers: REQ-113) The post-command caret rule is one shared helper
    on `SemanticPlannerGate` instead of arithmetic inlined at one of eleven call sites, so
    `paragraph`, `heading`, `blockQuote`, and `codeBlock` apply rather than refuse.
    `CommandLivenessMatrixTests` is the closed matrix that fails the build when a new command has
-   undeclared behavior in either mode.
+   undeclared behavior in either mode. Re-verified with falsifying mutation.
 2. ✅ **COR-27 — TextKit paragraph geometry.** (Delivers: none) Spacing follows semantic boundaries rather than
    every `\n`, so a hard break no longer lays out identically to a paragraph break and a fenced
    block no longer spaces its own lines apart. Proofs assert laid-out line-fragment geometry, not

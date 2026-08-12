@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-113",
+  "mutations": [
+    {
+      "rationale": "Placing the post-command caret at the block boundary instead of inside content has no exact projection preimage and causes mappingFailure refusal.",
+      "file": "Markdown Editor/SemanticEditPlanners.swift",
+      "find": "            utf16: NSRange(location: lineStart + max(0, offsetInReplacement), length: 0),",
+      "replace": "            utf16: NSRange(location: lineStart + offsetInReplacement + 1, length: 0),",
+      "expect_red": ["everyEnabledCommandPerformsInWYSIWYGMode"]
+    }
+  ]
+}
