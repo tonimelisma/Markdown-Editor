@@ -218,6 +218,7 @@ def verify(
         and record.get("ev") not in allowed_faults
     ]
     assert not faults, f"faults recorded: {[record['ev'] for record in faults]}"
+    # REQ-104: the screenshot is not valid evidence unless its companion process run closes cleanly.
     assert events[-1]["ev"] == "runEnd", "no clean-exit record"
 
     return len(records), host_updates
