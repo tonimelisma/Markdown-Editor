@@ -50,9 +50,9 @@ Delivery order:
 
 1. ✅ **COR-18 — Restore the proof floor.** (Delivers: REQ-088, REQ-104) Debug and Release tests compile and execute under complete concurrency checking, the
    shared smoke verifier and typography-rich fixture pass, and the required passive application-window screenshot was captured and reviewed.
-2. 🔵 **COR-19 — Diagnostic lifetime and shutdown.** (Delivers: REQ-095, REQ-096) ([plan](plans/COR-19-diagnostic-lifetime-reverification.md)) `EditorSession` now detaches its sampler and
+2. ✅ **COR-19 — Diagnostic lifetime and shutdown.** (Delivers: REQ-095, REQ-096) `EditorSession` detaches its sampler and
    subscriptions, diagnostics serialize directly through an off-main sink, and terminal durability
-   no longer waits for main-actor cleanup.
+   no longer waits for main-actor cleanup. Re-verified on observed `DiagnosticLogTests`/`DiagnosticLifetimeTests`/`ReconciliationInvariantTests` with falsifying mutations.
 3. 🔵 **INC-05 — Semantic presentation and typography.** (Delivers: REQ-106) ([plan](plans/INC-05-semantic-presentation-reverification.md)) Semantic projection blocks now drive the
    approved typography, reading column, break semantics, list/task alignment, quote/code/table
    treatments, bounded images, thematic separators, and literal HTML styling.
