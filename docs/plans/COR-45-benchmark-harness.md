@@ -1,5 +1,11 @@
 # COR-45 — Honest corpora and the in-app benchmark harness
 
+- **Status:** Approved; not implemented
+- **Requirements:** REQ-090 (moves to `Correction` in this increment), REQ-045; REQ-127 (corpus-shape enumeration) is already `Done` and out of scope here; REQ-128 (process-level benchmark with a committed baseline) is what remains
+- **Delivers:** REQ-128
+- **ARC invariants:** ARC-Q05 restated as "on every approved corpus shape"; ARC-Q12 extended to benchmark scenarios; ARC-026 (COR-44) proved here; ARC-014 (no manual or UI testing) unchanged and explicitly re-argued for the scroll scenario
+
+
 > **Restored 2026-08-11, partially implemented.** The corpus half landed and REQ-127 is `Done` on
 > its own tests. The harness half did not: `Scripts/benchmark.sh` had never completed a run, and
 > the baseline committed under its name was written by an earlier driver at commit `b27cf196` —
@@ -30,11 +36,6 @@
 >
 > This is not a product defect: the process-level smoke path performs `.bold` successfully because
 > it sets the caret first. The driver is at fault, not the editor.
-
-- **Status:** Approved; not implemented
-- **Requirements:** REQ-090 (moves to `Correction` in this increment), REQ-045; REQ-127 (corpus-shape enumeration) is already `Done` and out of scope here; REQ-128 (process-level benchmark with a committed baseline) is what remains
-- **Delivers:** REQ-128
-- **ARC invariants:** ARC-Q05 restated as "on every approved corpus shape"; ARC-Q12 extended to benchmark scenarios; ARC-026 (COR-44) proved here; ARC-014 (no manual or UI testing) unchanged and explicitly re-argued for the scroll scenario
 
 ## Context
 
