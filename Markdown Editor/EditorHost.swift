@@ -206,9 +206,6 @@ struct EditorHostView: NSViewRepresentable {
             let sText = MarkdownSourceTextView(usingTextLayoutManager: false)
             configureSource(sText)
             sText.delegate = sourceCoordinator
-            sText.markNextNativeEditDiscrete = { [weak sourceCoordinator] in
-                sourceCoordinator?.nextNativeEditIsDiscrete()
-            }
             sScroll.documentView = sText
             sourceCoordinator?.textView = sText
             sourceCoordinator?.highlight()
