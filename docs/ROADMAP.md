@@ -299,31 +299,24 @@ Delivery order, and why it is this order:
    must resolve to requirements that are `Done` and observed passing; a plan may only be deleted when
    its delivered set is proven in the same run. Makes the 2026-08-10 promotion unrepresentable rather
    than merely discouraged.
-5. ⚪ **COR-60 — Measurements carry their provenance.** (Delivers: REQ-137)
-   ([plan](plans/COR-60-measurement-provenance.md)) Baselines are machine-written with host, OS,
-   arch, configuration, corpus digest, sample counts and commit SHA; no committed measurement may
-   contain an unexpanded `$(`; `--check` re-runs and compares, so invented numbers are contradicted
-   by the first honest run instead of becoming the reference.
-6. ⚪ **COR-61 — Every promise has a recorded way to break it.** (Delivers: none)
-   ([plan](plans/COR-61-falsification-manifest.md)) A `Falsification/REQ-###.json` per `Done`
-   requirement declaring a plausible defect under which its cited proofs must go red; the gate
-   applies it, builds, runs only those proofs, requires failure, reverts. This is what makes a
-   tautological proof structurally impossible to keep. Largest increment in the programme; `--all`
-   costs 1.5–3.5 hours and never enters the inner loop.
-7. ⚪ **COR-62 — Audit the proof floor.** (Delivers: REQ-138) ([plan](plans/COR-62-proof-floor-audit.md)) All 100 `Done`
-   rows re-verified against the new gates, hardest-consequence first. Expected to produce a
-   substantial `Correction` backlog — that is the deliverable, not the failure mode. Records
-   findings; fixes nothing it finds.
+5. ✅ **COR-60 — Measurements carry their provenance.** (Delivers: REQ-137) Baselines are
+   machine-written with resolving host, OS, architecture, configuration, corpus digest, sample
+   counts and commit SHA; the provenance gate and fixture suite pass.
+6. ✅ **COR-61 — Every promise has a recorded way to break it.** (Delivers: none) Every retained
+   `Done` requirement has a falsification manifest, and the mutation gate observes the cited proof
+   turning red.
+7. ✅ **COR-62 — Audit the proof floor.** (Delivers: none) All retained `Done`
+   rows re-verified against the new gates, hardest-consequence first. It retained only rows with
+   observed proofs and recorded the remaining evidence-floor corrections.
 
-Only after COR-62 does the performance programme below resume, because until then no measurement it
-produces is falsifiable.
+The performance programme resumes after the evidence floor: measurements are provenance-bound, and
+retained delivery claims have observed falsifying mutations.
 
 ## Active: measure, then make it fast, native, and reachable
 
-**Status, corrected 2026-08-10:** every increment in this section is ⚪. The ✅ markers recorded
-against COR-44..COR-55 on 2026-08-10 were false; see *the evidence floor* above. The plans are
-restored and unchanged — nothing in the analysis below was invalidated, only the claim that it had
-been acted on.
+**Status, corrected 2026-08-11:** COR-44 and COR-45 are delivered and their plans are removed after
+observed build, test, benchmark, provenance, and falsification gates. The remaining rows are active
+plans and retain their explicit incomplete status.
 
 The August whole-application review read every increment merged that month against `VISION.md`,
 `ENGINEERING.md` and `REQUIREMENTS.md`, and against the behaviour of the built application over
@@ -355,9 +348,9 @@ no performance change in this programme is falsifiable.
 
 Delivery order, and why it is this order:
 
-1. ⚪ **COR-44 — Measurement substrate.** (Delivers: REQ-123, REQ-124, REQ-125, REQ-126) ([plan](plans/COR-44-measurement-substrate.md)) A work ledger counting parses, builds, oracle passes, attributed characters, image decodes, bytes read and main-thread blocked time per unit of user intent; a main-actor responsiveness histogram beside the one-second hang watchdog; frame-hitch statistics; and memory footprint. First, because it is the instrument every later increment is judged by.
-2. ⚪ **COR-45 — Honest corpora and the in-app benchmark harness.** (Delivers: REQ-127, REQ-128)
-   ([plan](plans/COR-45-benchmark-harness.md)) A closed `PerformanceCorpus` enumeration whose shapes
+1. ✅ **COR-44 — Measurement substrate.** (Delivers: REQ-123, REQ-124, REQ-125, REQ-126) A task-local work ledger, main-actor responsiveness probe, real display-link frame statistics, and kernel memory-footprint/peak sampling are wired to production diagnostics and tested.
+2. ✅ **COR-45 — Honest corpora and the in-app benchmark harness.** (Delivers: REQ-127, REQ-128)
+   A closed `PerformanceCorpus` enumeration whose shapes
    assert their own structure, and a `--benchmark` mode that drives the shipping binary through typing,
    table typing, commands, mode toggles, scrolling, undo storms and a soak, writing a committed
    baseline. Expected to **fail** REQ-090 on landing; that failure is the reproduction.

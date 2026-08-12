@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-126",
+  "mutations": [
+    {
+      "rationale": "Using current footprint for peak makes the kernel peak-field proof fail on distinct synthetic task-info values.",
+      "file": "Markdown Editor/MemoryFootprint.swift",
+      "find": "peakBytes: UInt64(info.ledger_phys_footprint_peak)",
+      "replace": "peakBytes: UInt64(info.phys_footprint)",
+      "expect_red": ["memoryFootprintUsesKernelPeakField"]
+    }
+  ]
+}

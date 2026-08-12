@@ -30,22 +30,28 @@ enum BenchmarkDriver {
     }
 
     static func runIfRequested() -> Bool {
-        guard let index = CommandLine.arguments.firstIndex(of: "--benchmark"),
-              CommandLine.arguments.indices.contains(index + 1) else { return false }
-        let scenario = Scenario(rawValue: CommandLine.arguments[index + 1]) ?? .typeProse
-        let corpusName = value(after: "--corpus") ?? PerformanceCorpus.structuredProse.rawValue
-        let corpus = PerformanceCorpus(rawValue: corpusName) ?? .structuredProse
+        guard let parsed = configuration(arguments: CommandLine.arguments) else { return false }
+        configuration = parsed
+        return true
+    }
+
+    nonisolated static func configuration(arguments: [String]) -> Configuration? {
+        guard let index = arguments.firstIndex(of: "--benchmark"),
+              arguments.indices.contains(index + 1) else { return nil }
+        func value(after flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else { return nil }
+            return arguments[index + 1]
+        }
+        let scenario = Scenario(rawValue: arguments[index + 1]) ?? .typeProse
+        let corpus = PerformanceCorpus(rawValue: value(after: "--corpus") ?? "") ?? .structuredProse
         let size = max(1, Int(value(after: "--size") ?? "100000") ?? 100_000)
         let seconds = max(1, Double(value(after: "--duration") ?? "5") ?? 5)
         let intervalMillis = max(1, Double(value(after: "--interval-ms") ?? "120") ?? 120)
-        configuration = Configuration(
-            scenario: scenario,
-            corpus: corpus,
-            size: size,
+        return Configuration(
+            scenario: scenario, corpus: corpus, size: size,
             duration: .milliseconds(Int(seconds * 1_000)),
             interval: .milliseconds(Int(intervalMillis))
         )
-        return true
     }
 
     static func run() async {
@@ -134,12 +140,6 @@ enum BenchmarkDriver {
             runOnce(.toggleModes, corpus: corpus, size: size)
             runOnce(.undoRedoStorm, corpus: corpus, size: size)
         }
-    }
-
-    private static func value(after flag: String) -> String? {
-        guard let index = CommandLine.arguments.firstIndex(of: flag),
-              CommandLine.arguments.indices.contains(index + 1) else { return nil }
-        return CommandLine.arguments[index + 1]
     }
 
     private static func scrollViews(in view: NSView?) -> [NSScrollView] {

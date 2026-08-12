@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-127",
+  "mutations": [
+    {
+      "rationale": "Raising every corpus block floor makes the structural enumeration proof red rather than allowing a corpus to silently collapse.",
+      "file": "Markdown EditorTests/PerformanceCorpusTests.swift",
+      "find": "#expect(model.blocks.count >= corpus.minimumExpectedBlocks)",
+      "replace": "#expect(model.blocks.count >= corpus.minimumExpectedBlocks + 100_000)",
+      "expect_red": ["corpusShapesProduceTheStructureTheyClaim(_:)"]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-123",
+  "mutations": [
+    {
+      "rationale": "Disabling the task-local ledger receiver removes the production work attribution that the accepted-edit proofs require.",
+      "file": "Markdown Editor/WorkLedger.swift",
+      "find": "currentFrame?.add(mutate)",
+      "replace": "if false { currentFrame?.add(mutate) }",
+      "expect_red": ["acceptedEditRecordsItsWorkLedger", "everyWorkScopeIsOpenedByProduction"]
+    }
+  ]
+}

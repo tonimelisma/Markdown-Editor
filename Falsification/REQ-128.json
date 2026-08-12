@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-128",
+  "mutations": [
+    {
+      "rationale": "Forcing every benchmark invocation to use the idle scenario removes requested scenario liveness from the configuration proof.",
+      "file": "Markdown Editor/BenchmarkDriver.swift",
+      "find": "let scenario = Scenario(rawValue: arguments[index + 1]) ?? .typeProse",
+      "replace": "let scenario: Scenario = .openAndIdle",
+      "expect_red": ["benchmarkConfigurationPreservesEveryRequestedDimension"]
+    }
+  ]
+}

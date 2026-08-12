@@ -34,3 +34,16 @@ func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
     #expect(!source.contains("accessibility"))
     #expect(!source.contains("synthetic"))
 }
+
+// Verifies: REQ-128
+@Test func benchmarkConfigurationPreservesEveryRequestedDimension() {
+    let config = BenchmarkDriver.configuration(arguments: [
+        "Markdown Editor", "--benchmark", "typeInTable", "--corpus", "tableDense",
+        "--size", "12345", "--duration", "7", "--interval-ms", "80"
+    ])
+    #expect(config?.scenario == .typeInTable)
+    #expect(config?.corpus == .tableDense)
+    #expect(config?.size == 12345)
+    #expect(config?.duration == .seconds(7))
+    #expect(config?.interval == .milliseconds(80))
+}

@@ -9,7 +9,11 @@
 
 ## Result
 
-The pre-audit snapshot contained 104 Done rows. No row was deleted. The audit retained 18 manifest-backed rows as Done and demoted 86 rows to Correction because no falsifying manifest was present. The mutation gate result is recorded in the closing verification log.
+The pre-audit snapshot contained 104 Done rows. No row was deleted. The audit retained 18 original
+manifest-backed rows as Done and demoted 86 rows to Correction because no falsifying manifest was
+present. COR-44/COR-45 were then reimplemented and added six manifest-backed Done rows; COR-60 was
+promoted after its provenance fixtures passed. The closing mutation run passed for all 24 retained
+rows.
 
 ## Per-requirement answers
 
@@ -124,4 +128,5 @@ Format: Q1 manifest that can turn a cited proof red; Q2 proof asserts the promis
 
 - The 86 demotions are an evidence-floor result, not a claim that the implementation is absent. Their existing tests and production code remain preserved, but the repository had no recorded mutation capable of demonstrating that the cited proof would fail.
 - The audit does not repair demoted behavior, invent manifests, or delete plans. Follow-up implementation increments must restore each row only after a real falsifying mutation turns the cited proof red and the full proof run observes the proof passing.
-- The retained manifest rows still require the complete mutation command and full proof gates before this record is treated as closed.
+- The retained manifest rows completed the mutation command and full proof gates; the remaining
+  Correction rows are intentionally not promoted by this audit.

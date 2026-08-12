@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-137",
+  "mutations": [
+    {
+      "rationale": "Skipping required-field validation would admit an incomplete measurement provenance block.",
+      "file": "Scripts/check-measurement-provenance.sh",
+      "find": "if not value:",
+      "replace": "if False and not value:",
+      "expect_red": ["Scripts/test-check-measurement-provenance.sh"]
+    }
+  ]
+}

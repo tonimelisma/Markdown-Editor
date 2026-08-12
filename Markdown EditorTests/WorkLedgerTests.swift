@@ -1,4 +1,5 @@
 import Foundation
+import MachO
 import Testing
 @testable import Markdown_Editor
 
@@ -71,6 +72,15 @@ import Testing
 @Test func memoryFootprintRecordIsNumericOnly() {
     let sample = MemoryFootprint.sample()
     #expect(sample.bytes > 0)
+}
+
+// Verifies: REQ-126
+@Test func memoryFootprintUsesKernelPeakField() {
+    var info = task_vm_info_data_t()
+    info.phys_footprint = 10
+    info.ledger_phys_footprint_peak = 20
+    let sample = MemoryFootprint.sample(from: info)
+    #expect(sample == .init(bytes: 10, peakBytes: 20))
 }
 
 // Verifies: REQ-123

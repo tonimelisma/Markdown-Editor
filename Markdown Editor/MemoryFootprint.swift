@@ -19,11 +19,15 @@ nonisolated enum MemoryFootprint {
             }
         }
         if kerr == KERN_SUCCESS {
-            return Sample(
-                bytes: UInt64(info.phys_footprint),
-                peakBytes: UInt64(info.ledger_phys_footprint_peak)
-            )
+            return sample(from: info)
         }
         return Sample(bytes: 0, peakBytes: 0)
+    }
+
+    static func sample(from info: task_vm_info_data_t) -> Sample {
+        Sample(
+            bytes: UInt64(info.phys_footprint),
+            peakBytes: UInt64(info.ledger_phys_footprint_peak)
+        )
     }
 }
