@@ -8,6 +8,7 @@ fixture="$root/repo"
 mkdir -p "$fixture/Scripts"
 cp "$(dirname "$0")/check-push-policy.sh" "$fixture/Scripts/check-push-policy.sh"
 chmod +x "$fixture/Scripts/check-push-policy.sh"
+printf '.gate-receipt.json\n' > "$fixture/.gitignore"
 git -C "$fixture" init -q
 git -C "$fixture" config user.email test@example.invalid
 git -C "$fixture" config user.name receipt-test
