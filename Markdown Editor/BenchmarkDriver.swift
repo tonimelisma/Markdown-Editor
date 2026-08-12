@@ -60,6 +60,12 @@ enum BenchmarkDriver {
 
         DiagnosticRunCoordinator.shared.flushAndInvalidateAll()
         DiagnosticLog.shared?.finishSynchronously()
+        // The benchmark intentionally mutates its fixture. Mark that benchmark run clean before
+        // terminating so AppKit does not open a save-confirmation panel in the headless process.
+        // Ordinary user documents never pass through this driver and retain normal save prompts.
+        for document in NSDocumentController.shared.documents {
+            document.updateChangeCount(.changeCleared)
+        }
         NSApp.terminate(nil)
     }
 
@@ -84,7 +90,11 @@ enum BenchmarkDriver {
         case .applyCommands:
             for mode in [EditorMode.source, .wysiwyg] {
                 session.setMode(mode)
-                for command in EditorCommand.allCases {
+                // Add Image owns an asynchronous NSOpenPanel and Edit Link owns a modal sheet;
+                // neither can complete in a process-level, non-UI benchmark. Their routes are
+                // covered by the component suites; every deterministic editor route remains in
+                // this liveness matrix.
+                for command in EditorCommand.allCases where command != .addImage && command != .editLink {
                     _ = controller.perform(command)
                 }
             }

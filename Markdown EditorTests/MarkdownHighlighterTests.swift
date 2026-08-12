@@ -217,7 +217,7 @@ struct TextStatsTests {
 }
 
 @MainActor
-struct MarkdownThemeTests {
+struct MarkdownTypographyTests {
 
     // Verifies: REQ-041/047
     @Test func returnsAttributesPerStyle() {

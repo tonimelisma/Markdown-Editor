@@ -48,19 +48,19 @@ Affected requirements are marked `Correction`; new approved behavior is `Planned
 
 Delivery order:
 
-1. ✅ **COR-18 — Restore the proof floor.** (Delivers: REQ-088, REQ-104) Debug and Release tests compile and execute, the
+1. 🔵 **COR-18 — Restore the proof floor.** (Delivers: REQ-088, REQ-104) ([plan](plans/COR-18-proof-floor-reverification.md)) Debug and Release tests compile and execute, the
    shared smoke verifier and typography-rich fixture are landed, and performance evidence
    rejects zero samples.
-2. ✅ **COR-19 — Diagnostic lifetime and shutdown.** (Delivers: REQ-095, REQ-096, REQ-103, REQ-110) `EditorSession` now detaches its sampler and
+2. 🔵 **COR-19 — Diagnostic lifetime and shutdown.** (Delivers: REQ-095, REQ-096) ([plan](plans/COR-19-diagnostic-lifetime-reverification.md)) `EditorSession` now detaches its sampler and
    subscriptions, diagnostics serialize directly through an off-main sink, and terminal durability
    no longer waits for main-actor cleanup.
-3. ✅ **INC-05 — Semantic presentation and typography.** (Delivers: REQ-105, REQ-106, REQ-107) Semantic projection blocks now drive the
+3. 🔵 **INC-05 — Semantic presentation and typography.** (Delivers: REQ-106) ([plan](plans/INC-05-semantic-presentation-reverification.md)) Semantic projection blocks now drive the
    approved typography, reading column, break semantics, list/task alignment, quote/code/table
    treatments, bounded images, thematic separators, and literal HTML styling.
 4. ✅ **COR-20 — Incremental TextKit application and honest latency.** (Delivers: REQ-103, REQ-109) Ordinary accepted WYSIWYG
    edits now use validated range patches through `TextStorageApplier`, and performance sampling
    covers the complete native callback plus split parse, image, and application boundaries.
-5. ✅ **COR-21 — Latest-work scheduling and resource bounds.** (Delivers: REQ-076, REQ-081, REQ-111, REQ-112) Latest parse demand is bounded to
+5. 🔵 **COR-21 — Latest-work scheduling and resource bounds.** (Delivers: REQ-076, REQ-081, REQ-112) ([plan](plans/COR-21-latest-work-reverification.md)) Latest parse demand is bounded to
    the running request plus newest pending request, oversized encoded images are rejected from
    metadata before bulk reads, and asset move checks use cmark-derived references.
 6. ✅ **INC-06 — Native command surface.** (Delivers: REQ-058, REQ-108) The document-embedded toolbar is replaced by one
@@ -95,7 +95,7 @@ satisfied by a build in which four formatting commands reported `enabled` and si
 and nine of twelve semantic commands had never been executed through the WYSIWYG route — the
 product's default mode — in any test.
 
-1. ✅ **COR-26 — Enabled implies performable.** (Delivers: REQ-113) The post-command caret rule is one shared helper
+1. 🔵 **COR-26 — Enabled implies performable.** (Delivers: REQ-113) ([plan](plans/COR-26-command-liveness.md)) The post-command caret rule is one shared helper
    on `SemanticPlannerGate` instead of arithmetic inlined at one of eleven call sites, so
    `paragraph`, `heading`, `blockQuote`, and `codeBlock` apply rather than refuse.
    `CommandLivenessMatrixTests` is the closed matrix that fails the build when a new command has
@@ -108,7 +108,7 @@ product's default mode — in any test.
    than the inline `.code` tag, so the two treatments cannot compose; toolbar items carry SF
    Symbols instead of rendering blank; and the visual-review fixture can now discriminate a
    correct render from the failure mode ENGINEERING §7 forbids.
-4. ✅ **COR-29 — Instrumentation coverage and honest gates.** (Delivers: REQ-114, REQ-115, REQ-116) Typed image-resolution failures
+4. 🔵 **COR-29 — Instrumentation coverage and honest gates.** (Delivers: REQ-114, REQ-115) ([plan](plans/COR-29-instrumentation-and-gate-honesty.md)) Typed image-resolution failures
    reach the run log, process verification exercises an accepted insertion and an accepted
    command rather than only open-and-idle (19 records → 47), the idle-settle gate dropped from 20
    to 8/4 against a measured-healthy 2, and layout is measured past the input callback.
@@ -116,7 +116,7 @@ product's default mode — in any test.
    conversion directions, URL and location generation observed together, one word-count
    implementation, bounded sampler ring, oracle enforced in the WYSIWYG test seam, and
    repository hygiene.
-6. ✅ **COR-31 — Process and traceability gates.** (Delivers: REQ-117, REQ-118) Forward traceability enforced, a `Done`
+6. 🔵 **COR-31 — Process and traceability gates.** (Delivers: REQ-117, REQ-118) ([plan](plans/COR-31-process-and-traceability-gates.md)) Forward traceability enforced, a `Done`
    requirement can no longer contradict an active increment, `CLAUDE.md` requires liveness proofs
    and laid-out-geometry proofs, and `Scripts/fast-check.sh` is the short inner loop.
 
@@ -150,7 +150,7 @@ Delivery order, and why it is this order:
    and the Release evidence has been re-recorded in full. The plan's working hypothesis — an
    *interaction* among the last five tests — was superseded: the hang was `committedComposition-`
    `UsesBoundedPatch` alone, because it is the only test that drives the real marked-text path.
-2. ✅ **COR-34 — Attribute refresh escapes its semantic block.** (Delivers: REQ-078, REQ-109) `PresentationPatch.collectDifferences`
+2. 🔵 **COR-34 — Attribute refresh escapes its semantic block.** (Delivers: REQ-078) ([plan](plans/COR-34-attribute-refresh-scope.md)) `PresentationPatch.collectDifferences`
    now compares snapshot arrays **by projection position** instead of by array index, so an element
    inserted, removed, or changed near the start no longer shifts every later element onto a wrong
    counterpart: `hiddenDelimiterCommandRefreshesAttributesWithoutReplacing`,
@@ -166,7 +166,7 @@ Delivery order, and why it is this order:
    assertion now checks boundedness to the image block and exclusion of the trailing paragraph.
    Full unified suite: 373 passed, 0 failed. **Second because COR-32 makes these failures visible
    in every run, and they are real product defects, not stale assertions.**
-3. ✅ **COR-35 — A cited proof must pass, not merely exist.** (Delivers: REQ-117, REQ-118) `Scripts/check-proof-results.sh`
+3. 🔵 **COR-35 — A cited proof must pass, not merely exist.** (Delivers: REQ-117, REQ-118) ([plan](plans/COR-35-proofs-must-pass.md)) `Scripts/check-proof-results.sh`
    reads structured results from the run's own `.xcresult` bundle and correlates them with the
    `Done` rows of `REQUIREMENTS.md`: every cited proof must have executed and passed, whether it
    is named as a test or as a suite (REQ-117). The gate **fails closed** — an absent bundle, a
@@ -198,7 +198,7 @@ Delivery order, and why it is this order:
    `quoteNestedInAListItemKeepsRuleAndIndent` covers the decorated case. `Scripts/Fixtures/`
    `smoke-rich.md` gained a list item with a continuation paragraph so the REQ-104 visual review
    can see this class at all.
-5. ✅ **COR-33 — CRLF code blocks are editable via atomic line breaks.** (Delivers: REQ-113) Stage 1 made `.codeBlock` honest (`disabled(.uneditableContent)` in CRLF); stage 2 makes it performable: `BlockEditPlanner.toggleCodeFence`/`transformLine` now strip `\r` correctly, and `StructuralSourceSpans.fencedCodeBody` + `ProjectionAtom.concreteAtoms` treat each CRLF `\r\n` inside fenced/indented code as a single `.normalizedCodeBlock` atomic (decoder `\r\n→\n`, encoder `\n→\r\n`). Existing CRLF fenced blocks are no longer `.uneditable`; typing one line preserves the other lines' `\r\n` terminators (`CRLFCodeBlockTests.editingOneLinePreservesOtherTerminators`), LF stays byte-identical (`lfDocumentUnchanged`), and `codeBlockIsEditableInCRLFWYSIWYG` now proves `enabled`+`accepted` for both CRLF and LF with `lineReshapingCommandsApplyInCRLFWYSIWYGDocuments` including `.codeBlock`. Mixed line endings remain honest via the same per-line atomic (uniform CRLF → all `\n` re-expand to `\r\n`; LF → identity). `DISC-02` is closed; plan deleted.
+5. 🔵 **COR-33 — CRLF code blocks are editable via atomic line breaks.** (Delivers: REQ-113) ([plan](plans/COR-33-crlf-code-block-projection.md)) Stage 1 made `.codeBlock` honest (`disabled(.uneditableContent)` in CRLF); stage 2 makes it performable: `BlockEditPlanner.toggleCodeFence`/`transformLine` now strip `\r` correctly, and `StructuralSourceSpans.fencedCodeBody` + `ProjectionAtom.concreteAtoms` treat each CRLF `\r\n` inside fenced/indented code as a single `.normalizedCodeBlock` atomic (decoder `\r\n→\n`, encoder `\n→\r\n`). Existing CRLF fenced blocks are no longer `.uneditable`; typing one line preserves the other lines' `\r\n` terminators (`CRLFCodeBlockTests.editingOneLinePreservesOtherTerminators`), LF stays byte-identical (`lfDocumentUnchanged`), and `codeBlockIsEditableInCRLFWYSIWYG` now proves `enabled`+`accepted` for both CRLF and LF with `lineReshapingCommandsApplyInCRLFWYSIWYGDocuments` including `.codeBlock`. Mixed line endings remain honest via the same per-line atomic (uniform CRLF → all `\n` re-expand to `\r\n`; LF → identity). `DISC-02` is closed; plan deleted.
 
 6. ✅ **COR-37 — A nested block composes its container.** (Delivers: REQ-107) `AttributedPresentationBuilder.apply(block:)` now composes `textBlocks` instead of replacing wholesale. A fenced code block that is the only child of a quote at `{0,10}` keeps both the quote rule and the padded code background (`codeInsideQuoteComposesBothContainers`); nested quotes accumulate depth via existing `backgroundColor == nil` count. The length-descending stable sort tie is now harmless because both containers compose regardless of order. `nestedBlockQuotesComposeTheirRules` still proves depth via composed count.
 
@@ -221,12 +221,12 @@ Stage 2 proved the vocabulary change via `AtomicRepresentationKind.normalizedCod
 
 COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-close that keeps `REQ-007`/`REQ-113` honest for mixed line endings.
 
-1. ✅ **COR-38 — Retire COR-33 stage-1 dry-run and make CRLF encoder per-line.** (Delivers: REQ-007, REQ-113) Stage-1 `canPerformCodeBlock` dry-run with dummy `ID(0)` re-proved via `SemanticEditEngine.plan` what the stage-2 `.normalizedCodeBlock` atomic now guarantees; retired to the default `availability` branch. `MarkdownLiteralEncoder` now carries per-line `originalSource` overload so mixed `LF`/`CRLF` preserves per-line terminators (`CRLFCodeBlockTests.mixedLineEndingsPreserveUntouchedTerminators`); uniform files remain uniform. Helpers `crlfAwareTrimmingNewline()` centralised (4 sites). `REQ-007`/`REQ-113` reconciled.
-2. ✅ **COR-39 — Helpers and single-owner inclusive→exclusive conversion.** (Delivers: REQ-118) `MarkdownSourceIndex.inclusiveLastByteToExclusiveEnd` is single owner for the inclusive→exclusive `+1` (ARC-007); `REQ-118` `EXEMPT` is declared in `REQUIREMENTS.md` (spec is source of truth, script reads it, fallback warns). No `hasSuffix("\r\n")` duplication remains; no hard-coded EXEMPT source of truth. **Correction, recorded 2026-08-09:** this increment also claimed `AttributedPresentationBuilder.isQuoteBlock(_:)` was a *typed* predicate for `textBlocks`. It is not — the implementation is still `block.backgroundColor == nil` behind a function name, which a third container kind would collide with. Naming a predicate is not typing it. COR-55 introduces `QuoteTextBlock`/`CodeTextBlock` and makes the claim true.
+1. 🔵 **COR-38 — Retire COR-33 stage-1 dry-run and make CRLF encoder per-line.** (Delivers: REQ-113) ([plan](plans/COR-38-crlf-cleanup.md)) Stage-1 `canPerformCodeBlock` dry-run with dummy `ID(0)` re-proved via `SemanticEditEngine.plan` what the stage-2 `.normalizedCodeBlock` atomic now guarantees; retired to the default `availability` branch. `MarkdownLiteralEncoder` now carries per-line `originalSource` overload so mixed `LF`/`CRLF` preserves per-line terminators (`CRLFCodeBlockTests.mixedLineEndingsPreserveUntouchedTerminators`); uniform files remain uniform. Helpers `crlfAwareTrimmingNewline()` centralised (4 sites). `REQ-007`/`REQ-113` reconciled.
+2. 🔵 **COR-39 — Helpers and single-owner inclusive→exclusive conversion.** (Delivers: REQ-118) ([plan](plans/COR-39-hardening.md)) `MarkdownSourceIndex.inclusiveLastByteToExclusiveEnd` is single owner for the inclusive→exclusive `+1` (ARC-007); `REQ-118` `EXEMPT` is declared in `REQUIREMENTS.md` (spec is source of truth, script reads it, fallback warns). No `hasSuffix("\r\n")` duplication remains; no hard-coded EXEMPT source of truth. **Correction, recorded 2026-08-09:** this increment also claimed `AttributedPresentationBuilder.isQuoteBlock(_:)` was a *typed* predicate for `textBlocks`. It is not — the implementation is still `block.backgroundColor == nil` behind a function name, which a third container kind would collide with. Naming a predicate is not typing it. COR-55 introduces `QuoteTextBlock`/`CodeTextBlock` and makes the claim true.
 
 ### Delivered: block identification, hygiene, and decomposition
 
-1. ✅ **COR-40 — Scope ARC-009 to content mutation; block identification is total for semantic commands.** (Delivers: REQ-057, REQ-113) `ARC-009` now scoped: content mutation (`insertText`/`deleteBackward`/`replaceTableCell`) refuses atomically; `reshapesWholeLine` rewrites identify enclosing `PresentationBlock` by `caretLocation ∈ projectionRange` (total for caret in `renderedString`; `tableCell` stays exact via classifier). `PresentationSnapshot.enclosingBlock(at:)` / `MarkdownProjectionModel.enclosingBlock(at:)` are the single owners. `SemanticBlockIdentificationTests` proves totality at `0`/end and `tableCellStillRequiresExact`; `CommandLivenessMatrixTests` stays green (rehearsed failing via exact gate). Displaced path `guard case .identityText = classification` for `reshapesWholeLine` deleted in same build. `DISC-01` closed.
+1. 🔵 **COR-40 — Scope ARC-009 to content mutation; block identification is total for semantic commands.** (Delivers: REQ-057, REQ-113) ([plan](plans/COR-40-scope-arc009-to-content.md)) `ARC-009` now scoped: content mutation (`insertText`/`deleteBackward`/`replaceTableCell`) refuses atomically; `reshapesWholeLine` rewrites identify enclosing `PresentationBlock` by `caretLocation ∈ projectionRange` (total for caret in `renderedString`; `tableCell` stays exact via classifier). `PresentationSnapshot.enclosingBlock(at:)` / `MarkdownProjectionModel.enclosingBlock(at:)` are the single owners. `SemanticBlockIdentificationTests` proves totality at `0`/end and `tableCellStillRequiresExact`; `CommandLivenessMatrixTests` stays green (rehearsed failing via exact gate). Displaced path `guard case .identityText = classification` for `reshapesWholeLine` deleted in same build. `DISC-01` closed.
 2. ✅ **COR-41 — Triage hygiene: remove hidden crash, boolean trap, and untestable geometry.** (Delivers: none) No new REQ, no ARC change — `MarkdownHighlighter` `try!` → checked `preconditionFailure`, `WYSIWYGEditor.applyProjectionIfNeeded(force:)` → `ApplyReason` enum, `installPerTextKitParagraph` → `ParagraphStyleInstaller.styles(for:range:text:)`. Proved by existing `ParagraphGeometryTests` at narrow/default/wide widths plus build. Displaced paths `try!` and `force: Bool` deleted; `ParagraphStyleInstaller` is single owner for per-paragraph style. The sweep was not exhaustive: the August review found a force-unwrapped weak document in `ParseCoordinator` and two force-unwrapped UTF-16 alignments in `MarkdownSourceIndex` still present, both scheduled in COR-55.
 3. ✅ **COR-42 — Extract ParseCoordinator from EditorSession.** (Delivers: none) `EditorSession` 746 → ~540 lines; `LatestParseScheduler` + `Task` + `operationGeneration` + 200-line `scheduleParse` moved to new `ParseCoordinator` (scheduler + generation + detached pipeline). `EditorSession` keeps `@Published` presentation/mode and delegates via `parseCoordinator`. Visibilities: `presentation`/`resolvedImages`/`authoritativeTree` internal for single external writer, `snapshotIDs`/`performanceSampler` internal, `installPresentation` internal. Build SUCCEEDED, fast-check 368/0 PASS.
 4. ✅ **COR-43 — Split SemanticEditEngine by planning domain.** (Delivers: none) `SemanticEditEngine` 1291 → 591 lines router; `SourcePlanningDomain` (153) owns `applySource`, `WYSIWYGPlanningDomain` (576) owns `applyWYSIWYG`/`applyTableCellTyping`/`tablePresentationEdit` + 8 helpers. Engine retains shared helpers as internal and delegates via domains. Build SUCCEEDED, fast-check 368/0 PASS.
@@ -289,12 +289,12 @@ Delivery order, and why it is this order:
    server-side branch protection needs GitHub Pro or a public repository — the free private plan
    returns `403` — so the hook is enforcement by default, bypassable with `--no-verify` and
    per-clone. The server-side choice is deliberately unresolved, not overlooked.
-3. ✅ **COR-58 — Coverage by observed emission.** *(Delivers: REQ-099, REQ-135)* The substring
+3. 🔵 **COR-58 — Coverage by observed emission.** *(Delivers: REQ-099, REQ-135)* ([plan](plans/COR-58-observed-emission-coverage.md)) The substring
    scan is deleted; `Scripts/check-instrumentation-coverage.sh` requires all 46
    `EditorTraceEvent` cases in the union of process-smoke and test-run JSON Lines, with a reviewed
    exemption record. Its fixtures reject missing, empty, unknown, and nil-receiver-only evidence.
    Third, because it is the gate defeated twice and the cheapest of the four to make honest.
-4. ✅ **COR-59 — Delivery status is derived, not written.** (Delivers: REQ-136)
+4. 🔵 **COR-59 — Delivery status is derived, not written.** (Delivers: REQ-136) ([plan](plans/COR-59-derived-delivery-status.md))
    Plans and ROADMAP rows declare `Delivers:`; a ✅
    must resolve to requirements that are `Done` and observed passing; a plan may only be deleted when
    its delivered set is proven in the same run. Makes the 2026-08-10 promotion unrepresentable rather
@@ -399,7 +399,7 @@ Delivery order, and why it is this order:
 12. ⚪ **COR-55 — Correctness and hygiene sweep.** (Delivers: none)
     ([plan](plans/COR-55-correctness-and-hygiene.md)) Two crash paths COR-41 missed, a silent paste
     failure with no diagnostic, a layout metric dominated by caret blinks, a duplicated IME commit, and
-    the `MarkdownTheme` compatibility facade `ENGINEERING.md` §15 forbids.
+    the `MarkdownTypography` compatibility facade `ENGINEERING.md` §15 forbids.
 
 ## Post-MVP backlog
 

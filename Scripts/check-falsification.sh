@@ -225,6 +225,12 @@ def proof_outcome(output, proof):
     if re.search(r"no tests? found|no matching tests?", output, re.IGNORECASE):
         return None
     leaf = proof.rsplit("/", 1)[-1].removesuffix("()")
+    # Xcode's test runner can omit the per-case `failed` line after a crashed or
+    # restarted test host and instead list the exact XCTest identifier under
+    # `Failing tests:`. That is still an observed red outcome, not an empty run.
+    failing_section = re.search(r"Failing tests:\s*(.*?)(?:\n\s*\*\* TEST FAILED \*\*|\Z)", output, re.DOTALL)
+    if failing_section and re.search(rf"\b{re.escape(leaf)}\(\)\s*$", failing_section.group(1), re.MULTILINE):
+        return "failed"
     matches = re.findall(
         rf"(?:Test case|Test Case|[◇▶✘✔] Test) [^\n]*\b{re.escape(leaf)}(?:\(\))?[^\n]*\b(passed|failed)\b",
         output,

@@ -44,6 +44,7 @@ final class EditorCommandController: ObservableObject {
         case .addImage:
             return session.canAddImages ? .enabled : .disabled(.unavailablePresentation)
         case .editLink:
+            guard selectionLength(in: session) > 0 else { return .disabled(.noSelection) }
             return session.mode == .wysiwyg && session.presentation == nil
                 ? .disabled(.unavailablePresentation) : .enabled
         case .codeBlock:

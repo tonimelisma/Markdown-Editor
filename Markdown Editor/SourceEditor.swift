@@ -28,6 +28,7 @@ enum SourceEditor {
         var nativeStorageState: NativeStorageState = .idle
         private var nextNativeGrouping: MutationGrouping?
         private var pendingStyleRange: NSRange?
+        private var lastStyledText: String?
         private var version = 0
         private var task: Task<Void, Never>?
 
@@ -151,28 +152,54 @@ enum SourceEditor {
                     return
                 }
                 if Task.isCancelled { return }
-                self.apply(tokens, expectedVersion: expectedVersion, expectedText: snapshot)
+                self.apply(
+                    tokens,
+                    expectedVersion: expectedVersion,
+                    expectedText: snapshot,
+                    editedRange: self.pendingStyleRange
+                )
             }
         }
 
         // REQ-040/041/043/047–051: style via NSTextStorage attributes — display only.
-        private func apply(_ tokens: [Token], expectedVersion: Int, expectedText: String) {
+        func apply(
+            _ tokens: [Token],
+            expectedVersion: Int,
+            expectedText: String,
+            editedRange: NSRange? = nil
+        ) {
             guard expectedVersion == version,
                   let textView, textView.string == expectedText,
                   let storage = textView.textStorage else { return }
             let full = NSRange(location: 0, length: storage.length)
-            let target = styleWindow(for: pendingStyleRange ?? full, in: storage)
+            let target = styleWindow(for: editedRange ?? pendingStyleRange ?? full, in: storage)
             pendingStyleRange = nil
+            let parityChanged = lastStyledText.map { fenceParity(in: $0) != fenceParity(in: expectedText) } ?? false
+            let effectiveTarget: NSRange
+            if parityChanged {
+                effectiveTarget = full
+                document.trace?.record(.sourceHighlightWidened(reason: .fenceParity))
+            } else {
+                effectiveTarget = target
+            }
             let started = DispatchTime.now().uptimeNanoseconds
             storage.beginEditing()
-            if target.length > 0 { storage.setAttributes(theme.baseAttributes, range: target) }
+            if effectiveTarget.length > 0 { storage.setAttributes(theme.baseAttributes, range: effectiveTarget) }
             for token in tokens where NSMaxRange(token.range) <= full.length {
-                let intersection = NSIntersectionRange(token.range, target)
+                let intersection = NSIntersectionRange(token.range, effectiveTarget)
                 guard intersection.length > 0 else { continue }
                 storage.addAttributes(theme.attributes(for: token.style), range: intersection)
             }
             storage.endEditing()
             session?.recordPerformance(.sourceHighlightApplication, durationNanos: DispatchTime.now().uptimeNanoseconds &- started)
+            lastStyledText = expectedText
+        }
+
+        private func fenceParity(in text: String) -> Bool {
+            text.split(separator: "\n", omittingEmptySubsequences: false).reduce(into: false) { open, line in
+                let trimmed = line.drop(while: { $0 == " " || $0 == "\t" })
+                if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") { open.toggle() }
+            }
         }
 
         private func styleWindow(for edited: NSRange, in storage: NSTextStorage) -> NSRange {

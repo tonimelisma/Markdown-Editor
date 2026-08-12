@@ -29,6 +29,7 @@ This sentence begins on the next visual line.
 let greeting = "Hello"
 let subject = "world"
 print(greeting, subject)
+print("rich fixture")
 ```
 
 | Construct | Supported |

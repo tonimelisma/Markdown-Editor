@@ -271,6 +271,10 @@ final class JSONLinesEditorTrace: EditorTraceSink {
             return Mapped(name: .budgetExceeded, level: .warn, category: .session, data: [
                 (.metric, .symbol(metric.symbol)), (.p95Nanos, .uint(p95Nanos)), (.budgetNanos, .uint(budgetNanos))
             ])
+        case .sourceHighlightWidened(let reason):
+            return Mapped(name: .sourceHighlightWidened, level: .info, category: .session, data: [
+                (.reason, .symbol(reason.symbol))
+            ])
         case .workLedger(let scope, let documentParses, let projectionCompiles, let oracleValidations, let attributedBuilds, let attributedCharactersWritten, let storageFullReplacements, let imageDecodes, let fileBytesRead, let mainThreadBlockedNanos):
             return Mapped(name: .workLedger, level: .debug, category: .diagnostics, data: [
                 (.scope, .symbol(scope.symbol)),

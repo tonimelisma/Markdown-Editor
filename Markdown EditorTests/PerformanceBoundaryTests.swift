@@ -43,6 +43,68 @@ struct PerformanceBoundaryTests {
         #expect(harness.document.text == "Hello world.!\n\nSecond paragraph.\n")
     }
 
+    // Verifies: REQ-116; ARC-020 — insertion-point repaints are not layout-application samples.
+    @Test func layoutMetricIgnoresInsertionPointRepaints() throws {
+        let harness = try EditorHarness(source: "Hello world.\n")
+
+        for _ in 0..<8 {
+            harness.textView.draw(harness.textView.bounds)
+        }
+
+        #expect(
+            harness.session.drainPerformanceSummaries().first { $0.metric == .layoutApplication } == nil,
+            "caret redraws must not create layoutApplication samples"
+        )
+    }
+
+    // Verifies: REQ-116; ARC-020 — a changed presentation range is measured only when TextKit
+    // reports that its layout has completed, and subsequent drawing does not add another sample.
+    @Test func layoutMetricRecordsCompletedApplicationOnce() throws {
+        let harness = try EditorHarness(source: "Hello world.\n")
+        harness.typeCharacter("!", at: NSRange(location: 12, length: 0))
+
+        let layoutManager = try #require(harness.textView.layoutManager)
+        let textContainer = try #require(harness.textView.textContainer)
+        layoutManager.ensureLayout(for: textContainer)
+        for _ in 0..<8 {
+            harness.textView.draw(harness.textView.bounds)
+        }
+
+        let summary = try #require(
+            harness.session.drainPerformanceSummaries().first { $0.metric == .layoutApplication }
+        )
+        #expect(summary.count == 1)
+    }
+
+    // Verifies: REQ-084 — both native IME termination callbacks use one source transaction route.
+    @Test func bothCompositionCommitRoutesUseTheSameTransaction() throws {
+        let insertTrace = InMemoryEditorTrace()
+        let insertHarness = try EditorHarness(source: "ab\n\nTrailing paragraph.\n", trace: insertTrace)
+        insertHarness.textView.setSelectedRange(NSRange(location: 2, length: 0))
+        insertHarness.textView.setMarkedText(
+            "日",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: 2, length: 0)
+        )
+        insertHarness.textView.insertText("日", replacementRange: NSRange(location: NSNotFound, length: 0))
+
+        let unmarkTrace = InMemoryEditorTrace()
+        let unmarkHarness = try EditorHarness(source: "ab\n\nTrailing paragraph.\n", trace: unmarkTrace)
+        unmarkHarness.textView.setSelectedRange(NSRange(location: 2, length: 0))
+        unmarkHarness.textView.setMarkedText(
+            "日",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: 2, length: 0)
+        )
+        unmarkHarness.textView.unmarkText()
+
+        let insertEvents = compositionEvents(in: insertTrace)
+        let unmarkEvents = compositionEvents(in: unmarkTrace)
+        #expect(insertEvents == unmarkEvents)
+        #expect(insertHarness.document.text == unmarkHarness.document.text)
+        #expect(insertHarness.document.text.hasPrefix("ab日"))
+    }
+
     // Verifies: REQ-103 — ordinary edits feed the sampler and emit no per-keystroke record.
     @Test func ordinaryEditsProduceAggregatesOnlyAndNoPerKeystrokeRecord() throws {
         let trace = InMemoryEditorTrace()
@@ -553,6 +615,17 @@ struct PerformanceBoundaryTests {
             locationGeneration: 0,
             sourceText: source
         )
+    }
+
+    private func compositionEvents(in trace: InMemoryEditorTrace) -> [EditorTraceEvent] {
+        trace.events.filter {
+            switch $0 {
+            case .compositionBegan, .compositionCommitted, .compositionCancelled, .compositionRefusedStale:
+                return true
+            default:
+                return false
+            }
+        }
     }
 
     /// A real document, session, and WYSIWYG coordinator over spy-backed storage.

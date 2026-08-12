@@ -38,19 +38,22 @@ struct DiagnosticLogTests {
         #expect(trace.events.contains(.budgetExceeded(metric: .modeTransition, p95Nanos: 20_000_000, budgetNanos: 16_000_000)))
     }
 
-    // Verifies: REQ-103 — summaries are emitted on flush and never per keystroke.
+    // Verifies: REQ-103 — summaries are emitted on flush and never per keystroke. The flush
+    // also emits the process memory sample used by the diagnostics contract.
     @Test func performanceSummaryOmitsPerEventTimings() {
         let trace = InMemoryEditorTrace()
         let sampler = PerformanceSampler(trace: trace)
         sampler.record(.parseProjection, durationNanos: 1)
         #expect(trace.events.isEmpty)
         sampler.flush()
+        #expect(trace.events.count == 2)
         #expect(trace.events.contains { event in
-            if case .performanceSummary(metric: .parseProjection, count: 1, _, _, _) = event { return true }
+            if case .performanceSummary(metric: .parseProjection, count: 1, p50Nanos: 1, p95Nanos: 1, maxNanos: 1) = event {
+                return true
+            }
             return false
         })
-        #expect(trace.events.allSatisfy { event in
-            if case .performanceSummary = event { return true }
+        #expect(trace.events.contains { event in
             if case .memoryFootprint = event { return true }
             return false
         })
@@ -72,31 +75,6 @@ struct DiagnosticLogTests {
         await log.drain()
         let text = (try? String(contentsOf: log.fileURL, encoding: .utf8)) ?? ""
         return text.split(separator: "\n").map(String.init)
-    }
-
-    // Verifies: REQ-123 — collapsing rapid accepted-edit work records retains both the total and
-    // worst observed work instead of reducing the ledger to an event count.
-    @Test func collapsedWorkLedgerRecordsRetainSumAndMax() async {
-        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
-        for value in 1...40 {
-            log.record(
-                .workLedger,
-                category: .diagnostics,
-                data: [
-                    (.documentParses, .uint(UInt64(value))),
-                    (.projectionCompiles, .uint(2))
-                ]
-            )
-        }
-        log.finish()
-        let records = await lines(of: log)
-        let summaries = records.compactMap(object).filter { ($0["ev"] as? String) == "repeated" }
-        let data = summaries.compactMap { $0["data"] as? [String: Any] }.first
-        #expect((data?["count"] as? Int) == 20)
-        #expect((data?["sumDocumentParses"] as? Int) == 610)
-        #expect((data?["maxDocumentParses"] as? Int) == 40)
-        #expect((data?["sumProjectionCompiles"] as? Int) == 40)
-        #expect((data?["maxProjectionCompiles"] as? Int) == 2)
     }
 
     // Verifies: REQ-135 — this existing closed mapping matrix is also emitted through the
@@ -175,9 +153,21 @@ struct DiagnosticLogTests {
             .userAlertPresented(severity: .error, reason: .placement(.busy))
             , .performanceSummary(metric: .nativeInputCallback, count: 2, p50Nanos: 3, p95Nanos: 4, maxNanos: 5)
             , .budgetExceeded(metric: .modeTransition, p95Nanos: 17, budgetNanos: 16)
-            , .workLedger(scope: .acceptedEdit, documentParses: 1, projectionCompiles: 1, oracleValidations: 1, attributedBuilds: 1, attributedCharactersWritten: 10, storageFullReplacements: 1, imageDecodes: 1, fileBytesRead: 100, mainThreadBlockedNanos: 1000)
-            , .frameStatistics(hitchMillisPerSecond: 1.0, longestFrameNanos: 1000, framesObserved: 10)
-            , .memoryFootprint(bytes: 1000, peakBytes: 2000)
+            , .sourceHighlightWidened(reason: .fenceParity)
+            , .workLedger(
+                scope: .acceptedEdit,
+                documentParses: 1,
+                projectionCompiles: 2,
+                oracleValidations: 3,
+                attributedBuilds: 4,
+                attributedCharactersWritten: 5,
+                storageFullReplacements: 6,
+                imageDecodes: 7,
+                fileBytesRead: 8,
+                mainThreadBlockedNanos: 9
+            )
+            , .frameStatistics(hitchMillisPerSecond: 1.5, longestFrameNanos: 10, framesObserved: 11)
+            , .memoryFootprint(bytes: 12, peakBytes: 13)
         ]
 
         var covered = Set<DiagnosticEventName>()

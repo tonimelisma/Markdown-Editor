@@ -36,8 +36,17 @@ make_fixture() {
         imageHeavy) unit=$'![alt](assets/sample.png)\n\nParagraph.\n\n' ;;
         *) echo "benchmark: unknown corpus $corpus" >&2; return 1 ;;
     esac
-    : >"$target"
-    while (( $(wc -c <"$target") < size )); do printf '%s' "$unit" >>"$target"; done
+    python3 - "$unit" "$target" "$size" <<'PY'
+import pathlib
+import sys
+
+unit, target, size = sys.argv[1], pathlib.Path(sys.argv[2]), int(sys.argv[3])
+encoded = unit.encode("utf-8")
+if not encoded:
+    raise SystemExit("benchmark: corpus unit must not be empty")
+repetitions = (size + len(encoded) - 1) // len(encoded)
+target.write_bytes((encoded * repetitions)[:size])
+PY
 }
 
 for scenario in typeProse typeInTable typeAdjacentMarkup applyCommands toggleModes scrollDocument undoRedoStorm openAndIdle soak; do
@@ -122,7 +131,10 @@ sample_count = sum(sample_counts)
 output.parent.mkdir(parents=True, exist_ok=True)
 with output.open("w", encoding="utf-8") as handle:
     handle.write("# Performance baseline\n\n")
-    handle.write("Evidence-only authority. First-researched: %s. Last-verified: %s.\n" % (now, now))
+    handle.write("- **Authority:** Evidence only\n")
+    handle.write("- **First researched:** %s\n" % now)
+    handle.write("- **Last verified:** %s\n" % now)
+    handle.write("- **Refresh when:** app, OS, architecture, corpus, scenario, or benchmark-driver changes.\n")
     handle.write("Host: %s\n" % platform.node())
     handle.write("OS: macOS %s\n" % os_version)
     handle.write("OS build: %s\n" % os_build)
@@ -139,7 +151,6 @@ with output.open("w", encoding="utf-8") as handle:
     handle.write("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
     for row in rows:
         handle.write("| %s | %s | %s | %s | %s | %s | %s | %s | %s |\n" % row)
-    handle.write("\nRefresh triggers: app, OS, architecture, corpus, scenario, or benchmark-driver changes.\n")
 PY
 
 echo "benchmark: wrote $output"

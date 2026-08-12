@@ -62,19 +62,13 @@ struct EditorMenuCommands: Commands {
             Divider()
         }
         CommandMenu("Format") {
-            Button("Bold") { _ = controller?.perform(.bold) }
-                .keyboardShortcut(Self.shortcuts[.bold]!)
-                .disabled(!isEnabled(.bold))
-            Button("Italic") { _ = controller?.perform(.italic) }
-                .keyboardShortcut(Self.shortcuts[.italic]!)
-                .disabled(!isEnabled(.italic))
+            menuButton("Bold", command: .bold)
+            menuButton("Italic", command: .italic)
             Button("Strikethrough") { _ = controller?.perform(.strikethrough) }
                 .disabled(!isEnabled(.strikethrough))
             Button("Inline Code") { _ = controller?.perform(.inlineCode) }
                 .disabled(!isEnabled(.inlineCode))
-            Button("Edit Link…") { _ = controller?.perform(.editLink) }
-                .keyboardShortcut(Self.shortcuts[.editLink]!)
-                .disabled(!isEnabled(.editLink))
+            menuButton("Edit Link…", command: .editLink)
             Button("Remove Link") { _ = controller?.perform(.removeLink) }
                 .disabled(!isEnabled(.removeLink))
             Divider()
@@ -102,5 +96,17 @@ struct EditorMenuCommands: Commands {
 
     private func isEnabled(_ command: EditorCommand) -> Bool {
         controller?.availability(for: command).isEnabled ?? false
+    }
+
+    @ViewBuilder
+    private func menuButton(_ title: String, command: EditorCommand) -> some View {
+        let button = Button(title) { _ = controller?.perform(command) }
+        if let shortcut = Self.shortcuts[command] {
+            button
+                .keyboardShortcut(shortcut)
+                .disabled(!isEnabled(command))
+        } else {
+            button.disabled(true)
+        }
     }
 }
