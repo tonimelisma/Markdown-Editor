@@ -362,9 +362,11 @@ its plan content is more fully specified.
 
 ## Active: measure, then make it fast, native, and reachable
 
-**Status, corrected 2026-08-11:** COR-44 and COR-45 are delivered and their plans are removed after
-observed build, test, benchmark, provenance, and falsification gates. The remaining rows are active
-plans and retain their explicit incomplete status.
+**Status, corrected 2026-08-11:** COR-44 is delivered on observed build, test, provenance and
+falsification gates, and its plan is removed. COR-45 is **not**: the harness exists and REQ-127's
+corpus enumeration is proved by tests, but `Scripts/benchmark.sh` had never completed a run, so the
+baseline REQ-128 promises was never produced by the driver that is supposed to produce it. Its plan
+is restored. The remaining rows are active plans and retain their explicit incomplete status.
 
 The August whole-application review read every increment merged that month against `VISION.md`,
 `ENGINEERING.md` and `REQUIREMENTS.md`, and against the behaviour of the built application over
@@ -397,11 +399,21 @@ no performance change in this programme is falsifiable.
 Delivery order, and why it is this order:
 
 1. ✅ **COR-44 — Measurement substrate.** (Delivers: REQ-123, REQ-124, REQ-125, REQ-126) A task-local work ledger, main-actor responsiveness probe, real display-link frame statistics, and kernel memory-footprint/peak sampling are wired to production diagnostics and tested.
-2. ✅ **COR-45 — Honest corpora and the in-app benchmark harness.** (Delivers: REQ-127, REQ-128)
-   A closed `PerformanceCorpus` enumeration whose shapes
-   assert their own structure, and a `--benchmark` mode that drives the shipping binary through typing,
-   table typing, commands, mode toggles, scrolling, undo storms and a soak, writing a committed
-   baseline. Expected to **fail** REQ-090 on landing; that failure is the reproduction.
+2. 🔵 **COR-45 — Honest corpora and the in-app benchmark harness.** (Delivers: REQ-128)
+   ([plan](plans/COR-45-benchmark-harness.md)) The closed `PerformanceCorpus` enumeration landed and
+   REQ-127 is `Done` on its own tests. The harness did not: `Scripts/benchmark.sh` had never
+   completed a run, and the baseline committed under its name was written by an earlier driver from
+   commit `b27cf196` — 4 rows of the 108 the script iterates, with `nativeInput p95 = n/a` and
+   `parses = 1` for a *typing* scenario. Three defects were found by running it, two now fixed: the
+   reconciliation ceiling was a livelock guard sized for a caller driving a handful of edits, and
+   the recorder passed `--fail-on-budget-exceeded` so it refused to write a baseline until every
+   budget was already met — inverting this section's own ordering, in which measurement precedes
+   every increment that makes anything faster. The third is open and blocks the baseline:
+   `applyCommands` performs each command without establishing a selection, so all 40 refuse with
+   `mappingFailure`/`ambiguousSelection`. A caret fixes the source-mode half; the WYSIWYG half
+   survives a bounded wait for an editable projection, so the cause is not a stale projection and
+   is not yet known. Still expected to **fail** REQ-090 once it runs; that failure is the
+   reproduction.
 3. ⚪ **COR-46 — One document build per keystroke.** (Delivers: none)
    ([plan](plans/COR-46-single-build-per-keystroke.md)) One inserted character currently builds the
    whole document two to four times and validates the same immutable snapshot twice. Pure
