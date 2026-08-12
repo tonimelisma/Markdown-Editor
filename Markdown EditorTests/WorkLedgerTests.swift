@@ -72,6 +72,10 @@ import Testing
 @Test func memoryFootprintRecordIsNumericOnly() {
     let sample = MemoryFootprint.sample()
     #expect(sample.bytes > 0)
+    var info = task_vm_info_data_t()
+    info.phys_footprint = 10
+    info.ledger_phys_footprint_peak = 20
+    #expect(MemoryFootprint.sample(from: info) == .init(bytes: 10, peakBytes: 20))
 }
 
 // Verifies: REQ-126

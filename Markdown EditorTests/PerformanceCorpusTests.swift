@@ -27,6 +27,20 @@ func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
     }
 }
 
+// Verifies: REQ-127
+@Test func everyCorpusShapeHasADeclaredBlockFloor() {
+    for corpus in PerformanceCorpus.allCases {
+        let source = corpus.source(utf16Target: 20_000)
+        guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: 1) else {
+            #expect(Bool(false), "corpus must parse: \(corpus.rawValue)")
+            continue
+        }
+        let index = MarkdownSourceIndex(source: source, sourceVersion: 1)
+        let model = MarkdownProjectionModel.build(tree: tree, index: index)
+        #expect(model.blocks.count >= corpus.minimumExpectedBlocks)
+    }
+}
+
 // Verifies: REQ-128
 @Test func benchmarkDriverAssertsOnlyOnStructuredRecords() {
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()

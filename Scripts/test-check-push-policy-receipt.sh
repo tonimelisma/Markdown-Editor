@@ -12,6 +12,7 @@ printf '.gate-receipt.json\nScripts/check-push-policy.sh\n' > "$fixture/.gitigno
 git -C "$fixture" init -q
 git -C "$fixture" config user.email test@example.invalid
 git -C "$fixture" config user.name receipt-test
+git -C "$fixture" add .gitignore
 printf 'base\n' > "$fixture/README.md"
 git -C "$fixture" add README.md
 git -C "$fixture" commit -qm base
