@@ -6,7 +6,7 @@
       "file": "Scripts/check-push-policy.sh",
       "find": ".head == $head and .tree == $tree",
       "replace": "true",
-      "expect_red": ["Scripts/test-check-push-policy.sh"]
+      "expect_red": ["Scripts/test-check-push-policy-receipt.sh"]
     }
   ]
 }
