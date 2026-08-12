@@ -177,7 +177,10 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         watchdog.start()
         self.watchdog = watchdog
         if let log = DiagnosticLog.shared {
-            let trace = JSONLinesEditorTrace(log: log)
+            // Process-wide sampler and frame records have no document owner. Keeping them
+            // documentless prevents a single opened fixture from appearing as two documents in
+            // process-level verification; MarkdownDocument allocates the real document handle.
+            let trace = JSONLinesEditorTrace(log: log, documentHandle: nil)
             let sampler = PerformanceSampler(trace: trace)
             applicationSampler = sampler
             let probe = MainActorResponsivenessProbe(sampler: sampler)

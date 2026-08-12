@@ -12,7 +12,7 @@
 The pre-audit snapshot contained 104 Done rows. No row was deleted. The audit retained 18 original
 manifest-backed rows as Done and demoted 86 rows to Correction because no falsifying manifest was
 present. COR-44/COR-45 were then reimplemented and added six manifest-backed Done rows; COR-60 was
-promoted after its provenance fixtures passed. The closing mutation run passed for all 24 retained
+promoted after its provenance fixtures passed. The closing mutation run passed for all 25 retained
 rows.
 
 ## Per-requirement answers

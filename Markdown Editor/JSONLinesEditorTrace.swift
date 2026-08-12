@@ -14,11 +14,16 @@ import Foundation
 final class JSONLinesEditorTrace: EditorTraceSink {
     private let log: DiagnosticLog
     /// Opaque per-run handle identifying the document this sink belongs to.
-    private let documentHandle: UInt64
+    private let documentHandle: UInt64?
 
     init(log: DiagnosticLog) {
         self.log = log
         self.documentHandle = log.makeDocumentHandle()
+    }
+
+    init(log: DiagnosticLog, documentHandle: UInt64?) {
+        self.log = log
+        self.documentHandle = documentHandle
     }
 
     func record(_ event: EditorTraceEvent) {
