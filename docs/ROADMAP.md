@@ -289,16 +289,17 @@ Delivery order, and why it is this order:
    server-side branch protection needs GitHub Pro or a public repository — the free private plan
    returns `403` — so the hook is enforcement by default, bypassable with `--no-verify` and
    per-clone. The server-side choice is deliberately unresolved, not overlooked.
-3. 🔵 **COR-58 — Coverage by observed emission.** *(Delivers: REQ-099, REQ-135)* ([plan](plans/COR-58-observed-emission-coverage.md)) The substring
+3. ✅ **COR-58 — Coverage by observed emission.** *(Delivers: REQ-099, REQ-135)* The substring
    scan is deleted; `Scripts/check-instrumentation-coverage.sh` requires all 46
    `EditorTraceEvent` cases in the union of process-smoke and test-run JSON Lines, with a reviewed
    exemption record. Its fixtures reject missing, empty, unknown, and nil-receiver-only evidence.
-   Third, because it is the gate defeated twice and the cheapest of the four to make honest.
-4. 🔵 **COR-59 — Delivery status is derived, not written.** (Delivers: REQ-136) ([plan](plans/COR-59-derived-delivery-status.md))
+   Third, because it is the gate defeated twice and the cheapest of the four to make honest. Delivered
+   after the observed-emission gate, fixture rehearsal, and final-run coverage proof passed.
+4. ✅ **COR-59 — Delivery status is derived, not written.** (Delivers: REQ-136)
    Plans and ROADMAP rows declare `Delivers:`; a ✅
    must resolve to requirements that are `Done` and observed passing; a plan may only be deleted when
    its delivered set is proven in the same run. Makes the 2026-08-10 promotion unrepresentable rather
-   than merely discouraged.
+   than merely discouraged. Delivered after the fixture matrix and final proof bundle passed.
 5. ✅ **COR-60 — Measurements carry their provenance.** (Delivers: REQ-137) Baselines are
    machine-written with resolving host, OS, architecture, configuration, corpus digest, sample
    counts and commit SHA; the provenance gate and fixture suite pass.

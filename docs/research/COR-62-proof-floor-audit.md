@@ -100,7 +100,7 @@ Format: Q1 manifest that can turn a cited proof red; Q2 proof asserts the promis
 - REQ-096 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
 - REQ-097 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
 - REQ-098 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
-- REQ-099 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
+- REQ-099 — Q1 yes; Q2 yes; Q3 yes; Q4 n/a; disposition: remains Done after COR-58 observed-emission and falsification gates.
 - REQ-100 — Q1 yes; Q2 yes; Q3 n/a; Q4 yes; disposition: remains Done pending the observed mutation result.
 - REQ-101 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
 - REQ-102 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
@@ -121,12 +121,12 @@ Format: Q1 manifest that can turn a cited proof red; Q2 proof asserts the promis
 - REQ-112 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
 - REQ-133 — Q1 yes; Q2 yes; Q3 yes; Q4 n/a; disposition: remains Done pending the observed mutation result.
 - REQ-134 — Q1 yes; Q2 yes; Q3 yes; Q4 n/a; disposition: remains Done pending the observed mutation result.
-- REQ-135 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
-- REQ-136 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
+- REQ-135 — Q1 yes; Q2 yes; Q3 yes; Q4 n/a; disposition: remains Done after COR-58 observed-emission and falsification gates.
+- REQ-136 — Q1 yes; Q2 yes; Q3 yes; Q4 n/a; disposition: remains Done after COR-59 derived-status and falsification gates.
 
 ## Findings and limits
 
 - The 86 demotions are an evidence-floor result, not a claim that the implementation is absent. Their existing tests and production code remain preserved, but the repository had no recorded mutation capable of demonstrating that the cited proof would fail.
-- The audit does not repair demoted behavior, invent manifests, or delete plans. Follow-up implementation increments must restore each row only after a real falsifying mutation turns the cited proof red and the full proof run observes the proof passing.
+- The audit does not repair demoted behavior or invent manifests. Follow-up implementation increments must restore each row only after a real falsifying mutation turns the cited proof red and the full proof run observes the proof passing.
 - The retained manifest rows completed the mutation command and full proof gates; the remaining
   Correction rows are intentionally not promoted by this audit.
