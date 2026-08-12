@@ -12,7 +12,7 @@
 The pre-audit snapshot contained 104 Done rows. No row was deleted. The audit retained 18 original
 manifest-backed rows as Done and demoted 86 rows to Correction because no falsifying manifest was
 present. COR-44/COR-45 were then reimplemented and added six manifest-backed Done rows; COR-60 was
-promoted after its provenance fixtures passed. The closing mutation run passed for all 25 retained
+promoted after its provenance fixtures passed. The closing mutation run passed for all 30 retained
 rows.
 
 ## Per-requirement answers
@@ -90,7 +90,7 @@ Format: Q1 manifest that can turn a cited proof red; Q2 proof asserts the promis
 - REQ-085 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
 - REQ-086 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
 - REQ-087 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
-- REQ-088 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
+- REQ-088 — Q1 yes; Q2 yes; Q3 yes; Q4 n/a; disposition: remains Done after COR-18 Debug/Release and concurrency-settings proofs.
 - REQ-089 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
 - REQ-091 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
 - REQ-092 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
@@ -105,7 +105,7 @@ Format: Q1 manifest that can turn a cited proof red; Q2 proof asserts the promis
 - REQ-101 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
 - REQ-102 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
 - REQ-103 — Q1 yes; Q2 yes; Q3 yes; Q4 n/a; disposition: remains Done pending the observed mutation result.
-- REQ-104 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
+- REQ-104 — Q1 yes; Q2 yes; Q3 yes; Q4 n/a; disposition: remains Done after COR-18 smoke-log, fixture, screenshot, and falsification proofs.
 - REQ-114 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
 - REQ-115 — Q1 no manifest; Q2 not assessed; Q3 not assessed; Q4 not assessed; disposition: Correction, with `COR-62 audit` as the re-verification owner.
 - REQ-116 — Q1 yes; Q2 yes; Q3 yes; Q4 n/a; disposition: remains Done pending the observed mutation result.
@@ -126,7 +126,7 @@ Format: Q1 manifest that can turn a cited proof red; Q2 proof asserts the promis
 
 ## Findings and limits
 
-- The 86 demotions are an evidence-floor result, not a claim that the implementation is absent. Their existing tests and production code remain preserved, but the repository had no recorded mutation capable of demonstrating that the cited proof would fail.
+- The remaining 84 demotions are an evidence-floor result, not a claim that the implementation is absent. Their existing tests and production code remain preserved, but the repository had no recorded mutation capable of demonstrating that the cited proof would fail.
 - The audit does not repair demoted behavior or invent manifests. Follow-up implementation increments must restore each row only after a real falsifying mutation turns the cited proof red and the full proof run observes the proof passing.
 - The retained manifest rows completed the mutation command and full proof gates; the remaining
   Correction rows are intentionally not promoted by this audit.
