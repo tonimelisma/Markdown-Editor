@@ -31,6 +31,11 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
     let sourceUTF16Count: Int
     /// Coordinate map built once at construction — never re-derived from mutable arrays.
     let coordinateMap: ProjectionCoordinateMap
+    /// Oracle result is fixed with the immutable snapshot; callers must not re-run the whole
+    /// document validation pass for the same identity.
+    private let oracleValid: Bool
+
+    var isOracleValid: Bool { oracleValid }
 
     var projectionRevision: ProjectionRevision {
         ProjectionRevision(snapshotID: id)
@@ -92,7 +97,7 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
             projectionUTF16Count: (renderedString as NSString).length,
             sourceUTF16Count: sourceUTF16Count
         )
-        return PresentationSnapshot(
+        let candidate = PresentationSnapshot(
             id: id,
             sourceRevision: sourceRevision,
             locationGeneration: locationGeneration,
@@ -104,8 +109,60 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
             listMarkers: listMarkers,
             atoms: atoms,
             sourceUTF16Count: sourceUTF16Count,
-            coordinateMap: map
+            coordinateMap: map,
+            oracleValid: true
         )
+        let valid: Bool
+        if case .success = ProjectionOracle.validate(snapshot: candidate) {
+            valid = true
+        } else {
+            valid = false
+        }
+        return PresentationSnapshot(
+            id: candidate.id,
+            sourceRevision: candidate.sourceRevision,
+            locationGeneration: candidate.locationGeneration,
+            renderedString: candidate.renderedString,
+            runs: candidate.runs,
+            attachments: candidate.attachments,
+            tables: candidate.tables,
+            blocks: candidate.blocks,
+            listMarkers: candidate.listMarkers,
+            atoms: candidate.atoms,
+            sourceUTF16Count: candidate.sourceUTF16Count,
+            coordinateMap: candidate.coordinateMap,
+            oracleValid: valid
+        )
+    }
+
+    private init(
+        id: ID,
+        sourceRevision: SourceRevision,
+        locationGeneration: UInt64,
+        renderedString: String,
+        runs: [ProjectionRun],
+        attachments: [ProjectionAttachment],
+        tables: [ProjectionTable],
+        blocks: [PresentationBlock],
+        listMarkers: [ProjectionListMarker],
+        atoms: [ProjectionAtom],
+        sourceUTF16Count: Int,
+        coordinateMap: ProjectionCoordinateMap,
+        oracleValid: Bool
+    ) {
+        self.id = id
+        self.sourceRevision = sourceRevision
+        self.locationGeneration = locationGeneration
+        self.renderedString = renderedString
+        self.runs = runs
+        self.attachments = attachments
+        self.tables = tables
+        self.blocks = blocks
+        self.listMarkers = listMarkers
+        self.atoms = atoms
+        self.sourceUTF16Count = sourceUTF16Count
+        self.coordinateMap = coordinateMap
+        self.oracleValid = oracleValid
     }
 
     static func from(

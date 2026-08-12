@@ -154,6 +154,8 @@ final class DiagnosticLog {
         var windowStart: Double
         var count: Int
         var suppressed: Int
+        var sums: [DiagnosticField: UInt64] = [:]
+        var maxima: [DiagnosticField: UInt64] = [:]
     }
     private var repeatWindows: [DiagnosticEventName: RepeatWindow] = [:]
 
@@ -244,12 +246,12 @@ final class DiagnosticLog {
 
         // REQ-096: a defect firing every run-loop pass must produce bounded evidence — but a
         // fault is the evidence, so it is never collapsed away.
-        if level < .error, let collapsed = collapse(event, at: uptime) {
+        if level < .error, let collapsed = collapse(event, data: data, at: uptime) {
             switch collapsed {
             case .suppress:
                 return
-            case .summarize(let count):
-                appendCollapseSummary(of: event, count: count, uptime: uptime)
+            case .summarize(let count, let sums, let maxima):
+                appendCollapseSummary(of: event, count: count, sums: sums, maxima: maxima, uptime: uptime)
             }
         }
 
@@ -289,8 +291,18 @@ final class DiagnosticLog {
     private func appendCollapseSummary(
         of event: DiagnosticEventName,
         count: Int,
+        sums: [DiagnosticField: UInt64] = [:],
+        maxima: [DiagnosticField: UInt64] = [:],
         uptime: Double
     ) {
+        var data: [(key: DiagnosticField, value: DiagnosticValue)] = [
+            (.count, .int(count)), (.windowMillis, .int(1000))
+        ]
+        for field in WorkLedgerAggregateField.allCases {
+            if let sum = sums[field.source] { data.append((field.sum, .uint(sum))) }
+            if let maximum = maxima[field.source] { data.append((field.max, .uint(maximum))) }
+        }
+        let finalData = data
         let timestamp = Date()
         observeSizeLimit(writeCoordinator.appendRecord { sequence in
             DiagnosticRecord(
@@ -301,26 +313,85 @@ final class DiagnosticLog {
                 category: .diagnostics,
                 event: .repeated,
                 collapsedEvent: event,
-                data: [(.count, .int(count)), (.windowMillis, .int(1000))]
+                data: finalData
             ).jsonLine
         })
     }
 
     private enum CollapseOutcome {
         case suppress
-        case summarize(Int)
+        case summarize(Int, [DiagnosticField: UInt64], [DiagnosticField: UInt64])
     }
 
-    private func collapse(_ event: DiagnosticEventName, at uptime: Double) -> CollapseOutcome? {
+    private enum WorkLedgerAggregateField: CaseIterable {
+        case documentParses, projectionCompiles, oracleValidations, attributedBuilds
+        case attributedCharactersWritten, storageFullReplacements, imageDecodes, fileBytesRead
+        case mainThreadBlockedNanos
+
+        var source: DiagnosticField {
+            switch self {
+            case .documentParses: return .documentParses
+            case .projectionCompiles: return .projectionCompiles
+            case .oracleValidations: return .oracleValidations
+            case .attributedBuilds: return .attributedBuilds
+            case .attributedCharactersWritten: return .attributedCharactersWritten
+            case .storageFullReplacements: return .storageFullReplacements
+            case .imageDecodes: return .imageDecodes
+            case .fileBytesRead: return .fileBytesRead
+            case .mainThreadBlockedNanos: return .mainThreadBlockedNanos
+            }
+        }
+
+        var sum: DiagnosticField {
+            switch self {
+            case .documentParses: return .sumDocumentParses
+            case .projectionCompiles: return .sumProjectionCompiles
+            case .oracleValidations: return .sumOracleValidations
+            case .attributedBuilds: return .sumAttributedBuilds
+            case .attributedCharactersWritten: return .sumAttributedCharactersWritten
+            case .storageFullReplacements: return .sumStorageFullReplacements
+            case .imageDecodes: return .sumImageDecodes
+            case .fileBytesRead: return .sumFileBytesRead
+            case .mainThreadBlockedNanos: return .sumMainThreadBlockedNanos
+            }
+        }
+
+        var max: DiagnosticField {
+            switch self {
+            case .documentParses: return .maxDocumentParses
+            case .projectionCompiles: return .maxProjectionCompiles
+            case .oracleValidations: return .maxOracleValidations
+            case .attributedBuilds: return .maxAttributedBuilds
+            case .attributedCharactersWritten: return .maxAttributedCharactersWritten
+            case .storageFullReplacements: return .maxStorageFullReplacements
+            case .imageDecodes: return .maxImageDecodes
+            case .fileBytesRead: return .maxFileBytesRead
+            case .mainThreadBlockedNanos: return .maxMainThreadBlockedNanos
+            }
+        }
+    }
+
+    private func collapse(
+        _ event: DiagnosticEventName,
+        data: [(key: DiagnosticField, value: DiagnosticValue)],
+        at uptime: Double
+    ) -> CollapseOutcome? {
         var window = repeatWindows[event] ?? RepeatWindow(windowStart: uptime, count: 0, suppressed: 0)
         if uptime - window.windowStart >= 1.0 {
             let suppressed = window.suppressed
             repeatWindows[event] = RepeatWindow(windowStart: uptime, count: 1, suppressed: 0)
-            return suppressed > 0 ? .summarize(suppressed) : nil
+            return suppressed > 0 ? .summarize(suppressed, window.sums, window.maxima) : nil
         }
         window.count += 1
         if window.count > Self.repeatCollapseThreshold {
             window.suppressed += 1
+            if event == .workLedger {
+                for item in data {
+                    guard let value = item.value.uintValue else { continue }
+                    window.sums[item.key, default: 0] &+= value
+                    window.maxima[item.key] = max(window.maxima[item.key] ?? 0, value)
+                }
+            }
             repeatWindows[event] = window
             return .suppress
         }
@@ -363,7 +434,7 @@ final class DiagnosticLog {
         let uptime = Double(DispatchTime.now().uptimeNanoseconds - startUptimeNanos) / 1_000_000_000
         for (event, window) in repeatWindows.sorted(by: { $0.key.rawValue < $1.key.rawValue })
         where window.suppressed > 0 {
-            appendCollapseSummary(of: event, count: window.suppressed, uptime: uptime)
+            appendCollapseSummary(of: event, count: window.suppressed, sums: window.sums, maxima: window.maxima, uptime: uptime)
         }
         repeatWindows.removeAll()
         closed = true

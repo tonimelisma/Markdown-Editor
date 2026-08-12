@@ -123,6 +123,7 @@ struct MarkdownHighlighterTests {
         Fixture(source: "~open~~", expectStrikeSources: []),
         Fixture(source: "~~a~b~~", expectStrikeSources: ["~~a~b~~"]),
     ])
+    // Verifies: REQ-048 — formal GFM double-tilde strikethrough is styled.
     func stylesFormalGFMTildeStrikethroughFixtures(_ fixture: Fixture) async throws {
         let tokens = try await MarkdownHighlighter().tokens(for: fixture.source)
         let strikeRanges = tokens.filter { $0.style == .strikethrough }.map(\.range)
@@ -164,6 +165,7 @@ struct MarkdownHighlighterTests {
         ImageFixture(source: "![x](a b)", expectStyled: false),                 // unangled space
         ImageFixture(source: "![x](foo(and(bar(baz))))", expectStyled: false), // deeper nesting
     ])
+    // Verifies: REQ-050 — supported CommonMark image destinations receive source styling.
     func stylesCommonMarkImageDestinationFixtures(_ fixture: ImageFixture) async throws {
         let tokens = try await MarkdownHighlighter().tokens(for: fixture.source)
         let images = tokens.filter { $0.style == .image }
@@ -217,11 +219,11 @@ struct TextStatsTests {
 }
 
 @MainActor
-struct MarkdownThemeTests {
+struct MarkdownTypographyTests {
 
     // Verifies: REQ-041/047
     @Test func returnsAttributesPerStyle() {
-        let theme = MarkdownTheme()
+        let theme = MarkdownTypography()
         #expect(theme.attributes(for: .bold)[.font] != nil)
         #expect(theme.attributes(for: .heading(level: 1))[.font] != nil)
         #expect(theme.attributes(for: .inlineCode)[.font] != nil)
@@ -249,7 +251,7 @@ struct StylingFidelityTests {
     @Test func attributeStylingLeavesStringUnchanged() async throws {
         let text = "# Title\n**bold** and `code`, a [link](url), ![img](<a b>), ~one~, ~~two~~, ==hi== [^1] x^2^.\r\nSecond line.\n"
         let storage = NSTextStorage(string: text)
-        let theme = MarkdownTheme()
+        let theme = MarkdownTypography()
         let tokens = try await MarkdownHighlighter().tokens(for: text)
         let full = NSRange(location: 0, length: storage.length)
         storage.beginEditing()

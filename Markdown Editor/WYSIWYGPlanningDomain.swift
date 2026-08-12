@@ -389,19 +389,25 @@ enum WYSIWYGPlanningDomain {
         )
     }
 
-    /// Reparse the completed source context and prove that it renders exactly as the
-    /// native literal insertion intended. This catches syntax assembled across edits.
-    static func literalCandidatePreservesPresentation(
+    nonisolated enum LiteralCandidateProof: Sendable {
+        case preservesPresentation(built: PresentationSnapshot)
+        case changesPresentation(built: PresentationSnapshot)
+        case unbuildable
+    }
+
+    /// Reparse the completed source context and return the built snapshot with the proof.
+    /// Discarding it forced the caller to build the same immutable source again.
+    static func literalCandidateProof(
         mutation: SourceMutation,
         snapshot: SourceSnapshot,
         presentation: PresentationSnapshot,
         projectionRange: NSRange,
         visibleReplacement: String,
         nextSnapshotID: PresentationSnapshot.ID
-    ) -> Bool {
+    ) -> LiteralCandidateProof {
         let source = snapshot.text as NSString
         guard mutation.range.location >= 0, NSMaxRange(mutation.range) <= source.length else {
-            return false
+            return .unbuildable
         }
         let candidate = source.replacingCharacters(in: mutation.range, with: mutation.replacement)
         let expected = (presentation.renderedString as NSString).replacingCharacters(
@@ -414,17 +420,18 @@ enum WYSIWYGPlanningDomain {
             snapshotID: nextSnapshotID,
             locationGeneration: presentation.locationGeneration
         ) else {
-            return false
+            return .unbuildable
         }
         // Equal visible strings are insufficient: a list marker, entity, or other
         // control run can emerge without changing the plain text. Compare semantic
         // structure while deliberately ignoring node IDs, shifted ranges, and atom
         // fragmentation, which are representation details of a fresh parse.
-        return built.renderedString == expected
+        let preserves = built.renderedString == expected
             && sameRunSemantics(built.runs, presentation.runs)
             && sameAttachmentSemantics(built.attachments, presentation.attachments)
             && sameTableSemantics(built.tables, presentation.tables)
             && sameListSemantics(built.listMarkers, presentation.listMarkers)
+        return preserves ? .preservesPresentation(built: built) : .changesPresentation(built: built)
     }
 
     static func sameRunSemantics(_ lhs: [ProjectionRun], _ rhs: [ProjectionRun]) -> Bool {
@@ -462,7 +469,10 @@ enum WYSIWYGPlanningDomain {
         _ rhs: [ProjectionListMarker]
     ) -> Bool {
         lhs.count == rhs.count && zip(lhs, rhs).allSatisfy {
-            $0.text == $1.text && $0.nesting == $1.nesting && $0.kind == $1.kind
+            $0.displayedText == $1.displayedText
+                && $0.sourceText == $1.sourceText
+                && $0.nesting == $1.nesting
+                && $0.kind == $1.kind
         }
     }
 
@@ -476,7 +486,7 @@ enum WYSIWYGPlanningDomain {
         projectionRange: NSRange,
         visibleReplacement: String,
         nextSnapshotID: PresentationSnapshot.ID
-    ) -> SourceMutation? {
+    ) -> (mutation: SourceMutation, built: PresentationSnapshot)? {
         guard original.range.length == 0 else { return nil }
         let source = snapshot.text as NSString
         let line = source.lineRange(for: NSRange(location: original.range.location, length: 0))
@@ -509,7 +519,7 @@ enum WYSIWYGPlanningDomain {
             ) else {
                 continue
             }
-            if literalCandidatePreservesPresentation(
+            switch literalCandidateProof(
                 mutation: candidate,
                 snapshot: snapshot,
                 presentation: presentation,
@@ -517,7 +527,10 @@ enum WYSIWYGPlanningDomain {
                 visibleReplacement: visibleReplacement,
                 nextSnapshotID: nextSnapshotID
             ) {
-                return candidate
+            case .preservesPresentation(let built), .changesPresentation(let built):
+                return (candidate, built)
+            case .unbuildable:
+                continue
             }
         }
         return nil

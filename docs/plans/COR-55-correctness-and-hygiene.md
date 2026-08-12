@@ -108,15 +108,15 @@ Proof: `bothCompositionCommitRoutesUseTheSameTransaction` — identical trace se
 `insertText`-terminated and `unmarkText`-terminated paths. Existing
 `committedCompositionUsesBoundedPatch` and the IME suites remain green.
 
-### 7. `MarkdownTheme.swift` — a forbidden compatibility facade
+### 7. `MarkdownTypography` — the displaced compatibility facade
 
 The type self-describes as *"Compatibility facade for source-mode highlighting and older call sites"*.
 `CLAUDE.md` §2 and `ENGINEERING.md` §15 forbid compatibility layers outright. It is not dead code:
-`WYSIWYGEditor` constructs a fresh `MarkdownTheme()` on every `buildScoped` call, so it is a live
+`WYSIWYGEditor` constructed a fresh `MarkdownTypography()` on every `buildScoped` call, so it was a live
 second owner of presentation styling beside `MarkdownTypography`.
 
 Fix: move `baseAttributes` and `attributes(for: TokenStyle)` onto `MarkdownTypography`, delete
-`MarkdownTheme`, and pass **one shared instance** through `AttributedPresentationBuilder` rather than
+the duplicated styling owner, and pass **one shared instance** through `AttributedPresentationBuilder` rather than
 constructing typography and theme objects per keystroke.
 
 Proof: `typographyIsTheSoleOwnerOfPresentationStyling` — a source-conformance test in the shape of the
@@ -204,7 +204,7 @@ increment for the cause, rather than leaving the gate permanently green on a bro
 
 - No `try!` and no force-unwrap of an optional that a guard in the same scope already handles remains
   in `ParseCoordinator` or `MarkdownSourceIndex`.
-- `MarkdownTheme` no longer exists; `typographyIsTheSoleOwnerOfPresentationStyling` proves no
+- the displaced styling facade no longer exists; `typographyIsTheSoleOwnerOfPresentationStyling` proves no
   replacement facade appeared.
 - `backgroundColor == nil` is no longer used as a type tag anywhere.
 - The duplicated composition-commit block is gone, proved by

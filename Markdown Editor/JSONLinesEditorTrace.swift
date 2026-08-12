@@ -14,11 +14,16 @@ import Foundation
 final class JSONLinesEditorTrace: EditorTraceSink {
     private let log: DiagnosticLog
     /// Opaque per-run handle identifying the document this sink belongs to.
-    private let documentHandle: UInt64
+    private let documentHandle: UInt64?
 
     init(log: DiagnosticLog) {
         self.log = log
         self.documentHandle = log.makeDocumentHandle()
+    }
+
+    init(log: DiagnosticLog, documentHandle: UInt64?) {
+        self.log = log
+        self.documentHandle = documentHandle
     }
 
     func record(_ event: EditorTraceEvent) {
@@ -274,6 +279,30 @@ final class JSONLinesEditorTrace: EditorTraceSink {
         case .sourceHighlightWidened(let reason):
             return Mapped(name: .sourceHighlightWidened, level: .info, category: .session, data: [
                 (.reason, .symbol(reason.symbol))
+            ])
+        case .workLedger(let scope, let documentParses, let projectionCompiles, let oracleValidations, let attributedBuilds, let attributedCharactersWritten, let storageFullReplacements, let imageDecodes, let fileBytesRead, let mainThreadBlockedNanos):
+            return Mapped(name: .workLedger, level: .debug, category: .diagnostics, data: [
+                (.scope, .symbol(scope.symbol)),
+                (.documentParses, .int(documentParses)),
+                (.projectionCompiles, .int(projectionCompiles)),
+                (.oracleValidations, .int(oracleValidations)),
+                (.attributedBuilds, .int(attributedBuilds)),
+                (.attributedCharactersWritten, .int(attributedCharactersWritten)),
+                (.storageFullReplacements, .int(storageFullReplacements)),
+                (.imageDecodes, .int(imageDecodes)),
+                (.fileBytesRead, .int(fileBytesRead)),
+                (.mainThreadBlockedNanos, .uint(mainThreadBlockedNanos)),
+            ])
+        case .frameStatistics(let hitchMillisPerSecond, let longestFrameNanos, let framesObserved):
+            return Mapped(name: .frameStatistics, level: .info, category: .viewUpdate, data: [
+                (.hitchMillisPerSecond, .double(hitchMillisPerSecond)),
+                (.longestFrameNanos, .uint(longestFrameNanos)),
+                (.framesObserved, .int(framesObserved)),
+            ])
+        case .memoryFootprint(let bytes, let peakBytes):
+            return Mapped(name: .memoryFootprint, level: .info, category: .diagnostics, data: [
+                (.bytes, .uint(bytes)),
+                (.peakBytes, .uint(peakBytes)),
             ])
         }
     }

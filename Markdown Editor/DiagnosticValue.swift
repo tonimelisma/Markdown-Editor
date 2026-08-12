@@ -31,6 +31,14 @@ nonisolated enum DiagnosticValue: Sendable, Equatable {
         case .symbol(let symbol): return "\"\(symbol.rawValue)\""
         }
     }
+
+    var uintValue: UInt64? {
+        switch self {
+        case .uint(let value): return value
+        case .int(let value) where value >= 0: return UInt64(value)
+        default: return nil
+        }
+    }
 }
 
 /// The complete closed vocabulary of code-defined symbols a diagnostic payload may contain.
@@ -151,8 +159,16 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case layoutApplication
     case imageResolution
     case authoritativeApplication
-    case sourceHighlightApplication
     case fenceParity
+    case mainActorLatency
+    case sourceHighlightApplication
+    case workLedger
+    case frameStatistics
+    case memoryFootprint
+    case acceptedEdit
+    case reconciliation
+    case documentOpen
+    case semanticCommand
 
     // Alert reasons with no natural ImagePlacementError equivalent
     case noInsertionTarget

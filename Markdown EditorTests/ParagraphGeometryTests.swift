@@ -29,7 +29,7 @@ struct ParagraphGeometryTests {
         let tree = try #require(MarkdownParser.parse(source, sourceVersion: version).get())
         let index = MarkdownSourceIndex(source: source, sourceVersion: version)
         let model = MarkdownProjectionModel.build(tree: tree, index: index)
-        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTypography())
 
         let view = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 2000))
         view.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
@@ -67,7 +67,7 @@ struct ParagraphGeometryTests {
         let tree = try #require(MarkdownParser.parse(source, sourceVersion: version).get())
         let index = MarkdownSourceIndex(source: source, sourceVersion: version)
         let model = MarkdownProjectionModel.build(tree: tree, index: index)
-        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTypography())
 
         let view = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 4000))
         view.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
@@ -240,7 +240,7 @@ struct ParagraphGeometryTests {
             let tree = try #require(MarkdownParser.parse(source, sourceVersion: version).get())
             let index = MarkdownSourceIndex(source: source, sourceVersion: version)
             let model = MarkdownProjectionModel.build(tree: tree, index: index)
-            let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+            let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTypography())
             #expect(
                 built.attributed.string == model.renderedString,
                 "attributed text diverged from the projection for \(source.debugDescription)"
@@ -256,7 +256,7 @@ struct ParagraphGeometryTests {
         let tree = try #require(MarkdownParser.parse(source, sourceVersion: version).get())
         let index = MarkdownSourceIndex(source: source, sourceVersion: version)
         let model = MarkdownProjectionModel.build(tree: tree, index: index)
-        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTypography())
 
         let length = built.attributed.length
         try #require(length > 0)

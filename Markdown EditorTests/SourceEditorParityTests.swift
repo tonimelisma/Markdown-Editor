@@ -106,6 +106,22 @@ struct SourceEditorParityTests {
         let textView: MarkdownSourceTextView
     }
 
+    // Verifies: REQ-125
+    @Test(arguments: PerformanceCorpus.allCases)
+    func sourceHighlightEnumeratesEveryPerformanceCorpus(_ corpus: PerformanceCorpus) async throws {
+        let source = corpus.source(utf16Target: 20_000)
+        let fixture = try makeFixture(source: source)
+        fixture.coordinator.apply(
+            try await MarkdownHighlighter().tokens(for: source),
+            expectedVersion: 0,
+            expectedText: source
+        )
+        #expect(fixture.storage.string == source)
+        #expect(fixture.session.drainPerformanceSummaries().contains {
+            $0.metric == .sourceHighlightApplication
+        })
+    }
+
     private func makeFixture(source: String) throws -> Fixture {
         let document = MarkdownDocument()
         document.installTextForTesting(source)

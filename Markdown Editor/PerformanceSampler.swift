@@ -17,6 +17,8 @@ final class PerformanceSampler {
         /// // layout is the most likely source of perceived jank, and every other metric measures
         /// // a phase the app owns rather than one TextKit owns.
         case layoutApplication
+        /// REQ-124: main-actor hop latency, distinct from the one-second hang watchdog.
+        case mainActorLatency
         /// REQ-045: main-actor application of lexical source styling, excluding off-main tokenisation.
         case sourceHighlightApplication
     }
@@ -30,11 +32,12 @@ final class PerformanceSampler {
         .nativeInputCallback: 8_000_000,
         .modeTransition: 16_000_000,
         .parseProjection: 100_000_000,
-        .imageResolution: 100_000_000,
+        .imageResolution: 16_000_000,
         .authoritativeApplication: 100_000_000,
         // A frame-shaped budget rather than the off-main 100 ms allowance: this runs on the
         // main actor and the user sees it.
         .layoutApplication: 16_000_000,
+        .mainActorLatency: 16_000_000,
         .sourceHighlightApplication: 8_000_000,
     ]
     struct Summary: Equatable { let metric: Metric; let count: Int; let p50: UInt64; let p95: UInt64; let max: UInt64 }
@@ -44,6 +47,7 @@ final class PerformanceSampler {
     /// Next slot to overwrite once a metric's buffer is full (COR-30).
     private var writeCursor: [Metric: Int] = [:]
     private let trace: (any EditorTraceSink)?
+    private weak var frameObserver: FrameObserver?
     private var timer: Timer?
     private let coordinator: DiagnosticRunCoordinator
     private var invalidated = false
@@ -83,6 +87,10 @@ final class PerformanceSampler {
         samples[metric] = values
     }
 
+    func attach(frameObserver: FrameObserver) {
+        self.frameObserver = frameObserver
+    }
+
     func drainSummaries() -> [Summary] {
         defer { samples.removeAll(); writeCursor.removeAll() }
         return Metric.allCases.compactMap { metric in
@@ -99,6 +107,15 @@ final class PerformanceSampler {
             guard let budget = Self.budgetNanos[summary.metric] else { continue }
             if summary.p95 > budget { trace?.record(.budgetExceeded(metric: summary.metric, p95Nanos: summary.p95, budgetNanos: budget)) }
         }
+        if let statistics = frameObserver?.drainStatistics() {
+            trace?.record(.frameStatistics(
+                hitchMillisPerSecond: statistics.hitchMillisPerSecond,
+                longestFrameNanos: statistics.longestFrameNanos,
+                framesObserved: statistics.framesObserved
+            ))
+        }
+        let memory = MemoryFootprint.sample()
+        trace?.record(.memoryFootprint(bytes: memory.bytes, peakBytes: memory.peakBytes))
     }
     /// Stops the timer, emits the final aggregate once, and releases the run registration.
     func invalidate() {

@@ -65,6 +65,7 @@ struct SemanticBlockIdentificationTests {
         }
     }
 
+    // Verifies: REQ-057 — tableCell still requires exact selection (not via enclosingBlock).
     // Verifies: ARC-009 — tableCell still requires exact (not via enclosingBlock)
     @Test func tableCellStillRequiresExact() throws {
         let text = "| a | b |\n|---|---|\n| c | d |\n"

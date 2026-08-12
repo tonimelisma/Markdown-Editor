@@ -18,7 +18,19 @@ KNOWN_METRICS = {
     "imageResolution",
     "authoritativeApplication",
     "layoutApplication",
+    "mainActorLatency",
     "sourceHighlightApplication",
+}
+
+BUDGET_NANOS = {
+    "nativeInputCallback": 8_000_000,
+    "modeTransition": 16_000_000,
+    "parseProjection": 100_000_000,
+    "imageResolution": 16_000_000,
+    "authoritativeApplication": 100_000_000,
+    "layoutApplication": 16_000_000,
+    "mainActorLatency": 16_000_000,
+    "sourceHighlightApplication": 8_000_000,
 }
 
 
@@ -50,6 +62,25 @@ def parse_args() -> argparse.Namespace:
             "application fault — the same run without a capture must be clean."
         ),
     )
+    parser.add_argument(
+        "--fail-on-budget-exceeded",
+        action="store_true",
+        help="Fail when a performance summary exceeds its declared p95 budget.",
+    )
+    parser.add_argument(
+        "--reconciliation-ceiling",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Bound on reconciliationApplied records, for a caller that knows how many edits it "
+            "drove. Defaults to 2, or 4 with --expect-edits, which suits a caller driving a "
+            "handful of edits; a benchmark driving one edit per interval for several seconds "
+            "reconciles once per accepted edit and must state its own bound. This is a livelock "
+            "guard, so the value must stay a bound — never pass a number large enough to admit a "
+            "self-feeding loop."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -58,6 +89,8 @@ def verify(
     host_update_threshold: int,
     allowed_faults: frozenset[str] = frozenset(),
     expect_edits: bool = False,
+    fail_on_budget_exceeded: bool = False,
+    reconciliation_ceiling: int | None = None,
 ) -> tuple[int, int]:
     records = [
         json.loads(line)
@@ -129,7 +162,15 @@ def verify(
     # legitimate future change that applies a second reconciliation would have failed it for
     # being correct. The livelock guard is the host-update ceiling above, which is what actually
     # catches a self-feeding loop.
-    reconciliation_ceiling = 4 if expect_edits else 2
+    # The default suits a caller that drives a handful of edits. A benchmark run drives one edit
+    # every --interval-ms for --duration seconds and reconciles once per accepted edit, so the
+    # fixed ceiling reported "17 applied (ceiling 4)" for a run that was behaving exactly as
+    # designed — and Scripts/benchmark.sh consequently failed at the first of its 108 runs and had
+    # never produced the baseline it is supposed to produce. A caller that knows how many edits it
+    # drove may state the bound; it stays a real livelock guard because it is still a bound, and a
+    # self-feeding loop exceeds edits-plus-slack just as it exceeded 4.
+    if reconciliation_ceiling is None:
+        reconciliation_ceiling = 4 if expect_edits else 2
     assert len(reconciliations) <= reconciliation_ceiling, (
         f"reconciliation did not settle: {len(reconciliations)} applied "
         f"(ceiling {reconciliation_ceiling})"
@@ -150,6 +191,17 @@ def verify(
     assert not unknown_metrics, (
         f"unknown performance metric(s): {sorted(str(m) for m in unknown_metrics)}"
     )
+    if fail_on_budget_exceeded:
+        exceeded = [
+            record for record in summaries
+            if record.get("data", {}).get("metric") in BUDGET_NANOS
+            and record.get("data", {}).get("p95Nanos", 0)
+                > BUDGET_NANOS[record["data"]["metric"]]
+        ]
+        assert not exceeded, "performance budgets exceeded: " + ", ".join(
+            f"{record['data']['metric']}={record['data']['p95Nanos']}"
+            for record in exceeded
+        )
 
     parse_summaries = [
         record
@@ -189,6 +241,7 @@ def verify(
         and record.get("ev") not in allowed_faults
     ]
     assert not faults, f"faults recorded: {[record['ev'] for record in faults]}"
+    # REQ-104: the screenshot is not valid evidence unless its companion process run closes cleanly.
     assert events[-1]["ev"] == "runEnd", "no clean-exit record"
 
     return len(records), host_updates
@@ -202,6 +255,8 @@ def main() -> int:
             args.host_update_threshold,
             frozenset(args.allow_fault),
             args.expect_edits,
+            args.fail_on_budget_exceeded,
+            args.reconciliation_ceiling,
         )
     except (AssertionError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         print(f"{args.label}: diagnostics FAIL: {error}", file=sys.stderr)

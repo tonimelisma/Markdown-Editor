@@ -13,6 +13,7 @@ instrumentation_gate=pass
 tests_gate=pass
 proof_gate=pass
 delivery_gate=pass
+falsification_gate=pass
 coverage_dir="$derived/instrumentation-coverage"
 # Isolate trace coverage per checkout so concurrent worktree gate runs cannot
 # read each other's diagnostic output. Previous value was a single shared
@@ -59,7 +60,30 @@ printf '%s\n' '── smoke-log verifier fixtures'
 printf '%s\n' '── push-policy fixtures'
 ./Scripts/test-check-push-policy.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 ./Scripts/test-check-delivery-status.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
+printf '%s\n' '── changed-scope falsification'
+if [[ -n "${FALSIFICATION_BASE:-}" ]]; then
+    falsification_base="$FALSIFICATION_BASE"
+elif git rev-parse --verify origin/main >/dev/null 2>&1; then
+    falsification_base="$(git merge-base origin/main HEAD)"
+else
+    echo "full-check: cannot determine falsification base; origin/main is missing" >&2
+    falsification_gate=fail
+    failures=$((failures + 1))
+    falsification_base=""
+fi
+if [[ -n "$falsification_base" ]]; then
+./Scripts/check-falsification.sh --changed "$falsification_base..HEAD" || {
+    falsification_gate=fail
+    failures=$((failures + 1))
+}
+fi
 printf '%s\n' '── complete test suite'
+# xcodebuild refuses to overwrite an existing result bundle, so leaving the previous run's
+# bundle in place made every full-check after the first exit before running a single test —
+# reporting "0 passed, 0 failed" and taking the observed-coverage gate down with it, because
+# no run had emitted anything. The proof-results gate reads this bundle, so it must be the
+# product of this run and no other.
+rm -rf "$bundle"
 xcodebuild test \
     -project "Markdown Editor.xcodeproj" \
     -scheme "Markdown Editor" \
@@ -96,7 +120,7 @@ fi
 receipt_result=pass
 (( failures > 0 )) && receipt_result=fail
 if ! ./Scripts/write-gate-receipt.sh full "$receipt_result" \
-    "$documentation_gate" "$instrumentation_gate" "$tests_gate" "$proof_gate" "$delivery_gate"; then
+    "$documentation_gate" "$instrumentation_gate" "$tests_gate" "$proof_gate" "$delivery_gate" "$falsification_gate"; then
     echo "full-check: failed to write .gate-receipt.json" >&2
     failures=$((failures + 1))
 fi

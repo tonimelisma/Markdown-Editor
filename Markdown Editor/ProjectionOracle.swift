@@ -18,6 +18,7 @@ nonisolated enum ProjectionOracle {
         model: MarkdownProjectionModel,
         sourceUTF16Count: Int
     ) -> Result<Void, Failure> {
+        WorkLedgerRecorder.add { $0.oracleValidations += 1 }
         let renderedCount = (model.renderedString as NSString).length
         var covered = Array(repeating: 0, count: max(renderedCount, 0))
 

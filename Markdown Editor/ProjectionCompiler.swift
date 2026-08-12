@@ -189,16 +189,20 @@ private nonisolated struct CompilerBuilder {
 
         let task = taskChecked != nil
         let markerText: String
+        let sourceMarkerText: String
         if task {
             markerText = ""
+            sourceMarkerText = ""
         } else {
         switch info.kind {
         case .bullet:
-            markerText = markerGlyph(info.marker) + " "
+            markerText = markerGlyph(info.marker, nesting: nesting) + " "
+            sourceMarkerText = bulletSourceMarker(info.marker) + " "
         case .ordered(let start, let delimiter):
             let delim = delimiter == .period ? "." : ")"
             // REQ / review: each item shows start + index, not the list start alone.
             markerText = "\(start + itemIndex)\(delim) "
+            sourceMarkerText = "\(start + itemIndex)\(delim) "
         }
         }
 
@@ -224,7 +228,7 @@ private nonisolated struct CompilerBuilder {
             segments.append(
                 .synthetic(
                     projection: markerRange,
-                    kind: .listMarker(text: markerText, nesting: nesting),
+                    kind: .listMarker(displayedText: markerText, sourceText: sourceMarkerText, nesting: nesting),
                     insertion: .atSourceBoundaries(before: itemStart, after: afterMarker)
                 )
             )
@@ -232,7 +236,8 @@ private nonisolated struct CompilerBuilder {
                 ProjectionListMarker(
                     nodeID: node.id,
                     utf16Range: markerRange,
-                    text: markerText,
+                    displayedText: markerText,
+                    sourceText: sourceMarkerText,
                     nesting: nesting,
                     kind: info.kind
                 )
@@ -261,7 +266,12 @@ private nonisolated struct CompilerBuilder {
                 after: node,
                 refuseEdits: false
             )
-            appendSynthetic(" ", kind: .listMarker(text: " ", nesting: nesting), after: node, refuseEdits: false)
+            appendSynthetic(
+                " ",
+                kind: .listMarker(displayedText: " ", sourceText: " ", nesting: nesting),
+                after: node,
+                refuseEdits: false
+            )
         }
 
         for child in node.children {
@@ -574,7 +584,15 @@ private nonisolated struct CompilerBuilder {
         }
     }
 
-    func markerGlyph(_ marker: MarkdownListMarker) -> String {
+    func markerGlyph(_ marker: MarkdownListMarker, nesting: Int) -> String {
+        // Source spelling remains in the atomic marker's source boundaries; the reader sees
+        // semantic list depth, never the delimiter chosen by the author.
+        _ = marker
+        let glyphs = MarkdownTypography.listMarkerGlyphs
+        return glyphs[((max(nesting, 0) % glyphs.count) + glyphs.count) % glyphs.count]
+    }
+
+    func bulletSourceMarker(_ marker: MarkdownListMarker) -> String {
         switch marker {
         case .dash: return "-"
         case .plus: return "+"

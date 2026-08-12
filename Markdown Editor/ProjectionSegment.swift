@@ -8,7 +8,7 @@ import Foundation
 /// Why a synthetic projection unit exists and where an insertion lands in source.
 nonisolated enum SyntheticKind: Sendable, Equatable {
     case paragraphBreak
-    case listMarker(text: String, nesting: Int)
+    case listMarker(displayedText: String, sourceText: String, nesting: Int)
     case taskCheckbox(checked: Bool)
     case thematicBreak
     case tableCellSeparator

@@ -32,7 +32,7 @@ struct PerformanceBudgetTests {
         #expect(PerformanceSampler.budgetNanos[.nativeInputCallback] == 8_000_000)
         #expect(PerformanceSampler.budgetNanos[.modeTransition] == 16_000_000)
         #expect(PerformanceSampler.budgetNanos[.parseProjection] == 100_000_000)
-        #expect(PerformanceSampler.budgetNanos[.imageResolution] == 100_000_000)
+        #expect(PerformanceSampler.budgetNanos[.imageResolution] == 16_000_000)
         #expect(PerformanceSampler.budgetNanos[.authoritativeApplication] == 100_000_000)
         // REQ-116: layout runs on the main actor and the user sees it, so it gets a frame-shaped
         // budget rather than the off-main allowance.

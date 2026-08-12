@@ -21,7 +21,7 @@ enum SourceEditor {
 
         var document: MarkdownDocument
         var session: EditorSession?
-        let theme = MarkdownTheme()
+        let theme = MarkdownTypography()
         let placementController: ImagePlacementController
         private let highlighter = MarkdownHighlighter()
         weak var textView: MarkdownSourceTextView? {

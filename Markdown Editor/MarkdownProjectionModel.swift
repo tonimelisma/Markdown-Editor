@@ -85,9 +85,14 @@ nonisolated struct ProjectionTable: Sendable, Equatable {
 nonisolated struct ProjectionListMarker: Sendable, Equatable {
     let nodeID: MarkdownNodeID
     let utf16Range: NSRange
-    let text: String
+    let displayedText: String
+    let sourceText: String
     let nesting: Int
     let kind: MarkdownListKind
+
+    /// The displayed spelling remains available to existing presentation consumers; source
+    /// fidelity is carried separately in `sourceText`.
+    var text: String { displayedText }
 }
 
 /// Off-main projection snapshot for one source version.
@@ -163,6 +168,7 @@ extension MarkdownProjectionModel {
         tree: MarkdownTree,
         index: MarkdownSourceIndex
     ) -> MarkdownProjectionModel {
-        ProjectionCompiler.compile(tree: tree, map: SourceCoordinateMap(index: index))
+        WorkLedgerRecorder.add { $0.projectionCompiles += 1 }
+        return ProjectionCompiler.compile(tree: tree, map: SourceCoordinateMap(index: index))
     }
 }

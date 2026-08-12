@@ -397,7 +397,7 @@ nonisolated enum LinkEditPlanner {
             }
             return .refused(.ambiguousSelection)
         }
-        let label = selected.isEmpty ? destination : selected
+        let label = selected.isEmpty ? "" : selected
         let replacement = "[\(label)](\(destination))"
         let cover = NSRange(location: range.location, length: (replacement as NSString).length)
         return SemanticPlannerGate.commitIfValid(

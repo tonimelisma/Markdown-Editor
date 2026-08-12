@@ -24,7 +24,7 @@ enum AttributedPresentationBuilder {
 
     static func build(
         model: MarkdownProjectionModel,
-        theme: MarkdownTheme,
+        theme: MarkdownTypography,
         images: [MarkdownNodeID: NSImage] = [:],
         onTaskPress: ((MarkdownNodeID) -> Void)? = nil
     ) -> AttributedPresentation {
@@ -63,12 +63,13 @@ enum AttributedPresentationBuilder {
 
     static func buildScoped(
         model: MarkdownProjectionModel,
-        theme: MarkdownTheme,
+        theme: MarkdownTypography,
         images: [MarkdownNodeID: NSImage] = [:],
         onTaskPress: ((MarkdownNodeID) -> Void)? = nil,
         scope: NSRange
     ) -> Scoped {
-        let typography = MarkdownTypography()
+        WorkLedgerRecorder.add { $0.attributedBuilds += 1; $0.attributedCharactersWritten += scope.length }
+        let typography = theme
         let rendered = model.renderedString as NSString
         let scope = NSRange(
             location: max(0, min(scope.location, rendered.length)),
@@ -121,7 +122,7 @@ enum AttributedPresentationBuilder {
 
     private static func inlineAttributes(
         for run: ProjectionRun,
-        theme: MarkdownTheme,
+        theme: MarkdownTypography,
         typography: MarkdownTypography
     ) -> [NSAttributedString.Key: Any] {
         var attrs = theme.baseAttributes
@@ -315,8 +316,7 @@ enum AttributedPresentationBuilder {
     /// Typed predicate for quote vs code block. Using `backgroundColor == nil` as kind tag worked
     /// while only two `NSTextBlock` kinds existed, but a third container would collide.
     private static func isQuoteBlock(_ block: NSTextBlock) -> Bool {
-        // Quote blocks have no background; code blocks have adaptive background.
-        block.backgroundColor == nil
+        block is QuoteTextBlock
     }
 
     private static func applyTable(

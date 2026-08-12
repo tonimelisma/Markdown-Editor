@@ -13,7 +13,7 @@ struct AttributedPresentationTests {
     @Test func semanticBlocksAndTypographyDoNotChangeRenderedSource() throws {
         let source = "# Title\n\nBody *emphasis*.\n\n> Quote\n\n```swift\nlet x = 1\n```\n"
         let model = try #require(makeModel(source))
-        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTypography())
 
         #expect(built.attributed.string == model.renderedString)
         #expect(model.blocks.contains { if case .heading(level: 1) = $0.kind { return true }; return false })
@@ -38,7 +38,7 @@ struct AttributedPresentationTests {
     // that the run background is absent.
     @Test func fencedCodeCarriesNoInlineRunBackground() throws {
         let model = try #require(makeModel("Some `inline` span.\n\n```\nlet a = 1\nlet b = 2\n```\n"))
-        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTypography())
         let text = built.attributed.string as NSString
 
         // Inline code keeps its run background.
@@ -75,7 +75,7 @@ struct AttributedPresentationTests {
     // for "deliberately missing" read "deliberately".
     @Test func missingImagePlaceholderIsLabelledAndNotTruncated() throws {
         let model = try #require(makeModel("![deliberately missing](assets/nope.png)\n"))
-        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTypography())
         let attachment = try #require(
             built.attributed.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
         )
@@ -96,7 +96,7 @@ struct AttributedPresentationTests {
     // Verifies: REQ-107 — the approved image treatment.
     @Test func missingImageWithoutDescriptionStillCarriesALabel() throws {
         let model = try #require(makeModel("![](assets/nope.png)\n"))
-        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTypography())
         let attachment = try #require(
             built.attributed.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
         )
@@ -104,6 +104,7 @@ struct AttributedPresentationTests {
         #expect(cell.accessibilityLabel() == "Missing image")
     }
 
+    // Verifies: REQ-106 — soft and hard breaks use distinct presentation semantics.
     @Test func softAndHardBreaksHaveDistinctPresentationText() throws {
         let soft = try #require(makeModel("one\ntwo\n"))
         let hard = try #require(makeModel("one  \ntwo\n"))
@@ -124,7 +125,7 @@ struct AttributedPresentationTests {
     // mapping is a citation from a non-`Done` row would otherwise fail unnoticed.
     @Test func taskPresentationHasCheckboxWithoutDuplicateBullet() throws {
         let model = try #require(makeModel("- [ ] task\n"))
-        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTypography())
         #expect(!built.attributed.string.hasPrefix("-"))
         #expect(model.attachments.contains { if case .task = $0.kind { return true }; return false })
         let task = try #require(model.attachments.first { if case .task = $0.kind { return true }; return false })
@@ -135,7 +136,7 @@ struct AttributedPresentationTests {
     // Verifies: REQ-107 — full-measure separator and non-executing literal HTML treatments.
     @Test func thematicBreakAndLiteralHTMLUseSemanticAttachments() throws {
         let model = try #require(makeModel("---\n\n<div>literal</div>\n"))
-        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTypography())
         let thematic = try #require(model.attachments.first { if case .thematicBreak = $0.kind { return true }; return false })
         let attachment = built.attributed.attribute(.attachment, at: thematic.utf16Location, effectiveRange: nil) as? NSTextAttachment
         #expect(attachment?.attachmentCell is ThematicRuleAttachmentCell)
@@ -151,7 +152,7 @@ struct AttributedPresentationTests {
         let attachment = try #require(model.attachments.first)
         let built = AttributedPresentationBuilder.build(
             model: model,
-            theme: MarkdownTheme(),
+            theme: MarkdownTypography(),
             images: [attachment.nodeID: image]
         )
         let value = built.attributed.attribute(.attachment, at: attachment.utf16Location, effectiveRange: nil) as? NSTextAttachment
@@ -164,7 +165,7 @@ struct AttributedPresentationTests {
     // inline traits a run already carries rather than flattening them.
     @Test func headingAndTableHeaderPreserveInlineFontTraits() throws {
         let heading = try #require(makeModel("# *italic* `code`\n"))
-        let headingPresentation = AttributedPresentationBuilder.build(model: heading, theme: MarkdownTheme())
+        let headingPresentation = AttributedPresentationBuilder.build(model: heading, theme: MarkdownTypography())
         let headingFonts = heading.runs.compactMap { run in
             headingPresentation.attributed.attribute(.font, at: run.utf16Range.location, effectiveRange: nil) as? NSFont
         }
@@ -172,7 +173,7 @@ struct AttributedPresentationTests {
         #expect(headingFonts.contains { $0.isFixedPitch })
 
         let table = try #require(makeModel("| *term* | `code` |\n| - | - |\n| value | value |\n"))
-        let presentation = AttributedPresentationBuilder.build(model: table, theme: MarkdownTheme())
+        let presentation = AttributedPresentationBuilder.build(model: table, theme: MarkdownTypography())
         let headers = table.tables.flatMap(\.cells).filter(\.isHeader)
         let fonts = headers.compactMap {
             presentation.attributed.attribute(.font, at: $0.utf16Range.location, effectiveRange: nil) as? NSFont

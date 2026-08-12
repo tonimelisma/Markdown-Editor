@@ -111,11 +111,13 @@ final class EditorCommandController: ObservableObject {
         document: MarkdownDocument,
         session: EditorSession
     ) -> EditorCommandResult {
-        let outcome = session.perform(
-            command,
-            selection: currentSelection(in: session),
-            expectedSourceRevision: SourceRevision(value: document.sourceVersion)
-        )
+        let outcome = WorkLedgerRecorder.scope(.semanticCommand) {
+            session.perform(
+                command,
+                selection: currentSelection(in: session),
+                expectedSourceRevision: SourceRevision(value: document.sourceVersion)
+            )
+        }
         if case .accepted = outcome { return .accepted }
         return .refused
     }

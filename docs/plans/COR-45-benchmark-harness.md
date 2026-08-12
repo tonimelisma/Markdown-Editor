@@ -1,9 +1,41 @@
 # COR-45 — Honest corpora and the in-app benchmark harness
 
 - **Status:** Approved; not implemented
-- **Requirements:** REQ-090 (moves to `Correction` in this increment), REQ-045; new REQ-127 (corpus-shape enumeration), REQ-128 (process-level benchmark with a committed baseline); REQ-123 (COR-44) gets its gate here
-- **Delivers:** REQ-127, REQ-128
+- **Requirements:** REQ-090 (moves to `Correction` in this increment), REQ-045; REQ-127 (corpus-shape enumeration) is already `Done` and out of scope here; REQ-128 (process-level benchmark with a committed baseline) is what remains
+- **Delivers:** REQ-128
 - **ARC invariants:** ARC-Q05 restated as "on every approved corpus shape"; ARC-Q12 extended to benchmark scenarios; ARC-026 (COR-44) proved here; ARC-014 (no manual or UI testing) unchanged and explicitly re-argued for the scroll scenario
+
+
+> **Restored 2026-08-11, partially implemented.** The corpus half landed and REQ-127 is `Done` on
+> its own tests. The harness half did not: `Scripts/benchmark.sh` had never completed a run, and
+> the baseline committed under its name was written by an earlier driver at commit `b27cf196` —
+> 4 rows of the 108 the script iterates, reporting `nativeInput p95 = n/a` and `parses = 1` for a
+> *typing* scenario. That baseline is deleted and REQ-128 is back to `Correction`.
+>
+> Three defects were found by running the script. Two are fixed and stay fixed:
+>
+> 1. The reconciliation ceiling is a livelock guard sized for a caller driving a handful of edits.
+>    This driver issues one edit per interval for the whole duration and reconciles once per
+>    accepted edit, so a clean run reported `17 applied (ceiling 4)` and the script died at its
+>    first scenario. `verify-smoke-log.py` now takes `--reconciliation-ceiling`; `benchmark.sh`
+>    derives it from the edits it drove, so it remains a bound.
+> 2. The recorder passed `--fail-on-budget-exceeded`, so it refused to write a baseline until every
+>    budget was already met — inverting the ordering this programme rests on, in which measurement
+>    precedes every increment that makes anything faster. It failed on a real overrun
+>    (`parseProjection` 183.7 ms against a 100 ms budget), which is the finding, not an error.
+>
+> **What remains is the whole of the remaining work.** `applyCommands` performs every command
+> without establishing a selection, so all 40 pass their availability guard and then refuse with
+> `mappingFailure`/`ambiguousSelection` — in the scenario whose entire purpose is to exercise those
+> routes. Setting a source-mode caret the way `Markdown_EditorApp`'s smoke path does fixes the
+> source half (40 refusals → 20). The WYSIWYG half survives a bounded wait for an editable
+> projection, so a stale projection is **not** the cause and the cause is not yet known. Start
+> there. `EditorCommandController.currentSelection` falls back to the *source* selection when
+> WYSIWYG has neither a selection nor an editable presentation, which would produce exactly this
+> refusal — first hypothesis to test, not a conclusion.
+>
+> This is not a product defect: the process-level smoke path performs `.bold` successfully because
+> it sets the caret first. The driver is at fault, not the editor.
 
 ## Context
 

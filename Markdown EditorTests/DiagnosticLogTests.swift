@@ -38,14 +38,25 @@ struct DiagnosticLogTests {
         #expect(trace.events.contains(.budgetExceeded(metric: .modeTransition, p95Nanos: 20_000_000, budgetNanos: 16_000_000)))
     }
 
-    // Verifies: REQ-103 — summaries are emitted on flush and never per keystroke.
+    // Verifies: REQ-103 — summaries are emitted on flush and never per keystroke. The flush
+    // also emits the process memory sample used by the diagnostics contract.
     @Test func performanceSummaryOmitsPerEventTimings() {
         let trace = InMemoryEditorTrace()
         let sampler = PerformanceSampler(trace: trace)
         sampler.record(.parseProjection, durationNanos: 1)
         #expect(trace.events.isEmpty)
         sampler.flush()
-        #expect(trace.events.count == 1)
+        #expect(trace.events.count == 2)
+        #expect(trace.events.contains { event in
+            if case .performanceSummary(metric: .parseProjection, count: 1, p50Nanos: 1, p95Nanos: 1, maxNanos: 1) = event {
+                return true
+            }
+            return false
+        })
+        #expect(trace.events.contains { event in
+            if case .memoryFootprint = event { return true }
+            return false
+        })
     }
 
     private func makeTemporaryDirectory() -> URL {
@@ -143,6 +154,20 @@ struct DiagnosticLogTests {
             , .performanceSummary(metric: .nativeInputCallback, count: 2, p50Nanos: 3, p95Nanos: 4, maxNanos: 5)
             , .budgetExceeded(metric: .modeTransition, p95Nanos: 17, budgetNanos: 16)
             , .sourceHighlightWidened(reason: .fenceParity)
+            , .workLedger(
+                scope: .acceptedEdit,
+                documentParses: 1,
+                projectionCompiles: 2,
+                oracleValidations: 3,
+                attributedBuilds: 4,
+                attributedCharactersWritten: 5,
+                storageFullReplacements: 6,
+                imageDecodes: 7,
+                fileBytesRead: 8,
+                mainThreadBlockedNanos: 9
+            )
+            , .frameStatistics(hitchMillisPerSecond: 1.5, longestFrameNanos: 10, framesObserved: 11)
+            , .memoryFootprint(bytes: 12, peakBytes: 13)
         ]
 
         var covered = Set<DiagnosticEventName>()

@@ -53,6 +53,7 @@ struct DiagnosticLifetimeTests {
         #expect(coordinator.liveRegistrationCount == 0)
     }
 
+    // Verifies: REQ-096 — fault diagnostics remain durable while the main actor is blocked.
     @Test func processFaultReporterWritesWhileMainActorIsBlocked() async {
         let log = DiagnosticLog(directory: temporaryDirectory(), hostKind: .unitTest)
         let report = log.makeProcessFaultReporter()

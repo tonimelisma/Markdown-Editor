@@ -100,8 +100,9 @@ jq -e \
     'type == "object" and .head == $head and .tree == $tree and .result == "pass" and
      (.gates | type == "object") and
      (.gates | has("documentation-authority") and has("instrumentation-coverage") and
-               has("tests") and has("proof-results") and has("delivery-status")) and
-     (.gates | ([to_entries[] | select(.key != "delivery-status") | .value] | length == 4 and all(. == "pass"))) and
+               has("tests") and has("proof-results") and has("delivery-status") and
+               has("falsification")) and
+     (.gates | ([to_entries[] | select(.key != "delivery-status") | .value] | length == 5 and all(. == "pass"))) and
      (
        (.scope == "full" and .gates["delivery-status"] == "pass") or
        ($required_scope == "fast" and .scope == "fast" and .gates["delivery-status"] == "structural")

@@ -157,7 +157,7 @@ struct TypographyLayoutTests {
     }
 
     private func build(_ source: String) throws -> AttributedPresentation {
-        AttributedPresentationBuilder.build(model: model(for: source), theme: MarkdownTheme())
+        AttributedPresentationBuilder.build(model: model(for: source), theme: MarkdownTypography())
     }
 
     // Verifies: REQ-107 — cumulative hanging indentation for nested lists.
@@ -169,7 +169,7 @@ struct TypographyLayoutTests {
             return
         }
         let model = MarkdownProjectionModel.build(tree: tree, index: index)
-        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTheme())
+        let built = AttributedPresentationBuilder.build(model: model, theme: MarkdownTypography())
         let lists = model.blocks.compactMap { block -> (NSRange, Int)? in
             guard case .listItem(_, let nesting, _) = block.kind else { return nil }
             return (block.projectionRange, nesting)

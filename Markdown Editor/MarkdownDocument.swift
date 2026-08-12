@@ -16,6 +16,7 @@ import UniformTypeIdentifiers
 /// // REQ-011/016/018/083/088/089: content-validated HistoryPatch undo;
 /// // privacy-safe traces; Swift 6 complete concurrency.
 final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterface {
+    weak var currentPrintView: NSTextView?
     // MARK: - Readable types
     // Hardcoded UTI string: class getters are called from AppKit autosave on arbitrary
     // executor contexts under Swift 6; avoid any cross-type static access here.
@@ -134,10 +135,33 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         // width is what the reading measure and the untruncated toolbar are reviewed against.
         window.setContentSize(NSSize(width: 720, height: MarkdownAppDelegate.smokeWindowHeight ?? 560))
         window.minSize = NSSize(width: 320, height: 240)
-        window.center()
         let controller = NSWindowController(window: window)
         controller.contentViewController = hosting
+        controller.shouldCascadeWindows = true
+        if !MarkdownAppDelegate.isSmokeRun {
+            controller.windowFrameAutosaveName = "MarkdownDocumentWindow"
+        }
+        window.tabbingIdentifier = "MarkdownDocument"
+        window.tabbingMode = .preferred
         addWindowController(controller)
+    }
+
+    override func printOperation(
+        withSettings printSettings: [NSPrintInfo.AttributeKey: Any]
+    ) throws -> NSPrintOperation {
+        guard let currentPrintView else {
+            throw NSError(
+                domain: "MarkdownEditor.Print",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "No visible editor is available to print"]
+            )
+        }
+        let printInfo = (NSPrintInfo.shared.copy() as? NSPrintInfo) ?? NSPrintInfo()
+        printInfo.leftMargin = 36
+        printInfo.rightMargin = 36
+        printInfo.topMargin = 36
+        printInfo.bottomMargin = 36
+        return NSPrintOperation(view: currentPrintView, printInfo: printInfo)
     }
 
     // REQ-100: the one override AppKit routes every save through — manual Save, Save As,
@@ -470,6 +494,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// // `fileURL` is not reliable either — NSDocument's own opening machinery may already
     /// // have set it before `read(from:ofType:)` runs even on the very first load.
     private func installLoadedText(_ value: String) {
+        WorkLedgerRecorder.scope(.documentOpen) {
         closeTypingGroupIfNeeded()
         let isInitialLoad = !hasCompletedInitialLoad && !isRevertingViaAppKit
         hasCompletedInitialLoad = true
@@ -486,6 +511,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             trace?.record(.documentLoaded(utf16Count: utf16Count, sourceRevision: sourceVersion))
         } else {
             trace?.record(.documentReverted(sourceRevision: sourceVersion, utf16Count: utf16Count))
+        }
         }
     }
 

@@ -19,6 +19,7 @@ instrumentation_gate=pass
 tests_gate=pass
 proof_gate=pass
 delivery_gate=pass
+falsification_gate=pass
 derived="${FAST_CHECK_DERIVED_DATA:-$repo_root/.fast-check-build}"
 coverage_dir="$derived/instrumentation-coverage"
 # Isolate trace coverage per checkout so concurrent worktree gate runs cannot
@@ -74,6 +75,24 @@ step "push-policy fixtures"
 ./Scripts/test-check-push-policy.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 ./Scripts/test-check-delivery-status.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 
+step "changed-scope falsification"
+if [[ -n "${FALSIFICATION_BASE:-}" ]]; then
+    falsification_base="$FALSIFICATION_BASE"
+elif git rev-parse --verify origin/main >/dev/null 2>&1; then
+    falsification_base="$(git merge-base origin/main HEAD)"
+else
+    echo "fast-check: cannot determine falsification base; origin/main is missing" >&2
+    falsification_gate=fail
+    failures=$((failures + 1))
+    falsification_base=""
+fi
+if [[ -n "$falsification_base" ]]; then
+./Scripts/check-falsification.sh --changed "$falsification_base..HEAD" || {
+    falsification_gate=fail
+    failures=$((failures + 1))
+}
+fi
+
 step "non-performance test suites"
 # Excluded on purpose: PerformanceBoundaryTests owns the 100,000-UTF-16 corpus gates, which are
 # the slow part and which REQ-090 requires be run focused rather than alongside everything else.
@@ -114,7 +133,7 @@ delivery_gate=structural
 receipt_result=pass
 (( failures > 0 )) && receipt_result=fail
 if ! ./Scripts/write-gate-receipt.sh fast "$receipt_result" \
-    "$documentation_gate" "$instrumentation_gate" "$tests_gate" "$proof_gate" "$delivery_gate"; then
+    "$documentation_gate" "$instrumentation_gate" "$tests_gate" "$proof_gate" "$delivery_gate" "$falsification_gate"; then
     echo "fast-check: failed to write .gate-receipt.json" >&2
     failures=$((failures + 1))
 fi

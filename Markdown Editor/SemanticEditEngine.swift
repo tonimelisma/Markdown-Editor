@@ -177,7 +177,7 @@ nonisolated enum SemanticEditEngine {
                             ) else {
                                 return .refused(.invalidRange)
                             }
-                            if WYSIWYGPlanningDomain.literalCandidatePreservesPresentation(
+                            switch WYSIWYGPlanningDomain.literalCandidateProof(
                                 mutation: remade,
                                 snapshot: snapshot,
                                 presentation: presentation,
@@ -185,6 +185,7 @@ nonisolated enum SemanticEditEngine {
                                 visibleReplacement: text,
                                 nextSnapshotID: nextSnapshotID
                             ) {
+                            case .preservesPresentation:
                                 return finishIdentityTransition(
                                     mutation: remade,
                                     presentation: presentation,
@@ -193,6 +194,10 @@ nonisolated enum SemanticEditEngine {
                                     nextSnapshotID: nextSnapshotID,
                                     affinity: projSel.affinity
                                 )
+                            case .changesPresentation:
+                                break
+                            case .unbuildable:
+                                return .refused(.unprovable)
                             }
                             guard let contextual = WYSIWYGPlanningDomain.contextualLiteralMutation(
                                 original: mutation,
@@ -206,11 +211,12 @@ nonisolated enum SemanticEditEngine {
                                 return .refused(.unprovable)
                             }
                             return planAuthoritativeTransition(
-                                mutation: contextual,
+                                mutation: contextual.mutation,
                                 snapshot: snapshot,
                                 presentation: presentation,
                                 nextSnapshotID: nextSnapshotID,
-                                affinity: projSel.affinity
+                                affinity: projSel.affinity,
+                                prebuilt: contextual.built
                             )
                         case .refused:
                             return .refused(.unprovable)
@@ -268,7 +274,7 @@ nonisolated enum SemanticEditEngine {
         ) else {
             return .refused(.unprovable)
         }
-        if case .failure = ProjectionOracle.validate(snapshot: transition.nextSnapshot) {
+        if !transition.nextSnapshot.isOracleValid {
             return .refused(.unprovable)
         }
         return .accepted(
@@ -288,7 +294,8 @@ nonisolated enum SemanticEditEngine {
         nextSnapshotID: PresentationSnapshot.ID,
         affinity: SelectionAffinity,
         taskNodeID: MarkdownNodeID? = nil,
-        projectionSelectionLocation: Int? = nil
+        projectionSelectionLocation: Int? = nil,
+        prebuilt: PresentationSnapshot? = nil
     ) -> EditorEditOutcome {
         let activeMutation = mutation
         // Apply the candidate to immutable source, then build one exact authoritative result.
@@ -300,13 +307,23 @@ nonisolated enum SemanticEditEngine {
         }
         usableSource = ns.replacingCharacters(in: activeMutation.range, with: activeMutation.replacement)
         let nextRevision = activeMutation.expectedRevision &+ 1
-        guard let nextFixed = AuthoritativePresentationBuilder.build(
-            source: usableSource,
-            sourceRevision: nextRevision,
-            snapshotID: nextSnapshotID,
-            locationGeneration: presentation.locationGeneration
-        ) else { return .refused(.unprovable) }
-        if case .failure = ProjectionOracle.validate(snapshot: nextFixed) {
+        let nextFixed: PresentationSnapshot
+        if let prebuilt,
+           prebuilt.id == nextSnapshotID,
+           prebuilt.sourceRevision.value == nextRevision,
+           prebuilt.locationGeneration == presentation.locationGeneration,
+           prebuilt.sourceUTF16Count == (usableSource as NSString).length {
+            nextFixed = prebuilt
+        } else {
+            guard let built = AuthoritativePresentationBuilder.build(
+                source: usableSource,
+                sourceRevision: nextRevision,
+                snapshotID: nextSnapshotID,
+                locationGeneration: presentation.locationGeneration
+            ) else { return .refused(.unprovable) }
+            nextFixed = built
+        }
+        if !nextFixed.isOracleValid {
             return .refused(.unprovable)
         }
         let sourceAfter = activeMutation.selectionAfter.range.utf16

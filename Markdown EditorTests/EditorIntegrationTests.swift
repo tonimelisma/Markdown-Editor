@@ -230,7 +230,7 @@ struct EditorIntegrationTests {
         let image = NSImage(size: NSSize(width: 10, height: 10))
         let built = AttributedPresentationBuilder.build(
             model: model,
-            theme: MarkdownTheme(),
+            theme: MarkdownTypography(),
             images: [attachment.nodeID: image]
         )
         var found: String?

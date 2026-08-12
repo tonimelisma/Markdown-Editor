@@ -29,10 +29,26 @@ struct EditorMenuCommands: Commands {
 
     /// The approved shortcuts. Declared once so menu construction and the conformance test read
     /// the same table, and so an added shortcut cannot silently shadow a standard AppKit key.
-    static let shortcuts: [EditorCommand: Character] = [
-        .bold: "b",
-        .italic: "i",
-        .editLink: "k"
+    static let shortcuts: [EditorCommand: KeyboardShortcut] = [
+        .sourceMode: KeyboardShortcut("2", modifiers: [.command, .control]),
+        .wysiwygMode: KeyboardShortcut("1", modifiers: [.command, .control]),
+        .paragraph: KeyboardShortcut("0"),
+        .heading(1): KeyboardShortcut("1"),
+        .heading(2): KeyboardShortcut("2"),
+        .heading(3): KeyboardShortcut("3"),
+        .heading(4): KeyboardShortcut("4"),
+        .heading(5): KeyboardShortcut("5"),
+        .heading(6): KeyboardShortcut("6"),
+        .bold: KeyboardShortcut("b"),
+        .italic: KeyboardShortcut("i"),
+        .strikethrough: KeyboardShortcut("x", modifiers: [.command, .shift]),
+        .inlineCode: KeyboardShortcut("c", modifiers: [.command, .control]),
+        .editLink: KeyboardShortcut("k"),
+        .unorderedList: KeyboardShortcut("7", modifiers: [.command, .shift]),
+        .orderedList: KeyboardShortcut("8", modifiers: [.command, .shift]),
+        .taskList: KeyboardShortcut("9", modifiers: [.command, .shift]),
+        .blockQuote: KeyboardShortcut("q", modifiers: [.command, .control]),
+        .codeBlock: KeyboardShortcut("c", modifiers: [.command, .control, .shift])
     ]
 
     @FocusedValue(\.editorCommandController) private var controller
@@ -46,19 +62,13 @@ struct EditorMenuCommands: Commands {
             Divider()
         }
         CommandMenu("Format") {
-            Button("Bold") { _ = controller?.perform(.bold) }
-                .keyboardShortcut(KeyEquivalent(Self.shortcuts[.bold]!))
-                .disabled(!isEnabled(.bold))
-            Button("Italic") { _ = controller?.perform(.italic) }
-                .keyboardShortcut(KeyEquivalent(Self.shortcuts[.italic]!))
-                .disabled(!isEnabled(.italic))
+            menuButton("Bold", command: .bold)
+            menuButton("Italic", command: .italic)
             Button("Strikethrough") { _ = controller?.perform(.strikethrough) }
                 .disabled(!isEnabled(.strikethrough))
             Button("Inline Code") { _ = controller?.perform(.inlineCode) }
                 .disabled(!isEnabled(.inlineCode))
-            Button("Edit Link…") { _ = controller?.perform(.editLink) }
-                .keyboardShortcut(KeyEquivalent(Self.shortcuts[.editLink]!))
-                .disabled(!isEnabled(.editLink))
+            menuButton("Edit Link…", command: .editLink)
             Button("Remove Link") { _ = controller?.perform(.removeLink) }
                 .disabled(!isEnabled(.removeLink))
             Divider()
@@ -86,5 +96,17 @@ struct EditorMenuCommands: Commands {
 
     private func isEnabled(_ command: EditorCommand) -> Bool {
         controller?.availability(for: command).isEnabled ?? false
+    }
+
+    @ViewBuilder
+    private func menuButton(_ title: String, command: EditorCommand) -> some View {
+        let button = Button(title) { _ = controller?.perform(command) }
+        if let shortcut = Self.shortcuts[command] {
+            button
+                .keyboardShortcut(shortcut)
+                .disabled(!isEnabled(command))
+        } else {
+            button.disabled(true)
+        }
     }
 }

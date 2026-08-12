@@ -125,7 +125,7 @@ struct PatchFixture {
         next = transition.nextSnapshot
         builtCurrent = AttributedPresentationBuilder.build(
             model: current.asProjectionModel,
-            theme: MarkdownTheme()
+            theme: MarkdownTypography()
         )
     }
 
@@ -136,7 +136,7 @@ struct PatchFixture {
             buildScope: { model, scope in
                 AttributedPresentationBuilder.buildScoped(
                     model: model,
-                    theme: MarkdownTheme(),
+                    theme: MarkdownTypography(),
                     scope: scope
                 )
             }
@@ -227,7 +227,7 @@ struct TextStorageApplierTests {
         #expect(applier.attachmentNodes[checkboxBefore] != nil)
         let expected = AttributedPresentationBuilder.build(
             model: fixture.next.asProjectionModel,
-            theme: MarkdownTheme()
+            theme: MarkdownTypography()
         )
         #expect(applier.attachmentNodes == expected.attachmentNodes)
     }

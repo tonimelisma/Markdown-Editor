@@ -13,6 +13,7 @@ nonisolated enum SourceMappingFailure: Error, Sendable, Equatable {
     case outOfBoundsLine(Int)
     case outOfBoundsColumn(line: Int, column: Int)
     case invalidUTF8Boundary
+    case nonUTF16AlignedBoundary
     case invalidUTF16Range
     case projectionOutOfBounds
 }
@@ -177,8 +178,12 @@ nonisolated struct MarkdownSourceIndex: Sendable {
     func utf16Range(for utf8: UTF8Range) -> Result<NSRange, SourceMappingFailure> {
         switch (stringIndex(utf8Offset: utf8.start), stringIndex(utf8Offset: utf8.end)) {
         case (.success(let start), .success(let end)):
-            let lower = source.utf16.distance(from: source.utf16.startIndex, to: start.samePosition(in: source.utf16)!)
-            let upper = source.utf16.distance(from: source.utf16.startIndex, to: end.samePosition(in: source.utf16)!)
+            guard let lowerIndex = start.samePosition(in: source.utf16),
+                  let upperIndex = end.samePosition(in: source.utf16) else {
+                return .failure(.nonUTF16AlignedBoundary)
+            }
+            let lower = source.utf16.distance(from: source.utf16.startIndex, to: lowerIndex)
+            let upper = source.utf16.distance(from: source.utf16.startIndex, to: upperIndex)
             let range = NSRange(location: lower, length: upper - lower)
             guard range.location >= 0, NSMaxRange(range) <= utf16Count else {
                 return .failure(.invalidUTF16Range)

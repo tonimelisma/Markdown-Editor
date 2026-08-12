@@ -176,7 +176,7 @@ enum WYSIWYGEditor {
                     refreshed = textStorageApplier.applyAttributeRefresh(
                         AttributedPresentationBuilder.buildScoped(
                             model: presentation.asProjectionModel,
-                            theme: MarkdownTheme(),
+                            theme: MarkdownTypography(),
                             images: session.resolvedImages,
                             onTaskPress: { [weak self] nodeID in self?.performTaskToggle(nodeID: nodeID) },
                             scope: scope
@@ -203,7 +203,7 @@ enum WYSIWYGEditor {
                 buildScope: { [weak self] model, scope in
                     AttributedPresentationBuilder.buildScoped(
                         model: model,
-                        theme: MarkdownTheme(),
+                        theme: MarkdownTypography(),
                         images: self?.session.resolvedImages ?? [:],
                         onTaskPress: { nodeID in self?.performTaskToggle(nodeID: nodeID) },
                         scope: scope
@@ -234,7 +234,7 @@ enum WYSIWYGEditor {
         private func buildPresentation(_ snapshot: PresentationSnapshot) -> AttributedPresentation {
             AttributedPresentationBuilder.build(
                 model: snapshot.asProjectionModel,
-                theme: MarkdownTheme(),
+                theme: MarkdownTypography(),
                 images: session.resolvedImages,
                 onTaskPress: { [weak self] nodeID in
                     self?.performTaskToggle(nodeID: nodeID)
@@ -366,7 +366,7 @@ enum WYSIWYGEditor {
                 buildScope: { [weak self] model, scope in
                     AttributedPresentationBuilder.buildScoped(
                         model: model,
-                        theme: MarkdownTheme(),
+                        theme: MarkdownTypography(),
                         images: self?.session.resolvedImages ?? [:],
                         onTaskPress: { nodeID in self?.performTaskToggle(nodeID: nodeID) },
                         scope: scope
@@ -420,7 +420,7 @@ enum WYSIWYGEditor {
             textView.isEditable = false
             let built = AttributedPresentationBuilder.build(
                 model: snapshot.asProjectionModel,
-                theme: MarkdownTheme(),
+                theme: MarkdownTypography(),
                 images: session.resolvedImages,
                 onTaskPress: { [weak self] nodeID in
                     self?.performTaskToggle(nodeID: nodeID)
