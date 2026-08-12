@@ -32,6 +32,7 @@ struct VisualReviewFixtureTests {
     }
 
     // The fenced block must span enough lines for interior spacing to be visible (COR-27).
+    // Verifies: REQ-104 — the rich fixture makes fenced-block geometry reviewable.
     @Test func richFixtureFencedBlockSpansMultipleLines() throws {
         let text = try Self.richFixture()
         let fences = text.components(separatedBy: "```")
@@ -47,6 +48,7 @@ struct VisualReviewFixtureTests {
 
     // One resolvable and one deliberately unresolvable reference, so the capture shows a correct
     // render and the labeled placeholder side by side.
+    // Verifies: REQ-104 — the rich fixture exercises both image resolution outcomes.
     @Test func richFixtureCarriesResolvableAndUnresolvableImages() throws {
         let text = try Self.richFixture()
         #expect(text.contains("](assets/sample.png)"), "no resolvable image reference")
@@ -62,6 +64,7 @@ struct VisualReviewFixtureTests {
 
     // The resolvable image must not itself look like the failure mode. A document-page icon is
     // mostly one flat colour with thin dark edges; this asserts real chromatic variety instead.
+    // Verifies: REQ-104 — the fixture image discriminates real content from a placeholder.
     @Test func fixtureImageIsVisuallyDistinctFromAPlaceholder() throws {
         let url = Self.fixtureURL("assets/sample.png")
         let image = try #require(NSImage(contentsOf: url), "fixture image did not decode")

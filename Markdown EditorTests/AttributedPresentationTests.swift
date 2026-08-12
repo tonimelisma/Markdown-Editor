@@ -104,6 +104,7 @@ struct AttributedPresentationTests {
         #expect(cell.accessibilityLabel() == "Missing image")
     }
 
+    // Verifies: REQ-106 — soft and hard breaks use distinct presentation semantics.
     @Test func softAndHardBreaksHaveDistinctPresentationText() throws {
         let soft = try #require(makeModel("one\ntwo\n"))
         let hard = try #require(makeModel("one  \ntwo\n"))

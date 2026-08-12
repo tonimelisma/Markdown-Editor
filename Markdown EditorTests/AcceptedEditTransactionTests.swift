@@ -494,6 +494,7 @@ struct EditorStateOwnershipTests {
         #expect(!sources.contains("wysiwygViewState"))
     }
 
+    // Verifies: REQ-052 — session state owns mode state without exposing AppKit presentation.
     @Test func sessionExposesNoAppKitPresentation() throws {
         let source = try String(contentsOfFile: #filePath.replacingOccurrences(of: "Markdown EditorTests/AcceptedEditTransactionTests.swift", with: "Markdown Editor/EditorSession.swift"), encoding: .utf8)
         #expect(!source.contains("NSOpenPanel"))
@@ -501,6 +502,7 @@ struct EditorStateOwnershipTests {
         #expect(!source.contains("runModal"))
     }
 
+    // Verifies: REQ-057 — displaced architecture routes remain absent from production.
     // Verifies: ARC-002/003/013 — displaced architecture routes are absent from production.
     @Test func displacedArchitectureRoutesAbsent() throws {
         let root = URL(fileURLWithPath: #filePath)
@@ -542,6 +544,7 @@ struct EditorStateOwnershipTests {
 
     /// COR-22 deletion gate for the editor foundation rewrite. Each symbol was displaced by an
     /// approved plan; the architecture forbids keeping either one as a compatibility route.
+    // Verifies: REQ-057 — rewrite routes remain single-owner and displaced paths stay deleted.
     @Test func rewriteDisplacedRoutesAreAbsent() throws {
         let haystack = try productionSourceText()
         let displaced = [
@@ -645,6 +648,7 @@ struct MarkdownLiteralEncoderTests {
         #expect(spelling.contains("&lt;"))
     }
 
+    // Verifies: REQ-080 — table-cell edits preserve escaped pipe content.
     @Test func tableCellEscapesPipe() {
         let ctx = LiteralEncodeContext(
             intendedVisibleText: "a|b",

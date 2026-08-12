@@ -23,6 +23,7 @@ struct ImageAssetPolicyTests {
         ("nul", "image-nul"),
         (String(repeating: "a", count: 100), String(repeating: "a", count: 64)),
     ])
+    // Verifies: REQ-066 — filenames are portable and bounded.
     func generatesPortableAssetNames(input: String, expectedStem: String) {
         #expect(ImageAssetPolicy.slug(from: input) == expectedStem)
     }
@@ -126,6 +127,7 @@ struct InsertionRangeTrackerTests {
         (10, 5, 12, 1, 0, true, 10),   // replace interior
         (10, 5, 0, 2, 1, false, 11),   // before shift
     ])
+    // Verifies: REQ-072 — tracked insertion ranges cancel when a later edit overlaps them.
     func boundaryTable(
         trackLoc: Int, trackLen: Int,
         editLoc: Int, editLen: Int, delta: Int,
@@ -454,6 +456,7 @@ struct CanonicalAssetReferenceTests {
 
     /// Fence length, indentation, escapes, nested parentheses, titles, angle destinations, CRLF,
     /// and Unicode all resolve through the pinned parser rather than a private grammar.
+    // Verifies: REQ-112 — canonical asset references follow the pinned parser.
     @Test func destinationSpellingsAgreeWithThePinnedParser() {
         #expect(canonicalReferences("![](<assets/photo.png>)").values.map(\.filename) == ["photo.png"])
         #expect(canonicalReferences("![](assets/photo.png \"A title\")").values.map(\.filename) == ["photo.png"])
@@ -470,6 +473,7 @@ struct CanonicalAssetReferenceTests {
 
     /// Structural gate: no consumer may reintroduce a line- or regex-oriented Markdown scanner
     /// for asset references. The canonical value is derived once, during authoritative parsing.
+    // Verifies: REQ-112 — no secondary Markdown scanner route exists.
     @Test func noSecondaryMarkdownScannerRouteExists() throws {
         #expect(try !productionSourceText().contains("CanonicalAssetReferenceScanner"))
         // Pattern matching over Markdown is confined to Source-mode lexical highlighting, which
@@ -901,6 +905,7 @@ struct ImagePlacementControllerLifecycleTests {
 
     // Verifies: ARC-017 — the only way to raise a user-visible alert is
     // ImagePlacementController.presentAlert; no other production file may assign `alert` directly.
+    // Verifies: REQ-102 — every alert route records a matching diagnostic.
     @Test func everyAlertSiteRecordsDiagnostic() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

@@ -43,6 +43,7 @@ struct EncodedImageResourceTests {
         #expect(changed != stable)
     }
 
+    // Verifies: REQ-081 — oversized encoded images are rejected before bulk read/decode.
     @Test func rejectsOversizedEncodedFileBeforeReadAndDecode() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("encoded-image-\(UUID().uuidString)", isDirectory: true)

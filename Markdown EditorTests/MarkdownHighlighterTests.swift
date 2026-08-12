@@ -123,6 +123,7 @@ struct MarkdownHighlighterTests {
         Fixture(source: "~open~~", expectStrikeSources: []),
         Fixture(source: "~~a~b~~", expectStrikeSources: ["~~a~b~~"]),
     ])
+    // Verifies: REQ-048 — formal GFM double-tilde strikethrough is styled.
     func stylesFormalGFMTildeStrikethroughFixtures(_ fixture: Fixture) async throws {
         let tokens = try await MarkdownHighlighter().tokens(for: fixture.source)
         let strikeRanges = tokens.filter { $0.style == .strikethrough }.map(\.range)
@@ -164,6 +165,7 @@ struct MarkdownHighlighterTests {
         ImageFixture(source: "![x](a b)", expectStyled: false),                 // unangled space
         ImageFixture(source: "![x](foo(and(bar(baz))))", expectStyled: false), // deeper nesting
     ])
+    // Verifies: REQ-050 — supported CommonMark image destinations receive source styling.
     func stylesCommonMarkImageDestinationFixtures(_ fixture: ImageFixture) async throws {
         let tokens = try await MarkdownHighlighter().tokens(for: fixture.source)
         let images = tokens.filter { $0.style == .image }
