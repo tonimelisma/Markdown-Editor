@@ -158,7 +158,7 @@ enum WYSIWYGEditor {
         private func incrementalRecoveryReason(
             from applied: PresentationSnapshot,
             to presentation: PresentationSnapshot,
-            in textView: NSTextView
+            in textView: MarkdownWYSIWYGTextView
         ) -> PresentationRecoveryReason? {
             // Same text, new identity — an authoritative snapshot replacing a provisional one.
             // Attributes may differ; characters do not. Refreshing attributes is not a
@@ -213,11 +213,13 @@ enum WYSIWYGEditor {
                 return .patchUnprovable
             }
 
+            textView.beginLayoutApplication(for: patch.nextRange)
             var patched = false
             session.updateOrigin.with(.programmaticPresentation) {
                 patched = textStorageApplier.applyPatch(patch, to: textView, expectedCurrent: applied)
             }
             guard patched else {
+                textView.cancelLayoutApplication()
                 return .appliedStorageMismatch
             }
             appliedSnapshot = presentation
@@ -339,7 +341,8 @@ enum WYSIWYGEditor {
             case .accepted(let edit):
                 // REQ-091; ARC-005: apply the accepted presentation transition programmatically
                 // and refuse TextKit's optimistic second mutation.
-                applyAcceptedEdit(edit, from: appliedPresentation, in: textView)
+                guard let wysiwygTextView = self.textView else { return false }
+                applyAcceptedEdit(edit, from: appliedPresentation, in: wysiwygTextView)
                 return false
             case .refused:
                 return false
@@ -349,7 +352,7 @@ enum WYSIWYGEditor {
         func applyAcceptedEdit(
             _ edit: AcceptedEdit,
             from current: PresentationSnapshot,
-            in textView: NSTextView
+            in textView: MarkdownWYSIWYGTextView
         ) {
             guard let transition = edit.presentationTransition else {
                 preconditionFailure("Accepted WYSIWYG edit must carry a presentation transition")
@@ -377,8 +380,10 @@ enum WYSIWYGEditor {
                 )
                 return
             }
+            textView.beginLayoutApplication(for: patch.nextRange)
             session.updateOrigin.with(.programmaticPresentation) {
                 guard textStorageApplier.applyPatch(patch, to: textView, expectedCurrent: current) else {
+                    textView.cancelLayoutApplication()
                     recoverFullPresentation(
                         to: transition.nextSnapshot,
                         in: textView,
@@ -489,34 +494,44 @@ enum WYSIWYGEditor {
 }
 
 @MainActor
-final class MarkdownWYSIWYGTextView: NSTextView {
+final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
     weak var session: EditorSession?
     weak var documentActions: DocumentActionInterface?
     weak var placementController: ImagePlacementController?
     weak var inputCoordinator: WYSIWYGEditor.WYSIWYGInputCoordinator?
     weak var adapterCoordinator: WYSIWYGEditor.Coordinator?
 
-    /// REQ-116; ARC-020: measures the layout and drawing TextKit performs **anyway**.
-    ///
-    /// // The `nativeInputCallback` boundary ends when the input delegate returns — after
-    /// // `storage.endEditing()` but before glyph generation, layout, and drawing — so no metric
-    /// // covered the half of a keystroke the user actually perceives.
-    /// //
-    /// // An earlier version of this measurement called `ensureLayout` from
-    /// // inside `applyProjectionIfNeeded`, which `shouldChangeTextIn` calls. That forced
-    /// // synchronous layout on every accepted keystroke *inside the sampled callback region*:
-    /// // it made the app slower on the real edit path and inflated the very p95 REQ-090 gates
-    /// // at 8 ms, so the metric corrupted its own boundary. COR-29's own rule — "layout
-    /// // sampling must never itself force layout the app would not otherwise perform" —
-    /// // forbids it. Timing the view's real `draw(_:)` adds two timestamp reads and nothing
-    /// // else; TextKit lays out lazily during drawing, so this is the work as it actually
-    /// // happens.
-    override func draw(_ dirtyRect: NSRect) {
-        let started = DispatchTime.now().uptimeNanoseconds
-        super.draw(dirtyRect)
+    /// REQ-116; ARC-020: measures layout for a changed presentation range through TextKit's
+    /// completed-layout callback. Caret repaints call `draw(_:)` too, but do not apply a pending
+    /// range and therefore cannot create a layout sample.
+    private var pendingLayoutApplication: (range: NSRange, started: UInt64)?
+
+    func beginLayoutApplication(for range: NSRange) {
+        guard range.location >= 0 else { return }
+        layoutManager?.delegate = self
+        pendingLayoutApplication = (
+            range: range,
+            started: DispatchTime.now().uptimeNanoseconds
+        )
+    }
+
+    func cancelLayoutApplication() {
+        pendingLayoutApplication = nil
+    }
+
+    func layoutManager(
+        _ layoutManager: NSLayoutManager,
+        didCompleteLayoutFor textContainer: NSTextContainer?,
+        atEnd layoutFinished: Bool
+    ) {
+        guard layoutFinished, textContainer != nil, let pending = pendingLayoutApplication else { return }
+        pendingLayoutApplication = nil
+        guard let textStorage,
+              pending.range.location <= textStorage.length,
+              NSMaxRange(pending.range) <= textStorage.length else { return }
         session?.recordPerformance(
             .layoutApplication,
-            durationNanos: DispatchTime.now().uptimeNanoseconds &- started
+            durationNanos: DispatchTime.now().uptimeNanoseconds &- pending.started
         )
     }
 
@@ -629,49 +644,7 @@ final class MarkdownWYSIWYGTextView: NSTextView {
                 (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
                 return
             }
-            let currentVersion = documentActions?.sourceSnapshot().sourceVersion ?? 0
-            guard input.prepareCommit(currentVersion: currentVersion),
-                  let captured = input.complete() else {
-                input.cancel()
-                performNativeUnmark()
-                (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
-                return
-            }
-            guard let session,
-                  let presentation = session.presentation,
-                  let capturedSnapshotID = captured.snapshotID,
-                  presentation.id == capturedSnapshotID,
-                  adapterCoordinator?.hasAppliedSnapshot(capturedSnapshotID) == true else {
-                input.cancel()
-                performNativeUnmark()
-                (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
-                return
-            }
-            let selection = ProjectionSelection(
-                utf16: captured.range,
-                revision: presentation.projectionRevision
-            )
-            let result = session.perform(
-                .insertText(text),
-                selection: .projection(selection),
-                expectedSourceRevision: SourceRevision(value: captured.version)
-            )
-            (documentActions as? MarkdownDocument)?.trace?.record(
-                .compositionCommitted(sourceVersion: captured.version, replacementLength: (text as NSString).length)
-            )
-            switch result {
-            case .accepted:
-                input.committingComposition = true
-                input.allowingMarkedText = true
-                performNativeUnmark()
-                input.allowingMarkedText = false
-                input.committingComposition = false
-                adapterCoordinator?.applyProjectionIfNeeded(reason: .reapplyIfDrift)
-            case .refused:
-                input.cancel()
-                performNativeUnmark()
-                (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
-            }
+            _ = commitComposition(text: text)
             return
         }
         inputCoordinator?.cancel()
@@ -700,25 +673,32 @@ final class MarkdownWYSIWYGTextView: NSTextView {
             return
         }
 
-        let currentVersion = documentActions?.sourceSnapshot().sourceVersion ?? 0
-        guard input.prepareCommit(currentVersion: currentVersion) else {
-            input.cancel()
-            unmarkText()
-            (documentActions as? MarkdownDocument)?.trace?.record(.compositionRefusedStale)
-            return
-        }
-        guard let captured = input.complete() else {
-            input.cancel()
-            return
-        }
+        _ = commitComposition(text: text)
+    }
 
+    /// The single route from a completed IME composition to a source transaction. Both
+    /// `insertText`- and `unmarkText`-terminated compositions use this route so their stale
+    /// handling, snapshot validation, source commit, trace, and native cleanup cannot diverge.
+    @discardableResult
+    private func commitComposition(text: String) -> Bool {
+        guard let input = inputCoordinator else { return false }
+        let currentVersion = documentActions?.sourceSnapshot().sourceVersion ?? 0
+        guard input.prepareCommit(currentVersion: currentVersion),
+              let captured = input.complete() else {
+            input.cancel()
+            performNativeUnmark()
+            (documentActions as? MarkdownDocument)?.trace?.record(.compositionRefusedStale)
+            return false
+        }
         guard let session,
               let presentation = session.presentation,
               let capturedSnapshotID = captured.snapshotID,
               presentation.id == capturedSnapshotID,
               adapterCoordinator?.hasAppliedSnapshot(capturedSnapshotID) == true else {
             input.cancel()
-            return
+            performNativeUnmark()
+            (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
+            return false
         }
         let selection = ProjectionSelection(
             utf16: captured.range,
@@ -736,15 +716,16 @@ final class MarkdownWYSIWYGTextView: NSTextView {
         case .accepted:
             input.committingComposition = true
             input.allowingMarkedText = true
-            if hasMarkedText() {
-                performNativeUnmark()
-            }
+            performNativeUnmark()
             input.allowingMarkedText = false
             input.committingComposition = false
             adapterCoordinator?.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+            return true
         case .refused:
             input.cancel()
-            unmarkText()
+            performNativeUnmark()
+            (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
+            return false
         }
     }
 

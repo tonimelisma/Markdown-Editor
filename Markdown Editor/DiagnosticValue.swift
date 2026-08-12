@@ -151,6 +151,8 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case layoutApplication
     case imageResolution
     case authoritativeApplication
+    case sourceHighlightApplication
+    case fenceParity
 
     // Alert reasons with no natural ImagePlacementError equivalent
     case noInsertionTarget
