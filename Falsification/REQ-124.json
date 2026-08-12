@@ -3,7 +3,7 @@
   "mutations": [
     {
       "rationale": "Recording latency under a different metric removes the responsiveness distribution required by the probe proofs.",
-      "file": "Markdown Editor/PerformanceSampler.swift",
+      "file": "Markdown Editor/MainActorResponsivenessProbe.swift",
       "find": "sampler.record(.mainActorLatency, durationNanos: DispatchTime.now().uptimeNanoseconds &- start)",
       "replace": "sampler.record(.modeTransition, durationNanos: DispatchTime.now().uptimeNanoseconds &- start)",
       "expect_red": ["responsivenessProbeRecordsLatencyDistribution", "aTwoHundredMillisecondMainActorBlockAppearsInTheLatencyDistribution"]
