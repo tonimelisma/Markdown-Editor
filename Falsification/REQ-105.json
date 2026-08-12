@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-105",
+  "mutations": [
+    {
+      "rationale": "Changing the approved body point size is a typography-token regression visible in the constructed presentation proof on the shipping path.",
+      "file": "Markdown Editor/MarkdownTypography.swift",
+      "find": "nonisolated static let bodyPointSize: CGFloat = 15",
+      "replace": "nonisolated static let bodyPointSize: CGFloat = 16",
+      "expect_red": ["approvedTypographyTokensAreStable"]
+    }
+  ]
+}

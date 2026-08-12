@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-125",
+  "mutations": [
+    {
+      "rationale": "Returning zero erases all real cadence-derived hitch evidence.",
+      "file": "Markdown Editor/FrameObserver.swift",
+      "find": "return denominator > 0 ? excessMillis / denominator : 0",
+      "replace": "return 0",
+      "expect_red": ["frameStatisticsMutationProof"]
+    }
+  ]
+}

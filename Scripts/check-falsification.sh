@@ -44,10 +44,13 @@ done
 
 python3 - "$repo_root" "$fixture_root" "$mode" "$range" <<'PY'
 import json
+import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 repo = pathlib.Path(sys.argv[1])
 fixture = pathlib.Path(sys.argv[2]) if sys.argv[2] else None
@@ -68,10 +71,12 @@ if problems:
     sys.exit(1)
 
 done = set()
+implemented_by_requirement = {}
 for line in requirements_path.read_text().splitlines():
     columns = [column.strip() for column in line.split("|")]
     if len(columns) >= 6 and re.fullmatch(r"REQ-\d{3}", columns[1]) and columns[4] == "Done":
         done.add(columns[1])
+        implemented_by_requirement[columns[1]] = columns[5]
 
 manifest_paths = sorted(manifest_dir.glob("REQ-*.json"))
 manifest_ids = set()
@@ -82,27 +87,61 @@ for path in manifest_paths:
         manifest_ids.add(path.stem)
 
 selected = done
-if mode == "changed" and not fixture:
+git_root = root if fixture and (root / ".git").exists() else repo
+if mode == "changed" and (not fixture or (root / ".git").exists()):
+    dirty = subprocess.run(
+        ["git", "-C", str(git_root), "status", "--porcelain", "--untracked-files=all"],
+        capture_output=True, text=True, check=False,
+    )
+    if dirty.returncode or dirty.stdout.strip():
+        problems.append("changed-scope execution requires a clean working tree")
     changed = subprocess.run(
-        ["git", "-C", str(repo), "diff", "--name-only", range_value],
+        ["git", "-C", str(git_root), "diff", "--name-only", range_value],
         capture_output=True, text=True, check=False
     )
     if changed.returncode:
         problems.append(f"cannot inspect changed range {range_value}")
     touched = set(changed.stdout.splitlines())
+
+    def changed_file_contains(token, relative_path):
+        # Traceability symbols are resolved against production source. Searching manifests,
+        # prose, or gate scripts would select unrelated requirements merely because a rationale
+        # mentions the same type name.
+        if not relative_path.endswith(".swift"):
+            return False
+        path = root / relative_path
+        if not path.is_file():
+            return False
+        try:
+            text = path.read_text()
+        except (OSError, UnicodeDecodeError):
+            return False
+        return token in text
+
+    def implementation_intersects(requirement):
+        implemented = implemented_by_requirement.get(requirement, "")
+        references = re.findall(r"`([^`]+)`", implemented)
+        for relative_path in touched:
+            if not relative_path:
+                continue
+            path = pathlib.Path(relative_path)
+            if any(
+                reference == relative_path
+                or reference.endswith("/" + relative_path)
+                or pathlib.Path(reference).name == path.name
+                for reference in references
+            ):
+                return True
+            if any(changed_file_contains(reference, relative_path) for reference in references):
+                return True
+        return False
+
     selected = set()
     for requirement in done:
-        manifest = manifest_dir / f"{requirement}.json"
-        if manifest.exists() and str(manifest.relative_to(root)) in touched:
-            selected.add(requirement)
-        try:
-            data = json.loads(manifest.read_text()) if manifest.exists() else {}
-            for mutation in data.get("mutations", []):
-                if mutation.get("file") in touched:
-                    selected.add(requirement)
-        except (json.JSONDecodeError, OSError):
+        if implementation_intersects(requirement):
             selected.add(requirement)
 
+validated_manifests = {}
 for requirement in sorted(selected):
     path = manifest_dir / f"{requirement}.json"
     if not path.is_file():
@@ -142,8 +181,8 @@ for requirement in sorted(selected):
         if pathlib.Path(file_value).is_absolute() or ".." in pathlib.Path(file_value).parts:
             problems.append(f"{label}: target file must be a relative in-repository path")
             continue
-        if not file_value.startswith("Markdown Editor/"):
-            problems.append(f"{label}: target file must be production source under Markdown Editor/")
+        if not (file_value.startswith("Markdown Editor/") or file_value.startswith("Scripts/")):
+            problems.append(f"{label}: target file must be production source under Markdown Editor/ or executable gate under Scripts/")
             continue
         target = (root / file_value).resolve()
         try:
@@ -157,10 +196,14 @@ for requirement in sorted(selected):
             problems.append(f"{label}: find must match exactly once in {mutation.get('file')}")
         if any(token in replacement for token in ("fatalError", "preconditionFailure", "FIXME", "abort(", "while true")):
             problems.append(f"{label}: replacement is a degenerate kill mutation")
-        if replacement.count("\n") - needle.count("\n") > 5 or needle.count("\n") - replacement.count("\n") > 5:
-            problems.append(f"{label}: replacement changes more than five lines")
+        find_lines = needle.count("\n") + 1
+        replacement_lines = replacement.count("\n") + 1
+        if find_lines > 5 or replacement_lines > 5:
+            problems.append(f"{label}: mutation must touch at most five lines (find={find_lines}, replace={replacement_lines})")
         if not isinstance(mutation.get("expect_red"), list) or not mutation["expect_red"] or not all(isinstance(item, str) and item for item in mutation["expect_red"]):
             problems.append(f"{label}: expect_red must name at least one proof")
+    if not any(problem.startswith(f"{path}:") for problem in problems):
+        validated_manifests[requirement] = data
 
 for manifest_id in sorted(manifest_ids - done):
     problems.append(f"{manifest_id}: manifest has no current Done requirement")
@@ -171,5 +214,248 @@ if problems:
     print(f"check-falsification: FAILED ({len(problems)} problem(s))", file=sys.stderr)
     sys.exit(1)
 
-print(f"check-falsification: PASS ({len(selected)} manifest(s) structurally valid; execution phase not yet enabled)")
+def describe_output(output):
+    lines = output.strip().splitlines()
+    if len(lines) > 30:
+        lines = lines[-30:]
+    return "\n".join(lines)
+
+
+def proof_outcome(output, proof):
+    if re.search(r"no tests? found|no matching tests?", output, re.IGNORECASE):
+        return None
+    leaf = proof.rsplit("/", 1)[-1].removesuffix("()")
+    # Xcode's test runner can omit the per-case `failed` line after a crashed or
+    # restarted test host and instead list the exact XCTest identifier under
+    # `Failing tests:`. That is still an observed red outcome, not an empty run.
+    failing_section = re.search(r"Failing tests:\s*(.*?)(?:\n\s*\*\* TEST FAILED \*\*|\Z)", output, re.DOTALL)
+    if failing_section and re.search(rf"\b{re.escape(leaf)}\(\)\s*$", failing_section.group(1), re.MULTILINE):
+        return "failed"
+    matches = re.findall(
+        rf"(?:Test case|Test Case|[◇▶✘✔] Test) [^\n]*\b{re.escape(leaf)}(?:\(\))?[^\n]*\b(passed|failed)\b",
+        output,
+        re.IGNORECASE,
+    )
+    if not matches and "/" not in proof:
+        # A suite filter has one or more case lines whose identifiers carry the suite name.
+        matches = re.findall(
+            rf"(?:Test case|Test Case|[◇▶✘✔] Test) [^\n]*\b{re.escape(proof)}(?:/|\.)[^\n]*\b(passed|failed)\b",
+            output,
+            re.IGNORECASE,
+        )
+    if not matches:
+        return None
+    return matches[-1].lower()
+
+
+def resolve_xcode_proof(mutant_root, proof):
+    """Resolve a manifest's human-readable proof name to Xcode's test identifier."""
+    if "/" in proof:
+        return proof
+    test_root = mutant_root / "Markdown EditorTests"
+    declaration = re.compile(
+        rf"(?:@Test[^\n]*\n\s*)?(?:func|static func)\s+{re.escape(proof)}\s*\("
+    )
+    type_declaration = re.compile(r"\b(?:struct|class|enum)\s+([A-Za-z_][A-Za-z0-9_]*)")
+    for source in sorted(test_root.rglob("*.swift")):
+        try:
+            lines = source.read_text().splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        current_type = None
+        for line in lines:
+            match = type_declaration.search(line)
+            if match:
+                current_type = match.group(1)
+            if declaration.search(line) and current_type:
+                return f"{source.parent.name}/{current_type}/{proof}()"
+    for source in sorted(test_root.rglob("*.swift")):
+        try:
+            if re.search(rf"\b(?:struct|class|enum)\s+{re.escape(proof)}\b", source.read_text()):
+                return f"{source.parent.name}/{proof}"
+        except (OSError, UnicodeDecodeError):
+            continue
+    return f"{test_root.name}/{proof}"
+
+
+def command_driver(mutant_root, execution_root, mutation_file=""):
+    # Repository policy requirements are proved by their executable fixture, not by an
+    # application test target.  Keep this driver explicit so a script mutation still has a
+    # compile step (shell syntax validation) and an observed process-level proof outcome.
+    if mutation_file.startswith("Scripts/") and mutation_file.endswith(".py"):
+        return {
+            "kind": "python-script",
+            "build": ["python3", "-m", "py_compile", str(mutant_root / mutation_file)],
+            "test": lambda proof, result: ["bash", str(mutant_root / proof)],
+        }
+    if mutation_file.startswith("Scripts/"):
+        return {
+            "kind": "shell",
+            "build": ["bash", "-n", str(mutant_root / mutation_file)],
+            "test": lambda proof, result: ["bash", str(mutant_root / proof)],
+        }
+
+    package = mutant_root / "Package.swift"
+    if package.is_file():
+        scratch = execution_root / "swift-build"
+        cache = execution_root / "swift-cache"
+        scratch.mkdir()
+        cache.mkdir()
+        swiftpm = [
+            "--package-path", str(mutant_root), "--scratch-path", str(scratch),
+            "--cache-path", str(cache), "--manifest-cache", "local",
+            "--disable-sandbox",
+        ]
+        return {
+            "kind": "swift-package",
+            "build": ["swift", "build"] + swiftpm,
+            "test": lambda proof, result: ["swift", "test"] + swiftpm + ["--filter", proof],
+        }
+
+    projects = sorted(mutant_root.glob("*.xcodeproj"))
+    if len(projects) == 1:
+        project = projects[0]
+        derived_data = execution_root / "DerivedData"
+        source_packages = execution_root / "SourcePackages"
+        source_packages.mkdir()
+        common = [
+            "xcodebuild", "-project", str(project), "-scheme", project.stem,
+            "-configuration", "Debug", "-derivedDataPath", str(derived_data),
+            "-clonedSourcePackagesDirPath", str(source_packages),
+            "-parallel-testing-enabled", "NO",
+            "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO", "CODE_SIGN_IDENTITY=",
+        ]
+        return {
+            "kind": "xcode",
+            "build": common + ["build"],
+            "test": lambda proof, result: common + [
+                "-resultBundlePath", str(result), "test",
+                f"-only-testing:{resolve_xcode_proof(mutant_root, proof)}",
+            ],
+        }
+
+    raise RuntimeError(
+        "cannot determine Swift compile/test driver (expected Package.swift or one .xcodeproj)"
+    )
+
+
+def run_command(command, cwd, environment):
+    try:
+        return subprocess.run(
+            command,
+            cwd=cwd,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+            timeout=float(environment.get("FALSIFICATION_TIMEOUT_SECONDS", "600")),
+        )
+    except subprocess.TimeoutExpired as error:
+        output = error.stdout or ""
+        if isinstance(output, bytes):
+            output = output.decode(errors="replace")
+        return subprocess.CompletedProcess(command, 124, output + "\nfalsification command timed out")
+    except OSError as error:
+        return subprocess.CompletedProcess(command, 127, str(error))
+
+
+def execute_mutation(requirement, mutation_index, mutation):
+    file_value = mutation["file"]
+    source_path = root / file_value
+    original = source_path.read_text()
+    find = mutation["find"]
+    replacement = mutation["replace"]
+
+    with tempfile.TemporaryDirectory(prefix=f"falsification-{requirement}-") as temporary:
+        execution_root = pathlib.Path(temporary)
+        mutant_root = execution_root / "repo"
+        shutil.copytree(
+            root,
+            mutant_root,
+            symlinks=True,
+            ignore=shutil.ignore_patterns(
+                ".git", ".build", "DerivedData", "build", "SourcePackages",
+                "__pycache__",
+            ),
+        )
+        mutant_source = mutant_root / file_value
+        if mutant_source.read_text().count(find) != 1:
+            return False, (
+                f"{requirement} mutation {mutation_index}: find no longer matches exactly once "
+                "in isolated tree"
+            )
+        mutant_source.write_text(original.replace(find, replacement, 1))
+
+        isolated_home = execution_root / "home"
+        isolated_tmp = execution_root / "tmp"
+        isolated_home.mkdir()
+        isolated_tmp.mkdir()
+        environment = os.environ.copy()
+        environment["HOME"] = str(isolated_home)
+        environment["TMPDIR"] = str(isolated_tmp)
+
+        try:
+            driver = command_driver(mutant_root, execution_root, file_value)
+        except RuntimeError as error:
+            return False, f"{requirement} mutation {mutation_index}: {error}"
+
+        build = run_command(driver["build"], mutant_root, environment)
+        if build.returncode:
+            return False, (
+                f"{requirement} mutation {mutation_index}: mutant does not compile\n"
+                f"{describe_output(build.stdout)}"
+            )
+
+        red_proofs = []
+        for proof_index, proof in enumerate(mutation["expect_red"], 1):
+            result = execution_root / f"result-{proof_index}.xcresult"
+            test = run_command(driver["test"](proof, result), mutant_root, environment)
+            if driver["kind"] in {"shell", "python-script"}:
+                # Shell fixtures expose a positive PASS marker only when the complete fixture
+                # reaches its end.  A non-zero process is the named proof turning red.
+                outcome = "failed" if test.returncode else ("passed" if "PASS" in test.stdout else None)
+            else:
+                outcome = proof_outcome(test.stdout, proof)
+            if outcome is None:
+                return False, (
+                    f"{requirement} mutation {mutation_index}: expect_red proof {proof!r} "
+                    "did not produce an observed named pass/fail outcome\n"
+                    f"{describe_output(test.stdout)}"
+                )
+            if outcome == "failed":
+                red_proofs.append(proof)
+
+        if not red_proofs:
+            return False, (
+                f"{requirement} mutation {mutation_index}: all expect_red proofs remained green"
+            )
+        return True, (
+            f"{requirement} mutation {mutation_index}: PASS "
+            f"({', '.join(red_proofs)} red)"
+        )
+
+
+execution_failures = []
+execution_passes = 0
+for requirement in sorted(validated_manifests):
+    for mutation_index, mutation in enumerate(validated_manifests[requirement]["mutations"], 1):
+        passed, message = execute_mutation(requirement, mutation_index, mutation)
+        print(f"check-falsification: {message}", file=sys.stderr if not passed else sys.stdout)
+        if not passed:
+            execution_failures.append(message)
+        else:
+            execution_passes += 1
+
+if execution_failures:
+    print(
+        f"check-falsification: FAILED ({len(execution_failures)} mutation(s) failed execution)",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+print(
+    f"check-falsification: PASS ({len(selected)} manifest(s) structurally valid; "
+    f"{execution_passes} mutation(s) falsified their cited proof(s))"
+)
 PY
