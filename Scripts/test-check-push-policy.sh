@@ -33,6 +33,17 @@ git -C "$fixture" add .
 git -C "$fixture" commit -qm docs
 docs_head="$(git -C "$fixture" rev-parse HEAD)"
 
+printf '| REQ-900 | x | y | Done | z | w |\n' >> "$fixture/docs/REQUIREMENTS.md"
+git -C "$fixture" add .
+git -C "$fixture" commit -qm "docs claiming Done"
+docs_done_head="$(git -C "$fixture" rev-parse HEAD)"
+
+mkdir -p "$fixture/Scripts"
+printf '#!/bin/bash\n' > "$fixture/Scripts/unrelated.sh"
+git -C "$fixture" add .
+git -C "$fixture" commit -qm "docs plus a script"
+docs_plus_script_head="$(git -C "$fixture" rev-parse HEAD)"
+
 write_receipt() {
     local head="$1" scope="$2" result="$3" delivery="${4:-pass}"
     local tree
@@ -52,6 +63,26 @@ diagnostic="$(cd "$fixture" && "$fixture/Scripts/check-push-policy.sh" --remote-
 }
 write_receipt "$docs_head" full pass
 expect_allowed --remote-ref refs/heads/main --range "$swift_head..$docs_head"
+
+# REQ-134 addendum: a pure-docs range to main may satisfy the policy with a fast-scope receipt
+# (structural delivery), since it makes no claim a build or test run could contradict.
+write_receipt "$docs_head" fast pass structural
+expect_allowed --remote-ref refs/heads/main --range "$swift_head..$docs_head"
+
+# A docs-only range that adds a "Done" delivery claim still requires full scope — a fast receipt
+# is refused even though every changed path is under docs/.
+write_receipt "$docs_done_head" fast pass structural
+expect_refused --remote-ref refs/heads/main --range "$docs_head..$docs_done_head"
+write_receipt "$docs_done_head" full pass
+expect_allowed --remote-ref refs/heads/main --range "$docs_head..$docs_done_head"
+
+# A range that touches docs plus one non-docs file (here a Scripts/*.sh addition) still requires
+# full scope — the pure-docs exception does not extend to tooling/scripts.
+write_receipt "$docs_plus_script_head" fast pass structural
+expect_refused --remote-ref refs/heads/main --range "$docs_done_head..$docs_plus_script_head"
+write_receipt "$docs_plus_script_head" full pass
+expect_allowed --remote-ref refs/heads/main --range "$docs_done_head..$docs_plus_script_head"
+
 write_receipt "$swift_head" fast pass
 expect_refused --remote-ref refs/heads/cor-99-x --range "$base..$swift_head"
 write_receipt "$swift_head" fast pass structural
@@ -112,6 +143,20 @@ if (cd "$fixture" && "$mutated_receipt" --remote-ref refs/heads/cor-99-x --range
     echo "falsifying mutation REQ-134: PASS (the mutated policy made the stale-receipt proof go green)"
 else
     echo "falsifying mutation REQ-134: FAIL" >&2
+    exit 1
+fi
+
+# Falsifying mutation for the pure-docs fast-scope exception: force is_pure_docs_range to always
+# succeed, and confirm the docs-plus-Done fixture (which real REQUIREMENTS.md content newly
+# claiming Done must still require full scope) goes green on the defective policy.
+mutated_docs_check="$root/mutated-docs-check-policy.sh"
+sed 's|^    return 0$|    return 0 # ALWAYS|; s|return 1$|return 0|g' "$policy_source" > "$mutated_docs_check"
+chmod +x "$mutated_docs_check"
+write_receipt "$docs_done_head" fast pass structural
+if (cd "$fixture" && "$mutated_docs_check" --remote-ref refs/heads/main --range "$docs_head..$docs_done_head") >/dev/null 2>&1; then
+    echo "falsifying mutation REQ-134-docs: PASS (the mutated policy made the Done-claim fast-scope proof go green)"
+else
+    echo "falsifying mutation REQ-134-docs: FAIL" >&2
     exit 1
 fi
 echo "check-push-policy fixtures: PASS"
