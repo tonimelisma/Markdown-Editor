@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-099",
+  "mutations": [
+    {
+      "rationale": "Removing the observed missing-case calculation would let an un-emitted trace event pass the vocabulary gate.",
+      "file": "Scripts/check-instrumentation-coverage.sh",
+      "find": "missing = cases - emitted - set(exemptions)",
+      "replace": "missing = set()",
+      "expect_red": ["Scripts/test-check-instrumentation-coverage.sh"]
+    }
+  ]
+}

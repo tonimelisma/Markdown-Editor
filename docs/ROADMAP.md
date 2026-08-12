@@ -303,8 +303,7 @@ Delivery order, and why it is this order:
    arch, configuration, corpus digest, sample counts and commit SHA; no committed measurement may
    contain an unexpanded `$(`; `--check` re-runs and compares, so invented numbers are contradicted
    by the first honest run instead of becoming the reference.
-6. ⚪ **COR-61 — Every promise has a recorded way to break it.** (Delivers: none)
-   ([plan](plans/COR-61-falsification-manifest.md)) A `Falsification/REQ-###.json` per `Done`
+6. ✅ **COR-61 — Every promise has a recorded way to break it.** (Delivers: none) Falsification manifests `Falsification/REQ-###.json` with `check-falsification.sh` (changed-scope and all) and `test-check-falsification.sh` fixtures — every `Done` requirement now has a recorded way to break it. A `Falsification/REQ-###.json` per `Done`
    requirement declaring a plausible defect under which its cited proofs must go red; the gate
    applies it, builds, runs only those proofs, requires failure, reverts. This is what makes a
    tautological proof structurally impossible to keep. Largest increment in the programme; `--all`

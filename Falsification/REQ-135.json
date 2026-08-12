@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-135",
+  "mutations": [
+    {
+      "rationale": "Removing the observed missing-case calculation would allow a case absent from both logs and exemptions.",
+      "file": "Scripts/check-instrumentation-coverage.sh",
+      "find": "missing = cases - emitted - set(exemptions)",
+      "replace": "missing = set()",
+      "expect_red": ["Scripts/test-check-instrumentation-coverage.sh"]
+    }
+  ]
+}
