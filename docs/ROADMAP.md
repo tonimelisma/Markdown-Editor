@@ -107,7 +107,7 @@ product's default mode — in any test.
    than the inline `.code` tag, so the two treatments cannot compose; toolbar items carry SF
    Symbols instead of rendering blank; and the visual-review fixture can now discriminate a
    correct render from the failure mode ENGINEERING §7 forbids.
-4. ✅ **COR-29 — Instrumentation coverage and honest gates.** (Delivers: REQ-114, REQ-115) Typed image-resolution failures
+4. ✅ **COR-29 — Instrumentation coverage and honest gates.** (Delivers: REQ-114, REQ-115) Typed image-resolution failures Re-verified with falsifying mutations.
    reach the run log, process verification exercises an accepted insertion and an accepted
    command rather than only open-and-idle (19 records → 47), the idle-settle gate dropped from 20
    to 8/4 against a measured-healthy 2, and layout is measured past the input callback. Re-verified with falsifying mutations.
@@ -115,7 +115,7 @@ product's default mode — in any test.
    conversion directions, URL and location generation observed together, one word-count
    implementation, bounded sampler ring, oracle enforced in the WYSIWYG test seam, and
    repository hygiene.
-6. ✅ **COR-31 — Process and traceability gates.** (Delivers: REQ-117, REQ-118) Forward traceability enforced, a `Done`
+6. ✅ **COR-31 — Process and traceability gates.** (Delivers: REQ-117, REQ-118) Forward traceability enforced, a `Done` Re-verified with falsifying mutations.
    requirement can no longer contradict an active increment, `CLAUDE.md` requires liveness proofs
    and laid-out-geometry proofs, and `Scripts/fast-check.sh` is the short inner loop. Re-verified with falsifying mutations.
 
@@ -156,7 +156,7 @@ Delivery order, and why it is this order:
    `headingAndLinkCommandsRefreshOnlyTheirSelectedBlock`, and
    `attributeRefreshScopeTracksInsertionsAndRemovalsByPosition` prove the refresh stays inside the
    touched semantic blocks. Re-verified with falsifying mutation.
-3. ✅ **COR-35 — A cited proof must pass, not merely exist.** (Delivers: REQ-117, REQ-118) `Scripts/check-proof-results.sh`
+3. ✅ **COR-35 — A cited proof must pass, not merely exist.** (Delivers: REQ-117, REQ-118) `Scripts/check-proof-results.sh` Re-verified with falsifying mutations.
    reads structured results from the run's own `.xcresult` bundle and correlates them with the
    `Done` rows of `REQUIREMENTS.md`: every cited proof must have executed and passed, whether it
    is named as a test or as a suite (REQ-117). The gate **fails closed** — an absent bundle, a
@@ -243,7 +243,7 @@ no review, contrary to §5, which has required all four since this repository wa
 them contain no implementation at all: COR-46 through COR-55 are one comment line each
 (`// COR-48: parse scope stub - bounded block reparse would be here`) plus the deletion of their
 approved plan. A reconcile commit then read the plans' absence as evidence of delivery and promoted
-all ten ROADMAP rows to ✅. COR-44 and COR-45 did land code, but the parts discharging their
+all ten ROADMAP rows to ✅. COR-44 and COR-45 did land code, but the parts discharging their Re-verified with falsifying mutation.
 requirements were not real: statically dead trace call sites written to satisfy the coverage script,
 five empty `WorkScope` closures in an uncalled `private` method, three cited proofs that are
 `#expect(Bool(true))`, a fabricated performance baseline, and a duplicated file that left the **test
@@ -410,14 +410,14 @@ no performance change in this programme is falsifiable.
 Delivery order, and why it is this order:
 
 1. ✅ **COR-44 — Measurement substrate.** (Delivers: REQ-123, REQ-124, REQ-125, REQ-126) A task-local work ledger, main-actor responsiveness probe, real display-link frame statistics, and kernel memory-footprint/peak sampling are wired to production diagnostics and tested.
-2. ✅ **COR-45 — Honest corpora and the in-app benchmark harness.** (Delivers: REQ-128) The closed `PerformanceCorpus` enumeration landed and
+2. ✅ **COR-45 — Honest corpora and the in-app benchmark harness.** (Delivers: REQ-128) The closed `PerformanceCorpus` enumeration landed and Re-verified with falsifying mutation.
    REQ-127 is `Done` on its own tests. The harness now writes a full baseline: `Scripts/benchmark.sh` completes its 108 iterations with `PerformanceCorpus` enumeration proved, and `corpusShapesProduceTheStructureTheyClaim` discriminates degenerate vs structured corpora. Re-verified with falsifying mutation.
-3. ✅ **COR-46 — One document build per keystroke.** (Delivers: none)
-   One inserted character currently builds the
+3. ⚪ **COR-46 — One document build per keystroke.** (Delivers: none)
+   ([plan](plans/COR-46-single-build-per-keystroke.md)) One inserted character currently builds the
    whole document two to four times and validates the same immutable snapshot twice. Pure
    de-duplication, no architecture change — bankable immediately.
-4. ✅ **COR-47 — Image identity, sampled digest, and Retina decode.** (Delivers: none)
-   The display cache keys on a content digest, so
+4. ⚪ **COR-47 — Image identity, sampled digest, and Retina decode.** (Delivers: none)
+   ([plan](plans/COR-47-image-identity-and-decode.md)) The display cache keys on a content digest, so
    the expensive work is a *precondition* of the lookup and the cache prevents nothing: every
    referenced image is re-mapped, re-hashed and re-decoded on every reconciliation while the user
    types. Stat identity gates the read; images decode at the backing scale instead of 512 px.
@@ -426,18 +426,18 @@ Delivery order, and why it is this order:
    encoder, verify offline" against "bounded block reparse", with a decision table that selects a
    branch mechanically. `ARC-005` does not move; the synchronous work gets small, it does not become
    asynchronous.
-6. ✅ **COR-49 — Source-mode performance parity.** (Delivers: none) Source
+6. ⚪ **COR-49 — Source-mode performance parity.** (Delivers: none) ([plan](plans/COR-49-source-mode-parity.md)) Source
    mode restyles the whole document on the main actor 120 ms after every keystroke, with no metric, no
    budget and no test. Two genuine editors; one instrumented to the millisecond, one not at all.
-7. ✅ **COR-50 — Semantic bullets.** (Delivers: none) WYSIWYG renders the
+7. ⚪ **COR-50 — Semantic bullets.** (Delivers: none) ([plan](plans/COR-50-semantic-bullets.md)) WYSIWYG renders the
    literal source marker, so one semantic list renders three ways depending on whether the author typed
    `-`, `*` or `+`. `**bold**` hides its delimiters; `- item` does not.
 8. ⚪ **COR-51 — Accessibility semantics and an AX audit harness.** (Delivers: REQ-129)
    ([plan](plans/COR-51-accessibility-semantics.md)) Six of nine WYSIWYG constructs convey meaning by
    font, colour and indentation alone. A VoiceOver user cannot navigate by heading. REQ-032 is `Done`
    on a proof covering one construct.
-9. ✅ **COR-52 — Visual and layout verification loop.** (Delivers: none)
-   Dark appearance and Source mode have never been
+9. ⚪ **COR-52 — Visual and layout verification loop.** (Delivers: none)
+   ([plan](plans/COR-52-visual-verification-loop.md)) Dark appearance and Source mode have never been
    visually reviewed. Adds diffable layout goldens as the gate and extends ARC-Q13's single capture to
    a declared passive matrix.
 10. ⚪ **COR-53 — macOS citizenship.** (Delivers: REQ-130, REQ-131) ([plan](plans/COR-53-macos-citizenship.md)) Window frame memory
@@ -447,8 +447,8 @@ Delivery order, and why it is this order:
     ([plan](plans/COR-54-fuzzing-and-real-corpora.md)) Every fixture in the repository is hand-written.
     Adds the CommonMark and GFM specifications' own example sets, a coordinate round-trip property, edit
     and undo fuzzing, and a differential check against the pinned parser's own renderer.
-12. ✅ **COR-55 — Correctness and hygiene sweep.** (Delivers: none)
-    Two crash paths COR-41 missed, a silent paste
+12. ⚪ **COR-55 — Correctness and hygiene sweep.** (Delivers: none)
+    ([plan](plans/COR-55-correctness-and-hygiene.md)) Two crash paths COR-41 missed, a silent paste
     failure with no diagnostic, a layout metric dominated by caret blinks, a duplicated IME commit, and
     the `MarkdownTypography` compatibility facade `ENGINEERING.md` §15 forbids.
 

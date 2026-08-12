@@ -6,7 +6,7 @@
       "file": "Scripts/check-proof-results.sh",
       "find": "if unmapped:\n    failures.append(\n        f\"REQ-118: {len(unmapped)} executed test(s) are cited by no requirement",
       "replace": "if False: # falsified\n    failures.append(\n        f\"REQ-118: {len(unmapped)} executed test(s) are cited by no requirement # falsified",
-      "expect_red": ["test-check-proof-results"]
+      "expect_red": ["Scripts/test-check-delivery-status.sh"]
     }
   ]
 }
