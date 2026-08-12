@@ -117,7 +117,6 @@ nonisolated enum AlertSeverity: Sendable, Equatable {
 nonisolated enum AlertReason: Sendable, Equatable {
     case placement(ImagePlacementError)
     case noInsertionTarget
-    case stalePresentation
     case pasteboardUnsupportedOrCorrupt
     case insertionPointChangedAfterCommit
     case brokenReferencesAfterMove
@@ -126,7 +125,6 @@ nonisolated enum AlertReason: Sendable, Equatable {
         switch self {
         case .placement(let error): return error.symbol
         case .noInsertionTarget: return .noInsertionTarget
-        case .stalePresentation: return .stalePresentation
         case .pasteboardUnsupportedOrCorrupt: return .unsupportedOrCorrupt
         case .insertionPointChangedAfterCommit: return .insertionPointChanged
         case .brokenReferencesAfterMove: return .documentMoved

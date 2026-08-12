@@ -201,7 +201,11 @@ Delivery order, and why it is this order:
 
 6. ✅ **COR-37 — A nested block composes its container.** (Delivers: REQ-107) `AttributedPresentationBuilder.apply(block:)` now composes `textBlocks` instead of replacing wholesale. A fenced code block that is the only child of a quote at `{0,10}` keeps both the quote rule and the padded code background (`codeInsideQuoteComposesBothContainers`); nested quotes accumulate depth via existing `backgroundColor == nil` count. The length-descending stable sort tie is now harmless because both containers compose regardless of order. `nestedBlockQuotesComposeTheirRules` still proves depth via composed count.
 
-Requirements currently `Correction` and the increment that clears each: — none — all `Correction` rows are now `Done`.
+Requirements currently `Correction` and the increment that clears each: this sentence recorded an
+empty backlog until COR-62. The proof-floor audit re-verified every `Done` row against the new
+gates and returned 82 rows to `Correction`, each naming the re-verification it needs. That backlog
+is the audit's deliverable rather than a regression; REQUIREMENTS is its register, and the
+increments that clear it are the 🔵 rows whose plans COR-62 restored.
 
 Two findings are recorded but deliberately unplanned, so they are not mistaken for oversights:
 the plain Cmd+S/Save-panel cancellation gap already documented in `ENGINEERING.md` §9, which is a

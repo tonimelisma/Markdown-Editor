@@ -293,9 +293,18 @@ def resolve_xcode_proof(mutant_root, proof):
 # recompile. The path must be stable because Xcode's build database keys on absolute paths;
 # a fresh temporary directory per mutation misses the cache by construction.
 #
-# Reuse cannot weaken the gate. A stale artifact would mean the mutation failed to take
-# effect, the cited proof would stay green, and `all expect_red proofs remained green` is
-# already a FAILURE. Incremental reuse therefore fails closed, in the safe direction.
+# Reuse has two failure directions and they are not symmetric.
+#
+# Staleness fails closed: a mutation that does not take effect leaves its cited proof green, and
+# `all expect_red proofs remained green` is already a FAILURE. That direction needs no defence.
+#
+# The dangerous direction is contamination — a proof going red because of the *previous* mutation
+# in this slot rather than this one, which is recorded as a PASS the manifest never earned.
+# `restore()` below is the whole defence, so it is rehearsed rather than asserted:
+# `Scripts/test-check-falsification.sh` runs two manifests through one slot, the second naming the
+# first's proof as its own `expect_red`, and requires the gate to fail. Neutering `restore()` makes
+# that fixture report `cross-mutation contamination in a reused slot unexpectedly passed` —
+# observed 2026-08-11, which is the only reason this comment is allowed to claim anything.
 #
 # Slots are independent trees, so they run concurrently.
 SLOT_COUNT = max(1, int(os.environ.get("FALSIFICATION_WORKERS", "4")))

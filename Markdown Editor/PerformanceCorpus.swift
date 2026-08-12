@@ -74,10 +74,3 @@ nonisolated enum PerformanceCorpus: String, CaseIterable, Sendable {
         return result
     }
 }
-
-func insertionPoints(in model: MarkdownProjectionModel, count: Int) -> [Int] {
-    // Return caret locations classified .identityText.
-    // Simplified: return 0, mid, end.
-    let len = (model.renderedString as NSString).length
-    return (0..<count).map { i in min(len, i * max(1, len / max(1, count))) }
-}

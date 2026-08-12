@@ -134,6 +134,43 @@ rg -q 'return 1' "$root/Markdown Editor/Fixture.swift" || {
     exit 1
 }
 
+# Cross-mutation isolation inside one reused slot.
+#
+# A slot is warm and sequential: it runs several manifests back to back against the same checkout
+# and the same DerivedData. Staleness in that arrangement fails closed — a mutation that does not
+# take effect leaves its proof green, and 'all expect_red proofs remained green' is already a
+# failure. The dangerous direction is the opposite one, and it is the reason this fixture exists:
+# a proof going red because of the *previous* mutation in the same slot would be reported as this
+# manifest's PASS, which is a tautological proof wearing a gate's uniform.
+#
+# REQ-001 mutates Fixture.swift so that fixtureProof genuinely goes red. REQ-002 then runs in the
+# same slot, mutates a different file harmlessly, and names fixtureProof as its own expect_red.
+# By then fixtureProof must be green again, so the gate must FAIL. If REQ-001's mutation survived
+# into REQ-002 — through a missed restore or a reused build artifact — fixtureProof would still be
+# red and REQ-002 would be credited with a discrimination it never made.
+cat >"$root/Markdown Editor/Neighbour.swift" <<'EOF'
+public func neighbourValue() -> Int {
+    return 10
+}
+EOF
+cat >>"$root/Markdown EditorTests/FixtureTests.swift" <<'EOF'
+
+@Test func neighbourProof() {
+    #expect(neighbourValue() >= 0)
+}
+EOF
+cat >>"$root/docs/REQUIREMENTS.md" <<'EOF'
+| REQ-002 | Neighbour requirement | COR-61 | Done | `neighbourValue` | test neighbourProof |
+EOF
+write_manifest 'return 1' 'return 2' fixtureProof
+jq -n '{requirement:"REQ-002",mutations:[{rationale:"The neighbour must not borrow another mutation.",file:"Markdown Editor/Neighbour.swift",find:"return 10",replace:"return 11",expect_red:["fixtureProof"]}]}' \
+    >"$root/Falsification/REQ-002.json"
+FALSIFICATION_WORKERS=1 \
+    expect_failure 'cross-mutation contamination in a reused slot' 'all expect_red proofs remained green' \
+    env FALSIFICATION_WORKERS=1 "$gate" --all --fixture-root "$root"
+rm -f "$root/Falsification/REQ-002.json"
+sed -i '' '/| REQ-002 /d' "$root/docs/REQUIREMENTS.md"
+
 write_manifest 'return 1' 'return 2' missingProof
 expect_failure 'unmatched expected proof' 'did not produce an observed named pass/fail outcome' "$gate" --all --fixture-root "$root"
 
