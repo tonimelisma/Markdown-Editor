@@ -6,7 +6,7 @@
       "file": "Scripts/check-proof-results.sh",
       "find": "def is_pass(results):\n    return bool(results) and results.issubset({\"Passed\", \"Expected Failure\"})",
       "replace": "def is_pass(results):\n    return False # falsified",
-      "expect_red": ["Scripts/test-check-falsification.sh"]
+      "expect_red": ["Scripts/check-proof-results.sh"]
     }
   ]
 }
