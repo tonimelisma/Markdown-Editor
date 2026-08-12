@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-081",
+  "mutations": [
+    {
+      "rationale": "Inverting the size guard would accept oversized encoded files and reject small ones, violating the 256 MiB pre-read bound.",
+      "file": "Markdown Editor/LocalImageDecoder.swift",
+      "find": "        guard size <= Int64(maxEncodedFileBytes) else { return .failure(.encodedFileTooLarge) }",
+      "replace": "        guard size >= Int64(maxEncodedFileBytes) else { return .failure(.encodedFileTooLarge) }",
+      "expect_red": ["rejectsOversizedEncodedFileBeforeReadAndDecode"]
+    }
+  ]
+}

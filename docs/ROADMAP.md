@@ -59,9 +59,9 @@ Delivery order:
 4. ✅ **COR-20 — Incremental TextKit application and honest latency.** (Delivers: REQ-103, REQ-109) Ordinary accepted WYSIWYG
    edits now use validated range patches through `TextStorageApplier`, and performance sampling
    covers the complete native callback plus split parse, image, and application boundaries.
-5. 🔵 **COR-21 — Latest-work scheduling and resource bounds.** (Delivers: REQ-076, REQ-081, REQ-112) ([plan](plans/COR-21-latest-work-reverification.md)) Latest parse demand is bounded to
+5. ✅ **COR-21 — Latest-work scheduling and resource bounds.** (Delivers: REQ-076, REQ-081, REQ-112) Latest parse demand is bounded to
    the running request plus newest pending request, oversized encoded images are rejected from
-   metadata before bulk reads, and asset move checks use cmark-derived references.
+   metadata before bulk reads, and asset move checks use cmark-derived references. Re-verified on `LatestParseSchedulerTests`/`EncodedImageResourceTests`/`CanonicalAssetReferenceTests` with falsifying mutations.
 6. ✅ **INC-06 — Native command surface.** (Delivers: REQ-058, REQ-108) The document-embedded toolbar is replaced by one
    window-scoped command model, native toolbar, menu parity, shared validation, shortcuts, and a
    link-edit sheet.

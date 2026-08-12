@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-076",
+  "mutations": [
+    {
+      "rationale": "Inverting the broken-reference check would warn even when the move does not break resolution, and miss the case it must warn about.",
+      "file": "Markdown Editor/CanonicalAssetReferences.swift",
+      "find": "            return fileExists(oldURL) && !fileExists(newURL)",
+      "replace": "            return fileExists(oldURL) || !fileExists(newURL)",
+      "expect_red": ["detectsBrokenAfterParentChangeIncludingManual"]
+    }
+  ]
+}
