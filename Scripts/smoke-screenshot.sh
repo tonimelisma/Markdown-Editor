@@ -230,21 +230,30 @@ else
     capture_failed=0
 fi
 
-# Wait for the process to exit (bounded), same as smoke-test.sh.
+# Wait for the process to exit (bounded), same as smoke-test.sh. Keep this result separate from
+# capture and diagnostics so a timeout or nonzero application exit cannot be hidden by a later
+# successful screenshot or by the verifier's own exit status.
+app_exit_failed=0
+app_exit_code=0
 for _ in $(seq 1 100); do
     kill -0 "$app_pid" 2>/dev/null || break
     sleep 0.1
 done
 if kill -0 "$app_pid" 2>/dev/null; then
-    echo "smoke-screenshot: app did not exit in time" >&2
+    echo "smoke-screenshot: APPLICATION EXIT FAILED (app did not exit in time)" >&2
+    app_exit_failed=1
     kill "$app_pid" 2>/dev/null
-    exit 1
+    wait "$app_pid" 2>/dev/null || true
+    app_exit_code=124
+else
+    wait "$app_pid"
+    app_exit_code=$?
 fi
-wait "$app_pid"
-app_exit_code=$?
 if [[ "$app_exit_code" -ne 0 ]]; then
-    echo "smoke-screenshot: app exited with status $app_exit_code" >&2
-    exit 1
+    if [[ "$app_exit_failed" -eq 0 ]]; then
+        echo "smoke-screenshot: APPLICATION EXIT FAILED (app exited with status $app_exit_code)" >&2
+    fi
+    app_exit_failed=1
 fi
 
 # The application's own diagnostics are verified even when capture failed: a missing Screen
@@ -263,6 +272,10 @@ diagnostics_status=$?
 
 if [[ "$capture_failed" -eq 1 ]]; then
     echo "smoke-screenshot: CAPTURE FAILED (environment); visual review evidence was not produced" >&2
+    exit 1
+fi
+if [[ "$app_exit_failed" -eq 1 ]]; then
+    echo "smoke-screenshot: application did not have a clean exit" >&2
     exit 1
 fi
 exit "$diagnostics_status"

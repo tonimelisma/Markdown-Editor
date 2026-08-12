@@ -219,6 +219,7 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
     case userAlertPresented
     case performanceSummary
     case budgetExceeded
+    case sourceHighlightWidened
 
     // view update
     case hostUpdateEnded

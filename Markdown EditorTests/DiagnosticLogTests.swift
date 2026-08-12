@@ -142,6 +142,7 @@ struct DiagnosticLogTests {
             .userAlertPresented(severity: .error, reason: .placement(.busy))
             , .performanceSummary(metric: .nativeInputCallback, count: 2, p50Nanos: 3, p95Nanos: 4, maxNanos: 5)
             , .budgetExceeded(metric: .modeTransition, p95Nanos: 17, budgetNanos: 16)
+            , .sourceHighlightWidened(reason: .fenceParity)
         ]
 
         var covered = Set<DiagnosticEventName>()

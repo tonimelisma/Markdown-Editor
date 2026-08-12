@@ -22,6 +22,16 @@ nonisolated enum ReconciliationViolation: Sendable, Equatable {
     }
 }
 
+nonisolated enum SourceHighlightWidenReason: Sendable, Equatable {
+    case fenceParity
+
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .fenceParity: return .fenceParity
+        }
+    }
+}
+
 /// Why an authoritative reconciliation result was dropped.
 /// Why an accepted WYSIWYG edit could not be applied as a bounded patch. Both cases are
 /// invariant violations: the presentation is rebuilt authoritatively and WYSIWYG goes
@@ -272,6 +282,7 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case userAlertPresented(severity: AlertSeverity, reason: AlertReason)
     case performanceSummary(metric: PerformanceSampler.Metric, count: Int, p50Nanos: UInt64, p95Nanos: UInt64, maxNanos: UInt64)
     case budgetExceeded(metric: PerformanceSampler.Metric, p95Nanos: UInt64, budgetNanos: UInt64)
+    case sourceHighlightWidened(reason: SourceHighlightWidenReason)
 }
 
 nonisolated enum HistoryDirection: Sendable, Equatable {
@@ -365,6 +376,7 @@ extension PerformanceSampler.Metric {
         case .imageResolution: return .imageResolution
         case .authoritativeApplication: return .authoritativeApplication
         case .layoutApplication: return .layoutApplication
+        case .sourceHighlightApplication: return .sourceHighlightApplication
         }
     }
 }
