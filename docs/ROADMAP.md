@@ -412,12 +412,12 @@ Delivery order, and why it is this order:
 1. ✅ **COR-44 — Measurement substrate.** (Delivers: REQ-123, REQ-124, REQ-125, REQ-126) A task-local work ledger, main-actor responsiveness probe, real display-link frame statistics, and kernel memory-footprint/peak sampling are wired to production diagnostics and tested.
 2. ✅ **COR-45 — Honest corpora and the in-app benchmark harness.** (Delivers: REQ-128) The closed `PerformanceCorpus` enumeration landed and
    REQ-127 is `Done` on its own tests. The harness now writes a full baseline: `Scripts/benchmark.sh` completes its 108 iterations with `PerformanceCorpus` enumeration proved, and `corpusShapesProduceTheStructureTheyClaim` discriminates degenerate vs structured corpora. Re-verified with falsifying mutation.
-3. ⚪ **COR-46 — One document build per keystroke.** (Delivers: none)
-   ([plan](plans/COR-46-single-build-per-keystroke.md)) One inserted character currently builds the
+3. ✅ **COR-46 — One document build per keystroke.** (Delivers: none)
+   One inserted character currently builds the
    whole document two to four times and validates the same immutable snapshot twice. Pure
    de-duplication, no architecture change — bankable immediately.
-4. ⚪ **COR-47 — Image identity, sampled digest, and Retina decode.** (Delivers: none)
-   ([plan](plans/COR-47-image-identity-and-decode.md)) The display cache keys on a content digest, so
+4. ✅ **COR-47 — Image identity, sampled digest, and Retina decode.** (Delivers: none)
+   The display cache keys on a content digest, so
    the expensive work is a *precondition* of the lookup and the cache prevents nothing: every
    referenced image is re-mapped, re-hashed and re-decoded on every reconciliation while the user
    types. Stat identity gates the read; images decode at the backing scale instead of 512 px.
@@ -426,18 +426,18 @@ Delivery order, and why it is this order:
    encoder, verify offline" against "bounded block reparse", with a decision table that selects a
    branch mechanically. `ARC-005` does not move; the synchronous work gets small, it does not become
    asynchronous.
-6. ⚪ **COR-49 — Source-mode performance parity.** (Delivers: none) ([plan](plans/COR-49-source-mode-parity.md)) Source
+6. ✅ **COR-49 — Source-mode performance parity.** (Delivers: none) Source
    mode restyles the whole document on the main actor 120 ms after every keystroke, with no metric, no
    budget and no test. Two genuine editors; one instrumented to the millisecond, one not at all.
-7. ⚪ **COR-50 — Semantic bullets.** (Delivers: none) ([plan](plans/COR-50-semantic-bullets.md)) WYSIWYG renders the
+7. ✅ **COR-50 — Semantic bullets.** (Delivers: none) WYSIWYG renders the
    literal source marker, so one semantic list renders three ways depending on whether the author typed
    `-`, `*` or `+`. `**bold**` hides its delimiters; `- item` does not.
 8. ⚪ **COR-51 — Accessibility semantics and an AX audit harness.** (Delivers: REQ-129)
    ([plan](plans/COR-51-accessibility-semantics.md)) Six of nine WYSIWYG constructs convey meaning by
    font, colour and indentation alone. A VoiceOver user cannot navigate by heading. REQ-032 is `Done`
    on a proof covering one construct.
-9. ⚪ **COR-52 — Visual and layout verification loop.** (Delivers: none)
-   ([plan](plans/COR-52-visual-verification-loop.md)) Dark appearance and Source mode have never been
+9. ✅ **COR-52 — Visual and layout verification loop.** (Delivers: none)
+   Dark appearance and Source mode have never been
    visually reviewed. Adds diffable layout goldens as the gate and extends ARC-Q13's single capture to
    a declared passive matrix.
 10. ⚪ **COR-53 — macOS citizenship.** (Delivers: REQ-130, REQ-131) ([plan](plans/COR-53-macos-citizenship.md)) Window frame memory
@@ -447,8 +447,8 @@ Delivery order, and why it is this order:
     ([plan](plans/COR-54-fuzzing-and-real-corpora.md)) Every fixture in the repository is hand-written.
     Adds the CommonMark and GFM specifications' own example sets, a coordinate round-trip property, edit
     and undo fuzzing, and a differential check against the pinned parser's own renderer.
-12. ⚪ **COR-55 — Correctness and hygiene sweep.** (Delivers: none)
-    ([plan](plans/COR-55-correctness-and-hygiene.md)) Two crash paths COR-41 missed, a silent paste
+12. ✅ **COR-55 — Correctness and hygiene sweep.** (Delivers: none)
+    Two crash paths COR-41 missed, a silent paste
     failure with no diagnostic, a layout metric dominated by caret blinks, a duplicated IME commit, and
     the `MarkdownTypography` compatibility facade `ENGINEERING.md` §15 forbids.
 
