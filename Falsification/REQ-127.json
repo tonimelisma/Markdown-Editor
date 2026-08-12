@@ -4,7 +4,7 @@
     {
       "rationale": "Raising every corpus block floor makes the structural enumeration proof red rather than allowing a corpus to silently collapse.",
       "file": "Markdown Editor/PerformanceCorpus.swift",
-      "find": "case structuredProse: return 1000",
+      "find": "case .structuredProse: return 1000",
       "replace": "case structuredProse: return 100_000",
       "expect_red": ["corpusShapesProduceTheStructureTheyClaim(_:)"]
     }
