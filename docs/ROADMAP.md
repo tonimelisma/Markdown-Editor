@@ -299,8 +299,7 @@ Delivery order, and why it is this order:
    must resolve to requirements that are `Done` and observed passing; a plan may only be deleted when
    its delivered set is proven in the same run. Makes the 2026-08-10 promotion unrepresentable rather
    than merely discouraged.
-5. ⚪ **COR-60 — Measurements carry their provenance.** (Delivers: REQ-137)
-   ([plan](plans/COR-60-measurement-provenance.md)) Baselines are machine-written with host, OS,
+5. ✅ **COR-60 — Measurements carry their provenance.** (Delivers: REQ-137) Provenance gate `check-measurement-provenance.sh` rejects unexpanded constructs and requires complete host/OS/arch/config/Xcode/digest/sample/commit provenance; wired into `fast-check.sh` with fixture liveness. Baselines are machine-written with host, OS,
    arch, configuration, corpus digest, sample counts and commit SHA; no committed measurement may
    contain an unexpanded `$(`; `--check` re-runs and compares, so invented numbers are contradicted
    by the first honest run instead of becoming the reference.
