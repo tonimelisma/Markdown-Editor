@@ -282,6 +282,12 @@ def command_driver(mutant_root, execution_root, mutation_file=""):
     # Repository policy requirements are proved by their executable fixture, not by an
     # application test target.  Keep this driver explicit so a script mutation still has a
     # compile step (shell syntax validation) and an observed process-level proof outcome.
+    if mutation_file.startswith("Scripts/") and mutation_file.endswith(".py"):
+        return {
+            "kind": "python-script",
+            "build": ["python3", "-m", "py_compile", str(mutant_root / mutation_file)],
+            "test": lambda proof, result: ["bash", str(mutant_root / proof)],
+        }
     if mutation_file.startswith("Scripts/"):
         return {
             "kind": "shell",
@@ -405,7 +411,7 @@ def execute_mutation(requirement, mutation_index, mutation):
         for proof_index, proof in enumerate(mutation["expect_red"], 1):
             result = execution_root / f"result-{proof_index}.xcresult"
             test = run_command(driver["test"](proof, result), mutant_root, environment)
-            if driver["kind"] == "shell":
+            if driver["kind"] in {"shell", "python-script"}:
                 # Shell fixtures expose a positive PASS marker only when the complete fixture
                 # reaches its end.  A non-zero process is the named proof turning red.
                 outcome = "failed" if test.returncode else ("passed" if "PASS" in test.stdout else None)
