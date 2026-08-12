@@ -18,6 +18,19 @@ KNOWN_METRICS = {
     "imageResolution",
     "authoritativeApplication",
     "layoutApplication",
+    "mainActorLatency",
+    "sourceHighlightApplication",
+}
+
+BUDGET_NANOS = {
+    "nativeInputCallback": 8_000_000,
+    "modeTransition": 16_000_000,
+    "parseProjection": 100_000_000,
+    "imageResolution": 16_000_000,
+    "authoritativeApplication": 100_000_000,
+    "layoutApplication": 16_000_000,
+    "mainActorLatency": 16_000_000,
+    "sourceHighlightApplication": 8_000_000,
 }
 
 
@@ -49,6 +62,11 @@ def parse_args() -> argparse.Namespace:
             "application fault — the same run without a capture must be clean."
         ),
     )
+    parser.add_argument(
+        "--fail-on-budget-exceeded",
+        action="store_true",
+        help="Fail when a performance summary exceeds its declared p95 budget.",
+    )
     return parser.parse_args()
 
 
@@ -57,6 +75,7 @@ def verify(
     host_update_threshold: int,
     allowed_faults: frozenset[str] = frozenset(),
     expect_edits: bool = False,
+    fail_on_budget_exceeded: bool = False,
 ) -> tuple[int, int]:
     records = [
         json.loads(line)
@@ -149,6 +168,17 @@ def verify(
     assert not unknown_metrics, (
         f"unknown performance metric(s): {sorted(str(m) for m in unknown_metrics)}"
     )
+    if fail_on_budget_exceeded:
+        exceeded = [
+            record for record in summaries
+            if record.get("data", {}).get("metric") in BUDGET_NANOS
+            and record.get("data", {}).get("p95Nanos", 0)
+                > BUDGET_NANOS[record["data"]["metric"]]
+        ]
+        assert not exceeded, "performance budgets exceeded: " + ", ".join(
+            f"{record['data']['metric']}={record['data']['p95Nanos']}"
+            for record in exceeded
+        )
 
     parse_summaries = [
         record
@@ -201,6 +231,7 @@ def main() -> int:
             args.host_update_threshold,
             frozenset(args.allow_fault),
             args.expect_edits,
+            args.fail_on_budget_exceeded,
         )
     except (AssertionError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         print(f"{args.label}: diagnostics FAIL: {error}", file=sys.stderr)

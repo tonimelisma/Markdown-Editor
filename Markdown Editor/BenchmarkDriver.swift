@@ -54,7 +54,7 @@ enum BenchmarkDriver {
         try? await Task.sleep(for: .seconds(1))
         let deadline = ContinuousClock.now + configuration.duration
         repeat {
-            runOnce(configuration.scenario)
+            runOnce(configuration.scenario, corpus: configuration.corpus, size: configuration.size)
             try? await Task.sleep(for: configuration.interval)
         } while ContinuousClock.now < deadline && !Task.isCancelled
 
@@ -69,7 +69,7 @@ enum BenchmarkDriver {
         NSApp.terminate(nil)
     }
 
-    private static func runOnce(_ scenario: Scenario) {
+    private static func runOnce(_ scenario: Scenario, corpus: PerformanceCorpus? = nil, size: Int = 1) {
         guard let controller = NSApp.windows
             .compactMap({ ($0.toolbar?.delegate as? EditorToolbarController)?.commandController })
             .first,
@@ -79,10 +79,17 @@ enum BenchmarkDriver {
         switch scenario {
         case .typeProse, .typeInTable, .typeAdjacentMarkup:
             session.setMode(.source)
-            for _ in 0..<40 {
+            let requested = corpus?.source(utf16Target: min(size, 4_096)) ?? "x"
+            let payload: String = switch scenario {
+            case .typeInTable: "| \(requested.replacingOccurrences(of: "\n", with: " ")) |"
+            case .typeAdjacentMarkup: "**\(requested.prefix(64))**"
+            default: String(requested.prefix(128))
+            }
+            let iterations = min(100, max(1, size / 2_500))
+            for _ in 0..<iterations {
                 let selection = session.sourceModeState.selection
                 _ = session.perform(
-                    .insertText("x"),
+                    .insertText(payload),
                     selection: .source(selection),
                     expectedSourceRevision: SourceRevision(value: document.sourceVersion)
                 )
@@ -123,9 +130,9 @@ enum BenchmarkDriver {
         case .openAndIdle:
             break
         case .soak:
-            runOnce(.typeProse)
-            runOnce(.toggleModes)
-            runOnce(.undoRedoStorm)
+            runOnce(.typeProse, corpus: corpus, size: size)
+            runOnce(.toggleModes, corpus: corpus, size: size)
+            runOnce(.undoRedoStorm, corpus: corpus, size: size)
         }
     }
 

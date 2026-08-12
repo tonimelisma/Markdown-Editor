@@ -183,7 +183,7 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
             let probe = MainActorResponsivenessProbe(sampler: sampler)
             probe.start()
             responsivenessProbe = probe
-            let observer = FrameObserver(sampler: sampler, trace: trace)
+            let observer = FrameObserver(sampler: sampler)
             observer.start()
             frameObserver = observer
         }

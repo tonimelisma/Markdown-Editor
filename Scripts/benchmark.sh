@@ -45,7 +45,10 @@ encoded = unit.encode("utf-8")
 if not encoded:
     raise SystemExit("benchmark: corpus unit must not be empty")
 repetitions = (size + len(encoded) - 1) // len(encoded)
-target.write_bytes((encoded * repetitions)[:size])
+payload = encoded * repetitions
+while len(payload) > size and payload.endswith(encoded):
+    payload = payload[:-len(encoded)]
+target.write_bytes(payload)
 PY
 }
 
@@ -57,6 +60,10 @@ for scenario in typeProse typeInTable typeAdjacentMarkup applyCommands toggleMod
             mkdir -p "$run_dir/logs"
             fixture="$run_dir/fixture.md"
             make_fixture "$corpus" "$fixture" "$size"
+            if [[ "$corpus" == imageHeavy ]]; then
+                mkdir -p "$run_dir/assets"
+                cp "$repo_root/Scripts/Fixtures/assets/sample.png" "$run_dir/assets/sample.png"
+            fi
             MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$run_dir/logs" \
             MARKDOWN_EDITOR_FRAME_OBSERVER=1 \
                 "$binary" --benchmark "$scenario" --corpus "$corpus" --size "$size" \
@@ -64,6 +71,8 @@ for scenario in typeProse typeInTable typeAdjacentMarkup applyCommands toggleMod
                 -ApplePersistenceIgnoreState YES "$fixture" >/dev/null 2>&1
             log="$(find "$run_dir/logs" -name '*.jsonl' -type f -print -quit)"
             [[ -n "$log" ]] || { echo "benchmark: no diagnostic log for $run_id" >&2; exit 1; }
+            python3 "$repo_root/Scripts/verify-smoke-log.py" "$log" 100 \
+                --label "benchmark:$run_id" --fail-on-budget-exceeded >/dev/null
             printf '%s\t%s\t%s\t%s\n' "$scenario" "$corpus" "$size" "$log" >>"$metadata"
         done
     done
@@ -142,7 +151,7 @@ with output.open("w", encoding="utf-8") as handle:
     handle.write("Configuration: Release\n")
     handle.write("Xcode: %s\n" % xcode)
     handle.write("Corpus digest: %s\n" % digest)
-    handle.write("Warmup: 0\n")
+    handle.write("Warmup: 1 s\n")
     handle.write("Samples: %s\n" % sample_count)
     handle.write("Interval: 120 ms\n")
     handle.write("Commit: %s\n" % commit)

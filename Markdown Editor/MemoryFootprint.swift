@@ -19,7 +19,10 @@ nonisolated enum MemoryFootprint {
             }
         }
         if kerr == KERN_SUCCESS {
-            return Sample(bytes: UInt64(info.phys_footprint), peakBytes: UInt64(info.phys_footprint))
+            return Sample(
+                bytes: UInt64(info.phys_footprint),
+                peakBytes: UInt64(info.ledger_phys_footprint_peak)
+            )
         }
         return Sample(bytes: 0, peakBytes: 0)
     }

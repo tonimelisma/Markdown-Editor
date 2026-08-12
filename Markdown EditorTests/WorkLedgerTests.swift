@@ -36,7 +36,7 @@ import Testing
 // Verifies: REQ-124
 @Test @MainActor func responsivenessProbeRecordsLatencyDistribution() async throws {
     let trace = InMemoryEditorTrace()
-    let sampler = PerformanceSampler(trace: trace)
+    let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
     let probe = MainActorResponsivenessProbe(sampler: sampler)
     probe.captureSampleNow()
     try await Task.sleep(for: .milliseconds(50))
@@ -49,7 +49,7 @@ import Testing
 // Verifies: REQ-124
 @Test @MainActor func aTwoHundredMillisecondMainActorBlockAppearsInTheLatencyDistribution() {
     let trace = InMemoryEditorTrace()
-    let sampler = PerformanceSampler(trace: trace)
+    let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
     let probe = MainActorResponsivenessProbe(sampler: sampler)
     probe.captureSampleNow()
     Thread.sleep(forTimeInterval: 0.2)

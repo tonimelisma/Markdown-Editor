@@ -13,6 +13,8 @@ func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
         let index = MarkdownSourceIndex(source: source, sourceVersion: 1)
         let model = MarkdownProjectionModel.build(tree: tree, index: index)
         #expect(model.blocks.count >= corpus.minimumExpectedBlocks)
+    } else {
+        #expect(Bool(false), "performance corpus must parse: \(corpus.rawValue)")
     }
 }
 

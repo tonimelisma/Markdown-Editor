@@ -44,71 +44,66 @@ nonisolated enum WorkScope: String, Sendable, CaseIterable {
 
 /// Lock-guarded recorder. Scopes nest; inner work counts toward enclosing.
 nonisolated enum WorkLedgerRecorder {
-    private struct Frame {
-        var scope: WorkScope
-        var ledger: WorkLedger
+    private final class Frame: @unchecked Sendable {
+        let scope: WorkScope
+        let parent: Frame?
+        private let ledger = Mutex(WorkLedger())
+
+        init(scope: WorkScope, parent: Frame?) {
+            self.scope = scope
+            self.parent = parent
+        }
+
+        func add(_ mutate: (inout WorkLedger) -> Void) {
+            ledger.withLock { mutate(&$0) }
+        }
+
+        func snapshot() -> WorkLedger {
+            ledger.withLock { $0 }
+        }
     }
 
-    private static let state = Mutex<[Frame]>([])
+    @TaskLocal private static var currentFrame: Frame?
 
     static func scope<T>(
         _ scope: WorkScope,
         _ body: () throws -> T
     ) rethrows -> T {
-        state.withLock { stack in stack.append(Frame(scope: scope, ledger: WorkLedger())) }
-        defer {
-            let finished: Frame? = state.withLock { stack in
-                guard let last = stack.popLast() else { return nil }
-                return last
-            }
-            if let finished {
-                state.withLock { stack in
-                    if !stack.isEmpty {
-                        stack[stack.count - 1].ledger = stack[stack.count - 1].ledger + finished.ledger
-                    }
-                }
-                recordWorkLedger(scope: finished.scope, ledger: finished.ledger)
-            }
+        let frame = Frame(scope: scope, parent: currentFrame)
+        return try $currentFrame.withValue(frame) {
+            defer { finish(frame) }
+            return try body()
         }
-        return try body()
     }
 
     static func scope<T>(
         _ scope: WorkScope,
         _ body: () async throws -> T
     ) async rethrows -> T {
-        state.withLock { stack in stack.append(Frame(scope: scope, ledger: WorkLedger())) }
-        defer {
-            let finished: Frame? = state.withLock { stack in
-                guard let last = stack.popLast() else { return nil }
-                return last
-            }
-            if let finished {
-                state.withLock { stack in
-                    if !stack.isEmpty {
-                        stack[stack.count - 1].ledger = stack[stack.count - 1].ledger + finished.ledger
-                    }
-                }
-                recordWorkLedger(scope: finished.scope, ledger: finished.ledger)
-            }
+        let frame = Frame(scope: scope, parent: currentFrame)
+        return try await $currentFrame.withValue(frame) {
+            defer { finish(frame) }
+            return try await body()
         }
-        return try await body()
     }
 
     static func add(_ mutate: (inout WorkLedger) -> Void) {
-        state.withLock { stack in
-            guard !stack.isEmpty else { return }
-            mutate(&stack[stack.count - 1].ledger)
-        }
+        currentFrame?.add(mutate)
     }
 
     static func currentForTesting() -> WorkLedger? {
-        state.withLock { $0.last?.ledger }
+        currentFrame?.snapshot()
     }
 
     // Test helper to clear state between tests.
     static func resetForTesting() {
-        state.withLock { $0.removeAll() }
+        // Task-local state is scoped to the calling task and cannot leak between tests.
+    }
+
+    private static func finish(_ frame: Frame) {
+        let finished = frame.snapshot()
+        frame.parent?.add { $0 = $0 + finished }
+        recordWorkLedger(scope: frame.scope, ledger: finished)
     }
 
     private static func recordWorkLedger(

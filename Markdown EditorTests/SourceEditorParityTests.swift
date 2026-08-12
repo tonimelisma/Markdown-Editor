@@ -49,6 +49,22 @@ struct SourceEditorParityTests {
         #expect(summaries.contains { $0.metric == .sourceHighlightApplication && $0.count == 1 })
     }
 
+    // Verifies: REQ-045 — source highlighting remains live across every approved corpus shape.
+    @Test(arguments: PerformanceCorpus.allCases)
+    func sourceHighlightEnumeratesEveryPerformanceCorpus(_ corpus: PerformanceCorpus) async throws {
+        let source = corpus.source(utf16Target: 20_000)
+        let fixture = try makeFixture(source: source)
+        fixture.coordinator.apply(
+            try await MarkdownHighlighter().tokens(for: source),
+            expectedVersion: 0,
+            expectedText: source
+        )
+        #expect(fixture.storage.string == source)
+        #expect(fixture.session.drainPerformanceSummaries().contains {
+            $0.metric == .sourceHighlightApplication
+        })
+    }
+
     // Verifies: REQ-045 — changing fence parity widens the pass so content below a new opener is
     // not left with stale non-code attributes, and the widening is visible in diagnostics.
     @Test func typingAFenceWidensTheStyleWindow() async throws {

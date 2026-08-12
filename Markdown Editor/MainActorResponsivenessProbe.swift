@@ -2,9 +2,9 @@ import Foundation
 import Synchronization
 
 private nonisolated enum MainActorProbeRelay {
-    private static let callbacks = Mutex<[UUID: @MainActor @Sendable () -> Void]>([:])
+    private static let callbacks = Mutex<[UUID: @MainActor @Sendable (UInt64) -> Void]>([:])
 
-    static func install(_ callback: @escaping @MainActor @Sendable () -> Void) -> UUID {
+    static func install(_ callback: @escaping @MainActor @Sendable (UInt64) -> Void) -> UUID {
         let token = UUID()
         callbacks.withLock { $0[token] = callback }
         return token
@@ -13,7 +13,8 @@ private nonisolated enum MainActorProbeRelay {
     static func fire(_ token: UUID) {
         let callback = callbacks.withLock { $0[token] }
         guard let callback else { return }
-        Task { @MainActor in callback() }
+        let start = DispatchTime.now().uptimeNanoseconds
+        Task { @MainActor in callback(start) }
     }
 
     static func handler(for token: UUID) -> @Sendable () -> Void {
@@ -32,8 +33,8 @@ private nonisolated enum MainActorProbeRelay {
 final class MainActorResponsivenessProbe {
     private var timer: DispatchSourceTimer?
     private let sampler: PerformanceSampler
-    private var pendingStart: UInt64?
     private var relayToken: UUID?
+    private var pendingSamples: [UInt64] = []
 
     init(sampler: PerformanceSampler) {
         self.sampler = sampler
@@ -41,8 +42,8 @@ final class MainActorResponsivenessProbe {
 
     func start() {
         guard timer == nil else { return }
-        let token = MainActorProbeRelay.install { [weak self] in
-            self?.captureSampleNow()
+        let token = MainActorProbeRelay.install { [weak self] start in
+            self?.completeSample(start: start)
         }
         relayToken = token
         let t = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
@@ -54,20 +55,25 @@ final class MainActorResponsivenessProbe {
         timer = t
     }
 
-    /// Captures a hop boundary immediately. The timer uses this same route; keeping the
-    /// scheduling boundary in one method also lets component tests place a known main-actor
-    /// stall after t0 without fabricating sampler input.
+    /// Starts one real main-actor hop. The timer records its timestamp before enqueuing the hop;
+    /// a delayed callback therefore measures time spent waiting for the actor, not only time
+    /// after the callback has already arrived.
     func captureSampleNow() {
-        let t0 = DispatchTime.now().uptimeNanoseconds
-        pendingStart = t0
+        let start = DispatchTime.now().uptimeNanoseconds
+        pendingSamples.append(start)
         DispatchQueue.main.async { [weak self] in
-            self?.completePendingSample()
+            self?.completeQueuedSample(start: start)
         }
     }
 
-    private func completePendingSample() {
-        guard let start = pendingStart else { return }
-        pendingStart = nil
+    private func completeQueuedSample(start: UInt64) {
+        if let index = pendingSamples.firstIndex(of: start) {
+            pendingSamples.remove(at: index)
+        }
+        completeSample(start: start)
+    }
+
+    private func completeSample(start: UInt64) {
         sampler.record(.mainActorLatency, durationNanos: DispatchTime.now().uptimeNanoseconds &- start)
     }
 
@@ -78,7 +84,9 @@ final class MainActorResponsivenessProbe {
             MainActorProbeRelay.remove(relayToken)
             self.relayToken = nil
         }
-        completePendingSample()
+        let pending = pendingSamples
+        pendingSamples.removeAll()
+        for start in pending { completeSample(start: start) }
     }
 
     deinit {

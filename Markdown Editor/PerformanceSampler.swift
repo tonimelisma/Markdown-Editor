@@ -46,6 +46,7 @@ final class PerformanceSampler {
     /// Next slot to overwrite once a metric's buffer is full (COR-30).
     private var writeCursor: [Metric: Int] = [:]
     private let trace: (any EditorTraceSink)?
+    private weak var frameObserver: FrameObserver?
     private var timer: Timer?
     private let coordinator: DiagnosticRunCoordinator
     private var invalidated = false
@@ -85,6 +86,10 @@ final class PerformanceSampler {
         samples[metric] = values
     }
 
+    func attach(frameObserver: FrameObserver) {
+        self.frameObserver = frameObserver
+    }
+
     func drainSummaries() -> [Summary] {
         defer { samples.removeAll(); writeCursor.removeAll() }
         return Metric.allCases.compactMap { metric in
@@ -100,6 +105,13 @@ final class PerformanceSampler {
             trace?.record(.performanceSummary(metric: summary.metric, count: summary.count, p50Nanos: summary.p50, p95Nanos: summary.p95, maxNanos: summary.max))
             guard let budget = Self.budgetNanos[summary.metric] else { continue }
             if summary.p95 > budget { trace?.record(.budgetExceeded(metric: summary.metric, p95Nanos: summary.p95, budgetNanos: budget)) }
+        }
+        if let statistics = frameObserver?.drainStatistics() {
+            trace?.record(.frameStatistics(
+                hitchMillisPerSecond: statistics.hitchMillisPerSecond,
+                longestFrameNanos: statistics.longestFrameNanos,
+                framesObserved: statistics.framesObserved
+            ))
         }
         let memory = MemoryFootprint.sample()
         trace?.record(.memoryFootprint(bytes: memory.bytes, peakBytes: memory.peakBytes))
