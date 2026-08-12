@@ -318,6 +318,47 @@ Delivery order, and why it is this order:
 Only after COR-62 does the performance programme below resume, because until then no measurement it
 produces is falsifiable.
 
+## Active: quality, accessibility, and design conformance loop
+
+A 2026-08-11 review of how this repository verifies quality found the process-integrity and
+performance-measurement disciplines (`the evidence floor`, above) well covered, and found the
+product-facing surface `CLAUDE.md`'s own gates cannot reach by construction — WCAG contrast, the
+platform's text-scaling accessibility preference, Reduce Motion/Transparency/Increase Contrast, and
+leak-freedom of the process this repository already launches for `ARC-Q12` — entirely unverified.
+Separately, the `COR-54` fuzzing plan's real-world corpus was still an unresolved judgement call
+("a dozen files chosen for variety"), and its fuzz suites had no mechanism to keep a found failure
+fixed once found. `COR-54` is amended in place to close both; the four increments below are new.
+
+This programme has **no dependency on `COR-45`, `COR-62`, or each other** — every one is
+verification-only, touches disjoint files, and can land in any order or interleaved with the
+evidence-floor/performance programmes. The order below is chosen for risk, not dependency: research
+and structural-absence work first, arithmetic second, shared-tooling risk last.
+
+1. ⚪ **COR-64 — Record the Accessibility Text Size boundary and guard against a false claim.**
+   (Delivers: REQ-140) ([plan](plans/COR-64-text-scaling-boundary.md)) No production change beyond
+   one guard test; the research (`docs/research/DISC-08-macos-text-scaling.md`) is already done.
+   First, because it is the cheapest and carries zero implementation risk.
+2. ⚪ **COR-65 — Reduced Motion, Reduced Transparency, and Increase Contrast conformance.**
+   (Delivers: REQ-141) ([plan](plans/COR-65-reduced-motion-transparency-contrast.md)) Source
+   inspection already found zero animation/translucency and an all-semantic color catalog; this is
+   two structural absence proofs, no production change. Second, same reasoning as COR-64.
+3. ⚪ **COR-63 — WCAG AA contrast conformance for every declared color role.** (Delivers: REQ-139)
+   ([plan](plans/COR-63-contrast-conformance.md)) Real arithmetic (relative luminance, alpha
+   compositing) against real system colors, with an unpredicted outcome — may land `Correction` if
+   a color role fails. Third: more implementation surface than 1–2, but still verification-only and
+   independent of shared tooling.
+4. ⚪ **COR-66 — Leak-free process verification.** (Delivers: REQ-142)
+   ([plan](plans/COR-66-leak-free-smoke-verification.md)) Opens with a Stage 0 POC against
+   `leaks -atExit --`, whose exit-code-propagation behavior wrapping this app's own smoke launch is
+   not known until observed, and touches `Scripts/smoke-test.sh`, which both `fast-check.sh` and
+   `full-check.sh` already depend on. Last, because it is the only one of the four carrying real
+   uncertainty and shared-tooling risk — everything else lands cleanly around it either way.
+
+`COR-54`'s real-world corpus (Phase 1) and fuzz-regression-fixture mechanism (Phase 3) were
+resolved the same day; see [`plans/COR-54-fuzzing-and-real-corpora.md`](plans/COR-54-fuzzing-and-real-corpora.md).
+`COR-54`'s own ROADMAP position (below, in the performance/hygiene programme) is unchanged — only
+its plan content is more fully specified.
+
 ## Active: measure, then make it fast, native, and reachable
 
 **Status, corrected 2026-08-10:** every increment in this section is ⚪. The ✅ markers recorded

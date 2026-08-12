@@ -33,8 +33,67 @@ Vendor under `Markdown EditorTests/Corpora/`:
   VISION names;
 - the GFM extension specification's examples (tables, task lists, strikethrough, autolinks, tag
   filtering);
-- a dozen real `README.md` files chosen for construct variety, each with provenance and licence
-  recorded in `Markdown EditorTests/Corpora/README.md`.
+- a fixed, licensed, real-world `README.md` corpus, resolved below — replacing "a dozen files
+  chosen for variety" (2026-08-10 draft) with a named list and a verified coverage property, so no
+  implementer has to exercise judgement about which files or how many.
+
+**Real-world corpus — 2026-08-11 addendum, resolving the open judgement call.** Vendored once at
+implementation time (not fetched by CI, per `VISION.md`'s local-first/no-networking product
+principle, which this test-time-only tooling honours even though it is not shipped) from twelve
+repositories chosen for two properties: an unambiguous permissive licence (no copyleft, so
+reproducing one file as a test fixture with attribution carries no encumbrance), and, as a set,
+coverage of every GFM construct REQ-047 names.
+
+| Repository | Licence | Repository | Licence |
+| --- | --- | --- | --- |
+| `microsoft/vscode` | MIT | `sveltejs/svelte` | MIT |
+| `facebook/react` | MIT | `rust-lang/rust` | MIT OR Apache-2.0 |
+| `twbs/bootstrap` | MIT | `golang/go` | BSD-3-Clause |
+| `nodejs/node` | MIT | `django/django` | BSD-3-Clause |
+| `vuejs/vue` | MIT | `kubernetes/kubernetes` | Apache-2.0 |
+| `angular/angular` | MIT | `apache/spark` | Apache-2.0 |
+
+**Vendoring procedure**, run once, by a human or agent, at implementation time — not automated in
+CI, so it cannot introduce network flakiness into the gate:
+
+1. For each repository, fetch `README.md` from its default branch.
+2. Read that repository's own `LICENSE`/`LICENSE.md`/`LICENSE-MIT` at the same commit and confirm
+   it names the licence in the table above. **If it does not match, do not vendor that file** —
+   substitute the next-best-known repository under the same licence family and record the
+   substitution and why in `Markdown EditorTests/Corpora/README.md`. The table above is this plan's
+   best evidence at authoring time (2026-08-11), not a verified-at-fetch-time guarantee — licences
+   and default branches can change, so the check in this step is mandatory, not a formality.
+3. Record, per file, in `Markdown EditorTests/Corpora/README.md`: source URL, the exact commit SHA
+   the file was fetched at, licence, retrieval date, and the SHA-256 of the vendored bytes.
+4. Vendor the file byte-for-byte; do not reformat, re-wrap, or otherwise touch it — the corpus's
+   value is that it is real authorial Markdown, not this project's own style.
+
+```swift
+// Verifies: REQ-132 — the real-world corpus, as a set, exercises every construct it claims to.
+@Test func realWorldCorpusCoversDeclaredConstructs() throws {
+    let required: Set<GFMConstruct> = [
+        .headingLevel(1), .headingLevel(2), .headingLevel(3), .strongEmphasis, .emphasis,
+        .strikethrough, .inlineCode, .fencedCodeBlock, .fencedCodeBlockWithLanguageTag,
+        .inlineLink, .autolink, .image, .orderedList, .unorderedList, .nestedList,
+        .taskListItem, .blockQuote, .table, .thematicBreak, .rawHTMLBlock, .rawHTMLInline,
+    ]
+    let observed = Set(RealWorldCorpus.allFiles.flatMap { GFMConstruct.present(in: MarkdownParser.parse($0.text, sourceVersion: 1)) })
+    let missing = required.subtracting(observed)
+    #expect(missing.isEmpty, "real-world corpus never exercises: \(missing)")
+}
+```
+
+`GFMConstruct.present(in:)` walks the parsed cmark tree — never a string/regex match, which would
+produce false positives from, e.g., a literal `#` inside a fenced code block. **Rehearsed failing**
+by vendoring only `microsoft/vscode`'s `README.md` alone and observing which constructs the single-
+file corpus fails to cover (at minimum: task list items and raw HTML blocks are unlikely to appear
+in any one README, which is exactly why the corpus is twelve files and not one).
+
+If, after fetching, the twelve files as vendored do not jointly satisfy the coverage set, add
+`CommonMark-org/commonmark-spec`'s or `github/gfm`'s own `README.md` (BSD-3-Clause and CC-BY-SA-4.0
+respectively — the CC-BY-SA file requires an attribution line in
+`Markdown EditorTests/Corpora/README.md`, which is a licence obligation this project can meet for a
+test fixture) as a thirteenth file rather than relaxing the coverage set.
 
 ```swift
 // Verifies: REQ-047/054/132 — every specification example projects to an oracle-valid snapshot.
@@ -85,6 +144,30 @@ this codebase can have.
 
 Random edits interleaved with undo, redo and mode toggles; assert source equals the recorded history
 at every step. This is where ordering bugs live, and nothing tests it today.
+
+**A found failure becomes a permanent fixture, not a one-off bug report — 2026-08-11 addendum.**
+Reproducibility (the printed seed) means a failure *can* be replayed by a human; it does not mean
+the suite protects against that exact input regressing again once fixed, since future random runs
+draw new seeds and have no reason to rediscover an old one. Every seed that produces a failure in
+either fuzz test is committed as one file under
+`Markdown EditorTests/Corpora/RegressionSeeds/<seed>-<one-line-description>.json` (the seed value,
+the operation sequence it drove, and the assertion that failed). Both fuzz tests gain a **first**,
+mandatory pass that replays every committed regression seed byte-for-byte before drawing any new
+random one:
+
+```swift
+// Verifies: REQ-007/016/091 — every previously found fuzz failure stays fixed.
+@Test(arguments: RegressionSeedCorpus.allSeeds)
+func committedRegressionSeedStillPasses(_ seed: RegressionSeed) throws { /* replays seed.operations, same assertions as the random pass */ }
+```
+
+This is the same "coverage only grows, never silently shrinks" discipline `CLAUDE.md` §2 already
+applies to specs, moved into the fuzz corpus: a regression seed is deleted only when the defect
+class it represents becomes structurally impossible (e.g. superseded by a stronger property that
+provably subsumes it), recorded as such in the commit, never because the seed stopped triggering by
+chance. `RegressionSeedCorpus.allSeeds` starts empty at this increment's landing and is expected to
+grow over the life of the project — an empty corpus is not a failure of this proof, since Phase 1–2
+and this increment's own first run are what populate it.
 
 ## Phase 4 — differential against the parser's own renderer
 
