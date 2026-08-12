@@ -94,6 +94,16 @@ struct SourceEditorParityTests {
         let storage: SpyTextStorage
         let session: EditorSession
         let trace: InMemoryEditorTrace
+        // `coordinator.textView` is `weak` (production mirrors AppKit's normal top-down
+        // ownership, where a superview holds the text view strongly). This fixture builds the
+        // TextKit stack bottom-up with nothing else playing that role, so without a strong
+        // reference here `textView` — and with it the storage/layoutManager/container graph's
+        // only live text view — is deallocated at a nondeterministic point determined by ARC
+        // timing, not by the test. Observed: `apply()`'s `textView` guard failed silently
+        // (`textViewNil=true`) in roughly 1-in-6 runs under `fast-check.sh`'s default parallel
+        // test execution, and never under serial or isolated execution, which is exactly the
+        // signature of "kept alive by luck until real time budget runs out."
+        let textView: MarkdownSourceTextView
     }
 
     private func makeFixture(source: String) throws -> Fixture {
@@ -120,8 +130,16 @@ struct SourceEditorParityTests {
         let textView = MarkdownSourceTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), textContainer: container)
         storage.replaceCharacters(in: NSRange(location: 0, length: 0), with: source)
         storage.resetSpy()
-        textView.delegate = coordinator
+        // No `textView.delegate = coordinator`: every test in this file drives `apply()`
+        // directly rather than through NSTextViewDelegate, and wiring the delegate anyway let a
+        // storage mutation below reach AppKit's real `textDidChange` callback asynchronously
+        // (through the attached layout manager, independent of anything this fixture does),
+        // racing `Coordinator.version` against the test's own manual `apply(expectedVersion:...)`
+        // call and making it a silent no-op on the rare occasions the real callback won the race
+        // — reproduced 1-in-3 to 1-in-4 runs under `fast-check.sh`'s default parallel test
+        // execution, never under serial or isolated execution. `coordinator.textView` still needs
+        // to be set: `apply()` reads `textView.string`/`textView.textStorage` directly.
         coordinator.textView = textView
-        return Fixture(coordinator: coordinator, storage: storage, session: session, trace: trace)
+        return Fixture(coordinator: coordinator, storage: storage, session: session, trace: trace, textView: textView)
     }
 }
