@@ -33,6 +33,10 @@ DerivedData/
 .full-check-build/
 .full-check-build.log
 
+# Scripts/benchmark.sh Release build output. Every sibling build directory was already listed;
+# this one was missing because the script had never been run to completion.
+.benchmark-build/
+
 # Swift Package Manager
 .build/
 .swiftpm/

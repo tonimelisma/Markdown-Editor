@@ -67,6 +67,20 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fail when a performance summary exceeds its declared p95 budget.",
     )
+    parser.add_argument(
+        "--reconciliation-ceiling",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Bound on reconciliationApplied records, for a caller that knows how many edits it "
+            "drove. Defaults to 2, or 4 with --expect-edits, which suits a caller driving a "
+            "handful of edits; a benchmark driving one edit per interval for several seconds "
+            "reconciles once per accepted edit and must state its own bound. This is a livelock "
+            "guard, so the value must stay a bound — never pass a number large enough to admit a "
+            "self-feeding loop."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -76,6 +90,7 @@ def verify(
     allowed_faults: frozenset[str] = frozenset(),
     expect_edits: bool = False,
     fail_on_budget_exceeded: bool = False,
+    reconciliation_ceiling: int | None = None,
 ) -> tuple[int, int]:
     records = [
         json.loads(line)
@@ -147,7 +162,15 @@ def verify(
     # legitimate future change that applies a second reconciliation would have failed it for
     # being correct. The livelock guard is the host-update ceiling above, which is what actually
     # catches a self-feeding loop.
-    reconciliation_ceiling = 4 if expect_edits else 2
+    # The default suits a caller that drives a handful of edits. A benchmark run drives one edit
+    # every --interval-ms for --duration seconds and reconciles once per accepted edit, so the
+    # fixed ceiling reported "17 applied (ceiling 4)" for a run that was behaving exactly as
+    # designed — and Scripts/benchmark.sh consequently failed at the first of its 108 runs and had
+    # never produced the baseline it is supposed to produce. A caller that knows how many edits it
+    # drove may state the bound; it stays a real livelock guard because it is still a bound, and a
+    # self-feeding loop exceeds edits-plus-slack just as it exceeded 4.
+    if reconciliation_ceiling is None:
+        reconciliation_ceiling = 4 if expect_edits else 2
     assert len(reconciliations) <= reconciliation_ceiling, (
         f"reconciliation did not settle: {len(reconciliations)} applied "
         f"(ceiling {reconciliation_ceiling})"
@@ -233,6 +256,7 @@ def main() -> int:
             frozenset(args.allow_fault),
             args.expect_edits,
             args.fail_on_budget_exceeded,
+            args.reconciliation_ceiling,
         )
     except (AssertionError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         print(f"{args.label}: diagnostics FAIL: {error}", file=sys.stderr)

@@ -78,6 +78,12 @@ if [[ -n "$falsification_base" ]]; then
 }
 fi
 printf '%s\n' '── complete test suite'
+# xcodebuild refuses to overwrite an existing result bundle, so leaving the previous run's
+# bundle in place made every full-check after the first exit before running a single test —
+# reporting "0 passed, 0 failed" and taking the observed-coverage gate down with it, because
+# no run had emitted anything. The proof-results gate reads this bundle, so it must be the
+# product of this run and no other.
+rm -rf "$bundle"
 xcodebuild test \
     -project "Markdown Editor.xcodeproj" \
     -scheme "Markdown Editor" \

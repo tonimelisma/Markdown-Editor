@@ -7,6 +7,7 @@ cd "$repo_root"
 derived="${BENCHMARK_DERIVED_DATA:-$repo_root/.benchmark-build}"
 output="${BENCHMARK_OUTPUT:-$repo_root/docs/research/performance-baseline.md}"
 duration="${BENCHMARK_DURATION_SECONDS:-2}"
+interval_ms="${BENCHMARK_INTERVAL_MS:-120}"
 sizes=(10000 100000)
 if [[ -n "${BENCHMARK_SIZES:-}" ]]; then read -r -a sizes <<<"$BENCHMARK_SIZES"; fi
 
@@ -67,12 +68,33 @@ for scenario in typeProse typeInTable typeAdjacentMarkup applyCommands toggleMod
             MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$run_dir/logs" \
             MARKDOWN_EDITOR_FRAME_OBSERVER=1 \
                 "$binary" --benchmark "$scenario" --corpus "$corpus" --size "$size" \
-                --duration "$duration" --interval-ms 120 \
+                --duration "$duration" --interval-ms "$interval_ms" \
                 -ApplePersistenceIgnoreState YES "$fixture" >/dev/null 2>&1
             log="$(find "$run_dir/logs" -name '*.jsonl' -type f -print -quit)"
             [[ -n "$log" ]] || { echo "benchmark: no diagnostic log for $run_id" >&2; exit 1; }
+            # A driving scenario reconciles once per accepted edit, so it needs both the edit
+            # assertions and a ceiling sized to the edits this run actually drove. The verifier's
+            # default of 4 suits a caller driving a handful; this driver issues one edit every
+            # interval for the whole duration, so a clean run reported "17 applied (ceiling 4)"
+            # and benchmark.sh failed at the first of its 108 runs. The bound below is still a
+            # bound — a self-feeding loop exceeds one-per-edit-plus-slack.
+            edits=()
+            case "$scenario" in
+                typeProse|typeInTable|typeAdjacentMarkup|applyCommands|undoRedoStorm|soak)
+                    driven=$(( duration * 1000 / interval_ms ))
+                    edits=(--expect-edits --reconciliation-ceiling $(( driven + 4 )))
+                    ;;
+            esac
+            # Deliberately not --fail-on-budget-exceeded. This script records where performance
+            # actually is; ROADMAP sequences the measurement substrate before the increments that
+            # make anything faster, so a recorder that refuses to write a baseline until every
+            # budget is already met can never produce the baseline those increments are judged
+            # against. It failed here on a real overrun (parseProjection 183.7 ms against a 100 ms
+            # budget), which is a finding to record rather than a reason to record nothing. The
+            # structural assertions above still run, so a malformed or livelocked run is rejected;
+            # budget enforcement stays with the smoke gate and PerformanceBudgetTests.
             python3 "$repo_root/Scripts/verify-smoke-log.py" "$log" 100 \
-                --label "benchmark:$run_id" --fail-on-budget-exceeded >/dev/null
+                --label "benchmark:$run_id" "${edits[@]}" >/dev/null
             printf '%s\t%s\t%s\t%s\n' "$scenario" "$corpus" "$size" "$log" >>"$metadata"
         done
     done
