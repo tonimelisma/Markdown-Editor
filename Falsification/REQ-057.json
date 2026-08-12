@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-057",
+  "mutations": [
+    {
+      "rationale": "Inverting the source-revision guard would refuse every WYSIWYG edit that should succeed.",
+      "file": "Markdown Editor/WYSIWYGPlanningDomain.swift",
+      "find": "        guard presentation.sourceRevision.value == snapshot.sourceVersion,",
+      "replace": "        guard presentation.sourceRevision.value != snapshot.sourceVersion, // falsified",
+      "expect_red": ["taskTogglePatchesMarker"]
+    }
+  ]
+}

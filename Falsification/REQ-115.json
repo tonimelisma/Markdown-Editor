@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-115",
+  "mutations": [
+    {
+      "rationale": "Skipping the smoke-edit exercise would leave the smoke log without the required accepted insertion and command records.",
+      "file": "Markdown Editor/Markdown_EditorApp.swift",
+      "find": "    private static func exerciseSmokeEdits() {",
+      "replace": "    private static func exerciseSmokeEdits() { return // falsified\n",
+      "expect_red": ["test-verify-smoke-log"]
+    }
+  ]
+}

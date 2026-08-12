@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-078",
+  "mutations": [
+    {
+      "rationale": "Removing the task checkbox attachment would leave task items without an operable control.",
+      "file": "Markdown Editor/AttributedPresentationBuilder.swift",
+      "find": "            let cell = TaskCheckboxAttachmentCell(checked: checked, label: label)",
+      "replace": "            let cell = NSTextAttachmentCell() // falsified",
+      "expect_red": ["taskPresentationHasCheckboxWithoutDuplicateBullet"]
+    }
+  ]
+}

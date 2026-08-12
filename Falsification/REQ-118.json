@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-118",
+  "mutations": [
+    {
+      "rationale": "Suppressing the unmapped-test check would let a failing test go unnoticed because nothing cites it.",
+      "file": "Scripts/check-proof-results.sh",
+      "find": "if unmapped:\n    failures.append(\n        f\"REQ-118: {len(unmapped)} executed test(s) are cited by no requirement",
+      "replace": "if False: # falsified\n    failures.append(\n        f\"REQ-118: {len(unmapped)} executed test(s) are cited by no requirement # falsified",
+      "expect_red": ["test-check-proof-results"]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-128",
+  "mutations": [
+    {
+      "rationale": "Returning a degenerate single-block corpus for every case would make the structured corpus indistinguishable and break its shape assertions.",
+      "file": "Markdown Editor/PerformanceCorpus.swift",
+      "find": "    case .structuredProse: return 1000",
+      "replace": "    case .structuredProse: return 1 // falsified",
+      "expect_red": ["corpusShapesProduceTheStructureTheyClaim"]
+    }
+  ]
+}

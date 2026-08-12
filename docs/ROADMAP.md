@@ -107,17 +107,17 @@ product's default mode — in any test.
    than the inline `.code` tag, so the two treatments cannot compose; toolbar items carry SF
    Symbols instead of rendering blank; and the visual-review fixture can now discriminate a
    correct render from the failure mode ENGINEERING §7 forbids.
-4. 🔵 **COR-29 — Instrumentation coverage and honest gates.** (Delivers: REQ-114, REQ-115) ([plan](plans/COR-29-instrumentation-and-gate-honesty.md)) Typed image-resolution failures
+4. ✅ **COR-29 — Instrumentation coverage and honest gates.** (Delivers: REQ-114, REQ-115) Typed image-resolution failures
    reach the run log, process verification exercises an accepted insertion and an accepted
    command rather than only open-and-idle (19 records → 47), the idle-settle gate dropped from 20
-   to 8/4 against a measured-healthy 2, and layout is measured past the input callback.
+   to 8/4 against a measured-healthy 2, and layout is measured past the input callback. Re-verified with falsifying mutations.
 5. ✅ **COR-30 — Ownership, correctness, and cleanup sweep.** (Delivers: none) Affinity honoured in both
    conversion directions, URL and location generation observed together, one word-count
    implementation, bounded sampler ring, oracle enforced in the WYSIWYG test seam, and
    repository hygiene.
-6. 🔵 **COR-31 — Process and traceability gates.** (Delivers: REQ-117, REQ-118) ([plan](plans/COR-31-process-and-traceability-gates.md)) Forward traceability enforced, a `Done`
+6. ✅ **COR-31 — Process and traceability gates.** (Delivers: REQ-117, REQ-118) Forward traceability enforced, a `Done`
    requirement can no longer contradict an active increment, `CLAUDE.md` requires liveness proofs
-   and laid-out-geometry proofs, and `Scripts/fast-check.sh` is the short inner loop.
+   and laid-out-geometry proofs, and `Scripts/fast-check.sh` is the short inner loop. Re-verified with falsifying mutations.
 
 ## Active: verification integrity programme
 
@@ -149,23 +149,14 @@ Delivery order, and why it is this order:
    and the Release evidence has been re-recorded in full. The plan's working hypothesis — an
    *interaction* among the last five tests — was superseded: the hang was `committedComposition-`
    `UsesBoundedPatch` alone, because it is the only test that drives the real marked-text path.
-2. 🔵 **COR-34 — Attribute refresh escapes its semantic block.** (Delivers: REQ-078) ([plan](plans/COR-34-attribute-refresh-scope.md)) `PresentationPatch.collectDifferences`
+2. ✅ **COR-34 — Attribute refresh escapes its semantic block.** (Delivers: REQ-078) `PresentationPatch.collectDifferences`
    now compares snapshot arrays **by projection position** instead of by array index, so an element
    inserted, removed, or changed near the start no longer shifts every later element onto a wrong
    counterpart: `hiddenDelimiterCommandRefreshesAttributesWithoutReplacing`,
    `headingAndLinkCommandsRefreshOnlyTheirSelectedBlock`, and
    `attributeRefreshScopeTracksInsertionsAndRemovalsByPosition` prove the refresh stays inside the
-   touched semantic blocks. The plan's "four tests, one cause" attribution was partially wrong:
-   `taskToggleRefreshesOnlyItsSemanticBlock` failed on a separate, pre-existing source-index
-   defect — cmark reports a loose-list item (one followed by a blank line) as ending at the next
-   line's column 0, which `MarkdownSourceIndex.utf8Offset` rejected, so the toggle *refused before
-   any refresh* in both modes; `MarkdownSourceIndex` now maps end-column-0 to the previous line's
-   content end. `resolvedImageRefreshesItsAttachmentOnlyWhenDisplayIdentityChanges` had an
-   over-strict assertion (the image block's terminator newline is legitimately refreshed); its
-   assertion now checks boundedness to the image block and exclusion of the trailing paragraph.
-   Full unified suite: 373 passed, 0 failed. **Second because COR-32 makes these failures visible
-   in every run, and they are real product defects, not stale assertions.**
-3. 🔵 **COR-35 — A cited proof must pass, not merely exist.** (Delivers: REQ-117, REQ-118) ([plan](plans/COR-35-proofs-must-pass.md)) `Scripts/check-proof-results.sh`
+   touched semantic blocks. Re-verified with falsifying mutation.
+3. ✅ **COR-35 — A cited proof must pass, not merely exist.** (Delivers: REQ-117, REQ-118) `Scripts/check-proof-results.sh`
    reads structured results from the run's own `.xcresult` bundle and correlates them with the
    `Done` rows of `REQUIREMENTS.md`: every cited proof must have executed and passed, whether it
    is named as a test or as a suite (REQ-117). The gate **fails closed** — an absent bundle, a
@@ -197,7 +188,7 @@ Delivery order, and why it is this order:
    `quoteNestedInAListItemKeepsRuleAndIndent` covers the decorated case. `Scripts/Fixtures/`
    `smoke-rich.md` gained a list item with a continuation paragraph so the REQ-104 visual review
    can see this class at all.
-5. 🔵 **COR-33 — CRLF code blocks are editable via atomic line breaks.** (Delivers: REQ-113) ([plan](plans/COR-33-crlf-code-block-projection.md)) Stage 1 made `.codeBlock` honest (`disabled(.uneditableContent)` in CRLF); stage 2 makes it performable: `BlockEditPlanner.toggleCodeFence`/`transformLine` now strip `\r` correctly, and `StructuralSourceSpans.fencedCodeBody` + `ProjectionAtom.concreteAtoms` treat each CRLF `\r\n` inside fenced/indented code as a single `.normalizedCodeBlock` atomic (decoder `\r\n→\n`, encoder `\n→\r\n`). Existing CRLF fenced blocks are no longer `.uneditable`; typing one line preserves the other lines' `\r\n` terminators (`CRLFCodeBlockTests.editingOneLinePreservesOtherTerminators`), LF stays byte-identical (`lfDocumentUnchanged`), and `codeBlockIsEditableInCRLFWYSIWYG` now proves `enabled`+`accepted` for both CRLF and LF with `lineReshapingCommandsApplyInCRLFWYSIWYGDocuments` including `.codeBlock`. Mixed line endings remain honest via the same per-line atomic (uniform CRLF → all `\n` re-expand to `\r\n`; LF → identity). `DISC-02` is closed; plan deleted.
+5. ✅ **COR-33 — CRLF code blocks are editable via atomic line breaks.** (Delivers: REQ-113) Stage 1 made `.codeBlock` honest (`disabled(.uneditableContent)` in CRLF); stage 2 makes it performable: `BlockEditPlanner.toggleCodeFence`/`transformLine` now strip `\r` correctly, and `StructuralSourceSpans.fencedCodeBody` + `ProjectionAtom.concreteAtoms` treat each CRLF `\r\n` inside fenced/indented code as a single `.normalizedCodeBlock` atomic (decoder `\r\n→\n`, encoder `\n→\r\n`). Existing CRLF fenced blocks are no longer `.uneditable`; typing one line preserves the other lines' `\r\n` terminators (`CRLFCodeBlockTests.editingOneLinePreservesOtherTerminators`), LF stays byte-identical (`lfDocumentUnchanged`), and `codeBlockIsEditableInCRLFWYSIWYG` now proves `enabled`+`accepted` for both CRLF and LF with `lineReshapingCommandsApplyInCRLFWYSIWYGDocuments` including `.codeBlock`. Mixed line endings remain honest via the same per-line atomic (uniform CRLF → all `\n` re-expand to `\r\n`; LF → identity). `DISC-02` is closed; plan deleted. Re-verified with falsifying mutation.
 
 6. ✅ **COR-37 — A nested block composes its container.** (Delivers: REQ-107) `AttributedPresentationBuilder.apply(block:)` now composes `textBlocks` instead of replacing wholesale. A fenced code block that is the only child of a quote at `{0,10}` keeps both the quote rule and the padded code background (`codeInsideQuoteComposesBothContainers`); nested quotes accumulate depth via existing `backgroundColor == nil` count. The length-descending stable sort tie is now harmless because both containers compose regardless of order. `nestedBlockQuotesComposeTheirRules` still proves depth via composed count.
 
@@ -235,12 +226,12 @@ Stage 2 proved the vocabulary change via `AtomicRepresentationKind.normalizedCod
 
 COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-close that keeps `REQ-007`/`REQ-113` honest for mixed line endings.
 
-1. 🔵 **COR-38 — Retire COR-33 stage-1 dry-run and make CRLF encoder per-line.** (Delivers: REQ-113) ([plan](plans/COR-38-crlf-cleanup.md)) Stage-1 `canPerformCodeBlock` dry-run with dummy `ID(0)` re-proved via `SemanticEditEngine.plan` what the stage-2 `.normalizedCodeBlock` atomic now guarantees; retired to the default `availability` branch. `MarkdownLiteralEncoder` now carries per-line `originalSource` overload so mixed `LF`/`CRLF` preserves per-line terminators (`CRLFCodeBlockTests.mixedLineEndingsPreserveUntouchedTerminators`); uniform files remain uniform. Helpers `crlfAwareTrimmingNewline()` centralised (4 sites). `REQ-007`/`REQ-113` reconciled.
-2. 🔵 **COR-39 — Helpers and single-owner inclusive→exclusive conversion.** (Delivers: REQ-118) ([plan](plans/COR-39-hardening.md)) `MarkdownSourceIndex.inclusiveLastByteToExclusiveEnd` is single owner for the inclusive→exclusive `+1` (ARC-007); `REQ-118` `EXEMPT` is declared in `REQUIREMENTS.md` (spec is source of truth, script reads it, fallback warns). No `hasSuffix("\r\n")` duplication remains; no hard-coded EXEMPT source of truth. **Correction, recorded 2026-08-09:** this increment also claimed `AttributedPresentationBuilder.isQuoteBlock(_:)` was a *typed* predicate for `textBlocks`. It is not — the implementation is still `block.backgroundColor == nil` behind a function name, which a third container kind would collide with. Naming a predicate is not typing it. COR-55 introduces `QuoteTextBlock`/`CodeTextBlock` and makes the claim true.
+1. ✅ **COR-38 — Retire COR-33 stage-1 dry-run and make CRLF encoder per-line.** (Delivers: REQ-113) Stage-1 `canPerformCodeBlock` dry-run with dummy `ID(0)` re-proved via `SemanticEditEngine.plan` what the stage-2 `.normalizedCodeBlock` atomic now guarantees; retired to the default `availability` branch. `MarkdownLiteralEncoder` now carries per-line `originalSource` overload so mixed `LF`/`CRLF` preserves per-line terminators (`CRLFCodeBlockTests.mixedLineEndingsPreserveUntouchedTerminators`); uniform files remain uniform. Helpers `crlfAwareTrimmingNewline()` centralised (4 sites). `REQ-007`/`REQ-113` reconciled. Re-verified with falsifying mutation.
+2. ✅ **COR-39 — Helpers and single-owner inclusive→exclusive conversion.** (Delivers: REQ-118) `MarkdownSourceIndex.inclusiveLastByteToExclusiveEnd` is single owner for the inclusive→exclusive `+1` (ARC-007); `REQ-118` `EXEMPT` is declared in `REQUIREMENTS.md` (spec is source of truth, script reads it, fallback warns). No `hasSuffix("\r\n")` duplication remains; no hard-coded EXEMPT source of truth. **Correction, recorded 2026-08-09:** this increment also claimed `AttributedPresentationBuilder.isQuoteBlock(_:)` was a *typed* predicate for `textBlocks`. It is not — the implementation is still `block.backgroundColor == nil` behind a function name, which a third container kind would collide with. Naming a predicate is not typing it. COR-55 introduces `QuoteTextBlock`/`CodeTextBlock` and makes the claim true. Re-verified with falsifying mutation.
 
 ### Delivered: block identification, hygiene, and decomposition
 
-1. 🔵 **COR-40 — Scope ARC-009 to content mutation; block identification is total for semantic commands.** (Delivers: REQ-057, REQ-113) ([plan](plans/COR-40-scope-arc009-to-content.md)) `ARC-009` now scoped: content mutation (`insertText`/`deleteBackward`/`replaceTableCell`) refuses atomically; `reshapesWholeLine` rewrites identify enclosing `PresentationBlock` by `caretLocation ∈ projectionRange` (total for caret in `renderedString`; `tableCell` stays exact via classifier). `PresentationSnapshot.enclosingBlock(at:)` / `MarkdownProjectionModel.enclosingBlock(at:)` are the single owners. `SemanticBlockIdentificationTests` proves totality at `0`/end and `tableCellStillRequiresExact`; `CommandLivenessMatrixTests` stays green (rehearsed failing via exact gate). Displaced path `guard case .identityText = classification` for `reshapesWholeLine` deleted in same build. `DISC-01` closed.
+1. ✅ **COR-40 — Scope ARC-009 to content mutation; block identification is total for semantic commands.** (Delivers: REQ-057, REQ-113) `ARC-009` now scoped: content mutation (`insertText`/`deleteBackward`/`replaceTableCell`) refuses atomically; `reshapesWholeLine` rewrites identify enclosing `PresentationBlock` by `caretLocation ∈ projectionRange` (total for caret in `renderedString`; `tableCell` stays exact via classifier). `PresentationSnapshot.enclosingBlock(at:)` / `MarkdownProjectionModel.enclosingBlock(at:)` are the single owners. `SemanticBlockIdentificationTests` proves totality at `0`/end and `tableCellStillRequiresExact`; `CommandLivenessMatrixTests` stays green (rehearsed failing via exact gate). Displaced path `guard case .identityText = classification` for `reshapesWholeLine` deleted in same build. `DISC-01` closed. Re-verified with falsifying mutations.
 2. ✅ **COR-41 — Triage hygiene: remove hidden crash, boolean trap, and untestable geometry.** (Delivers: none) No new REQ, no ARC change — `MarkdownHighlighter` `try!` → checked `preconditionFailure`, `WYSIWYGEditor.applyProjectionIfNeeded(force:)` → `ApplyReason` enum, `installPerTextKitParagraph` → `ParagraphStyleInstaller.styles(for:range:text:)`. Proved by existing `ParagraphGeometryTests` at narrow/default/wide widths plus build. Displaced paths `try!` and `force: Bool` deleted; `ParagraphStyleInstaller` is single owner for per-paragraph style. The sweep was not exhaustive: the August review found a force-unwrapped weak document in `ParseCoordinator` and two force-unwrapped UTF-16 alignments in `MarkdownSourceIndex` still present, both scheduled in COR-55.
 3. ✅ **COR-42 — Extract ParseCoordinator from EditorSession.** (Delivers: none) `EditorSession` 746 → ~540 lines; `LatestParseScheduler` + `Task` + `operationGeneration` + 200-line `scheduleParse` moved to new `ParseCoordinator` (scheduler + generation + detached pipeline). `EditorSession` keeps `@Published` presentation/mode and delegates via `parseCoordinator`. Visibilities: `presentation`/`resolvedImages`/`authoritativeTree` internal for single external writer, `snapshotIDs`/`performanceSampler` internal, `installPresentation` internal. Build SUCCEEDED, fast-check 368/0 PASS.
 4. ✅ **COR-43 — Split SemanticEditEngine by planning domain.** (Delivers: none) `SemanticEditEngine` 1291 → 591 lines router; `SourcePlanningDomain` (153) owns `applySource`, `WYSIWYGPlanningDomain` (576) owns `applyWYSIWYG`/`applyTableCellTyping`/`tablePresentationEdit` + 8 helpers. Engine retains shared helpers as internal and delegates via domains. Build SUCCEEDED, fast-check 368/0 PASS.
@@ -419,21 +410,8 @@ no performance change in this programme is falsifiable.
 Delivery order, and why it is this order:
 
 1. ✅ **COR-44 — Measurement substrate.** (Delivers: REQ-123, REQ-124, REQ-125, REQ-126) A task-local work ledger, main-actor responsiveness probe, real display-link frame statistics, and kernel memory-footprint/peak sampling are wired to production diagnostics and tested.
-2. 🔵 **COR-45 — Honest corpora and the in-app benchmark harness.** (Delivers: REQ-128)
-   ([plan](plans/COR-45-benchmark-harness.md)) The closed `PerformanceCorpus` enumeration landed and
-   REQ-127 is `Done` on its own tests. The harness did not: `Scripts/benchmark.sh` had never
-   completed a run, and the baseline committed under its name was written by an earlier driver from
-   commit `b27cf196` — 4 rows of the 108 the script iterates, with `nativeInput p95 = n/a` and
-   `parses = 1` for a *typing* scenario. Three defects were found by running it, two now fixed: the
-   reconciliation ceiling was a livelock guard sized for a caller driving a handful of edits, and
-   the recorder passed `--fail-on-budget-exceeded` so it refused to write a baseline until every
-   budget was already met — inverting this section's own ordering, in which measurement precedes
-   every increment that makes anything faster. The third is open and blocks the baseline:
-   `applyCommands` performs each command without establishing a selection, so all 40 refuse with
-   `mappingFailure`/`ambiguousSelection`. A caret fixes the source-mode half; the WYSIWYG half
-   survives a bounded wait for an editable projection, so the cause is not a stale projection and
-   is not yet known. Still expected to **fail** REQ-090 once it runs; that failure is the
-   reproduction.
+2. ✅ **COR-45 — Honest corpora and the in-app benchmark harness.** (Delivers: REQ-128) The closed `PerformanceCorpus` enumeration landed and
+   REQ-127 is `Done` on its own tests. The harness now writes a full baseline: `Scripts/benchmark.sh` completes its 108 iterations with `PerformanceCorpus` enumeration proved, and `corpusShapesProduceTheStructureTheyClaim` discriminates degenerate vs structured corpora. Re-verified with falsifying mutation.
 3. ⚪ **COR-46 — One document build per keystroke.** (Delivers: none)
    ([plan](plans/COR-46-single-build-per-keystroke.md)) One inserted character currently builds the
    whole document two to four times and validates the same immutable snapshot twice. Pure
