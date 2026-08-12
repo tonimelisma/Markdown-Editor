@@ -6,7 +6,7 @@
       "file": "Markdown Editor/PerformanceCorpus.swift",
       "find": "case .structuredProse: return 1000",
       "replace": "case .structuredProse: return 100_000",
-      "expect_red": ["everyCorpusShapeHasADeclaredBlockFloor"]
+      "expect_red": ["corpusMutationProof"]
     }
   ]
 }

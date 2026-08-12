@@ -6,7 +6,7 @@
       "file": "Markdown Editor/MainActorResponsivenessProbe.swift",
       "find": "sampler.record(.mainActorLatency, durationNanos: DispatchTime.now().uptimeNanoseconds &- start)",
       "replace": "sampler.record(.modeTransition, durationNanos: DispatchTime.now().uptimeNanoseconds &- start)",
-      "expect_red": ["responsivenessProbeRecordsLatencyDistribution", "aTwoHundredMillisecondMainActorBlockAppearsInTheLatencyDistribution"]
+      "expect_red": ["responsivenessMutationProof"]
     }
   ]
 }

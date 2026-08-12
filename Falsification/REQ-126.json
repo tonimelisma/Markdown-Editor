@@ -6,7 +6,7 @@
       "file": "Markdown Editor/MemoryFootprint.swift",
       "find": "peakBytes: UInt64(info.ledger_phys_footprint_peak)",
       "replace": "peakBytes: UInt64(info.phys_footprint)",
-      "expect_red": ["memoryFootprintRecordIsNumericOnly"]
+      "expect_red": ["memoryPeakMutationProof"]
     }
   ]
 }

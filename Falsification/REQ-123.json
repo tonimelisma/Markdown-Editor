@@ -6,7 +6,7 @@
       "file": "Markdown Editor/WorkLedger.swift",
       "find": "currentFrame?.add(mutate)",
       "replace": "if false { currentFrame?.add(mutate) }",
-      "expect_red": ["acceptedEditRecordsItsWorkLedger", "everyWorkScopeIsOpenedByProduction"]
+      "expect_red": ["workLedgerMutationProof"]
     }
   ]
 }

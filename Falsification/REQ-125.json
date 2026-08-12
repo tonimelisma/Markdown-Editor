@@ -6,7 +6,7 @@
       "file": "Markdown Editor/FrameObserver.swift",
       "find": "return denominator > 0 ? excessMillis / denominator : 0",
       "replace": "return 0",
-      "expect_red": ["frameBudgetFollowsTheDisplayLinkCadenceRatherThanAConstant"]
+      "expect_red": ["frameStatisticsMutationProof"]
     }
   ]
 }

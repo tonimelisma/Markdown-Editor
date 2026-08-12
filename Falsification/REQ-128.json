@@ -6,7 +6,7 @@
       "file": "Markdown Editor/BenchmarkDriver.swift",
       "find": "let scenario = Scenario(rawValue: arguments[index + 1]) ?? .typeProse",
       "replace": "let scenario: Scenario = .openAndIdle",
-      "expect_red": ["benchmarkConfigurationPreservesEveryRequestedDimension"]
+      "expect_red": ["benchmarkConfigurationMutationProof"]
     }
   ]
 }

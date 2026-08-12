@@ -3,6 +3,44 @@ import MachO
 import Testing
 @testable import Markdown_Editor
 
+@MainActor
+struct MeasurementSubstrateProofTests {
+    // Verifies: REQ-123
+    @Test func workLedgerMutationProof() {
+        let ledger = WorkLedgerRecorder.scope(.acceptedEdit) {
+            WorkLedgerRecorder.add { $0.documentParses += 1 }
+            return WorkLedgerRecorder.currentForTesting()
+        }
+        #expect(ledger?.documentParses == 1)
+    }
+
+    // Verifies: REQ-124
+    @Test func responsivenessMutationProof() async throws {
+        let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
+        let probe = MainActorResponsivenessProbe(sampler: sampler)
+        probe.captureSampleNow()
+        try await Task.sleep(for: .milliseconds(30))
+        probe.stop()
+        #expect(sampler.drainSummaries().contains { $0.metric == .mainActorLatency })
+        sampler.invalidate()
+    }
+
+    // Verifies: REQ-125
+    @Test func frameStatisticsMutationProof() {
+        #expect(FrameObserver.hitchMillisPerSecond(
+            frameIntervalsNanos: [8_333_333, 24_333_333], cadenceNanos: 8_333_333
+        ) > 15)
+    }
+
+    // Verifies: REQ-126
+    @Test func memoryPeakMutationProof() {
+        var info = task_vm_info_data_t()
+        info.phys_footprint = 10
+        info.ledger_phys_footprint_peak = 20
+        #expect(MemoryFootprint.sample(from: info) == .init(bytes: 10, peakBytes: 20))
+    }
+}
+
 // Verifies: REQ-123
 @Test func acceptedEditRecordsItsWorkLedger() {
     let ledger = WorkLedgerRecorder.scope(.acceptedEdit) {
