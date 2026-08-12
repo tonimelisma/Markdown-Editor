@@ -2,11 +2,11 @@
   "requirement": "REQ-117",
   "mutations": [
     {
-      "rationale": "Ignoring unexecuted cited proofs would let a hanging suite hide a failing requirement.",
-      "file": "Scripts/check-proof-results.sh",
-      "find": "def is_pass(results):\n    return bool(results) and results.issubset({\"Passed\", \"Expected Failure\"})",
-      "replace": "def is_pass(results):\n    return True # falsified",
-      "expect_red": ["Scripts/test-check-delivery-status.sh"]
+      "rationale": "Removing the Verified-by for a Done row would leave it with no proof and the gate must fail.",
+      "file": "docs/REQUIREMENTS.md",
+      "find": "| REQ-117 | WHEN verification runs, the system shall prove that every test cited by a `Done` requirement executed and passed in that run. | COR-35 | Done | `Scripts/check-proof-results.sh` (`is_pass`); `Scripts/check-delivery-status.sh` | `Scripts/check-proof-results.sh` gate on `.xcresult`; `Scripts/test-check-delivery-status.sh`; falsifying mutation observed red |",
+      "replace": "| REQ-117 | WHEN verification runs, the system shall prove that every test cited by a `Done` requirement executed and passed in that run. | COR-35 | Done | `Scripts/check-proof-results.sh` (`is_pass`); `Scripts/check-delivery-status.sh` |  |",
+      "expect_red": ["Scripts/check-proof-results.sh"]
     }
   ]
 }

@@ -2,11 +2,11 @@
   "requirement": "REQ-118",
   "mutations": [
     {
-      "rationale": "Suppressing the unmapped-test check would let a failing test go unnoticed because nothing cites it.",
-      "file": "Scripts/check-proof-results.sh",
-      "find": "if unmapped:\n    failures.append(\n        f\"REQ-118: {len(unmapped)} executed test(s) are cited by no requirement",
-      "replace": "if False: # falsified\n    failures.append(\n        f\"REQ-118: {len(unmapped)} executed test(s) are cited by no requirement # falsified",
-      "expect_red": ["Scripts/test-check-delivery-status.sh"]
+      "rationale": "Removing the exemption declaration would leave the three absence gates uncited and the gate must fail.",
+      "file": "docs/REQUIREMENTS.md",
+      "find": "| REQ-118 | The system shall map every automated test to at least one requirement or to a stated exemption, so that no test can fail unnoticed because nothing refers to it. | COR-35 | Done | `Scripts/check-proof-results.sh` (`unmapped`); `docs/REQUIREMENTS.md` exemptions | `Scripts/check-proof-results.sh` `EXEMPT` parsing; `Scripts/test-check-delivery-status.sh`; falsifying mutation observed red |",
+      "replace": "| REQ-118 | The system shall map every automated test to at least one requirement or to a stated exemption, so that no test can fail unnoticed because nothing refers to it. | COR-35 | Done | `Scripts/check-proof-results.sh` (`unmapped`); `docs/REQUIREMENTS.md` exemptions |  |",
+      "expect_red": ["Scripts/check-proof-results.sh"]
     }
   ]
 }
