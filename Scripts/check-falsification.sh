@@ -43,6 +43,9 @@ done
 [[ -n "$mode" ]] || { usage; exit 2; }
 
 python3 - "$repo_root" "$fixture_root" "$mode" "$range" <<'PY'
+import atexit
+import concurrent.futures
+import hashlib
 import json
 import os
 import pathlib
@@ -278,6 +281,84 @@ def resolve_xcode_proof(mutant_root, proof):
     return f"{test_root.name}/{proof}"
 
 
+# Execution slots.
+#
+# Every mutation used to get a fresh temporary tree with its own DerivedData and its own
+# clonedSourcePackagesDirPath, run one at a time. That made each of the 30 mutations a cold
+# build — re-resolving and recompiling cmark-gfm every time — for a ~25 minute gate on a
+# project whose own DerivedData is 138 MB.
+#
+# A slot is a *stable* directory reused across the mutations assigned to it, so xcodebuild's
+# incremental build applies: a mutation edits one file, and only that file and its dependents
+# recompile. The path must be stable because Xcode's build database keys on absolute paths;
+# a fresh temporary directory per mutation misses the cache by construction.
+#
+# Reuse cannot weaken the gate. A stale artifact would mean the mutation failed to take
+# effect, the cited proof would stay green, and `all expect_red proofs remained green` is
+# already a FAILURE. Incremental reuse therefore fails closed, in the safe direction.
+#
+# Slots are independent trees, so they run concurrently.
+SLOT_COUNT = max(1, int(os.environ.get("FALSIFICATION_WORKERS", "4")))
+
+
+class Slot:
+    """A reusable mutant checkout: stable path, warm DerivedData, isolated HOME/TMPDIR."""
+
+    def __init__(self, index, base):
+        self.index = index
+        self.root = base / f"slot-{index}"
+        self.mutant_root = self.root / "repo"
+        self.execution_root = self.root
+        self.pristine = {}
+        self.ready = False
+
+    EXCLUDES = (".git", ".build", "DerivedData", "build", "SourcePackages", "__pycache__")
+
+    def prepare(self):
+        if self.ready:
+            return
+        self.ready = True
+        if self.mutant_root.is_dir():
+            # Reused slot. Re-sync from source before anything else, so a mutation left behind
+            # by a crashed or interrupted earlier run cannot survive into this one. rsync
+            # preserves mtimes, so unchanged files do not trigger a rebuild and DerivedData —
+            # which lives beside repo/, not inside it — stays warm.
+            command = ["rsync", "-a", "--delete"]
+            for pattern in self.EXCLUDES:
+                command += ["--exclude", pattern]
+            command += [f"{root}/", f"{self.mutant_root}/"]
+            subprocess.run(command, check=True)
+        else:
+            self.root.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(
+                root,
+                self.mutant_root,
+                symlinks=True,
+                ignore=shutil.ignore_patterns(*self.EXCLUDES),
+            )
+        for directory in ("home", "tmp"):
+            (self.root / directory).mkdir(parents=True, exist_ok=True)
+        environment = os.environ.copy()
+        environment["HOME"] = str(self.root / "home")
+        environment["TMPDIR"] = str(self.root / "tmp")
+        self.environment = environment
+
+    def restore(self):
+        """Undo the previous mutation so this slot starts from unmutated source."""
+        for relative, text in self.pristine.items():
+            (self.mutant_root / relative).write_text(text)
+        self.pristine.clear()
+
+    def apply(self, relative, find, replacement):
+        target = self.mutant_root / relative
+        text = target.read_text()
+        if text.count(find) != 1:
+            return False
+        self.pristine[relative] = text
+        target.write_text(text.replace(find, replacement, 1))
+        return True
+
+
 def command_driver(mutant_root, execution_root, mutation_file=""):
     # Repository policy requirements are proved by their executable fixture, not by an
     # application test target.  Keep this driver explicit so a script mutation still has a
@@ -299,8 +380,8 @@ def command_driver(mutant_root, execution_root, mutation_file=""):
     if package.is_file():
         scratch = execution_root / "swift-build"
         cache = execution_root / "swift-cache"
-        scratch.mkdir()
-        cache.mkdir()
+        scratch.mkdir(parents=True, exist_ok=True)
+        cache.mkdir(parents=True, exist_ok=True)
         swiftpm = [
             "--package-path", str(mutant_root), "--scratch-path", str(scratch),
             "--cache-path", str(cache), "--manifest-cache", "local",
@@ -317,7 +398,7 @@ def command_driver(mutant_root, execution_root, mutation_file=""):
         project = projects[0]
         derived_data = execution_root / "DerivedData"
         source_packages = execution_root / "SourcePackages"
-        source_packages.mkdir()
+        source_packages.mkdir(parents=True, exist_ok=True)
         common = [
             "xcodebuild", "-project", str(project), "-scheme", project.stem,
             "-configuration", "Debug", "-derivedDataPath", str(derived_data),
@@ -360,92 +441,130 @@ def run_command(command, cwd, environment):
         return subprocess.CompletedProcess(command, 127, str(error))
 
 
-def execute_mutation(requirement, mutation_index, mutation):
+def execute_mutation(slot, requirement, mutation_index, mutation):
     file_value = mutation["file"]
-    source_path = root / file_value
-    original = source_path.read_text()
     find = mutation["find"]
     replacement = mutation["replace"]
 
-    with tempfile.TemporaryDirectory(prefix=f"falsification-{requirement}-") as temporary:
-        execution_root = pathlib.Path(temporary)
-        mutant_root = execution_root / "repo"
-        shutil.copytree(
-            root,
-            mutant_root,
-            symlinks=True,
-            ignore=shutil.ignore_patterns(
-                ".git", ".build", "DerivedData", "build", "SourcePackages",
-                "__pycache__",
-            ),
-        )
-        mutant_source = mutant_root / file_value
-        if mutant_source.read_text().count(find) != 1:
-            return False, (
-                f"{requirement} mutation {mutation_index}: find no longer matches exactly once "
-                "in isolated tree"
-            )
-        mutant_source.write_text(original.replace(find, replacement, 1))
+    slot.prepare()
+    slot.restore()
+    execution_root = slot.execution_root
+    mutant_root = slot.mutant_root
+    environment = slot.environment
 
-        isolated_home = execution_root / "home"
-        isolated_tmp = execution_root / "tmp"
-        isolated_home.mkdir()
-        isolated_tmp.mkdir()
-        environment = os.environ.copy()
-        environment["HOME"] = str(isolated_home)
-        environment["TMPDIR"] = str(isolated_tmp)
-
-        try:
-            driver = command_driver(mutant_root, execution_root, file_value)
-        except RuntimeError as error:
-            return False, f"{requirement} mutation {mutation_index}: {error}"
-
-        build = run_command(driver["build"], mutant_root, environment)
-        if build.returncode:
-            return False, (
-                f"{requirement} mutation {mutation_index}: mutant does not compile\n"
-                f"{describe_output(build.stdout)}"
-            )
-
-        red_proofs = []
-        for proof_index, proof in enumerate(mutation["expect_red"], 1):
-            result = execution_root / f"result-{proof_index}.xcresult"
-            test = run_command(driver["test"](proof, result), mutant_root, environment)
-            if driver["kind"] in {"shell", "python-script"}:
-                # Shell fixtures expose a positive PASS marker only when the complete fixture
-                # reaches its end.  A non-zero process is the named proof turning red.
-                outcome = "failed" if test.returncode else ("passed" if "PASS" in test.stdout else None)
-            else:
-                outcome = proof_outcome(test.stdout, proof)
-            if outcome is None:
-                return False, (
-                    f"{requirement} mutation {mutation_index}: expect_red proof {proof!r} "
-                    "did not produce an observed named pass/fail outcome\n"
-                    f"{describe_output(test.stdout)}"
-                )
-            if outcome == "failed":
-                red_proofs.append(proof)
-
-        if not red_proofs:
-            return False, (
-                f"{requirement} mutation {mutation_index}: all expect_red proofs remained green"
-            )
-        return True, (
-            f"{requirement} mutation {mutation_index}: PASS "
-            f"({', '.join(red_proofs)} red)"
+    if not slot.apply(file_value, find, replacement):
+        return False, (
+            f"{requirement} mutation {mutation_index}: find no longer matches exactly once "
+            "in isolated tree"
         )
 
+    try:
+        driver = command_driver(mutant_root, execution_root, file_value)
+    except RuntimeError as error:
+        return False, f"{requirement} mutation {mutation_index}: {error}"
+
+    build = run_command(driver["build"], mutant_root, environment)
+    if build.returncode:
+        return False, (
+            f"{requirement} mutation {mutation_index}: mutant does not compile\n"
+            f"{describe_output(build.stdout)}"
+        )
+
+    red_proofs = []
+    for proof_index, proof in enumerate(mutation["expect_red"], 1):
+        result = execution_root / f"result-{requirement}-{mutation_index}-{proof_index}.xcresult"
+        shutil.rmtree(result, ignore_errors=True)
+        test = run_command(driver["test"](proof, result), mutant_root, environment)
+        if driver["kind"] in {"shell", "python-script"}:
+            # Shell fixtures expose a positive PASS marker only when the complete fixture
+            # reaches its end.  A non-zero process is the named proof turning red.
+            outcome = "failed" if test.returncode else ("passed" if "PASS" in test.stdout else None)
+        else:
+            outcome = proof_outcome(test.stdout, proof)
+        if outcome is None:
+            return False, (
+                f"{requirement} mutation {mutation_index}: expect_red proof {proof!r} "
+                "did not produce an observed named pass/fail outcome\n"
+                f"{describe_output(test.stdout)}"
+            )
+        if outcome == "failed":
+            red_proofs.append(proof)
+
+    if not red_proofs:
+        return False, (
+            f"{requirement} mutation {mutation_index}: all expect_red proofs remained green"
+        )
+    return True, (
+        f"{requirement} mutation {mutation_index}: PASS "
+        f"({', '.join(red_proofs)} red)"
+    )
+
+
+work = [
+    (requirement, index, mutation)
+    for requirement in sorted(validated_manifests)
+    for index, mutation in enumerate(validated_manifests[requirement]["mutations"], 1)
+]
 
 execution_failures = []
 execution_passes = 0
-for requirement in sorted(validated_manifests):
-    for mutation_index, mutation in enumerate(validated_manifests[requirement]["mutations"], 1):
-        passed, message = execute_mutation(requirement, mutation_index, mutation)
-        print(f"check-falsification: {message}", file=sys.stderr if not passed else sys.stdout)
-        if not passed:
-            execution_failures.append(message)
-        else:
-            execution_passes += 1
+
+def resolve_slot_base():
+    """Warm, reusable slots for the real repository; disposable ones for fixture roots.
+
+    A fixture root is a throwaway tree built by test-check-falsification.sh, and several
+    different ones appear in one test run. Sharing a warm slot between them would carry one
+    fixture's source into the next, so fixtures get a fresh base that is removed at exit.
+
+    The real repository keys its base on a stable digest of its path — not hash(), which is
+    salted per process and would produce a cold slot on every run.
+    """
+    if fixture is not None:
+        base = pathlib.Path(tempfile.mkdtemp(prefix="falsification-fixture-slots-"))
+        atexit.register(shutil.rmtree, base, True)
+        return base
+    configured = os.environ.get("FALSIFICATION_SLOT_DIR")
+    if configured:
+        base = pathlib.Path(configured)
+    else:
+        digest = hashlib.sha256(str(root).encode()).hexdigest()[:8]
+        base = pathlib.Path(tempfile.gettempdir()) / f"falsification-slots-{digest}"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+if work:
+    slot_base = resolve_slot_base()
+    slots = [Slot(index, slot_base) for index in range(min(SLOT_COUNT, len(work)))]
+    total = len(work)
+    completed = 0
+    print(
+        f"check-falsification: executing {total} mutation(s) across {len(slots)} slot(s) "
+        f"in {slot_base}",
+        flush=True,
+    )
+
+    def run_queue(slot, items):
+        results = []
+        for requirement, index, mutation in items:
+            results.append((requirement, index) + execute_mutation(slot, requirement, index, mutation))
+        return results
+
+    queues = [work[offset::len(slots)] for offset in range(len(slots))]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(slots)) as pool:
+        futures = [pool.submit(run_queue, slot, items) for slot, items in zip(slots, queues)]
+        for future in concurrent.futures.as_completed(futures):
+            for requirement, index, passed, message in future.result():
+                completed += 1
+                print(
+                    f"check-falsification: [{completed}/{total}] {message}",
+                    file=sys.stderr if not passed else sys.stdout,
+                    flush=True,
+                )
+                if not passed:
+                    execution_failures.append(message)
+                else:
+                    execution_passes += 1
 
 if execution_failures:
     print(
