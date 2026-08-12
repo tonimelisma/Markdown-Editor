@@ -53,9 +53,9 @@ Delivery order:
 2. ✅ **COR-19 — Diagnostic lifetime and shutdown.** (Delivers: REQ-095, REQ-096) `EditorSession` detaches its sampler and
    subscriptions, diagnostics serialize directly through an off-main sink, and terminal durability
    no longer waits for main-actor cleanup. Re-verified on observed `DiagnosticLogTests`/`DiagnosticLifetimeTests`/`ReconciliationInvariantTests` with falsifying mutations.
-3. 🔵 **INC-05 — Semantic presentation and typography.** (Delivers: REQ-106) ([plan](plans/INC-05-semantic-presentation-reverification.md)) Semantic projection blocks now drive the
+3. ✅ **INC-05 — Semantic presentation and typography.** (Delivers: REQ-106) Semantic projection blocks drive the
    approved typography, reading column, break semantics, list/task alignment, quote/code/table
-   treatments, bounded images, thematic separators, and literal HTML styling.
+   treatments, bounded images, thematic separators, and literal HTML styling. Re-verified on observed `ParagraphGeometryTests`/`AttributedPresentationTests` with falsifying mutation.
 4. ✅ **COR-20 — Incremental TextKit application and honest latency.** (Delivers: REQ-103, REQ-109) Ordinary accepted WYSIWYG
    edits now use validated range patches through `TextStorageApplier`, and performance sampling
    covers the complete native callback plus split parse, image, and application boundaries.
@@ -203,9 +203,20 @@ Delivery order, and why it is this order:
 
 Requirements currently `Correction` and the increment that clears each: this sentence recorded an
 empty backlog until COR-62. The proof-floor audit re-verified every `Done` row against the new
-gates and returned 82 rows to `Correction`, each naming the re-verification it needs. That backlog
-is the audit's deliverable rather than a regression; REQUIREMENTS is its register, and the
-increments that clear it are the 🔵 rows whose plans COR-62 restored.
+gates and returned 81 rows to `Correction`, each naming the re-verification it needs. That backlog
+is the audit's deliverable rather than a regression, and `REQUIREMENTS.md` is its register.
+
+**Only 13 of those 81 rows are reachable from a plan** — those owned by COR-21, COR-26, COR-29,
+COR-33, COR-34, COR-35, COR-38, COR-40, COR-45 and INC-05, whose plans COR-62 restored from Git.
+The other **68 rows have no plan**, because the increments that own them (COR-01–COR-11, COR-14,
+INC-01–INC-04) were delivered long before the gates existed and their plans were deleted correctly
+at the time, leaving nothing to restore. §3 starts a build unit from an approved plan, so until
+COR-67 below is written into `docs/plans/`, two thirds of the outstanding evidence-floor work is
+invisible to anyone reading that directory.
+
+An earlier revision of this paragraph asserted that the restored 🔵 rows were what cleared the
+backlog. That was true of 13 rows and false of 68. No gate caught it: `check-delivery-status.sh`
+resolves `Delivers:` fields, and this was prose.
 
 Two findings are recorded but deliberately unplanned, so they are not mistaken for oversights:
 the plain Cmd+S/Save-panel cancellation gap already documented in `ENGINEERING.md` §9, which is a
@@ -315,6 +326,15 @@ Delivery order, and why it is this order:
 7. ✅ **COR-62 — Audit the proof floor.** (Delivers: none) All retained `Done`
    rows re-verified against the new gates, hardest-consequence first. It retained only rows with
    observed proofs and recorded the remaining evidence-floor corrections.
+8. 🔵 **COR-67 — Make the audit's backlog executable.** (Delivers: none)
+   ([plan](plans/COR-67-evidence-floor-reverification.md)) COR-62 produced 81 `Correction` rows and
+   restored the plans it could, but 68 of those rows belong to increments whose plans had been
+   deleted correctly on delivery, years of increments before the gates existed. Nothing in
+   `docs/plans/` describes them, so §3's "start from an approved plan" has nothing to start from and
+   the largest body of outstanding work in the repository is the least visible. COR-67 writes that
+   work down as sixteen independently landable units. It re-verifies rather than re-implements: a
+   unit that finds the behaviour sound closes on evidence, and a unit that finds a real defect stops
+   and reports it as a new increment rather than fixing it in place.
 
 The performance programme resumes after the evidence floor: measurements are provenance-bound, and
 retained delivery claims have observed falsifying mutations.

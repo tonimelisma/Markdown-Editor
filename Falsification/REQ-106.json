@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-106",
+  "mutations": [
+    {
+      "rationale": "Collapsing soft and hard break presentation would make a soft break indistinguishable from a hard break, breaking the distinct break semantics.",
+      "file": "Markdown Editor/ProjectionCompiler.swift",
+      "find": "        case .softBreak:\n            appendSynthetic(\" \", kind: .softLineBreak, after: node, refuseEdits: false)",
+      "replace": "        case .softBreak:\n            appendSynthetic(\"\\n\", kind: .softLineBreak, after: node, refuseEdits: false)",
+      "expect_red": ["softAndHardBreaksHaveDistinctPresentationText"]
+    }
+  ]
+}
