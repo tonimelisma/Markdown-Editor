@@ -18,6 +18,7 @@ KNOWN_METRICS = {
     "imageResolution",
     "authoritativeApplication",
     "layoutApplication",
+    "sourceHighlightApplication",
 }
 
 
