@@ -17,7 +17,7 @@ Duration: 2 s per case
 Interval: 120 ms
 Samples: 108 case results
 Frame hitch ms/s: n/a
-Commit: 77b610603cd291b6860fadc6d3653b0f524ab267
+Commit: 1bbbf1711b45c5322874802c0a717e5629e2e6ef
 Run ID: 93788238-7412-43c8-a874-188c3c05781e
 
 | scenario | corpus | size | parseProjection p95 ns | actions | accepted | refused | progress |
