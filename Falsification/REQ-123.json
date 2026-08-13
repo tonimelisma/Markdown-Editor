@@ -4,8 +4,8 @@
     {
       "rationale": "If the explicit recorder drops every increment, the actor/task/GCD propagation proof must turn red.",
       "file": "Markdown Editor/WorkLedger.swift",
-      "find": "guard state.ledgers[context.id] != nil else { return }",
-      "replace": "guard false else { return }",
+      "find": "guard state.ledgers[context.id] != nil else { return false }",
+      "replace": "guard state.ledgers[context.id] == nil else { return false }",
       "expect_red": ["Markdown EditorTests/COR69IntentMeasurementTests/editorSessionRouteRetainsIntentThroughParse()"]
     }
   ]

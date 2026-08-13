@@ -350,8 +350,7 @@ enum BenchmarkDriver {
                 return result
             }
             for scrollView in scrolls {
-                scrollView.layoutSubtreeIfNeeded()
-                scrollView.documentView?.layoutSubtreeIfNeeded()
+                waitForBenchmarkScrollLayout(in: scrollView)
                 let maxY = measuredMaxScrollY(in: scrollView)
                 guard maxY > 0 else { continue }
                 let before = scrollView.contentView.bounds.origin.y
@@ -426,17 +425,26 @@ enum BenchmarkDriver {
         return (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews(in:))
     }
 
+    private static func waitForBenchmarkScrollLayout(in scrollView: NSScrollView) {
+        // Presentation installation is asynchronous. Give AppKit a bounded opportunity to
+        // deliver its normal layout/display work before classifying a scroll as a no-op; this
+        // preserves the no-progress error while avoiding a false error during a real transition.
+        for _ in 0..<8 {
+            scrollView.layoutSubtreeIfNeeded()
+            scrollView.documentView?.layoutSubtreeIfNeeded()
+            scrollView.displayIfNeeded()
+            scrollView.documentView?.displayIfNeeded()
+            if measuredMaxScrollY(in: scrollView) > 0 { return }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.025))
+        }
+    }
+
     private static func measuredMaxScrollY(in scrollView: NSScrollView) -> CGFloat {
         guard let documentView = scrollView.documentView else { return 0 }
         let renderedHeight: CGFloat
         if let textView = documentView as? NSTextView,
            let layoutManager = textView.layoutManager,
            let textContainer = textView.textContainer {
-            // AppKit's view layout pass does not necessarily force TextKit to finish laying out
-            // a newly installed large attributed document. Ensure the real document height is
-            // available before declaring this scroll action a no-op; otherwise a transient zero
-            // usedRect becomes a false benchmark error for large structured corpora.
-            layoutManager.ensureLayout(for: textContainer)
             let used = layoutManager.usedRect(for: textContainer)
             renderedHeight = max(
                 textView.bounds.height,
