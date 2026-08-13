@@ -32,6 +32,7 @@ struct DiagnosticLogTests {
         ]) == fifo)
     }
 
+    // Verifies: REQ-135 — a regular-file or symlink override cannot become a coverage pipe.
     @Test func coveragePipeOverrideRejectsRegularFileAndSymlink() throws {
         let directory = makeTemporaryDirectory()
         let regularDirectory = directory.appendingPathComponent("regular", isDirectory: true)
