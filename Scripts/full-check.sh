@@ -49,6 +49,7 @@ start_coverage_capture() {
     coverage_pipe_path="$pipe_path"
     coverage_session="$(openssl rand -hex 16)"
     printf '%s\n' "$coverage_session" > "$(dirname "$output_path")/.coverage-session"
+    printf '%s\n' "$coverage_session" > "$(dirname "$pipe_path")/.coverage-session"
     export EDITOR_TRACE_COVERAGE_SESSION="$coverage_session"
 }
 stop_coverage_capture() {

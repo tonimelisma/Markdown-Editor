@@ -14,6 +14,8 @@ import Darwin
 @MainActor
 struct DiagnosticLogTests {
 
+    // Verifies: REQ-135 — evidence coverage accepts only a gate-owned FIFO, not a regular file
+    // or symlink that could redirect records outside the capture channel.
     @Test func coverageEvidenceRequiresFIFOs() throws {
         let directory = makeTemporaryDirectory()
         let regular = directory.appendingPathComponent("regular.pipe")

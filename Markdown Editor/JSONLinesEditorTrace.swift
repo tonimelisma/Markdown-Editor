@@ -88,8 +88,7 @@ final class JSONLinesEditorTrace: EditorTraceSink {
 
         init?(hostKind: DiagnosticHostKind) {
             guard let path = JSONLinesEditorTrace.coveragePipeURL(),
-                  let session = ProcessInfo.processInfo.environment["EDITOR_TRACE_COVERAGE_SESSION"],
-                  !session.isEmpty else { return nil }
+                  let session = JSONLinesEditorTrace.coverageSession(for: path) else { return nil }
             harness = hostKind == .production ? "process" : "component"
             evidenceSession = session
             startedAt = Date()
@@ -173,6 +172,17 @@ final class JSONLinesEditorTrace: EditorTraceSink {
         var info = stat()
         guard lstat(url.path, &info) == 0 else { return false }
         return (info.st_mode & S_IFMT) == S_IFIFO
+    }
+
+    private static func coverageSession(for pipeURL: URL) -> String? {
+        let sidecar = pipeURL.deletingLastPathComponent().appendingPathComponent(".coverage-session")
+        if let session = try? String(contentsOf: sidecar, encoding: .utf8),
+           session.trimmingCharacters(in: .whitespacesAndNewlines).range(of: "^[0-9a-f]{32}$", options: .regularExpression) != nil {
+            return session.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard let session = ProcessInfo.processInfo.environment["EDITOR_TRACE_COVERAGE_SESSION"],
+              session.range(of: "^[0-9a-f]{32}$", options: .regularExpression) != nil else { return nil }
+        return session
     }
 
     struct Mapped {
