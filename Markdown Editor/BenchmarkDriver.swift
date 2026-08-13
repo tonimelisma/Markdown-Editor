@@ -503,9 +503,12 @@ enum BenchmarkDriver {
                 for _ in 0..<8 {
                     let before = scrollView.contentView.bounds.origin.y
                     scrollView.contentView.setBoundsOrigin(NSPoint(x: 0, y: maxY))
-                    let reached = scrollView.contentView.bounds.origin.y == maxY
+                    // TextKit can clamp a measured used-rect height to a slightly smaller
+                    // scrollable document frame. The invariant is real movement, not exact
+                    // equality with a derived CGFloat target.
+                    let moved = scrollView.contentView.bounds.origin.y > before + 0.5
                     scrollView.contentView.setBoundsOrigin(.zero)
-                    if reached && before != maxY {
+                    if moved {
                         result.progress += 1
                         break
                     }
@@ -622,9 +625,11 @@ enum BenchmarkDriver {
         for _ in 0..<8 {
             let before = scrollView.contentView.bounds.origin.y
             scrollView.contentView.setBoundsOrigin(NSPoint(x: 0, y: maxY))
-            let reached = scrollView.contentView.bounds.origin.y == maxY
+            // The scroll view is the authority for the reachable offset; measuredMaxScrollY
+            // is only a candidate target and may exceed the clamped frame for large layouts.
+            let moved = scrollView.contentView.bounds.origin.y > before + 0.5
             scrollView.contentView.setBoundsOrigin(.zero)
-            if reached && before != maxY { return true }
+            if moved { return true }
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.025))
             scrollView.layoutSubtreeIfNeeded()
             scrollView.documentView?.layoutSubtreeIfNeeded()
