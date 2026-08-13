@@ -7,6 +7,7 @@ cases_file="$repo_root/Markdown Editor/EditorTrace.swift"
 exemptions_file="$repo_root/docs/trace-coverage-exemptions.md"
 routes_file="$repo_root/docs/proof-routes.json"
 log_dirs=()
+session_files=()
 
 usage() {
     echo "usage: check-instrumentation-coverage.sh --log-dir <directory> [--log-dir <directory>]" >&2
@@ -15,6 +16,7 @@ usage() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --log-dir) [[ $# -ge 2 ]] || usage; log_dirs+=("$2"); shift 2 ;;
+        --session-file) [[ $# -ge 2 ]] || usage; session_files+=("$2"); shift 2 ;;
         --cases-file) [[ $# -ge 2 ]] || usage; cases_file="$2"; shift 2 ;;
         --exemptions) [[ $# -ge 2 ]] || usage; exemptions_file="$2"; shift 2 ;;
         --routes) [[ $# -ge 2 ]] || usage; routes_file="$2"; shift 2 ;;
@@ -28,7 +30,7 @@ if [[ ${#log_dirs[@]} -eq 0 ]]; then
     echo "instrumentation-coverage: no diagnostic log directories supplied" >&2
     exit 1
 fi
-python3 - "$cases_file" "$exemptions_file" "$routes_file" "${log_dirs[@]}" <<'PY'
+python3 - "$cases_file" "$exemptions_file" "$routes_file" "${log_dirs[@]}" --session-file "${session_files[@]}" <<'PY'
 import json
 import pathlib
 import re
@@ -37,7 +39,13 @@ import sys
 cases_path = pathlib.Path(sys.argv[1])
 exemptions_path = pathlib.Path(sys.argv[2])
 routes_path = pathlib.Path(sys.argv[3])
-log_dirs = [pathlib.Path(value) for value in sys.argv[4:]]
+tail = sys.argv[4:]
+try:
+    marker = tail.index("--session-file")
+except ValueError:
+    marker = len(tail)
+log_dirs = [pathlib.Path(value) for value in tail[:marker]]
+session_paths = [pathlib.Path(value) for value in tail[marker + 1:]] if marker < len(tail) else []
 
 if not cases_path.is_file():
     raise SystemExit(f"instrumentation-coverage: missing case source {cases_path}")
@@ -198,11 +206,33 @@ for directory in log_dirs:
 if not files:
     raise SystemExit("instrumentation-coverage: supplied logs contain no JSON Lines files")
 
+session_by_directory = {}
+for session_path in session_paths:
+    if not session_path.is_file():
+        raise SystemExit(f"instrumentation-coverage: missing session file {session_path}")
+    session = session_path.read_text(encoding="utf-8").strip()
+    if not re.fullmatch(r"[0-9a-f]{32}", session):
+        raise SystemExit(f"instrumentation-coverage: invalid session file {session_path}")
+    session_by_directory[session_path.parent.resolve()] = session
+
+def expected_session(file):
+    resolved = file.resolve()
+    candidates = [
+        (directory, session)
+        for directory, session in session_by_directory.items()
+        if directory == resolved.parent or directory in resolved.parents
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: len(item[0].parts))[1]
+
 emitted = set()
 origins = set()
 observed_harnesses = {name: set() for name in routes}
 known_origins = {"productionRoute", "encodingProbe", "gateFixture"}
 for file in files:
+    expected_file_session = expected_session(file)
+    header_session = None
     for line_number, line in enumerate(file.read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
             continue
@@ -211,6 +241,12 @@ for file in files:
         except json.JSONDecodeError as error:
             raise SystemExit(f"instrumentation-coverage: invalid JSON in {file}:{line_number}: {error}")
         event = record.get("ev")
+        if event == "runStart":
+            header_session = record.get("run", {}).get("session")
+            if session_paths and header_session is not None and header_session != expected_file_session:
+                raise SystemExit(
+                    f"instrumentation-coverage: run header session does not match capture sidecar in {file}"
+                )
         if event is not None:
             origin = record.get("origin")
             if event not in {"runStart", "runEnd", "repeated", "sizeLimitReached", "mainActorStall"}:
@@ -233,6 +269,11 @@ for file in files:
                     if harness not in {"process", "component"}:
                         raise SystemExit(
                             f"instrumentation-coverage: production event {event} has missing or unknown harness"
+                        )
+                    session = record.get("session")
+                    if session_paths and (session != expected_file_session or session != header_session):
+                        raise SystemExit(
+                            f"instrumentation-coverage: production event {event} is not bound to its capture session"
                         )
                     # Component runs may exercise a route that is process-only in the final
                     # evidence contract. They must not count toward that contract, but their

@@ -37,6 +37,7 @@ rm -rf "$test_coverage_dir"/*
 touch "$test_coverage_dir/.enabled"
 export EDITOR_TRACE_COVERAGE_LOG_DIR="$test_coverage_dir"
 coverage_pipe_path=""
+coverage_session=""
 start_coverage_capture() {
     local pipe_path="$1"
     local output_path="$2"
@@ -46,6 +47,9 @@ start_coverage_capture() {
     cat "$pipe_path" > "$output_path" &
     coverage_reader_pid=$!
     coverage_pipe_path="$pipe_path"
+    coverage_session="$(openssl rand -hex 16)"
+    printf '%s\n' "$coverage_session" > "$(dirname "$output_path")/.coverage-session"
+    export EDITOR_TRACE_COVERAGE_SESSION="$coverage_session"
 }
 stop_coverage_capture() {
     kill "$coverage_reader_pid" 2>/dev/null || true
@@ -118,7 +122,9 @@ printf 'tests: %s passed, %s failed\n' \
 printf '%s\n' '── observed instrumentation coverage gate'
 ./Scripts/check-instrumentation-coverage.sh \
     --log-dir "$coverage_dir/smoke/production-route.jsonl" \
-    --log-dir "$test_coverage_dir/production-route.jsonl" || { instrumentation_gate=fail; failures=$((failures + 1)); }
+    --log-dir "$test_coverage_dir/production-route.jsonl" \
+    --session-file "$coverage_dir/smoke/.coverage-session" \
+    --session-file "$test_coverage_dir/.coverage-session" || { instrumentation_gate=fail; failures=$((failures + 1)); }
 ./Scripts/test-check-instrumentation-coverage.sh || { instrumentation_gate=fail; failures=$((failures + 1)); }
 printf '%s\n' '── proof results'
 if ! ./Scripts/check-proof-results.sh "$bundle"; then

@@ -8,10 +8,24 @@
 import Testing
 import AppKit
 import Foundation
+import Darwin
 @testable import Markdown_Editor
 
 @MainActor
 struct DiagnosticLogTests {
+
+    @Test func coverageEvidenceRequiresFIFOs() throws {
+        let directory = makeTemporaryDirectory()
+        let regular = directory.appendingPathComponent("regular.pipe")
+        try Data().write(to: regular)
+        let symlink = directory.appendingPathComponent("symlink.pipe")
+        try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: regular)
+        let fifo = directory.appendingPathComponent("fifo.pipe")
+        #expect(mkfifo(fifo.path, 0o600) == 0)
+        #expect(!JSONLinesEditorTrace.isCoverageFIFO(at: regular))
+        #expect(!JSONLinesEditorTrace.isCoverageFIFO(at: symlink))
+        #expect(JSONLinesEditorTrace.isCoverageFIFO(at: fifo))
+    }
 
     @Test func samplerComputesPercentilesFromKnownDistribution() {
         let sampler = PerformanceSampler(trace: nil)

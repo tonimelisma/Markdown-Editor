@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import Darwin
 
 /// Production editor trace sink. Maps typed editor events onto JSON Lines diagnostic records.
 ///
@@ -80,14 +81,17 @@ final class JSONLinesEditorTrace: EditorTraceSink {
     final class ProductionRouteCoverageRecorder {
         private let handle: FileHandle?
         private let harness: String
+        private let evidenceSession: String
         private let startedAt: Date
         private let startUptimeNanos: UInt64
         private var nextSequence: UInt64 = 0
 
         init?(hostKind: DiagnosticHostKind) {
-            let path = JSONLinesEditorTrace.coveragePipeURL()
-            guard FileManager.default.fileExists(atPath: path.path) else { return nil }
+            guard let path = JSONLinesEditorTrace.coveragePipeURL(),
+                  let session = ProcessInfo.processInfo.environment["EDITOR_TRACE_COVERAGE_SESSION"],
+                  !session.isEmpty else { return nil }
             harness = hostKind == .production ? "process" : "component"
+            evidenceSession = session
             startedAt = Date()
             startUptimeNanos = DispatchTime.now().uptimeNanoseconds
             let runID = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12))
@@ -98,7 +102,8 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 shortVersion: "0",
                 buildVersion: "0",
                 osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
-                processID: ProcessInfo.processInfo.processIdentifier
+                processID: ProcessInfo.processInfo.processIdentifier,
+                evidenceSession: session
             )
             handle = try? FileHandle(forWritingTo: path)
             append(header.jsonLine)
@@ -126,6 +131,7 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 productionRoute: route,
                 evidenceChannel: "productionRoutePipe",
                 evidenceHarness: harness,
+                evidenceSession: evidenceSession,
                 data: data
             )
             append(record.jsonLine)
@@ -151,13 +157,22 @@ final class JSONLinesEditorTrace: EditorTraceSink {
     /// the scripts, so the normal xcodebuild gate remains hermetic.
     static func coveragePipeURL(
         environment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> URL {
+    ) -> URL? {
         if let override = environment["EDITOR_TRACE_COVERAGE_LOG_DIR"], !override.isEmpty {
             let candidate = URL(fileURLWithPath: override, isDirectory: true)
                 .appendingPathComponent("route.pipe")
-            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return Self.isCoverageFIFO(at: candidate) ? candidate : nil
+            }
         }
-        return hostedCoverageDirectory().appendingPathComponent("route.pipe")
+        let fallback = hostedCoverageDirectory().appendingPathComponent("route.pipe")
+        return Self.isCoverageFIFO(at: fallback) ? fallback : nil
+    }
+
+    static func isCoverageFIFO(at url: URL) -> Bool {
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else { return false }
+        return (info.st_mode & S_IFMT) == S_IFIFO
     }
 
     struct Mapped {
