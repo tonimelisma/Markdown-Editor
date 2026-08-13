@@ -124,22 +124,30 @@ for name, route in routes.items():
                     return position
         return None
 
+    def type_body(source, type_path):
+        current = source
+        for type_name in type_path.split("."):
+            owner_match = re.search(
+                rf"\b(?:class|struct|enum)\s+{re.escape(type_name)}\b[^{{]*{{", current
+            )
+            if not owner_match:
+                return None
+            owner_opening = current.find("{", owner_match.start())
+            owner_end = matching_brace(current, owner_opening)
+            if owner_end is None:
+                raise SystemExit(f"instrumentation-coverage: unterminated owner {type_path}")
+            current = current[owner_opening + 1:owner_end]
+        return current
+
     owner_sources = []
     for path in cases_path.parent.rglob("*.swift"):
         if "Markdown EditorTests" in path.parts:
             continue
         source = path.read_text(encoding="utf-8", errors="ignore")
         code = code_only(source)
-        owner_match = re.search(
-            rf"\b(?:class|struct|enum)\s+{re.escape(route['owner'])}\b[^{{]*{{", code
-        )
-        if not owner_match:
-            continue
-        owner_opening = code.find("{", owner_match.start())
-        owner_end = matching_brace(code, owner_opening)
-        if owner_end is None:
-            raise SystemExit(f"instrumentation-coverage: unterminated owner {route['owner']}")
-        owner_sources.append(code[owner_match.start():owner_end + 1])
+        owner = type_body(code, route["owner"])
+        if owner is not None:
+            owner_sources.append(owner)
     if not owner_sources:
         raise SystemExit(f"instrumentation-coverage: route for {name} names an absent production owner")
     entry_pattern = re.compile(rf"\bfunc\s+{re.escape(route['entry'])}\s*\(")
@@ -221,9 +229,16 @@ for file in files:
                             f"instrumentation-coverage: production event {event} has route {route_name!r}"
                         )
                     emitted.add(event)
-                    observed_harnesses.setdefault(event, set()).add(
-                        "process" if "smoke" in file.parts else "component"
-                    )
+                    harness = record.get("harness")
+                    if harness not in {"process", "component"}:
+                        raise SystemExit(
+                            f"instrumentation-coverage: production event {event} has missing or unknown harness"
+                        )
+                    if routes.get(event, {}).get("allowedHarness") == "process" and harness != "process":
+                        raise SystemExit(
+                            f"instrumentation-coverage: process-only event {event} was emitted by {harness} harness"
+                        )
+                    observed_harnesses.setdefault(event, set()).add(harness)
 if not emitted:
     raise SystemExit("instrumentation-coverage: logs emitted zero event names")
 

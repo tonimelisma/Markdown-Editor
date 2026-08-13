@@ -35,11 +35,14 @@ if [[ -n "${EDITOR_TRACE_COVERAGE_LOG_DIR:-}" ]]; then
 else
     test_coverage_dir="$repo_root/.build/instrumentation-coverage-tests"
 fi
+coverage_pipe_dir="$repo_root/.build/instrumentation-coverage-tests"
 mkdir -p "$coverage_dir"
 mkdir -p "$test_coverage_dir"
+mkdir -p "$coverage_pipe_dir"
 rm -rf "$test_coverage_dir"/*
 touch "$test_coverage_dir/.enabled"
 export EDITOR_TRACE_COVERAGE_LOG_DIR="$test_coverage_dir"
+coverage_pipe_path=""
 start_coverage_capture() {
     local pipe_path="$1"
     local output_path="$2"
@@ -48,12 +51,12 @@ start_coverage_capture() {
     mkfifo "$pipe_path"
     cat "$pipe_path" > "$output_path" &
     coverage_reader_pid=$!
-    export EDITOR_TRACE_COVERAGE_LOG_DIR="$(dirname "$pipe_path")"
+    coverage_pipe_path="$pipe_path"
 }
 stop_coverage_capture() {
     kill "$coverage_reader_pid" 2>/dev/null || true
     wait "$coverage_reader_pid" 2>/dev/null || true
-    rm -f "$EDITOR_TRACE_COVERAGE_LOG_DIR/route.pipe"
+    rm -f "$coverage_pipe_path"
 }
 step() {
     printf '\n── %s\n' "$1"
@@ -67,7 +70,7 @@ step "measurement provenance"
 ./Scripts/test-check-measurement-provenance.sh || { failures=$((failures + 1)); }
 
 step "observed instrumentation coverage"
-start_coverage_capture "$test_coverage_dir/route.pipe" "$coverage_dir/smoke/production-route.jsonl"
+start_coverage_capture "$coverage_pipe_dir/route.pipe" "$coverage_dir/smoke/production-route.jsonl"
 SMOKE_DERIVED_DATA="$derived/smoke" SMOKE_LOG_COPY_DIR="$coverage_dir/smoke" \
     ./Scripts/smoke-test.sh >"$coverage_dir/smoke.log" 2>&1 || {
     instrumentation_gate=fail
@@ -105,7 +108,7 @@ fi
 step "non-performance test suites"
 # Excluded on purpose: PerformanceBoundaryTests owns the 100,000-UTF-16 corpus gates, which are
 # the slow part and which REQ-090 requires be run focused rather than alongside everything else.
-start_coverage_capture "$test_coverage_dir/route.pipe" "$test_coverage_dir/production-route.jsonl"
+start_coverage_capture "$coverage_pipe_dir/route.pipe" "$test_coverage_dir/production-route.jsonl"
 xcodebuild test \
     -project "Markdown Editor.xcodeproj" \
     -scheme "Markdown Editor" \

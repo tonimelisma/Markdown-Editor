@@ -63,6 +63,9 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
     let productionRoute: DiagnosticEventName?
     /// Present only on records written through the gate-owned production evidence channel.
     let evidenceChannel: String?
+    /// Trusted harness identity supplied by the owning diagnostic run, never inferred from a
+    /// copied log filename.
+    let evidenceHarness: String?
     let data: [(key: DiagnosticField, value: DiagnosticValue)]
 
     init(
@@ -77,6 +80,7 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
         origin: DiagnosticEvidenceOrigin? = .gateFixture,
         productionRoute: DiagnosticEventName? = nil,
         evidenceChannel: String? = nil,
+        evidenceHarness: String? = nil,
         data: [(key: DiagnosticField, value: DiagnosticValue)] = []
     ) {
         self.wallClock = wallClock
@@ -90,6 +94,7 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
         self.origin = origin
         self.productionRoute = productionRoute
         self.evidenceChannel = evidenceChannel
+        self.evidenceHarness = evidenceHarness
         self.data = data
     }
 
@@ -103,6 +108,7 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
             && lhs.origin == rhs.origin
             && lhs.productionRoute == rhs.productionRoute
             && lhs.evidenceChannel == rhs.evidenceChannel
+            && lhs.evidenceHarness == rhs.evidenceHarness
             && lhs.data.count == rhs.data.count
             && zip(lhs.data, rhs.data).allSatisfy { $0.key == $1.key && $0.value == $1.value }
     }
@@ -134,6 +140,9 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
         }
         if let evidenceChannel {
             parts.append("\"channel\":\"\(evidenceChannel)\"")
+        }
+        if let evidenceHarness {
+            parts.append("\"harness\":\"\(evidenceHarness)\"")
         }
         if !data.isEmpty {
             let fields = data.map { "\"\($0.key.rawValue)\":\($0.value.jsonFragment)" }

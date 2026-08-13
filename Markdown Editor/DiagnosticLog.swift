@@ -200,7 +200,7 @@ final class DiagnosticLog {
         }
         let sink = DiagnosticFileSink(url: fileURL, byteLimit: Self.maximumFileBytes)
         writeCoordinator = DiagnosticWriteCoordinator(sink: sink)
-        coverageRecorder = JSONLinesEditorTrace.ProductionRouteCoverageRecorder()
+        coverageRecorder = JSONLinesEditorTrace.ProductionRouteCoverageRecorder(hostKind: hostKind)
         startUptimeNanos = DispatchTime.now().uptimeNanoseconds
         // A document app with no dirty documents is eligible for sudden termination: the process
         // is killed without `applicationWillTerminate`, so the terminating record never lands and

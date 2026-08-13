@@ -11,10 +11,12 @@ logs="$root/logs"
 mkdir -p "$logs" "$root/Markdown Editor"
 cat > "$root/Markdown Editor/FixtureOwner.swift" <<'EOF'
 final class FixtureOwner {
-    func fixtureAlpha() {}
-    func fixtureAlpha(_ value: Int) { trace.record(route: .alpha, .alpha) }
-    func fixtureBeta() { trace.record(route: .beta, .beta) }
-    func fixtureGamma() { trace.record(route: .gamma, .gamma) }
+    func fixtureAlpha() { trace.record(route: .alpha, .alpha) }
+    final class Coordinator {
+        func fixtureBeta() {}
+        func fixtureBeta(_ value: Int) { trace.record(route: .beta, .beta) }
+        func fixtureGamma() { trace.record(route: .gamma, .gamma) }
+    }
 }
 EOF
 printf 'alpha\nbeta\ngamma\n' > "$cases"
@@ -26,8 +28,8 @@ EOF
 cat > "$routes" <<'EOF'
 {"version":1,"events":{
   "alpha":{"owner":"FixtureOwner","entry":"fixtureAlpha","expectedRecord":"alpha","allowedHarness":"component"},
-  "beta":{"owner":"FixtureOwner","entry":"fixtureBeta","expectedRecord":"beta","allowedHarness":"component"},
-  "gamma":{"owner":"FixtureOwner","entry":"fixtureGamma","expectedRecord":"gamma","allowedHarness":"component"}
+  "beta":{"owner":"FixtureOwner.Coordinator","entry":"fixtureBeta","expectedRecord":"beta","allowedHarness":"component"},
+  "gamma":{"owner":"FixtureOwner.Coordinator","entry":"fixtureGamma","expectedRecord":"gamma","allowedHarness":"component"}
 }}
 EOF
 gate="$(dirname "$0")/check-instrumentation-coverage.sh"
@@ -36,7 +38,7 @@ write_log() {
     : > "$path"
     for event in "$@"; do
         if [[ "$origin" == productionRoute ]]; then
-            printf '{"v":2,"ev":"%s","origin":"%s","route":"%s","channel":"productionRoutePipe"}\n' \
+            printf '{"v":2,"ev":"%s","origin":"%s","route":"%s","channel":"productionRoutePipe","harness":"component"}\n' \
                 "$event" "$origin" "$event" >> "$path"
         else
             printf '{"v":2,"ev":"%s","origin":"%s"}\n' "$event" "$origin" >> "$path"
@@ -77,12 +79,12 @@ write_log "$logs/rehearsal.jsonl" productionRoute alpha
 expect_fail "$gate" --cases-file "$cases" --exemptions "$exemptions" --routes "$routes" --log-dir "$logs/rehearsal.jsonl"
 
 # A forged production origin without the gate-owned channel fails closed.
-printf '{"v":2,"ev":"alpha","origin":"productionRoute","route":"alpha"}\n' \
+printf '{"v":2,"ev":"alpha","origin":"productionRoute","route":"alpha","harness":"component"}\n' \
     > "$logs/forged-origin.jsonl"
 expect_fail "$gate" --cases-file "$cases" --exemptions "$exemptions" --routes "$routes" --log-dir "$logs/forged-origin.jsonl"
 
 # A production record cannot claim a different reviewed route, even on the channel.
-printf '{"v":2,"ev":"alpha","origin":"productionRoute","route":"beta","channel":"productionRoutePipe"}\n' \
+printf '{"v":2,"ev":"alpha","origin":"productionRoute","route":"beta","channel":"productionRoutePipe","harness":"component"}\n' \
     > "$logs/misrouted.jsonl"
 expect_fail "$gate" --cases-file "$cases" --exemptions "$exemptions" --routes "$routes" --log-dir "$logs/misrouted.jsonl"
 

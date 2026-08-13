@@ -79,21 +79,22 @@ final class JSONLinesEditorTrace: EditorTraceSink {
     @MainActor
     final class ProductionRouteCoverageRecorder {
         private let handle: FileHandle?
+        private let harness: String
         private let startedAt: Date
         private let startUptimeNanos: UInt64
         private var nextSequence: UInt64 = 0
 
-        init?() {
-            let path = JSONLinesEditorTrace.hostedCoverageDirectory()
-                .appendingPathComponent("route.pipe")
+        init?(hostKind: DiagnosticHostKind) {
+            let path = JSONLinesEditorTrace.coveragePipeURL()
             guard FileManager.default.fileExists(atPath: path.path) else { return nil }
+            harness = hostKind == .production ? "process" : "component"
             startedAt = Date()
             startUptimeNanos = DispatchTime.now().uptimeNanoseconds
             let runID = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12))
             let header = DiagnosticRunHeader(
                 runID: runID,
                 startedAt: startedAt,
-                hostKind: .unitTest,
+                hostKind: hostKind,
                 shortVersion: "0",
                 buildVersion: "0",
                 osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
@@ -124,6 +125,7 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 origin: .productionRoute,
                 productionRoute: route,
                 evidenceChannel: "productionRoutePipe",
+                evidenceHarness: harness,
                 data: data
             )
             append(record.jsonLine)
@@ -142,6 +144,20 @@ final class JSONLinesEditorTrace: EditorTraceSink {
         return URL(fileURLWithPath: repoRoot, isDirectory: true)
             .appendingPathComponent(".build", isDirectory: true)
             .appendingPathComponent("instrumentation-coverage-tests", isDirectory: true)
+    }
+
+    /// Gate scripts may override the pipe directory for a directly launched process. Test hosts
+    /// that do not inherit that environment fall back to the deterministic checkout path used by
+    /// the scripts, so the normal xcodebuild gate remains hermetic.
+    static func coveragePipeURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL {
+        if let override = environment["EDITOR_TRACE_COVERAGE_LOG_DIR"], !override.isEmpty {
+            let candidate = URL(fileURLWithPath: override, isDirectory: true)
+                .appendingPathComponent("route.pipe")
+            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+        }
+        return hostedCoverageDirectory().appendingPathComponent("route.pipe")
     }
 
     struct Mapped {
