@@ -1,0 +1,13 @@
+{
+  "requirement": "REQ-138",
+  "mutations": [
+    {
+      "rationale": "Allowing an all-green mutant to pass would make falsification bookkeeping claim discrimination without a production behavior change.",
+      "kind": "repositoryPolicy",
+      "file": "Scripts/check-falsification.sh",
+      "find": "if not red_proofs:",
+      "replace": "if False and not red_proofs:",
+      "expect_red": ["Scripts/test-check-falsification-red-gate.sh"]
+    }
+  ]
+}

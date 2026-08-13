@@ -103,19 +103,19 @@ final class PerformanceSampler {
 
     func flush() {
         for summary in drainSummaries() {
-            trace?.record(.performanceSummary(metric: summary.metric, count: summary.count, p50Nanos: summary.p50, p95Nanos: summary.p95, maxNanos: summary.max))
+            trace?.record(route: .performanceSummary, .performanceSummary(metric: summary.metric, count: summary.count, p50Nanos: summary.p50, p95Nanos: summary.p95, maxNanos: summary.max))
             guard let budget = Self.budgetNanos[summary.metric] else { continue }
-            if summary.p95 > budget { trace?.record(.budgetExceeded(metric: summary.metric, p95Nanos: summary.p95, budgetNanos: budget)) }
+            if summary.p95 > budget { trace?.record(route: .budgetExceeded, .budgetExceeded(metric: summary.metric, p95Nanos: summary.p95, budgetNanos: budget)) }
         }
         if let statistics = frameObserver?.drainStatistics() {
-            trace?.record(.frameStatistics(
+            trace?.record(route: .frameStatistics, .frameStatistics(
                 hitchMillisPerSecond: statistics.hitchMillisPerSecond,
                 longestFrameNanos: statistics.longestFrameNanos,
                 framesObserved: statistics.framesObserved
             ))
         }
         let memory = MemoryFootprint.sample()
-        trace?.record(.memoryFootprint(bytes: memory.bytes, peakBytes: memory.peakBytes))
+        trace?.record(route: .memoryFootprint, .memoryFootprint(bytes: memory.bytes, peakBytes: memory.peakBytes))
     }
     /// Stops the timer, emits the final aggregate once, and releases the run registration.
     func invalidate() {

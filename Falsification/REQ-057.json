@@ -6,7 +6,7 @@
       "file": "Markdown Editor/WYSIWYGPlanningDomain.swift",
       "find": "        guard presentation.sourceRevision.value == snapshot.sourceVersion,",
       "replace": "        guard presentation.sourceRevision.value != snapshot.sourceVersion, // falsified",
-      "expect_red": ["taskTogglePatchesMarker"]
+      "expect_red": ["taskTogglePatchesOnlyExactMarker"]
     }
   ]
 }

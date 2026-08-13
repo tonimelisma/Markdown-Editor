@@ -1,6 +1,7 @@
 import Foundation
 import MachO
 import Testing
+import AppKit
 @testable import Markdown_Editor
 
 @MainActor
@@ -30,6 +31,25 @@ struct MeasurementSubstrateProofTests {
         #expect(FrameObserver.hitchMillisPerSecond(
             frameIntervalsNanos: [8_333_333, 24_333_333], cadenceNanos: 8_333_333
         ) > 15)
+    }
+
+    // Verifies: REQ-125 — the real frame observer callback reaches the sampler's production
+    // frameStatistics route, not only the pure hitch-rate calculation.
+    @Test func frameObserverProductionRouteRecordsStatistics() async {
+        let log = DiagnosticLog(directory: FileManager.default.temporaryDirectory
+            .appendingPathComponent("frame-route-\(UUID().uuidString)"), hostKind: .unitTest)
+        let trace = JSONLinesEditorTrace(log: log)
+        let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
+        let observer = FrameObserver(sampler: sampler)
+        observer.recordForTesting(hostTime: 0, cadenceNanos: 16_666_667)
+        observer.recordForTesting(hostTime: 1_000_000_000, cadenceNanos: 16_666_667)
+        sampler.flush()
+        await log.drain()
+        let text = (try? String(contentsOf: log.fileURL, encoding: .utf8)) ?? ""
+        #expect(text.contains("\"ev\":\"frameStatistics\""))
+        sampler.invalidate()
+        log.finish()
+        await log.drain()
     }
 
     // Verifies: REQ-126

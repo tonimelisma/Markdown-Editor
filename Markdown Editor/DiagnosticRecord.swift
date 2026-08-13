@@ -55,6 +55,14 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
     let document: UInt64?
     /// Set only on a `repeated` summary: the event whose repeats were collapsed.
     let collapsedEvent: DiagnosticEventName?
+    /// Evidence provenance used by executable proof gates. Lifecycle records may omit it;
+    /// ordinary records always carry an explicit origin.
+    let origin: DiagnosticEvidenceOrigin?
+    /// The production route's closed event name. Present only for observed production-route
+    /// records, so a route checker can compare evidence with the reviewed map.
+    let productionRoute: DiagnosticEventName?
+    /// Present only on records written through the gate-owned production evidence channel.
+    let evidenceChannel: String?
     let data: [(key: DiagnosticField, value: DiagnosticValue)]
 
     init(
@@ -66,6 +74,9 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
         event: DiagnosticEventName,
         document: UInt64? = nil,
         collapsedEvent: DiagnosticEventName? = nil,
+        origin: DiagnosticEvidenceOrigin? = .gateFixture,
+        productionRoute: DiagnosticEventName? = nil,
+        evidenceChannel: String? = nil,
         data: [(key: DiagnosticField, value: DiagnosticValue)] = []
     ) {
         self.wallClock = wallClock
@@ -76,6 +87,9 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
         self.event = event
         self.document = document
         self.collapsedEvent = collapsedEvent
+        self.origin = origin
+        self.productionRoute = productionRoute
+        self.evidenceChannel = evidenceChannel
         self.data = data
     }
 
@@ -86,6 +100,9 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
             && lhs.event == rhs.event
             && lhs.document == rhs.document
             && lhs.collapsedEvent == rhs.collapsedEvent
+            && lhs.origin == rhs.origin
+            && lhs.productionRoute == rhs.productionRoute
+            && lhs.evidenceChannel == rhs.evidenceChannel
             && lhs.data.count == rhs.data.count
             && zip(lhs.data, rhs.data).allSatisfy { $0.key == $1.key && $0.value == $1.value }
     }
@@ -108,6 +125,15 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
         }
         if let collapsedEvent {
             parts.append("\"of\":\"\(collapsedEvent.rawValue)\"")
+        }
+        if let origin {
+            parts.append("\"origin\":\"\(origin.rawValue)\"")
+        }
+        if let productionRoute {
+            parts.append("\"route\":\"\(productionRoute.rawValue)\"")
+        }
+        if let evidenceChannel {
+            parts.append("\"channel\":\"\(evidenceChannel)\"")
         }
         if !data.isEmpty {
             let fields = data.map { "\"\($0.key.rawValue)\":\($0.value.jsonFragment)" }

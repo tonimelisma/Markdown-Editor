@@ -26,41 +26,50 @@ coverage_dir="$derived/instrumentation-coverage"
 if [[ -n "${EDITOR_TRACE_COVERAGE_LOG_DIR:-}" ]]; then
     test_coverage_dir="$EDITOR_TRACE_COVERAGE_LOG_DIR"
 else
-    _coverage_hash=$(python3 - "$repo_root" <<'PYEOF'
-import sys
-repo = sys.argv[1]
-h = 1469598103934665603
-for b in repo.encode():
-    h ^= b
-    h = (h * 1099511628211) & 0xFFFFFFFFFFFFFFFF
-print(f"{h & 0xFFFFFFFF:08x}")
-PYEOF
-)
-    test_coverage_dir="${TMPDIR%/}/MarkdownEditorTraceCoverage-${_coverage_hash}"
+    test_coverage_dir="$repo_root/.build/instrumentation-coverage-tests"
 fi
 mkdir -p "$derived"
 mkdir -p "$coverage_dir"
 mkdir -p "$test_coverage_dir"
 rm -rf "$test_coverage_dir"/*
+touch "$test_coverage_dir/.enabled"
 export EDITOR_TRACE_COVERAGE_LOG_DIR="$test_coverage_dir"
+start_coverage_capture() {
+    local pipe_path="$1"
+    local output_path="$2"
+    mkdir -p "$(dirname "$output_path")"
+    rm -f "$pipe_path" "$output_path"
+    mkfifo "$pipe_path"
+    cat "$pipe_path" > "$output_path" &
+    coverage_reader_pid=$!
+    export EDITOR_TRACE_COVERAGE_LOG_DIR="$(dirname "$pipe_path")"
+}
+stop_coverage_capture() {
+    kill "$coverage_reader_pid" 2>/dev/null || true
+    wait "$coverage_reader_pid" 2>/dev/null || true
+    rm -f "$EDITOR_TRACE_COVERAGE_LOG_DIR/route.pipe"
+}
 printf '%s\n' '── documentation authority'
 ./Scripts/check-documentation-authority.sh || { documentation_gate=fail; failures=$((failures + 1)); }
 printf '%s\n' '── measurement provenance'
 ./Scripts/check-measurement-provenance.sh || { failures=$((failures + 1)); }
 ./Scripts/test-check-measurement-provenance.sh || { failures=$((failures + 1)); }
 printf '%s\n' '── observed instrumentation coverage'
+start_coverage_capture "$test_coverage_dir/route.pipe" "$coverage_dir/smoke/production-route.jsonl"
 SMOKE_DERIVED_DATA="$derived/smoke" SMOKE_LOG_COPY_DIR="$coverage_dir/smoke" \
     ./Scripts/smoke-test.sh >"$coverage_dir/smoke.log" 2>&1 || {
     instrumentation_gate=fail
     tests_gate=fail
     failures=$((failures + 1))
 }
+stop_coverage_capture
 printf '%s\n' '── smoke-log verifier fixtures'
 ./Scripts/test-verify-smoke-log.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 printf '%s\n' '── push-policy fixtures'
 ./Scripts/test-check-push-policy.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 ./Scripts/test-check-delivery-status.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 printf '%s\n' '── changed-scope falsification'
+export FALSIFICATION_SOURCE_PACKAGES="${FALSIFICATION_SOURCE_PACKAGES:-$derived/smoke/SourcePackages}"
 if [[ -n "${FALSIFICATION_BASE:-}" ]]; then
     falsification_base="$FALSIFICATION_BASE"
 elif git rev-parse --verify origin/main >/dev/null 2>&1; then
@@ -84,6 +93,7 @@ printf '%s\n' '── complete test suite'
 # no run had emitted anything. The proof-results gate reads this bundle, so it must be the
 # product of this run and no other.
 rm -rf "$bundle"
+start_coverage_capture "$test_coverage_dir/route.pipe" "$test_coverage_dir/production-route.jsonl"
 xcodebuild test \
     -project "Markdown Editor.xcodeproj" \
     -scheme "Markdown Editor" \
@@ -93,6 +103,7 @@ xcodebuild test \
     -resultBundlePath "$bundle" \
     >"$log" 2>&1
 test_status=$?
+stop_coverage_capture
 if (( test_status != 0 )); then
     tests_gate=fail
     failures=$((failures + 1))
@@ -103,8 +114,8 @@ printf 'tests: %s passed, %s failed\n' \
     "$(grep -acE 'Test case .* failed' "$log" 2>/dev/null || true)"
 printf '%s\n' '── observed instrumentation coverage gate'
 ./Scripts/check-instrumentation-coverage.sh \
-    --log-dir "$coverage_dir/smoke" \
-    --log-dir "$test_coverage_dir" || { instrumentation_gate=fail; failures=$((failures + 1)); }
+    --log-dir "$coverage_dir/smoke/production-route.jsonl" \
+    --log-dir "$test_coverage_dir/production-route.jsonl" || { instrumentation_gate=fail; failures=$((failures + 1)); }
 ./Scripts/test-check-instrumentation-coverage.sh || { instrumentation_gate=fail; failures=$((failures + 1)); }
 printf '%s\n' '── proof results'
 if ! ./Scripts/check-proof-results.sh "$bundle"; then

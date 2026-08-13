@@ -3,6 +3,7 @@
   "mutations": [
     {
       "rationale": "Removing the Swift-path matcher makes a push containing Swift changes eligible for the default branch, the policy defect this requirement forbids.",
+      "kind": "repositoryPolicy",
       "file": "Scripts/check-push-policy.sh",
       "find": "\"Markdown Editor/\"*.swift|\"Markdown EditorTests/\"*.swift)",
       "replace": "\"NEVER_MATCH\")",

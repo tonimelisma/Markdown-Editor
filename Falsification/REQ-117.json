@@ -1,0 +1,13 @@
+{
+  "requirement": "REQ-117",
+  "mutations": [
+    {
+      "rationale": "Forcing the proof-results gate to reject an otherwise valid observed result demonstrates that the cited execution is the responsibility being protected.",
+      "kind": "repositoryPolicy",
+      "file": "Scripts/check-proof-results.sh",
+      "find": "if not outcomes:",
+      "replace": "if True:",
+      "expect_red": ["Scripts/test-check-proof-results.sh"]
+    }
+  ]
+}

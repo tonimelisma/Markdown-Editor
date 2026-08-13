@@ -235,10 +235,17 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
     private static func exerciseSmokeEdits() {
         guard let controller = NSApp.windows
             .compactMap({ ($0.toolbar?.delegate as? EditorToolbarController)?.commandController })
-            .first,
-            let session = controller.session,
-            let document = controller.document
+            .first
         else { return }
+
+        exerciseSmokeEdits(using: controller)
+    }
+
+    /// The same window-scoped route used by the process smoke run, exposed to component tests so
+    /// REQ-115 can be falsified without making a test depend on a window server or a timing race.
+    @MainActor
+    static func exerciseSmokeEdits(using controller: EditorCommandController) {
+        guard let session = controller.session, let document = controller.document else { return }
 
         // Source mode is deterministic: it does not depend on a projection having landed.
         session.setMode(.source)

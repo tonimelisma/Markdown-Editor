@@ -181,11 +181,19 @@ for requirement in sorted(selected):
         if not isinstance(replacement, str):
             problems.append(f"{label}: replace must be a string")
             continue
+        mutation_kind = mutation.get("kind", "production")
+        if mutation_kind not in {"production", "repositoryPolicy"}:
+            problems.append(f"{label}: kind must be production or repositoryPolicy")
+            continue
         if pathlib.Path(file_value).is_absolute() or ".." in pathlib.Path(file_value).parts:
             problems.append(f"{label}: target file must be a relative in-repository path")
             continue
-        if not (file_value.startswith("Markdown Editor/") or file_value.startswith("Scripts/")):
-            problems.append(f"{label}: target file must be production source under Markdown Editor/ or executable gate under Scripts/")
+        if mutation_kind == "production" and not file_value.startswith("Markdown Editor/"):
+            problems.append(f"{label}: production mutation must target a file outside tests, scripts, and docs")
+        if mutation_kind == "repositoryPolicy" and not file_value.startswith("Scripts/"):
+            problems.append(f"{label}: repositoryPolicy mutation must target executable policy under Scripts/")
+        if mutation_kind == "repositoryPolicy" and "/test-" in file_value:
+            problems.append(f"{label}: repositoryPolicy mutation cannot target a fixture test")
             continue
         target = (root / file_value).resolve()
         try:
@@ -205,6 +213,23 @@ for requirement in sorted(selected):
             problems.append(f"{label}: mutation must touch at most five lines (find={find_lines}, replace={replacement_lines})")
         if not isinstance(mutation.get("expect_red"), list) or not mutation["expect_red"] or not all(isinstance(item, str) and item for item in mutation["expect_red"]):
             problems.append(f"{label}: expect_red must name at least one proof")
+        references = re.findall(r"`([^`]+)`", implemented_by_requirement.get(requirement, ""))
+        if references:
+            target_text = target.read_text(errors="ignore") if target.is_file() else ""
+            production_text = "\n".join(
+                path.read_text(errors="ignore")
+                for path in (root / "Markdown Editor").rglob("*.swift")
+            ) if (root / "Markdown Editor").is_dir() else ""
+            named_responsibility = any(
+                reference == file_value
+                or reference.endswith("/" + file_value)
+                or pathlib.Path(reference).name == pathlib.Path(file_value).name
+                or re.search(rf"\b{re.escape(pathlib.Path(reference).stem)}\b", target_text)
+                or re.search(rf"\b{re.escape(pathlib.Path(reference).stem)}\b", production_text)
+                for reference in references
+            )
+            if not named_responsibility:
+                problems.append(f"{label}: mutation target is not a named responsibility of {requirement}")
     if not any(problem.startswith(f"{path}:") for problem in problems):
         validated_manifests[requirement] = data
 
@@ -246,9 +271,14 @@ def proof_outcome(output, proof):
             output,
             re.IGNORECASE,
         )
-    if not matches:
-        return None
-    return matches[-1].lower()
+    if matches:
+        return matches[-1].lower()
+    suite_matches = re.findall(
+        rf"(?:Suite|Test suite)\s+[^\n]*\b{re.escape(leaf)}(?:\(\))?[^\n]*\b(passed|failed)\b",
+        output,
+        re.IGNORECASE,
+    )
+    return suite_matches[-1].lower() if suite_matches else None
 
 
 def resolve_xcode_proof(mutant_root, proof):
@@ -345,6 +375,16 @@ class Slot:
                 symlinks=True,
                 ignore=shutil.ignore_patterns(*self.EXCLUDES),
             )
+        # Script-level proofs may inspect their repository's commit identity. Never copy the
+        # source checkout's linked-worktree metadata; initialize a disposable repository instead
+        # so a mutant cannot read or write the user's real Git state.
+        mutant_git = self.mutant_root / ".git"
+        if not mutant_git.exists():
+            subprocess.run(["git", "-C", str(self.mutant_root), "init", "-q"], check=True)
+            subprocess.run(["git", "-C", str(self.mutant_root), "config", "user.email", "falsification@example.invalid"], check=True)
+            subprocess.run(["git", "-C", str(self.mutant_root), "config", "user.name", "falsification"], check=True)
+            subprocess.run(["git", "-C", str(self.mutant_root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(self.mutant_root), "commit", "-qm", "baseline"], check=True)
         for directory in ("home", "tmp"):
             (self.root / directory).mkdir(parents=True, exist_ok=True)
         environment = os.environ.copy()
@@ -368,7 +408,7 @@ class Slot:
         return True
 
 
-def command_driver(mutant_root, execution_root, mutation_file=""):
+def command_driver(mutant_root, execution_root, mutation_file="", expected_proofs=()):
     # Repository policy requirements are proved by their executable fixture, not by an
     # application test target.  Keep this driver explicit so a script mutation still has a
     # compile step (shell syntax validation) and an observed process-level proof outcome.
@@ -406,7 +446,8 @@ def command_driver(mutant_root, execution_root, mutation_file=""):
     if len(projects) == 1:
         project = projects[0]
         derived_data = execution_root / "DerivedData"
-        source_packages = execution_root / "SourcePackages"
+        configured_packages = os.environ.get("FALSIFICATION_SOURCE_PACKAGES")
+        source_packages = pathlib.Path(configured_packages) if configured_packages else execution_root / "SourcePackages"
         source_packages.mkdir(parents=True, exist_ok=True)
         common = [
             "xcodebuild", "-project", str(project), "-scheme", project.stem,
@@ -415,6 +456,13 @@ def command_driver(mutant_root, execution_root, mutation_file=""):
             "-parallel-testing-enabled", "NO",
             "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO", "CODE_SIGN_IDENTITY=",
         ]
+        script_proofs = [proof for proof in expected_proofs if proof.startswith("Scripts/")]
+        if script_proofs:
+            return {
+                "kind": "shell",
+                "build": common + ["build"],
+                "test": lambda proof, result: ["bash", str(mutant_root / proof)],
+            }
         return {
             "kind": "xcode",
             "build": common + ["build"],
@@ -461,16 +509,38 @@ def execute_mutation(slot, requirement, mutation_index, mutation):
     mutant_root = slot.mutant_root
     environment = slot.environment
 
+    try:
+        driver = command_driver(mutant_root, execution_root, file_value, mutation.get("expect_red", []))
+    except RuntimeError as error:
+        return False, f"{requirement} mutation {mutation_index}: {error}"
+
+    def run_proof(proof, suffix):
+        result = execution_root / f"result-{requirement}-{mutation_index}-{suffix}-{proof.replace('/', '-')}.xcresult"
+        shutil.rmtree(result, ignore_errors=True)
+        test = run_command(driver["test"](proof, result), mutant_root, environment)
+        if driver["kind"] in {"shell", "python-script"}:
+            outcome = "failed" if test.returncode else ("passed" if "PASS" in test.stdout else None)
+        else:
+            outcome = proof_outcome(test.stdout, proof)
+        return outcome, test.stdout
+
+    # A mutation is only discriminating when the named proof was observed green on the exact
+    # preimage and red after a compiling production change. A generic gate failure or a proof that
+    # was already red cannot establish REQ-138.
+    for proof in mutation["expect_red"]:
+        baseline, output = run_proof(proof, "baseline")
+        if baseline != "passed":
+            return False, (
+                f"{requirement} mutation {mutation_index}: cited proof {proof!r} did not pass "
+                "on the exact preimage; falsification is not discriminating\n"
+                f"{describe_output(output)}"
+            )
+
     if not slot.apply(file_value, find, replacement):
         return False, (
             f"{requirement} mutation {mutation_index}: find no longer matches exactly once "
             "in isolated tree"
         )
-
-    try:
-        driver = command_driver(mutant_root, execution_root, file_value)
-    except RuntimeError as error:
-        return False, f"{requirement} mutation {mutation_index}: {error}"
 
     build = run_command(driver["build"], mutant_root, environment)
     if build.returncode:
@@ -481,20 +551,12 @@ def execute_mutation(slot, requirement, mutation_index, mutation):
 
     red_proofs = []
     for proof_index, proof in enumerate(mutation["expect_red"], 1):
-        result = execution_root / f"result-{requirement}-{mutation_index}-{proof_index}.xcresult"
-        shutil.rmtree(result, ignore_errors=True)
-        test = run_command(driver["test"](proof, result), mutant_root, environment)
-        if driver["kind"] in {"shell", "python-script"}:
-            # Shell fixtures expose a positive PASS marker only when the complete fixture
-            # reaches its end.  A non-zero process is the named proof turning red.
-            outcome = "failed" if test.returncode else ("passed" if "PASS" in test.stdout else None)
-        else:
-            outcome = proof_outcome(test.stdout, proof)
+        outcome, output = run_proof(proof, f"mutant-{proof_index}")
         if outcome is None:
             return False, (
                 f"{requirement} mutation {mutation_index}: expect_red proof {proof!r} "
                 "did not produce an observed named pass/fail outcome\n"
-                f"{describe_output(test.stdout)}"
+                f"{describe_output(output)}"
             )
         if outcome == "failed":
             red_proofs.append(proof)

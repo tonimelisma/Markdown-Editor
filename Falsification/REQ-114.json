@@ -4,9 +4,9 @@
     {
       "rationale": "Skipping the image-resolution failure diagnostic would leave a typed failure class unrecorded.",
       "file": "Markdown Editor/ParseCoordinator.swift",
-      "find": "                for reason in resolveFailures {\n                    document?.trace?.record(.imageResolutionFailed(reason: reason))\n                }",
-      "replace": "                for reason in resolveFailures {\n                    // falsified: failure not recorded\n                }",
-      "expect_red": ["test-check-instrumentation-coverage"]
+      "find": "                document?.trace?.record(route: .imageResolutionFailed, .imageResolutionFailed(reason: reason))",
+      "replace": "                _ = reason",
+      "expect_red": ["parseOwnerRecordsImageResolutionFailureOnTheProductionRoute"]
     }
   ]
 }

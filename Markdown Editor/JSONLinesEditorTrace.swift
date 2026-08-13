@@ -13,28 +13,135 @@ import Foundation
 @MainActor
 final class JSONLinesEditorTrace: EditorTraceSink {
     private let log: DiagnosticLog
+    private let encodingProbe: Bool
     /// Opaque per-run handle identifying the document this sink belongs to.
     private let documentHandle: UInt64?
 
     init(log: DiagnosticLog) {
         self.log = log
+        self.encodingProbe = false
         self.documentHandle = log.makeDocumentHandle()
     }
 
-    init(log: DiagnosticLog, documentHandle: UInt64?) {
+    init(
+        log: DiagnosticLog,
+        documentHandle: UInt64?
+    ) {
         self.log = log
+        self.encodingProbe = false
         self.documentHandle = documentHandle
+    }
+
+    private init(encodingProbeLog log: DiagnosticLog) {
+        self.log = log
+        self.encodingProbe = true
+        self.documentHandle = log.makeDocumentHandle()
+    }
+
+    static func makeEncodingProbe(log: DiagnosticLog) -> JSONLinesEditorTrace {
+        JSONLinesEditorTrace(encodingProbeLog: log)
     }
 
     func record(_ event: EditorTraceEvent) {
         let mapped = Self.map(event)
-        log.record(
+        if encodingProbe {
+            log.recordEncodingProbe(
+                mapped.name,
+                level: mapped.level,
+                category: mapped.category,
+                document: documentHandle,
+                data: mapped.data
+            )
+        } else {
+            log.record(
+                mapped.name,
+                level: mapped.level,
+                category: mapped.category,
+                document: documentHandle,
+                data: mapped.data
+            )
+        }
+    }
+
+    func record(route: DiagnosticEventName, _ event: EditorTraceEvent) {
+        let mapped = Self.map(event)
+        guard mapped.name == route else { return }
+        log.recordProduction(
             mapped.name,
             level: mapped.level,
             category: mapped.category,
             document: documentHandle,
+            route: route,
             data: mapped.data
         )
+    }
+
+    @MainActor
+    final class ProductionRouteCoverageRecorder {
+        private let handle: FileHandle?
+        private let startedAt: Date
+        private let startUptimeNanos: UInt64
+        private var nextSequence: UInt64 = 0
+
+        init?() {
+            let path = JSONLinesEditorTrace.hostedCoverageDirectory()
+                .appendingPathComponent("route.pipe")
+            guard FileManager.default.fileExists(atPath: path.path) else { return nil }
+            startedAt = Date()
+            startUptimeNanos = DispatchTime.now().uptimeNanoseconds
+            let runID = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12))
+            let header = DiagnosticRunHeader(
+                runID: runID,
+                startedAt: startedAt,
+                hostKind: .unitTest,
+                shortVersion: "0",
+                buildVersion: "0",
+                osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+                processID: ProcessInfo.processInfo.processIdentifier
+            )
+            handle = try? FileHandle(forWritingTo: path)
+            append(header.jsonLine)
+        }
+
+        deinit { try? handle?.close() }
+
+        func record(
+            event: DiagnosticEventName,
+            level: DiagnosticLevel,
+            category: DiagnosticCategory,
+            route: DiagnosticEventName,
+            data: [(key: DiagnosticField, value: DiagnosticValue)]
+        ) {
+            nextSequence &+= 1
+            let uptime = Double(DispatchTime.now().uptimeNanoseconds - startUptimeNanos) / 1_000_000_000
+            let record = DiagnosticRecord(
+                wallClock: Date(),
+                uptimeSeconds: uptime,
+                sequence: nextSequence,
+                level: level,
+                category: category,
+                event: event,
+                origin: .productionRoute,
+                productionRoute: route,
+                evidenceChannel: "productionRoutePipe",
+                data: data
+            )
+            append(record.jsonLine)
+        }
+
+        private func append(_ line: String) {
+            guard let data = (line + "\n").data(using: .utf8) else { return }
+            try? handle?.write(contentsOf: data)
+        }
+    }
+
+    static func hostedCoverageDirectory() -> URL {
+        let filePath = #filePath as NSString
+        let sourceDir = filePath.deletingLastPathComponent as NSString
+        let repoRoot = sourceDir.deletingLastPathComponent
+        return URL(fileURLWithPath: repoRoot, isDirectory: true)
+            .appendingPathComponent(".build", isDirectory: true)
+            .appendingPathComponent("instrumentation-coverage-tests", isDirectory: true)
     }
 
     struct Mapped {

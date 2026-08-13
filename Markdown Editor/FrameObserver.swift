@@ -55,6 +55,13 @@ final class FrameObserver {
         }
     }
 
+    /// Component-test seam for the same owner callback used by CVDisplayLink. It supplies host
+    /// timestamps without screen automation, so the sampler's production flush route can be
+    /// observed on a machine where no display link is available.
+    func recordForTesting(hostTime: UInt64, cadenceNanos: UInt64) {
+        record(hostTime: hostTime, cadenceNanos: cadenceNanos)
+    }
+
     func drainStatistics() -> Statistics? {
         guard framesObserved > 0, let first = firstTimestamp, let last = lastTimestamp else { return nil }
         let elapsed = max(0.001, last - first)

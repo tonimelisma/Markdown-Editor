@@ -404,8 +404,7 @@ enum WYSIWYGEditor {
             in textView: NSTextView,
             reason: PresentationRecoveryReason
         ) {
-            document.trace?.record(
-                .presentationRecovered(
+            document.trace?.record(route: .presentationRecovered, .presentationRecovered(
                     snapshotID: snapshot.id.value,
                     sourceRevision: snapshot.sourceRevision.value,
                     reason: reason
@@ -613,7 +612,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
         }
         inputCoordinator?.allowingMarkedText = false
-        (documentActions as? MarkdownDocument)?.trace?.record(.compositionBegan(sourceVersion: version))
+        (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionBegan, .compositionBegan(sourceVersion: version))
     }
 
     override func unmarkText() {
@@ -631,7 +630,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
                 guard marked.location >= 0, NSMaxRange(marked) <= storage.length else {
                     input.cancel()
                     performNativeUnmark()
-                    (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
+                    (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
                     return
                 }
                 text = (storage.string as NSString).substring(with: marked)
@@ -641,7 +640,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             if text.isEmpty {
                 input.cancel()
                 performNativeUnmark()
-                (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
+                (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
                 return
             }
             _ = commitComposition(text: text)
@@ -649,7 +648,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
         }
         inputCoordinator?.cancel()
         performNativeUnmark()
-        (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
+        (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
     }
 
     override func insertText(_ insertString: Any, replacementRange: NSRange) {
@@ -687,7 +686,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
               let captured = input.complete() else {
             input.cancel()
             performNativeUnmark()
-            (documentActions as? MarkdownDocument)?.trace?.record(.compositionRefusedStale)
+            (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionRefusedStale, .compositionRefusedStale)
             return false
         }
         guard let session,
@@ -697,7 +696,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
               adapterCoordinator?.hasAppliedSnapshot(capturedSnapshotID) == true else {
             input.cancel()
             performNativeUnmark()
-            (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
+            (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
             return false
         }
         let selection = ProjectionSelection(
@@ -709,8 +708,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             selection: .projection(selection),
             expectedSourceRevision: SourceRevision(value: captured.version)
         )
-        (documentActions as? MarkdownDocument)?.trace?.record(
-            .compositionCommitted(sourceVersion: captured.version, replacementLength: (text as NSString).length)
+        (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCommitted, .compositionCommitted(sourceVersion: captured.version, replacementLength: (text as NSString).length)
         )
         switch result {
         case .accepted:
@@ -724,7 +722,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
         case .refused:
             input.cancel()
             performNativeUnmark()
-            (documentActions as? MarkdownDocument)?.trace?.record(.compositionCancelled)
+            (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
             return false
         }
     }

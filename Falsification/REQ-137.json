@@ -3,6 +3,7 @@
   "mutations": [
     {
       "rationale": "Skipping required-field validation would admit an incomplete measurement provenance block.",
+      "kind": "repositoryPolicy",
       "file": "Scripts/check-measurement-provenance.sh",
       "find": "if not value:",
       "replace": "if False and not value:",

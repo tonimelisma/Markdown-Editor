@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-099",
+  "mutations": [
+    {
+      "rationale": "Changing the production record's assigned origin makes an emitted production route indistinguishable from a gate fixture.",
+      "file": "Markdown Editor/DiagnosticLog.swift",
+      "find": "            origin: .productionRoute,",
+      "replace": "            origin: .gateFixture,",
+      "expect_red": ["productionRouteRecordsCarryExplicitProductionOrigin"]
+    }
+  ]
+}

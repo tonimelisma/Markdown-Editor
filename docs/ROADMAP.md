@@ -115,7 +115,7 @@ product's default mode — in any test.
    conversion directions, URL and location generation observed together, one word-count
    implementation, bounded sampler ring, oracle enforced in the WYSIWYG test seam, and
    repository hygiene.
-6. ↩️ **COR-31 — Process and traceability gates (historical implementation; proof claims reopened by COR-68).** Forward traceability and the fast inner loop landed, but REQ-117/118 are currently `Correction`.
+6. ↩️ **COR-31 — Process and traceability gates (historical implementation).** Forward traceability and the fast inner loop landed; COR-68 now owns the observed proof floor.
    requirement can no longer contradict an active increment, `CLAUDE.md` requires liveness proofs
    and laid-out-geometry proofs, and `Scripts/fast-check.sh` is the short inner loop. Re-verified with falsifying mutations.
 
@@ -127,7 +127,7 @@ semantic-planning decomposition. Their implementation remains in current product
 
 Their old detailed delivery ledger is intentionally not repeated here: Git records the sequence, and
 current requirement truth lives in REQUIREMENTS. In particular, the earlier COR-35/COR-39 claims for
-REQ-117/118 are reopened by COR-68 because the 2026-08-12 audit found that current falsification can
+the proof claims are now enforced by COR-68 because the 2026-08-12 audit found that current falsification could
 turn bookkeeping red without weakening production behavior. Likewise, typed quote/code containers,
 semantic list-marker source fidelity, shortcut coverage, frame restoration, tabbing, and printing
 from the two unreachable checkpoint commits are present in main after squash integration. Their
@@ -138,8 +138,9 @@ unreachable commit identities are not WIP and are not used as delivery evidence.
 A whole-codebase review on 2026-08-12 re-read the current implementation, tests, gates, plans, and
 recent commit history against VISION, ENGINEERING, and REQUIREMENTS. Existing green gates remain
 useful regression evidence, but they did not establish all claims they admitted. Eight requirements
-are therefore back in Correction: REQ-032, REQ-099, REQ-117, REQ-118, REQ-123, REQ-125, REQ-128,
-and REQ-135. Their rows contain the reproduced counterexample; no implementation was removed.
+are therefore back in Correction: REQ-032, REQ-123, REQ-125, REQ-128. Their rows contain the reproduced
+counterexample; no implementation was removed. COR-68 has closed REQ-099, REQ-117, REQ-118, REQ-135,
+and REQ-138 with observed production evidence and falsifying mutations.
 
 The review also found partially implemented or obsolete plans. Those plan files are removed as stale
 documentation, not as evidence of delivery. Correct parts already in main—including the
@@ -174,10 +175,12 @@ owners, requirement set, route proofs, failure behavior, and deletion gate. An i
 not bundle the next plan to make its own proof pass. If observed code contradicts a plan, stop and
 return to discovery; do not improvise an architecture change.
 
-1. ⚪ **COR-68 — Proof architecture v2.** (Delivers: REQ-099, REQ-117, REQ-118, REQ-135, REQ-138)
-   ([plan](plans/COR-68-proof-architecture-v2.md)) Separates encoding from production reachability,
-   validates falsification against production behavior, and gives refactor-only plans derived
-   completion evidence.
+1. ✅ **COR-68 — Proof architecture v2.** (Delivers: REQ-099, REQ-117, REQ-118, REQ-135, REQ-138)
+   Separates encoding from production reachability, captures observed production records through a
+   gate-owned FIFO, binds each route to its owner-specific typed production call, validates
+   falsification against production behavior, and gives refactor-only plans derived completion
+   evidence. Full gate observed passing: 437 tests, 50 emitted routes, 40 Done rows, 29/29 changed-
+   scope falsifications.
 2. ⚪ **COR-69 — Intent measurement and honest benchmark.** (Delivers: REQ-123, REQ-125, REQ-128)
    ([plan](plans/COR-69-intent-measurement-and-benchmark.md)) Carries explicit intent identity across
    concurrency boundaries, observes main-actor stalls with controlled clocks, and makes the shipping

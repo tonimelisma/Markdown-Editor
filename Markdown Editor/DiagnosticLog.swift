@@ -13,6 +13,14 @@ nonisolated enum DiagnosticHostKind: String, Sendable, Equatable {
     case unitTest
 }
 
+/// Where a diagnostic event originated. This is schema metadata, not a payload value: encoding
+/// probes and gate fixtures can therefore never satisfy production route coverage.
+nonisolated enum DiagnosticEvidenceOrigin: String, Sendable, Equatable, CaseIterable {
+    case productionRoute
+    case encodingProbe
+    case gateFixture
+}
+
 /// Fixed-schema identification of one application run.
 ///
 /// Distinct from `DiagnosticRecord`: these fields are process facts, none derived from a
@@ -144,6 +152,9 @@ final class DiagnosticLog {
 
     private let startUptimeNanos: UInt64
     private let writeCoordinator: DiagnosticWriteCoordinator
+    /// Production route records are copied to the gate-owned FIFO by this internal writer. The
+    /// writer is not addressable through the editor trace protocol or an evidence-origin argument.
+    private let coverageRecorder: JSONLinesEditorTrace.ProductionRouteCoverageRecorder?
     private var durabilityTask: Task<Void, Never>?
     private var closed = false
     private var sizeLimitRecorded = false
@@ -189,6 +200,7 @@ final class DiagnosticLog {
         }
         let sink = DiagnosticFileSink(url: fileURL, byteLimit: Self.maximumFileBytes)
         writeCoordinator = DiagnosticWriteCoordinator(sink: sink)
+        coverageRecorder = JSONLinesEditorTrace.ProductionRouteCoverageRecorder()
         startUptimeNanos = DispatchTime.now().uptimeNanoseconds
         // A document app with no dirty documents is eligible for sudden termination: the process
         // is killed without `applicationWillTerminate`, so the terminating record never lands and
@@ -241,8 +253,80 @@ final class DiagnosticLog {
         document: UInt64? = nil,
         data: [(key: DiagnosticField, value: DiagnosticValue)] = []
     ) {
+        recordInternal(
+            event,
+            level: level,
+            category: category,
+            document: document,
+            origin: .gateFixture,
+            route: nil,
+            data: data
+        )
+    }
+
+    func recordEncodingProbe(
+        _ event: DiagnosticEventName,
+        level: DiagnosticLevel = .debug,
+        category: DiagnosticCategory,
+        document: UInt64? = nil,
+        data: [(key: DiagnosticField, value: DiagnosticValue)] = []
+    ) {
+        recordInternal(
+            event,
+            level: level,
+            category: category,
+            document: document,
+            origin: .encodingProbe,
+            route: nil,
+            data: data
+        )
+    }
+
+    /// The only application API that can produce production-route evidence. The route is a
+    /// closed event identifier supplied by the production owner, never a caller-controlled
+    /// evidence-origin argument. The record is copied to the gate-owned FIFO by the internal
+    /// recorder only after the typed route identity matches the event.
+    func recordProduction(
+        _ event: DiagnosticEventName,
+        level: DiagnosticLevel = .debug,
+        category: DiagnosticCategory,
+        document: UInt64? = nil,
+        route: DiagnosticEventName,
+        data: [(key: DiagnosticField, value: DiagnosticValue)] = []
+    ) {
+        guard event == route else { return }
+        recordInternal(
+            event,
+            level: level,
+            category: category,
+            document: document,
+            origin: .productionRoute,
+            route: route,
+            data: data
+        )
+    }
+
+    private func recordInternal(
+        _ event: DiagnosticEventName,
+        level: DiagnosticLevel,
+        category: DiagnosticCategory,
+        document: UInt64?,
+        origin: DiagnosticEvidenceOrigin,
+        route: DiagnosticEventName?,
+        data: [(key: DiagnosticField, value: DiagnosticValue)]
+    ) {
         guard !closed else { return }
         let uptime = Double(DispatchTime.now().uptimeNanoseconds - startUptimeNanos) / 1_000_000_000
+
+        if let route, origin == .productionRoute {
+            coverageRecorder?.record(
+                event: event,
+                level: level,
+                category: category,
+                route: route,
+                data: data
+            )
+        }
 
         // REQ-096: a defect firing every run-loop pass must produce bounded evidence — but a
         // fault is the evidence, so it is never collapsed away.
@@ -260,6 +344,8 @@ final class DiagnosticLog {
             level: level,
             category: category,
             document: document,
+            origin: origin,
+            productionRoute: route,
             data: data,
             uptime: uptime
         )
@@ -270,6 +356,8 @@ final class DiagnosticLog {
         level: DiagnosticLevel,
         category: DiagnosticCategory,
         document: UInt64?,
+        origin: DiagnosticEvidenceOrigin,
+        productionRoute: DiagnosticEventName?,
         data: [(key: DiagnosticField, value: DiagnosticValue)],
         uptime: Double
     ) {
@@ -283,6 +371,8 @@ final class DiagnosticLog {
                 category: category,
                 event: event,
                 document: document,
+                origin: origin,
+                productionRoute: productionRoute,
                 data: data
             ).jsonLine
         })

@@ -183,7 +183,7 @@ enum SourceEditor {
             let window: NSRange
             if parityChanged {
                 window = full
-                document.trace?.record(.sourceHighlightWidened(reason: .fenceParity))
+                document.trace?.record(route: .sourceHighlightWidened, .sourceHighlightWidened(reason: .fenceParity))
             } else if let editedRange {
                 window = Self.styleWindow(for: editedRange, in: expectedText as NSString)
             } else {

@@ -114,10 +114,11 @@ nonisolated enum WorkLedgerRecorder {
         // editor sink. The mapped event remains the same closed diagnostic vocabulary.
         Task { @MainActor in
             guard let log = DiagnosticLog.shared else { return }
-            log.record(
+            log.recordProduction(
                 .workLedger,
                 level: .debug,
                 category: .diagnostics,
+                route: .workLedger,
                 data: [
                     (.scope, .symbol(scope.symbol)),
                     (.documentParses, .int(ledger.documentParses)),

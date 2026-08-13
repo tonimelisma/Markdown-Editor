@@ -148,14 +148,13 @@ struct EditorHostView: NSViewRepresentable {
         /// // input is the signature of a self-feeding update loop and is reported as a fault.
         func noteHostUpdate(durationNanos: UInt64) {
             let sample = updateMeter.record(durationNanos: durationNanos)
-            document.trace?.record(
-                .hostUpdateEnded(
+            document.trace?.record(route: .hostUpdateEnded, .hostUpdateEnded(
                     durationNanos: sample.durationNanos,
                     updatesInWindow: sample.updatesInWindow
                 )
             )
             if sample.crossedStormThreshold {
-                document.trace?.record(.hostUpdateStorm(updatesInWindow: sample.updatesInWindow))
+                document.trace?.record(route: .hostUpdateStorm, .hostUpdateStorm(updatesInWindow: sample.updatesInWindow))
             }
         }
 

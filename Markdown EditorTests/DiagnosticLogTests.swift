@@ -190,12 +190,9 @@ struct DiagnosticLogTests {
 
         let requestedPath = ProcessInfo.processInfo.environment["EDITOR_TRACE_COVERAGE_LOG_DIR"]
         // Fallback is kept for manual Xcode runs outside fast-check/full-check.
-        // The gate always sets EDITOR_TRACE_COVERAGE_LOG_DIR to a per-derivedData
-        // directory (Scripts/fast-check.sh, Scripts/full-check.sh) so two worktrees
-        // never read each other's logs. For manual runs without the env var, derive
-        // a per-checkout directory from this source file's location so concurrent
-        // manual runs from different worktrees also do not collide on the single
-        // shared ${TMPDIR%/}/MarkdownEditorTraceCoverage.
+        // The test's ordinary diagnostic log follows this per-checkout directory. Production
+        // route evidence is captured separately through the gate-owned FIFO in the same
+        // checkout's deterministic .build directory.
         let fallbackPath: String = {
             let filePath = #filePath as NSString
             // #filePath is .../<checkout>/Markdown EditorTests/DiagnosticLogTests.swift
@@ -217,7 +214,7 @@ struct DiagnosticLogTests {
             directory: URL(fileURLWithPath: coveragePath, isDirectory: true),
             hostKind: .unitTest
         )
-        let sink = JSONLinesEditorTrace(log: coverageLog)
+        let sink = JSONLinesEditorTrace.makeEncodingProbe(log: coverageLog)
         for event in events {
             sink.record(event)
         }
@@ -233,6 +230,123 @@ struct DiagnosticLogTests {
         ]
         let unreachable = Set(DiagnosticEventName.allCases).subtracting(covered).subtracting(logOwned)
         #expect(unreachable.isEmpty, "unmapped event names: \(unreachable.map(\.rawValue).sorted())")
+    }
+
+    // Verifies: REQ-099/135 — a production sink emits an explicit production-route origin. The
+    // closed encoder test above uses `encodingProbe` and cannot satisfy this assertion.
+    @Test func productionRouteRecordsCarryExplicitProductionOrigin() async {
+        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
+        let sink = JSONLinesEditorTrace(log: log)
+        sink.record(route: .documentOpened, .documentOpened(utf16Count: 8))
+        let recorded = await lines(of: log)
+        let event = recorded
+            .compactMap(object)
+            .first { ($0["ev"] as? String) == DiagnosticEventName.documentOpened.rawValue }
+        #expect(event?["origin"] as? String == DiagnosticEvidenceOrigin.productionRoute.rawValue)
+    }
+
+    // Verifies: REQ-135 — an encoding probe remains visibly non-production evidence even when it
+    // emits a complete symbolic vocabulary.
+    @Test func encodingProbeRecordsCannotMasqueradeAsProductionRoute() async {
+        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
+        let sink = JSONLinesEditorTrace.makeEncodingProbe(log: log)
+        sink.record(.documentOpened(utf16Count: 8))
+        let recorded = await lines(of: log)
+        let event = recorded
+            .compactMap(object)
+            .first { ($0["ev"] as? String) == DiagnosticEventName.documentOpened.rawValue }
+        #expect(event?["origin"] as? String != DiagnosticEvidenceOrigin.productionRoute.rawValue)
+    }
+
+    // Verifies: REQ-089/111 — the real parse owner reports image resolution failure through its
+    // document trace when a local attachment cannot be resolved.
+    @Test func parseOwnerRecordsImageResolutionFailureOnTheProductionRoute() async {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("![missing](missing-image.png)\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        for _ in 0..<200 {
+            if trace.events.contains(where: {
+                if case .imageResolutionFailed = $0 { return true }
+                return false
+            }) { break }
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(trace.events.contains {
+            if case .imageResolutionFailed = $0 { return true }
+            return false
+        })
+        session.detach()
+    }
+
+    // Verifies: REQ-111 — a parse that finishes after a newer source snapshot is discarded by the
+    // real coordinator and leaves a typed reconciliation record.
+    @Test func parseOwnerRecordsStaleReconciliation() async {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let source = String(repeating: "# heading\n\nparagraph with enough structure to parse.\n", count: 2_000)
+        document.installTextForTesting(source)
+        let session = EditorSession()
+        session.attach(document: document)
+        for _ in 0..<500 where !trace.events.contains(where: {
+            if case .parseCompleted = $0 { return true }
+            return false
+        }) {
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+        // Deliver the already-parsed result against a newer generation so the real coordinator
+        // stale-result guard runs; cancellation would exercise only parseCancelled instead.
+        session.parseCoordinator.bumpGenerationWithoutCancellationForTesting()
+        for _ in 0..<500 {
+            if trace.events.contains(where: {
+                if case .reconciliationDiscarded = $0 { return true }
+                return false
+            }) { break }
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(trace.events.contains {
+            if case .reconciliationDiscarded = $0 { return true }
+            return false
+        }, "events: \(trace.events)")
+        session.detach()
+    }
+
+    // Verifies: REQ-115 — the smoke exercise uses the ordinary window command route for an
+    // accepted insertion and a semantic command, independent of process/window timing.
+    @Test func smokeEditExerciseUsesRealRoutes() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("hello\n")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let session = EditorSession()
+        session.attach(document: document)
+        session.setMode(.source)
+        let controller = EditorCommandController()
+        controller.bind(
+            document: document,
+            session: session,
+            actionRouter: EditorActionRouter(),
+            window: nil
+        )
+
+        MarkdownAppDelegate.exerciseSmokeEdits(using: controller)
+
+        #expect(document.text == "**x**hello\n")
+        #expect(trace.events.contains {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        })
+        #expect(trace.events.contains {
+            if case .editRouted = $0 { return true }
+            return false
+        })
+        session.detach()
     }
 
     // Verifies: REQ-095 — the run header survives a hostile runtime version string, which is
