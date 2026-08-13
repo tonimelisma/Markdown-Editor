@@ -31,6 +31,19 @@ struct MeasurementSubstrateProofTests {
         #expect(reasons.withLock { $0 } == [.lateWork])
     }
 
+    // Verifies: REQ-123 — a presentation adapter lease keeps downstream attributed work inside
+    // the originating intent until the adapter releases it.
+    @Test func presentationLeaseDefersTerminalLedger() {
+        let recorder = IntentRecorder()
+        let context = recorder.begin(.documentOpen)
+        #expect(recorder.retain(context))
+        recorder.add(context) { $0.attributedBuilds += 1 }
+        #expect(recorder.finish(context))
+        #expect(recorder.snapshot(context)?.attributedBuilds == 1)
+        #expect(recorder.finish(context))
+        #expect(recorder.snapshot(context) == nil)
+    }
+
     // Verifies: REQ-124
     @Test func responsivenessMutationProof() async throws {
         let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
@@ -268,6 +281,13 @@ struct COR69IntentMeasurementTests {
 
         var logText = ""
         for _ in 0..<500 {
+            // This component proof owns the session but does not construct an EditorHost. Release
+            // the production snapshot lease explicitly once the authoritative projection exists;
+            // a real host performs the same release after applying attributed storage.
+            if let presentation = session.presentation,
+               let intent = session.takePresentationIntent(for: presentation.id) {
+                intent.recorder.finish(intent)
+            }
             await sharedLog?.drain()
             logText = (try? String(contentsOf: sharedLog?.fileURL ?? URL(fileURLWithPath: "/dev/null"), encoding: .utf8)) ?? ""
             if logText.contains("\"ev\":\"workLedger\"")

@@ -101,6 +101,11 @@ enum WYSIWYGEditor {
                 return
             }
             let intent = session.takePresentationIntent(for: presentation.id)
+            defer {
+                if let intent {
+                    intent.recorder.finish(intent)
+                }
+            }
             let editable: Bool
             if case .editable(let id) = session.wysiwygModeState.availability, id == presentation.id {
                 editable = true

@@ -68,6 +68,8 @@ nonisolated final class IntentRecorder: @unchecked Sendable {
     private struct State {
         var nextID: UInt64 = 0
         var ledgers: [IntentID: WorkLedger] = [:]
+        var leases: [IntentID: Int] = [:]
+        var orphaned: Set<IntentID> = []
     }
 
     private let state = Mutex(State())
@@ -87,7 +89,20 @@ nonisolated final class IntentRecorder: @unchecked Sendable {
             state.nextID &+= 1
             let id = IntentID(rawValue: state.nextID)
             state.ledgers[id] = WorkLedger()
+            state.leases[id] = 1
             return IntentContext(id: id, scope: scope, recorder: self)
+        }
+    }
+
+    /// Retains ownership for a downstream adapter that will finish work after the current
+    /// actor/task boundary returns. The lease prevents a normal parse completion from closing an
+    /// intent before its presentation host has recorded attributed work.
+    @discardableResult
+    func retain(_ context: IntentContext) -> Bool {
+        state.withLock { state in
+            guard state.ledgers[context.id] != nil else { return false }
+            state.leases[context.id, default: 0] += 1
+            return true
         }
     }
 
@@ -109,9 +124,27 @@ nonisolated final class IntentRecorder: @unchecked Sendable {
     /// an orphan instead of silently losing the work it performed.
     @discardableResult
     func finish(_ context: IntentContext, orphaned: Bool = false) -> Bool {
-        let ledger: WorkLedger? = state.withLock { $0.ledgers.removeValue(forKey: context.id) }
-        guard let ledger else { return false }
-        report(context: context, ledger: ledger, orphaned: orphaned, reason: orphaned ? .cancelled : nil)
+        let result: (ledger: WorkLedger, orphaned: Bool)? = state.withLock { state in
+            guard state.ledgers[context.id] != nil else { return nil }
+            if orphaned { state.orphaned.insert(context.id) }
+            let remaining = state.leases[context.id, default: 1] - 1
+            if remaining > 0 {
+                state.leases[context.id] = remaining
+                return nil
+            }
+            let ledger = state.ledgers.removeValue(forKey: context.id)!
+            state.leases.removeValue(forKey: context.id)
+            let wasOrphaned = state.orphaned.remove(context.id) != nil
+            return (ledger, wasOrphaned)
+        }
+        guard let result else {
+            // A live downstream lease makes this a normal release rather than a terminal report.
+            // A missing ledger is the only genuinely late completion and remains typed below.
+            let stillLive = state.withLock { $0.ledgers[context.id] != nil }
+            if stillLive { return true }
+            return false
+        }
+        report(context: context, ledger: result.ledger, orphaned: result.orphaned, reason: result.orphaned ? .cancelled : nil)
         return true
     }
 

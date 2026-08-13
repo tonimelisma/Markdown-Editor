@@ -170,6 +170,11 @@ final class EditorSession: ObservableObject {
     /// Combine subscriptions. Repeated detach is intentionally harmless.
     func detach() {
         parseCoordinator.cancel()
+        let pendingIntents = presentationIntents.values
+        presentationIntents.removeAll()
+        for intent in pendingIntents {
+            intent.recorder.finish(intent, orphaned: true)
+        }
         cancellables.removeAll()
         performanceSampler?.invalidate()
         performanceSampler = nil
@@ -364,6 +369,15 @@ final class EditorSession: ObservableObject {
         }()
         presentation = snapshot
         if let intent {
+            let supersededIntents = presentationIntents.values
+            let alreadyLeasedForPresentation = supersededIntents.contains(intent)
+            presentationIntents.removeAll()
+            for superseded in supersededIntents where superseded != intent {
+                superseded.recorder.finish(superseded, orphaned: true)
+            }
+            if !alreadyLeasedForPresentation {
+                intent.recorder.retain(intent)
+            }
             presentationIntents[snapshot.id] = intent
         }
         if !provisional {
