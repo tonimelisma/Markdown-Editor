@@ -88,4 +88,15 @@ printf '{"v":2,"ev":"alpha","origin":"productionRoute","route":"beta","channel":
     > "$logs/misrouted.jsonl"
 expect_fail "$gate" --cases-file "$cases" --exemptions "$exemptions" --routes "$routes" --log-dir "$logs/misrouted.jsonl"
 
+# A process-only route cannot be discharged by a component record, even if the record carries
+# the gate-owned channel and an explicit harness identity.
+cat > "$root/process-only-routes.json" <<'EOF'
+{"version":1,"events":{
+  "alpha":{"owner":"FixtureOwner","entry":"fixtureAlpha","expectedRecord":"alpha","allowedHarness":"process"}
+}}
+EOF
+printf '{"v":2,"ev":"alpha","origin":"productionRoute","route":"alpha","channel":"productionRoutePipe","harness":"component"}\n' \
+    > "$logs/wrong-harness.jsonl"
+expect_fail "$gate" --cases-file "$cases" --exemptions "$exemptions" --routes "$root/process-only-routes.json" --log-dir "$logs/wrong-harness.jsonl"
+
 echo "check-instrumentation-coverage fixtures: PASS"

@@ -234,10 +234,11 @@ for file in files:
                         raise SystemExit(
                             f"instrumentation-coverage: production event {event} has missing or unknown harness"
                         )
+                    # Component runs may exercise a route that is process-only in the final
+                    # evidence contract. They must not count toward that contract, but their
+                    # presence is not itself invalid; the process harness must still be observed.
                     if routes.get(event, {}).get("allowedHarness") == "process" and harness != "process":
-                        raise SystemExit(
-                            f"instrumentation-coverage: process-only event {event} was emitted by {harness} harness"
-                        )
+                        continue
                     observed_harnesses.setdefault(event, set()).add(harness)
 if not emitted:
     raise SystemExit("instrumentation-coverage: logs emitted zero event names")
