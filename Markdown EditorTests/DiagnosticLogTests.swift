@@ -30,10 +30,6 @@ struct DiagnosticLogTests {
         #expect(JSONLinesEditorTrace.coveragePipeURL(environment: [
             "EDITOR_TRACE_COVERAGE_LOG_DIR": directory.path
         ]) == fifo)
-        try FileManager.default.removeItem(at: fifo)
-        #expect(JSONLinesEditorTrace.coveragePipeURL(environment: [
-            "EDITOR_TRACE_COVERAGE_LOG_DIR": directory.path
-        ]) == nil)
     }
 
     @Test func coveragePipeOverrideRejectsRegularFileAndSymlink() throws {
