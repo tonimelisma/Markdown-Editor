@@ -432,8 +432,17 @@ enum BenchmarkDriver {
         if let textView = documentView as? NSTextView,
            let layoutManager = textView.layoutManager,
            let textContainer = textView.textContainer {
+            // AppKit's view layout pass does not necessarily force TextKit to finish laying out
+            // a newly installed large attributed document. Ensure the real document height is
+            // available before declaring this scroll action a no-op; otherwise a transient zero
+            // usedRect becomes a false benchmark error for large structured corpora.
+            layoutManager.ensureLayout(for: textContainer)
             let used = layoutManager.usedRect(for: textContainer)
-            renderedHeight = max(textView.bounds.height, used.maxY + textView.textContainerInset.height * 2)
+            renderedHeight = max(
+                textView.bounds.height,
+                textView.frame.height,
+                used.maxY + textView.textContainerInset.height * 2
+            )
         } else {
             renderedHeight = documentView.bounds.height
         }
