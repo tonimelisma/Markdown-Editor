@@ -6,7 +6,7 @@
       "file": "Markdown Editor/ParseCoordinator.swift",
       "find": "                for reason in resolveFailures {\n                    document?.trace?.record(.imageResolutionFailed(reason: reason))\n                }",
       "replace": "                for reason in resolveFailures {\n                    // falsified: failure not recorded\n                }",
-      "expect_red": ["test-check-instrumentation-coverage"]
+      "expect_red": ["parseOwnerRecordsImageResolutionFailureOnTheProductionRoute"]
     }
   ]
 }

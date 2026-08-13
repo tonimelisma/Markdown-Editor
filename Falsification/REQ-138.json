@@ -7,7 +7,7 @@
       "file": "Scripts/check-falsification.sh",
       "find": "if not red_proofs:",
       "replace": "if False and not red_proofs:",
-      "expect_red": ["Scripts/test-check-falsification.sh"]
+      "expect_red": ["Scripts/test-check-falsification-red-gate.sh"]
     }
   ]
 }

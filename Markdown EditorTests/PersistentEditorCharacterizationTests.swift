@@ -246,6 +246,8 @@ struct PersistentEditorCharacterizationTests {
     // presentation is never relabeled with a different snapshot identity.
     @Test func compositionRefusesWhenCapturedSnapshotWasReplaced() {
         let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
         document.installTextForTesting("ab")
         let session = EditorSession()
         session.attach(document: document)
@@ -283,12 +285,24 @@ struct PersistentEditorCharacterizationTests {
             marked: NSRange(location: 2, length: 1),
             snapshotID: PresentationSnapshot.ID(value: UInt64.max)
         )
+        let mutation = SourceMutation(
+            expectedRevision: document.sourceVersion,
+            range: NSRange(location: 2, length: 0),
+            expectedText: "",
+            replacement: "!",
+            selectionBefore: SourceSelection(utf16: NSRange(location: 2, length: 0)),
+            selectionAfter: SourceSelection(utf16: NSRange(location: 3, length: 0)),
+            actionName: "Test",
+            grouping: .discrete
+        )
+        _ = document.commitSourceMutation(mutation)
         let version = document.sourceVersion
         textView.insertText("日", replacementRange: NSRange(location: NSNotFound, length: 0))
 
         #expect(document.sourceVersion == version)
-        #expect(document.text == "ab")
+        #expect(document.text == "ab!")
         #expect(!coordinator.input.composition.isComposing)
+        #expect(trace.events.contains(.compositionRefusedStale))
     }
 
     // Verifies: REQ-086 — a one-shot session restoration is applied by the persistent host.

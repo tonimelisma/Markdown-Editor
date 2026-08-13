@@ -395,9 +395,22 @@ protocol EditorTraceSink: AnyObject {
 @MainActor
 final class InMemoryEditorTrace: EditorTraceSink {
     private(set) var events: [EditorTraceEvent] = []
+    private let coverageRecorder: JSONLinesEditorTrace.ProductionRouteCoverageRecorder?
+
+    init() {
+        let directory = JSONLinesEditorTrace.hostedCoverageDirectory()
+        let marker = directory.appendingPathComponent(".enabled")
+        if FileManager.default.fileExists(atPath: marker.path) {
+            coverageRecorder = JSONLinesEditorTrace.ProductionRouteCoverageRecorder(directory: directory)
+        } else {
+            coverageRecorder = nil
+        }
+    }
 
     func record(_ event: EditorTraceEvent) {
         events.append(event)
+        let mapped = JSONLinesEditorTrace.map(event)
+        coverageRecorder?.record(mapped)
     }
 
     func reset() {

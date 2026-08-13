@@ -35,6 +35,13 @@ final class ParseCoordinator {
 
     func generation() -> UInt64 { operationGeneration }
 
+    /// Component-test seam for delivering a completed parse against a newer coordinator
+    /// generation. Unlike `bumpGenerationAndCancel()`, this deliberately leaves the in-flight
+    /// owner running so the production stale-result guard is exercised.
+    func bumpGenerationWithoutCancellationForTesting() {
+        operationGeneration &+= 1
+    }
+
     /// Schedule parse/projection reconciliation for document's current snapshot.
     /// Extracted verbatim from EditorSession.scheduleParse — no behavior change.
     func scheduleParse(session: EditorSession, document: MarkdownDocument) {

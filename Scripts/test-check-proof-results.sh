@@ -48,7 +48,7 @@ EOF
 cat > "$root/unmapped.json" <<'EOF'
 {"testNodes":[
   {"nodeType":"Test Case","nodeIdentifier":"FixtureTests/passing()","result":"Passed"},
-  {"nodeType":"Test Case","nodeIdentifier":"FixtureTests/unmapped()","result":"Failed"}
+  {"nodeType":"Test Case","nodeIdentifier":"FixtureTests/unmapped()","result":"Passed"}
 ]}
 EOF
 if FIXTURE_XCRESULT_JSON="$root/unmapped.json" PATH="$root/bin:$PATH" \

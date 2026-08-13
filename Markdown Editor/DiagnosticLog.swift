@@ -152,6 +152,9 @@ final class DiagnosticLog {
 
     private let startUptimeNanos: UInt64
     private let writeCoordinator: DiagnosticWriteCoordinator
+    /// Work-ledger records are emitted directly by the recorder rather than through an editor
+    /// trace sink. Keep that production owner observable by the same synchronous coverage stream.
+    private let coverageRecorder: JSONLinesEditorTrace.ProductionRouteCoverageRecorder?
     private var durabilityTask: Task<Void, Never>?
     private var closed = false
     private var sizeLimitRecorded = false
@@ -197,6 +200,11 @@ final class DiagnosticLog {
         }
         let sink = DiagnosticFileSink(url: fileURL, byteLimit: Self.maximumFileBytes)
         writeCoordinator = DiagnosticWriteCoordinator(sink: sink)
+        coverageRecorder = hostKind == .unitTest
+            ? JSONLinesEditorTrace.ProductionRouteCoverageRecorder(
+                directory: JSONLinesEditorTrace.hostedCoverageDirectory()
+            )
+            : nil
         startUptimeNanos = DispatchTime.now().uptimeNanoseconds
         // A document app with no dirty documents is eligible for sudden termination: the process
         // is killed without `applicationWillTerminate`, so the terminating record never lands and
@@ -252,6 +260,15 @@ final class DiagnosticLog {
     ) {
         guard !closed else { return }
         let uptime = Double(DispatchTime.now().uptimeNanoseconds - startUptimeNanos) / 1_000_000_000
+
+        if event == .workLedger, origin == .productionRoute {
+            coverageRecorder?.record(
+                event: event,
+                level: level,
+                category: category,
+                data: data
+            )
+        }
 
         // REQ-096: a defect firing every run-loop pass must produce bounded evidence — but a
         // fault is the evidence, so it is never collapsed away.

@@ -29,8 +29,12 @@ trap cleanup EXIT
 
 echo "smoke: building (Debug, derivedDataPath=$derived)…"
 build_start=$(date +%s)
-xcodebuild -project "Markdown Editor.xcodeproj" -scheme "Markdown Editor" \
-    -configuration Debug -derivedDataPath "$derived" build >/dev/null || {
+build_command=(xcodebuild -project "Markdown Editor.xcodeproj" -scheme "Markdown Editor"
+    -configuration Debug -derivedDataPath "$derived")
+if [[ -n "${FALSIFICATION_SOURCE_PACKAGES:-}" ]]; then
+    build_command+=(-clonedSourcePackagesDirPath "$FALSIFICATION_SOURCE_PACKAGES")
+fi
+"${build_command[@]}" build >/dev/null || {
         echo "smoke: build failed" >&2; exit 1; }
 build_end=$(date +%s)
 echo "smoke: build took $((build_end - build_start))s"

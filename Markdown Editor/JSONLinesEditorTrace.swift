@@ -14,18 +14,16 @@ import Foundation
 final class JSONLinesEditorTrace: EditorTraceSink {
     private let log: DiagnosticLog
     private let origin: DiagnosticEvidenceOrigin
-    /// Unit-test route runs are mirrored into the gate's shared evidence directory. The mirror
-    /// is created only for an explicitly production-origin sink; the encoding probe below never
-    /// enters it. This lets a component test exercise the real owner while keeping its own log
-    /// isolated from other tests.
-    private let coverageMirror: DiagnosticLog?
+    /// Unit-test production routes write a separate synchronous evidence stream. The encoder
+    /// probe below never enters it, so a symbolic vocabulary cannot satisfy observed coverage.
+    private let coverageRecorder: ProductionRouteCoverageRecorder?
     /// Opaque per-run handle identifying the document this sink belongs to.
     private let documentHandle: UInt64?
 
     init(log: DiagnosticLog, origin: DiagnosticEvidenceOrigin = .productionRoute) {
         self.log = log
         self.origin = origin
-        self.coverageMirror = Self.makeCoverageMirror(for: log, origin: origin)
+        self.coverageRecorder = Self.makeCoverageRecorder(for: log, origin: origin)
         self.documentHandle = log.makeDocumentHandle()
     }
 
@@ -36,7 +34,7 @@ final class JSONLinesEditorTrace: EditorTraceSink {
     ) {
         self.log = log
         self.origin = origin
-        self.coverageMirror = Self.makeCoverageMirror(for: log, origin: origin)
+        self.coverageRecorder = Self.makeCoverageRecorder(for: log, origin: origin)
         self.documentHandle = documentHandle
     }
 
@@ -50,27 +48,96 @@ final class JSONLinesEditorTrace: EditorTraceSink {
             origin: origin,
             data: mapped.data
         )
-        coverageMirror?.record(
-            mapped.name,
-            level: mapped.level,
-            category: mapped.category,
-            origin: .productionRoute,
-            data: mapped.data
-        )
+        coverageRecorder?.record(mapped)
     }
 
-    private static func makeCoverageMirror(
+    private static func makeCoverageRecorder(
         for log: DiagnosticLog,
         origin: DiagnosticEvidenceOrigin
-    ) -> DiagnosticLog? {
+    ) -> ProductionRouteCoverageRecorder? {
         guard origin == .productionRoute,
-              log.header.hostKind == .unitTest,
-              let path = ProcessInfo.processInfo.environment["EDITOR_TRACE_COVERAGE_LOG_DIR"],
-              !path.isEmpty else { return nil }
-        return DiagnosticLog(
-            directory: URL(fileURLWithPath: path, isDirectory: true),
-            hostKind: .unitTest
-        )
+              log.header.hostKind == .unitTest else { return nil }
+        return ProductionRouteCoverageRecorder(directory: hostedCoverageDirectory())
+    }
+
+    @MainActor
+    final class ProductionRouteCoverageRecorder {
+        private let handle: FileHandle?
+        private let startedAt: Date
+        private let startUptimeNanos: UInt64
+        private var nextSequence: UInt64 = 0
+
+        init?(directory: URL) {
+            guard FileManager.default.fileExists(
+                atPath: directory.appendingPathComponent(".enabled").path
+            ) else { return nil }
+            startedAt = Date()
+            startUptimeNanos = DispatchTime.now().uptimeNanoseconds
+            let runID = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12))
+            let header = DiagnosticRunHeader(
+                runID: runID,
+                startedAt: startedAt,
+                hostKind: .unitTest,
+                shortVersion: "0",
+                buildVersion: "0",
+                osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+                processID: ProcessInfo.processInfo.processIdentifier
+            )
+            try? FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+            let fileURL = directory.appendingPathComponent(
+                "run-\(DiagnosticTimestamp.compactUTC(startedAt))-\(runID).jsonl"
+            )
+            FileManager.default.createFile(atPath: fileURL.path, contents: nil)
+            handle = try? FileHandle(forWritingTo: fileURL)
+            append(header.jsonLine)
+        }
+
+        func record(_ mapped: Mapped) {
+            record(
+                event: mapped.name,
+                level: mapped.level,
+                category: mapped.category,
+                data: mapped.data
+            )
+        }
+
+        func record(
+            event: DiagnosticEventName,
+            level: DiagnosticLevel,
+            category: DiagnosticCategory,
+            data: [(key: DiagnosticField, value: DiagnosticValue)]
+        ) {
+            nextSequence &+= 1
+            let uptime = Double(DispatchTime.now().uptimeNanoseconds - startUptimeNanos) / 1_000_000_000
+            let record = DiagnosticRecord(
+                wallClock: Date(),
+                uptimeSeconds: uptime,
+                sequence: nextSequence,
+                level: level,
+                category: category,
+                event: event,
+                origin: .productionRoute,
+                data: data
+            )
+            append(record.jsonLine)
+        }
+
+        private func append(_ line: String) {
+            guard let data = (line + "\n").data(using: .utf8) else { return }
+            try? handle?.write(contentsOf: data)
+        }
+    }
+
+    static func hostedCoverageDirectory() -> URL {
+        let filePath = #filePath as NSString
+        let sourceDir = filePath.deletingLastPathComponent as NSString
+        let repoRoot = sourceDir.deletingLastPathComponent
+        return URL(fileURLWithPath: repoRoot, isDirectory: true)
+            .appendingPathComponent(".build", isDirectory: true)
+            .appendingPathComponent("instrumentation-coverage-tests", isDirectory: true)
     }
 
     struct Mapped {

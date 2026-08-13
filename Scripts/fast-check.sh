@@ -33,21 +33,12 @@ coverage_dir="$derived/instrumentation-coverage"
 if [[ -n "${EDITOR_TRACE_COVERAGE_LOG_DIR:-}" ]]; then
     test_coverage_dir="$EDITOR_TRACE_COVERAGE_LOG_DIR"
 else
-    _coverage_hash=$(python3 - "$repo_root" <<'PYEOF'
-import sys
-repo = sys.argv[1]
-h = 1469598103934665603
-for b in repo.encode():
-    h ^= b
-    h = (h * 1099511628211) & 0xFFFFFFFFFFFFFFFF
-print(f"{h & 0xFFFFFFFF:08x}")
-PYEOF
-)
-    test_coverage_dir="${TMPDIR%/}/MarkdownEditorTraceCoverage-${_coverage_hash}"
+    test_coverage_dir="$repo_root/.build/instrumentation-coverage-tests"
 fi
 mkdir -p "$coverage_dir"
 mkdir -p "$test_coverage_dir"
 rm -rf "$test_coverage_dir"/*
+touch "$test_coverage_dir/.enabled"
 export EDITOR_TRACE_COVERAGE_LOG_DIR="$test_coverage_dir"
 step() {
     printf '\n── %s\n' "$1"

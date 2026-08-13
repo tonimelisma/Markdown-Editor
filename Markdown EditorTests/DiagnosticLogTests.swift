@@ -261,6 +261,97 @@ struct DiagnosticLogTests {
         #expect(event?["origin"] as? String != DiagnosticEvidenceOrigin.productionRoute.rawValue)
     }
 
+    // Verifies: REQ-089/111 — the real parse owner reports image resolution failure through its
+    // document trace when a local attachment cannot be resolved.
+    @Test func parseOwnerRecordsImageResolutionFailureOnTheProductionRoute() async {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("![missing](missing-image.png)\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        for _ in 0..<200 {
+            if trace.events.contains(where: {
+                if case .imageResolutionFailed = $0 { return true }
+                return false
+            }) { break }
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(trace.events.contains {
+            if case .imageResolutionFailed = $0 { return true }
+            return false
+        })
+        session.detach()
+    }
+
+    // Verifies: REQ-111 — a parse that finishes after a newer source snapshot is discarded by the
+    // real coordinator and leaves a typed reconciliation record.
+    @Test func parseOwnerRecordsStaleReconciliation() async {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let source = String(repeating: "# heading\n\nparagraph with enough structure to parse.\n", count: 2_000)
+        document.installTextForTesting(source)
+        let session = EditorSession()
+        session.attach(document: document)
+        for _ in 0..<500 where !trace.events.contains(where: {
+            if case .parseCompleted = $0 { return true }
+            return false
+        }) {
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+        // Deliver the already-parsed result against a newer generation so the real coordinator
+        // stale-result guard runs; cancellation would exercise only parseCancelled instead.
+        session.parseCoordinator.bumpGenerationWithoutCancellationForTesting()
+        for _ in 0..<500 {
+            if trace.events.contains(where: {
+                if case .reconciliationDiscarded = $0 { return true }
+                return false
+            }) { break }
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(trace.events.contains {
+            if case .reconciliationDiscarded = $0 { return true }
+            return false
+        }, "events: \(trace.events)")
+        session.detach()
+    }
+
+    // Verifies: REQ-115 — the smoke exercise uses the ordinary window command route for an
+    // accepted insertion and a semantic command, independent of process/window timing.
+    @Test func smokeEditExerciseUsesRealRoutes() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("hello\n")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let session = EditorSession()
+        session.attach(document: document)
+        session.setMode(.source)
+        let controller = EditorCommandController()
+        controller.bind(
+            document: document,
+            session: session,
+            actionRouter: EditorActionRouter(),
+            window: nil
+        )
+
+        MarkdownAppDelegate.exerciseSmokeEdits(using: controller)
+
+        #expect(document.text == "**x**hello\n")
+        #expect(trace.events.contains {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        })
+        #expect(trace.events.contains {
+            if case .editRouted = $0 { return true }
+            return false
+        })
+        session.detach()
+    }
+
     // Verifies: REQ-095 — the run header survives a hostile runtime version string, which is
     // the only non-literal text anywhere in the format.
     @Test func runHeaderEscapesHostileVersionStrings() {

@@ -6,7 +6,7 @@
       "file": "Markdown Editor/SemanticEditPlanners.swift",
       "find": "            utf16: NSRange(location: lineStart + max(0, offsetInReplacement), length: 0),",
       "replace": "            utf16: NSRange(location: lineStart + offsetInReplacement + 1, length: 0),",
-      "expect_red": ["everyEnabledCommandPerformsInWYSIWYGMode"]
+      "expect_red": ["Markdown EditorTests/CommandLivenessMatrixTests/everyEnabledCommandPerformsInWYSIWYGMode()"]
     }
   ]
 }

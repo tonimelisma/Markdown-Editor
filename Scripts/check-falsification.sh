@@ -271,9 +271,14 @@ def proof_outcome(output, proof):
             output,
             re.IGNORECASE,
         )
-    if not matches:
-        return None
-    return matches[-1].lower()
+    if matches:
+        return matches[-1].lower()
+    suite_matches = re.findall(
+        rf"(?:Suite|Test suite)\s+[^\n]*\b{re.escape(leaf)}(?:\(\))?[^\n]*\b(passed|failed)\b",
+        output,
+        re.IGNORECASE,
+    )
+    return suite_matches[-1].lower() if suite_matches else None
 
 
 def resolve_xcode_proof(mutant_root, proof):
@@ -403,7 +408,7 @@ class Slot:
         return True
 
 
-def command_driver(mutant_root, execution_root, mutation_file=""):
+def command_driver(mutant_root, execution_root, mutation_file="", expected_proofs=()):
     # Repository policy requirements are proved by their executable fixture, not by an
     # application test target.  Keep this driver explicit so a script mutation still has a
     # compile step (shell syntax validation) and an observed process-level proof outcome.
@@ -451,6 +456,13 @@ def command_driver(mutant_root, execution_root, mutation_file=""):
             "-parallel-testing-enabled", "NO",
             "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO", "CODE_SIGN_IDENTITY=",
         ]
+        script_proofs = [proof for proof in expected_proofs if proof.startswith("Scripts/")]
+        if script_proofs:
+            return {
+                "kind": "shell",
+                "build": common + ["build"],
+                "test": lambda proof, result: ["bash", str(mutant_root / proof)],
+            }
         return {
             "kind": "xcode",
             "build": common + ["build"],
@@ -498,7 +510,7 @@ def execute_mutation(slot, requirement, mutation_index, mutation):
     environment = slot.environment
 
     try:
-        driver = command_driver(mutant_root, execution_root, file_value)
+        driver = command_driver(mutant_root, execution_root, file_value, mutation.get("expect_red", []))
     except RuntimeError as error:
         return False, f"{requirement} mutation {mutation_index}: {error}"
 
