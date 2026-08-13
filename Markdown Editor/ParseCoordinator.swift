@@ -64,18 +64,16 @@ final class ParseCoordinator {
         parseTask?.cancel()
         let request = LatestParseRequest(source: snapshot, operationGeneration: generation)
         guard parseScheduler.submit(request) else { return }
-        document.trace?.record(
-            .reconciliationScheduled(sourceRevision: snapshot.sourceVersion, generation: generation)
+        document.trace?.record(route: .reconciliationScheduled, .reconciliationScheduled(sourceRevision: snapshot.sourceVersion, generation: generation)
         )
-        document.trace?.record(
-            .parseStarted(sourceVersion: snapshot.sourceVersion, utf16Count: (snapshot.text as NSString).length)
+        document.trace?.record(route: .parseStarted, .parseStarted(sourceVersion: snapshot.sourceVersion, utf16Count: (snapshot.text as NSString).length)
         )
         let parseProjectionStart = DispatchTime.now().uptimeNanoseconds
         let task = Task.detached(priority: .userInitiated) { [weak session, weak document] in
             await WorkLedgerRecorder.scope(.reconciliation) {
             if Task.isCancelled {
                 await MainActor.run {
-                    document?.trace?.record(.parseCancelled(sourceVersion: snapshot.sourceVersion))
+                    document?.trace?.record(route: .parseCancelled, .parseCancelled(sourceVersion: snapshot.sourceVersion))
                 }
                 return
             }
@@ -87,7 +85,7 @@ final class ParseCoordinator {
             )
             if Task.isCancelled {
                 await MainActor.run {
-                    document?.trace?.record(.parseCancelled(sourceVersion: snapshot.sourceVersion))
+                    document?.trace?.record(route: .parseCancelled, .parseCancelled(sourceVersion: snapshot.sourceVersion))
                 }
                 return
             }
@@ -96,8 +94,7 @@ final class ParseCoordinator {
                     guard let session else { return }
                     guard document?.sourceVersion == snapshot.sourceVersion,
                           session.parseCoordinator.generation() == generation else {
-                        document?.trace?.record(
-                            .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .stale)
+                        document?.trace?.record(route: .reconciliationDiscarded, .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .stale)
                         )
                         return
                     }
@@ -109,27 +106,25 @@ final class ParseCoordinator {
                             $0.selection = nil
                         }
                     }
-                    document?.trace?.record(
-                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .parseFailure)
+                    document?.trace?.record(route: .reconciliationDiscarded, .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .parseFailure)
                     )
                 }
                 return
             }
             await MainActor.run {
-                document?.trace?.record(.parseCompleted(sourceVersion: snapshot.sourceVersion))
+                document?.trace?.record(route: .parseCompleted, .parseCompleted(sourceVersion: snapshot.sourceVersion))
             }
             let model = MarkdownProjectionModel.build(tree: tree, index: index)
             if case .failure = ProjectionOracle.validate(model: model, sourceUTF16Count: (snapshot.text as NSString).length) {
                 await MainActor.run {
-                    document?.trace?.record(
-                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .oracleModel)
+                    document?.trace?.record(route: .reconciliationDiscarded, .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .oracleModel)
                     )
                 }
                 return
             }
             if Task.isCancelled {
                 await MainActor.run {
-                    document?.trace?.record(.parseCancelled(sourceVersion: snapshot.sourceVersion))
+                    document?.trace?.record(route: .parseCancelled, .parseCancelled(sourceVersion: snapshot.sourceVersion))
                 }
                 return
             }
@@ -169,8 +164,7 @@ final class ParseCoordinator {
                 guard document?.sourceVersion == snapshot.sourceVersion,
                       document?.locationGeneration == snapshot.locationGeneration,
                       session.parseCoordinator.generation() == generation else {
-                    document?.trace?.record(
-                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .identityMismatch)
+                    document?.trace?.record(route: .reconciliationDiscarded, .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .identityMismatch)
                     )
                     return
                 }
@@ -181,14 +175,13 @@ final class ParseCoordinator {
                     sourceText: snapshot.text
                 )
                 if !authoritative.isOracleValid {
-                    document?.trace?.record(
-                        .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .oracleSnapshot)
+                    document?.trace?.record(route: .reconciliationDiscarded, .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .oracleSnapshot)
                     )
                     return
                 }
                 session.authoritativeTree = tree
                 for reason in resolveFailures {
-                    document?.trace?.record(.imageResolutionFailed(reason: reason))
+                    document?.trace?.record(route: .imageResolutionFailed, .imageResolutionFailed(reason: reason))
                 }
                 document?.updateCanonicalAssetReferences(CanonicalAssetReferences.from(model: model))
                 let imageCacheLookupStart = DispatchTime.now().uptimeNanoseconds
@@ -218,8 +211,7 @@ final class ParseCoordinator {
                 session.performanceSampler?.record(.parseProjection, durationNanos: parseProjectionDuration)
                 session.performanceSampler?.record(.imageResolution, durationNanos: imageResolutionTotal)
                 session.performanceSampler?.record(.authoritativeApplication, durationNanos: authoritativeApplicationDuration)
-                document?.trace?.record(
-                    .reconciliationApplied(
+                document?.trace?.record(route: .reconciliationApplied, .reconciliationApplied(
                         snapshotID: authoritative.id.value,
                         sourceRevision: authoritative.sourceRevision.value,
                         generation: generation,

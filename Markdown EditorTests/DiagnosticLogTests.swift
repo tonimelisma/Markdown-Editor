@@ -190,12 +190,9 @@ struct DiagnosticLogTests {
 
         let requestedPath = ProcessInfo.processInfo.environment["EDITOR_TRACE_COVERAGE_LOG_DIR"]
         // Fallback is kept for manual Xcode runs outside fast-check/full-check.
-        // The gate always sets EDITOR_TRACE_COVERAGE_LOG_DIR to a per-derivedData
-        // directory (Scripts/fast-check.sh, Scripts/full-check.sh) so two worktrees
-        // never read each other's logs. For manual runs without the env var, derive
-        // a per-checkout directory from this source file's location so concurrent
-        // manual runs from different worktrees also do not collide on the single
-        // shared ${TMPDIR%/}/MarkdownEditorTraceCoverage.
+        // The test's ordinary diagnostic log follows this per-checkout directory. Production
+        // route evidence is captured separately through the gate-owned FIFO in the same
+        // checkout's deterministic .build directory.
         let fallbackPath: String = {
             let filePath = #filePath as NSString
             // #filePath is .../<checkout>/Markdown EditorTests/DiagnosticLogTests.swift
@@ -217,7 +214,7 @@ struct DiagnosticLogTests {
             directory: URL(fileURLWithPath: coveragePath, isDirectory: true),
             hostKind: .unitTest
         )
-        let sink = JSONLinesEditorTrace(log: coverageLog, origin: .encodingProbe)
+        let sink = JSONLinesEditorTrace.makeEncodingProbe(log: coverageLog)
         for event in events {
             sink.record(event)
         }
@@ -240,7 +237,7 @@ struct DiagnosticLogTests {
     @Test func productionRouteRecordsCarryExplicitProductionOrigin() async {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
         let sink = JSONLinesEditorTrace(log: log)
-        sink.record(.documentOpened(utf16Count: 8))
+        sink.record(route: .documentOpened, .documentOpened(utf16Count: 8))
         let recorded = await lines(of: log)
         let event = recorded
             .compactMap(object)
@@ -252,7 +249,7 @@ struct DiagnosticLogTests {
     // emits a complete symbolic vocabulary.
     @Test func encodingProbeRecordsCannotMasqueradeAsProductionRoute() async {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
-        let sink = JSONLinesEditorTrace(log: log, origin: .encodingProbe)
+        let sink = JSONLinesEditorTrace.makeEncodingProbe(log: log)
         sink.record(.documentOpened(utf16Count: 8))
         let recorded = await lines(of: log)
         let event = recorded

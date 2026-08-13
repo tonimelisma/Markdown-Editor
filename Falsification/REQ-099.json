@@ -2,10 +2,10 @@
   "requirement": "REQ-099",
   "mutations": [
     {
-      "rationale": "Changing the production sink's default evidence origin makes an ordinary production trace indistinguishable from an encoding probe.",
-      "file": "Markdown Editor/JSONLinesEditorTrace.swift",
-      "find": "init(log: DiagnosticLog, origin: DiagnosticEvidenceOrigin = .productionRoute)",
-      "replace": "init(log: DiagnosticLog, origin: DiagnosticEvidenceOrigin = .encodingProbe)",
+      "rationale": "Changing the production record's assigned origin makes an emitted production route indistinguishable from a gate fixture.",
+      "file": "Markdown Editor/DiagnosticLog.swift",
+      "find": "            origin: .productionRoute,",
+      "replace": "            origin: .gateFixture,",
       "expect_red": ["productionRouteRecordsCarryExplicitProductionOrigin"]
     }
   ]

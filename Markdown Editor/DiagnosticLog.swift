@@ -152,8 +152,8 @@ final class DiagnosticLog {
 
     private let startUptimeNanos: UInt64
     private let writeCoordinator: DiagnosticWriteCoordinator
-    /// Work-ledger records are emitted directly by the recorder rather than through an editor
-    /// trace sink. Keep that production owner observable by the same synchronous coverage stream.
+    /// Production route records are copied to the gate-owned FIFO by this internal writer. The
+    /// writer is not addressable through the editor trace protocol or an evidence-origin argument.
     private let coverageRecorder: JSONLinesEditorTrace.ProductionRouteCoverageRecorder?
     private var durabilityTask: Task<Void, Never>?
     private var closed = false
@@ -200,11 +200,7 @@ final class DiagnosticLog {
         }
         let sink = DiagnosticFileSink(url: fileURL, byteLimit: Self.maximumFileBytes)
         writeCoordinator = DiagnosticWriteCoordinator(sink: sink)
-        coverageRecorder = hostKind == .unitTest
-            ? JSONLinesEditorTrace.ProductionRouteCoverageRecorder(
-                directory: JSONLinesEditorTrace.hostedCoverageDirectory()
-            )
-            : nil
+        coverageRecorder = JSONLinesEditorTrace.ProductionRouteCoverageRecorder()
         startUptimeNanos = DispatchTime.now().uptimeNanoseconds
         // A document app with no dirty documents is eligible for sudden termination: the process
         // is killed without `applicationWillTerminate`, so the terminating record never lands and
@@ -255,17 +251,79 @@ final class DiagnosticLog {
         level: DiagnosticLevel = .debug,
         category: DiagnosticCategory,
         document: UInt64? = nil,
-        origin: DiagnosticEvidenceOrigin = .gateFixture,
         data: [(key: DiagnosticField, value: DiagnosticValue)] = []
+    ) {
+        recordInternal(
+            event,
+            level: level,
+            category: category,
+            document: document,
+            origin: .gateFixture,
+            route: nil,
+            data: data
+        )
+    }
+
+    func recordEncodingProbe(
+        _ event: DiagnosticEventName,
+        level: DiagnosticLevel = .debug,
+        category: DiagnosticCategory,
+        document: UInt64? = nil,
+        data: [(key: DiagnosticField, value: DiagnosticValue)] = []
+    ) {
+        recordInternal(
+            event,
+            level: level,
+            category: category,
+            document: document,
+            origin: .encodingProbe,
+            route: nil,
+            data: data
+        )
+    }
+
+    /// The only application API that can produce production-route evidence. The route is a
+    /// closed event identifier supplied by the production owner, never a caller-controlled
+    /// evidence-origin argument. The record is copied to the gate-owned FIFO by the internal
+    /// recorder only after the typed route identity matches the event.
+    func recordProduction(
+        _ event: DiagnosticEventName,
+        level: DiagnosticLevel = .debug,
+        category: DiagnosticCategory,
+        document: UInt64? = nil,
+        route: DiagnosticEventName,
+        data: [(key: DiagnosticField, value: DiagnosticValue)] = []
+    ) {
+        guard event == route else { return }
+        recordInternal(
+            event,
+            level: level,
+            category: category,
+            document: document,
+            origin: .productionRoute,
+            route: route,
+            data: data
+        )
+    }
+
+    private func recordInternal(
+        _ event: DiagnosticEventName,
+        level: DiagnosticLevel,
+        category: DiagnosticCategory,
+        document: UInt64?,
+        origin: DiagnosticEvidenceOrigin,
+        route: DiagnosticEventName?,
+        data: [(key: DiagnosticField, value: DiagnosticValue)]
     ) {
         guard !closed else { return }
         let uptime = Double(DispatchTime.now().uptimeNanoseconds - startUptimeNanos) / 1_000_000_000
 
-        if event == .workLedger, origin == .productionRoute {
+        if let route, origin == .productionRoute {
             coverageRecorder?.record(
                 event: event,
                 level: level,
                 category: category,
+                route: route,
                 data: data
             )
         }
@@ -287,6 +345,7 @@ final class DiagnosticLog {
             category: category,
             document: document,
             origin: origin,
+            productionRoute: route,
             data: data,
             uptime: uptime
         )
@@ -298,6 +357,7 @@ final class DiagnosticLog {
         category: DiagnosticCategory,
         document: UInt64?,
         origin: DiagnosticEvidenceOrigin,
+        productionRoute: DiagnosticEventName?,
         data: [(key: DiagnosticField, value: DiagnosticValue)],
         uptime: Double
     ) {
@@ -312,8 +372,7 @@ final class DiagnosticLog {
                 event: event,
                 document: document,
                 origin: origin,
-                productionRoute: origin == .productionRoute ? event : nil,
-                attestation: DiagnosticCoverageAttestation.token(event: event, origin: origin),
+                productionRoute: productionRoute,
                 data: data
             ).jsonLine
         })

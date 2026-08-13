@@ -176,8 +176,8 @@ not bundle the next plan to make its own proof pass. If observed code contradict
 return to discovery; do not improvise an architecture change.
 
 1. ✅ **COR-68 — Proof architecture v2.** (Delivers: REQ-099, REQ-117, REQ-118, REQ-135, REQ-138)
-   Separates encoding from production reachability, authenticates observed production records with
-   a gate-issued challenge, binds each route to its owner-specific production call, validates
+   Separates encoding from production reachability, captures observed production records through a
+   gate-owned FIFO, binds each route to its owner-specific typed production call, validates
    falsification against production behavior, and gives refactor-only plans derived completion
    evidence. Full gate observed passing: 437 tests, 50 emitted routes, 40 Done rows, 29/29 changed-
    scope falsifications.

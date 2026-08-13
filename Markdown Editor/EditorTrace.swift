@@ -389,28 +389,46 @@ extension PerformanceSampler.Metric {
 @MainActor
 protocol EditorTraceSink: AnyObject {
     func record(_ event: EditorTraceEvent)
+    /// Production owners must declare the closed route they are executing. The one-argument
+    /// method remains the encoding/gate-fixture path and is never reachability evidence.
+    func record(route: DiagnosticEventName, _ event: EditorTraceEvent)
 }
 
 /// In-memory recorder for tests.
 @MainActor
 final class InMemoryEditorTrace: EditorTraceSink {
     private(set) var events: [EditorTraceEvent] = []
-    private let coverageRecorder: JSONLinesEditorTrace.ProductionRouteCoverageRecorder?
+    private let coverageLog: DiagnosticLog?
 
     init() {
-        let directory = JSONLinesEditorTrace.hostedCoverageDirectory()
-        let marker = directory.appendingPathComponent(".enabled")
-        if FileManager.default.fileExists(atPath: marker.path) {
-            coverageRecorder = JSONLinesEditorTrace.ProductionRouteCoverageRecorder(directory: directory)
+        if FileManager.default.fileExists(
+            atPath: JSONLinesEditorTrace.hostedCoverageDirectory()
+                .appendingPathComponent("route.pipe").path
+        ) {
+            coverageLog = DiagnosticLog(
+                directory: JSONLinesEditorTrace.hostedCoverageDirectory(),
+                hostKind: .unitTest
+            )
         } else {
-            coverageRecorder = nil
+            coverageLog = nil
         }
     }
 
     func record(_ event: EditorTraceEvent) {
         events.append(event)
+    }
+
+    func record(route: DiagnosticEventName, _ event: EditorTraceEvent) {
+        events.append(event)
         let mapped = JSONLinesEditorTrace.map(event)
-        coverageRecorder?.record(mapped)
+        guard mapped.name == route else { return }
+        coverageLog?.recordProduction(
+            mapped.name,
+            level: mapped.level,
+            category: mapped.category,
+            route: route,
+            data: mapped.data
+        )
     }
 
     func reset() {

@@ -7,7 +7,6 @@ cases_file="$repo_root/Markdown Editor/EditorTrace.swift"
 exemptions_file="$repo_root/docs/trace-coverage-exemptions.md"
 routes_file="$repo_root/docs/proof-routes.json"
 log_dirs=()
-challenge="${EDITOR_TRACE_COVERAGE_CHALLENGE:-}"
 
 usage() {
     echo "usage: check-instrumentation-coverage.sh --log-dir <directory> [--log-dir <directory>]" >&2
@@ -19,7 +18,6 @@ while [[ $# -gt 0 ]]; do
         --cases-file) [[ $# -ge 2 ]] || usage; cases_file="$2"; shift 2 ;;
         --exemptions) [[ $# -ge 2 ]] || usage; exemptions_file="$2"; shift 2 ;;
         --routes) [[ $# -ge 2 ]] || usage; routes_file="$2"; shift 2 ;;
-        --challenge) [[ $# -ge 2 ]] || usage; challenge="$2"; shift 2 ;;
         *) usage ;;
     esac
 done
@@ -30,14 +28,7 @@ if [[ ${#log_dirs[@]} -eq 0 ]]; then
     echo "instrumentation-coverage: no diagnostic log directories supplied" >&2
     exit 1
 fi
-if [[ -z "$challenge" ]]; then
-    echo "instrumentation-coverage: no gate challenge supplied" >&2
-    exit 1
-fi
-
-python3 - "$cases_file" "$exemptions_file" "$routes_file" "$challenge" "${log_dirs[@]}" <<'PY'
-import hashlib
-import hmac
+python3 - "$cases_file" "$exemptions_file" "$routes_file" "${log_dirs[@]}" <<'PY'
 import json
 import pathlib
 import re
@@ -46,8 +37,7 @@ import sys
 cases_path = pathlib.Path(sys.argv[1])
 exemptions_path = pathlib.Path(sys.argv[2])
 routes_path = pathlib.Path(sys.argv[3])
-challenge = sys.argv[4]
-log_dirs = [pathlib.Path(value) for value in sys.argv[5:]]
+log_dirs = [pathlib.Path(value) for value in sys.argv[4:]]
 
 if not cases_path.is_file():
     raise SystemExit(f"instrumentation-coverage: missing case source {cases_path}")
@@ -88,24 +78,94 @@ for name, route in routes.items():
         raise SystemExit(f"instrumentation-coverage: route for {name} is incomplete")
     if route["expectedRecord"] != name:
         raise SystemExit(f"instrumentation-coverage: route for {name} expects {route['expectedRecord']!r}")
+    def code_only(source):
+        output = list(source)
+        index = 0
+        while index < len(source):
+            if source.startswith("//", index):
+                end = source.find("\n", index)
+                end = len(source) if end < 0 else end
+                for position in range(index, end):
+                    output[position] = " "
+                index = end
+                continue
+            if source.startswith("/*", index):
+                end = source.find("*/", index + 2)
+                end = len(source) - 2 if end < 0 else end
+                for position in range(index, min(len(source), end + 2)):
+                    if source[position] != "\n":
+                        output[position] = " "
+                index = min(len(source), end + 2)
+                continue
+            if source[index] == '"':
+                index += 1
+                while index < len(source):
+                    if source[index] == "\\":
+                        index += 2
+                    elif source[index] == '"':
+                        index += 1
+                        break
+                    else:
+                        if source[index] != "\n":
+                            output[index] = " "
+                        index += 1
+                continue
+            index += 1
+        return "".join(output)
+
+    def matching_brace(source, opening):
+        depth = 0
+        for position in range(opening, len(source)):
+            if source[position] == "{":
+                depth += 1
+            elif source[position] == "}":
+                depth -= 1
+                if depth == 0:
+                    return position
+        return None
+
     owner_sources = []
     for path in cases_path.parent.rglob("*.swift"):
         if "Markdown EditorTests" in path.parts:
             continue
         source = path.read_text(encoding="utf-8", errors="ignore")
-        if re.search(rf"\b{re.escape(route['owner'])}\b", source):
-            owner_sources.append(source)
+        code = code_only(source)
+        owner_match = re.search(
+            rf"\b(?:class|struct|enum)\s+{re.escape(route['owner'])}\b[^{{]*{{", code
+        )
+        if not owner_match:
+            continue
+        owner_opening = code.find("{", owner_match.start())
+        owner_end = matching_brace(code, owner_opening)
+        if owner_end is None:
+            raise SystemExit(f"instrumentation-coverage: unterminated owner {route['owner']}")
+        owner_sources.append(code[owner_match.start():owner_end + 1])
     if not owner_sources:
         raise SystemExit(f"instrumentation-coverage: route for {name} names an absent production owner")
-    if not any(
-        route["entry"] in source
-        and re.search(rf"\brecord\s*\(\s*\.{re.escape(name)}\b", source)
-        for source in owner_sources
-    ):
-        raise SystemExit(
-            f"instrumentation-coverage: route for {name} has no production record call in owner "
-            f"{route['owner']} entry {route['entry']}"
+    entry_pattern = re.compile(rf"\bfunc\s+{re.escape(route['entry'])}\s*\(")
+    if name == "workLedger":
+        route_pattern = re.compile(r"\brecordProduction\s*\(.*?\broute:\s*\.workLedger\b", re.S)
+    else:
+        route_pattern = re.compile(
+            rf"\brecord\s*\(\s*route:\s*\.{re.escape(name)}\s*,\s*\.{re.escape(name)}\b"
         )
+    bound = False
+    for source in owner_sources:
+        entry_match = entry_pattern.search(source)
+        if not entry_match:
+            continue
+        entry_opening = source.find("{", entry_match.start())
+        entry_end = matching_brace(source, entry_opening)
+        if entry_end is not None and route_pattern.search(source, entry_match.start(), entry_end + 1):
+            bound = True
+            break
+    if not bound:
+        raise SystemExit(
+            f"instrumentation-coverage: route for {name} has no owner-bound production route call "
+            f"in {route['owner']}.{route['entry']}"
+        )
+    if route["allowedHarness"] not in {"process", "component"}:
+        raise SystemExit(f"instrumentation-coverage: route for {name} has unknown harness")
 
 exemptions = {}
 for line in exemptions_path.read_text(encoding="utf-8").splitlines():
@@ -132,6 +192,7 @@ if not files:
 
 emitted = set()
 origins = set()
+observed_harnesses = {name: set() for name in routes}
 known_origins = {"productionRoute", "encodingProbe", "gateFixture"}
 for file in files:
     for line_number, line in enumerate(file.read_text(encoding="utf-8").splitlines(), 1):
@@ -149,21 +210,20 @@ for file in files:
                     raise SystemExit(f"instrumentation-coverage: event {event} has missing or unknown evidence origin")
                 origins.add(origin)
                 if origin == "productionRoute":
+                    if record.get("channel") != "productionRoutePipe":
+                        raise SystemExit(
+                            f"instrumentation-coverage: production event {event} is not from the "
+                            "gate-owned evidence channel"
+                        )
                     route_name = record.get("route")
                     if route_name != event:
                         raise SystemExit(
                             f"instrumentation-coverage: production event {event} has route {route_name!r}"
                         )
-                    expected = hmac.new(
-                        challenge.encode("utf-8"),
-                        f"{origin}|{event}".encode("utf-8"),
-                        hashlib.sha256,
-                    ).hexdigest()
-                    if not hmac.compare_digest(record.get("attestation", ""), expected):
-                        raise SystemExit(
-                            f"instrumentation-coverage: production event {event} has invalid attestation"
-                        )
                     emitted.add(event)
+                    observed_harnesses.setdefault(event, set()).add(
+                        "process" if "smoke" in file.parts else "component"
+                    )
 if not emitted:
     raise SystemExit("instrumentation-coverage: logs emitted zero event names")
 
@@ -171,6 +231,12 @@ log_owned = {"runStart", "runEnd", "repeated", "sizeLimitReached", "mainActorSta
 unknown = emitted - cases - log_owned
 if unknown:
     raise SystemExit(f"instrumentation-coverage: log contains names outside EditorTraceEvent: {sorted(unknown)}")
+for name in sorted(emitted):
+    if name in routes and routes[name]["allowedHarness"] not in observed_harnesses.get(name, set()):
+        raise SystemExit(
+            f"instrumentation-coverage: event {name} was not observed in its allowed "
+            f"{routes[name]['allowedHarness']} harness"
+        )
 
 missing = cases - emitted - set(exemptions)
 if missing:

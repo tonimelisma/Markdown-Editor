@@ -54,7 +54,7 @@ final class ImagePlacementController: ObservableObject {
     /// warning can never be absent from the run log. Do not assign `alert` anywhere else.
     func presentAlert(_ kind: AlertKind, reason: AlertReason) {
         alert = kind
-        trace?.record(.userAlertPresented(severity: kind.severity, reason: reason))
+        trace?.record(route: .userAlertPresented, .userAlertPresented(severity: kind.severity, reason: reason))
     }
 
     func dismissAlert() {
@@ -115,14 +115,14 @@ final class ImagePlacementController: ObservableObject {
             // REQ-101: rejected before acceptance — `state` is untouched (the already-active
             // placement continues undisturbed), so this records the attempt and its typed
             // outcome directly rather than through `apply`/`fail`, neither of which apply here.
-            trace?.record(.imagePlacementStarted(claimCount: intent.claims.count))
-            trace?.record(.imagePlacementFailed(reason: .busy, phase: state.phase))
+            trace?.record(route: .imagePlacementStarted, .imagePlacementStarted(claimCount: intent.claims.count))
+            trace?.record(route: .imagePlacementFailed, .imagePlacementFailed(reason: .busy, phase: state.phase))
             presentAlert(.error(ImagePlacementError.busy.userMessage), reason: .placement(.busy))
             return
         }
         recordPhaseIfChanged(from: state.phase, to: next.phase)
         state = next
-        trace?.record(.imagePlacementStarted(claimCount: intent.claims.count))
+        trace?.record(route: .imagePlacementStarted, .imagePlacementStarted(claimCount: intent.claims.count))
         guard let actions else {
             fail(id, .writeFailed)
             return
@@ -168,14 +168,14 @@ final class ImagePlacementController: ObservableObject {
             actionID: nil
         ) else {
             // REQ-101: see the matching branch in handleImageAction above.
-            trace?.record(.imagePlacementStarted(claimCount: receivers.count))
-            trace?.record(.imagePlacementFailed(reason: .busy, phase: state.phase))
+            trace?.record(route: .imagePlacementStarted, .imagePlacementStarted(claimCount: receivers.count))
+            trace?.record(route: .imagePlacementFailed, .imagePlacementFailed(reason: .busy, phase: state.phase))
             presentAlert(.error(ImagePlacementError.busy.userMessage), reason: .placement(.busy))
             return
         }
         recordPhaseIfChanged(from: state.phase, to: next.phase)
         state = next
-        trace?.record(.imagePlacementStarted(claimCount: receivers.count))
+        trace?.record(route: .imagePlacementStarted, .imagePlacementStarted(claimCount: receivers.count))
         guard let actions else {
             fail(id, .writeFailed)
             return
@@ -295,7 +295,7 @@ final class ImagePlacementController: ObservableObject {
             createdAssetsDirectory: published.createdAssetsDirectory,
             executor: executor
         )
-        trace?.record(.imagePlacementRolledBack(removedFileCount: removedCount))
+        trace?.record(route: .imagePlacementRolledBack, .imagePlacementRolledBack(removedFileCount: removedCount))
     }
 
     private func runPlacement(
@@ -331,7 +331,7 @@ final class ImagePlacementController: ObservableObject {
                 executor: executor
             )
             let totalBytes = artifacts.reduce(0) { $0 + $1.byteCount }
-            trace?.record(.assetDirectoryPublished(fileCount: artifacts.count, totalBytes: totalBytes))
+            trace?.record(route: .assetDirectoryPublished, .assetDirectoryPublished(fileCount: artifacts.count, totalBytes: totalBytes))
 
             // REQ: prove live URL still under same parent before commit.
             let liveURL = actions.sourceSnapshot().fileURL ?? lastDocumentURL
@@ -423,8 +423,7 @@ final class ImagePlacementController: ObservableObject {
             }
             _ = apply(.succeed, id: snapshot.id)
             let committedBytes = artifacts.reduce(0) { $0 + $1.byteCount }
-            trace?.record(
-                .imagePlacementCommitted(
+            trace?.record(route: .imagePlacementCommitted, .imagePlacementCommitted(
                     fileCount: published.published.count,
                     totalBytes: committedBytes,
                     durationNanos: DispatchTime.now().uptimeNanoseconds - placementStart
@@ -437,7 +436,7 @@ final class ImagePlacementController: ObservableObject {
             // REQ-101: the store already rolled back internally (a later artifact in this batch
             // failed after an earlier one published) — report that outcome the same way a
             // controller-driven rollback does, then fail with the underlying reason.
-            trace?.record(.imagePlacementRolledBack(removedFileCount: partial.removedFileCount))
+            trace?.record(route: .imagePlacementRolledBack, .imagePlacementRolledBack(removedFileCount: partial.removedFileCount))
             fail(snapshot.id, partial.underlying)
             actions.endPlacementTracking(activeTrackingGeneration)
         } catch let error as ImagePlacementError {
@@ -455,7 +454,7 @@ final class ImagePlacementController: ObservableObject {
     /// `actionID: nil` for `.begin`, which `apply(_:id:)`'s signature does not allow).
     private func recordPhaseIfChanged(from previous: ImagePlacementPhase, to next: ImagePlacementPhase) {
         guard next != previous else { return }
-        trace?.record(.imagePlacementPhase(from: previous, to: next))
+        trace?.record(route: .imagePlacementPhase, .imagePlacementPhase(from: previous, to: next))
     }
 
     /// REQ-101: every terminal reset to a fresh (idle) `ImagePlacementState` goes through here —
@@ -484,7 +483,7 @@ final class ImagePlacementController: ObservableObject {
         pendingSnapshot = nil
         // REQ-101: record why before recording the reset it caused, so the run log reads in
         // causal order rather than showing the terminal idle transition before its reason.
-        trace?.record(.imagePlacementFailed(reason: error, phase: phaseBeforeFailure))
+        trace?.record(route: .imagePlacementFailed, .imagePlacementFailed(reason: error, phase: phaseBeforeFailure))
         resetToIdle()
         presentAlert(.error(error.userMessage), reason: .placement(error))
     }
@@ -494,8 +493,8 @@ final class ImagePlacementController: ObservableObject {
     /// unrelated active operation or presenting a new alert.
     func recordRejectedImageAction(claimCount: Int, reason: ImagePlacementError) {
         guard claimCount > 0 else { return }
-        trace?.record(.imagePlacementStarted(claimCount: claimCount))
-        trace?.record(.imagePlacementFailed(reason: reason, phase: state.phase))
+        trace?.record(route: .imagePlacementStarted, .imagePlacementStarted(claimCount: claimCount))
+        trace?.record(route: .imagePlacementFailed, .imagePlacementFailed(reason: reason, phase: state.phase))
     }
 
     // Test helpers

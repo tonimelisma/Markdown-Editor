@@ -13,70 +13,81 @@ import Foundation
 @MainActor
 final class JSONLinesEditorTrace: EditorTraceSink {
     private let log: DiagnosticLog
-    private let origin: DiagnosticEvidenceOrigin
-    /// Unit-test production routes write a separate synchronous evidence stream. The encoder
-    /// probe below never enters it, so a symbolic vocabulary cannot satisfy observed coverage.
-    private let coverageRecorder: ProductionRouteCoverageRecorder?
+    private let encodingProbe: Bool
     /// Opaque per-run handle identifying the document this sink belongs to.
     private let documentHandle: UInt64?
 
-    init(log: DiagnosticLog, origin: DiagnosticEvidenceOrigin = .productionRoute) {
+    init(log: DiagnosticLog) {
         self.log = log
-        self.origin = origin
-        self.coverageRecorder = Self.makeCoverageRecorder(for: log, origin: origin)
+        self.encodingProbe = false
         self.documentHandle = log.makeDocumentHandle()
     }
 
     init(
         log: DiagnosticLog,
-        documentHandle: UInt64?,
-        origin: DiagnosticEvidenceOrigin = .productionRoute
+        documentHandle: UInt64?
     ) {
         self.log = log
-        self.origin = origin
-        self.coverageRecorder = Self.makeCoverageRecorder(for: log, origin: origin)
+        self.encodingProbe = false
         self.documentHandle = documentHandle
+    }
+
+    private init(encodingProbeLog log: DiagnosticLog) {
+        self.log = log
+        self.encodingProbe = true
+        self.documentHandle = log.makeDocumentHandle()
+    }
+
+    static func makeEncodingProbe(log: DiagnosticLog) -> JSONLinesEditorTrace {
+        JSONLinesEditorTrace(encodingProbeLog: log)
     }
 
     func record(_ event: EditorTraceEvent) {
         let mapped = Self.map(event)
-        log.record(
+        if encodingProbe {
+            log.recordEncodingProbe(
+                mapped.name,
+                level: mapped.level,
+                category: mapped.category,
+                document: documentHandle,
+                data: mapped.data
+            )
+        } else {
+            log.record(
+                mapped.name,
+                level: mapped.level,
+                category: mapped.category,
+                document: documentHandle,
+                data: mapped.data
+            )
+        }
+    }
+
+    func record(route: DiagnosticEventName, _ event: EditorTraceEvent) {
+        let mapped = Self.map(event)
+        guard mapped.name == route else { return }
+        log.recordProduction(
             mapped.name,
             level: mapped.level,
             category: mapped.category,
             document: documentHandle,
-            origin: origin,
+            route: route,
             data: mapped.data
         )
-        coverageRecorder?.record(mapped)
-    }
-
-    private static func makeCoverageRecorder(
-        for log: DiagnosticLog,
-        origin: DiagnosticEvidenceOrigin
-    ) -> ProductionRouteCoverageRecorder? {
-        guard origin == .productionRoute,
-              log.header.hostKind == .unitTest else { return nil }
-        return ProductionRouteCoverageRecorder(directory: hostedCoverageDirectory())
     }
 
     @MainActor
     final class ProductionRouteCoverageRecorder {
         private let handle: FileHandle?
-        private let challenge: String?
         private let startedAt: Date
         private let startUptimeNanos: UInt64
         private var nextSequence: UInt64 = 0
 
-        init?(directory: URL) {
-            guard FileManager.default.fileExists(
-                atPath: directory.appendingPathComponent(".enabled").path
-            ) else { return nil }
+        init?() {
+            let path = JSONLinesEditorTrace.hostedCoverageDirectory()
+                .appendingPathComponent("route.pipe")
+            guard FileManager.default.fileExists(atPath: path.path) else { return nil }
             startedAt = Date()
-            challenge = try? String(
-                contentsOf: directory.appendingPathComponent(".challenge"),
-                encoding: .utf8
-            ).trimmingCharacters(in: .whitespacesAndNewlines)
             startUptimeNanos = DispatchTime.now().uptimeNanoseconds
             let runID = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12))
             let header = DiagnosticRunHeader(
@@ -88,31 +99,17 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
                 processID: ProcessInfo.processInfo.processIdentifier
             )
-            try? FileManager.default.createDirectory(
-                at: directory,
-                withIntermediateDirectories: true
-            )
-            let fileURL = directory.appendingPathComponent(
-                "run-\(DiagnosticTimestamp.compactUTC(startedAt))-\(runID).jsonl"
-            )
-            FileManager.default.createFile(atPath: fileURL.path, contents: nil)
-            handle = try? FileHandle(forWritingTo: fileURL)
+            handle = try? FileHandle(forWritingTo: path)
             append(header.jsonLine)
         }
 
-        func record(_ mapped: Mapped) {
-            record(
-                event: mapped.name,
-                level: mapped.level,
-                category: mapped.category,
-                data: mapped.data
-            )
-        }
+        deinit { try? handle?.close() }
 
         func record(
             event: DiagnosticEventName,
             level: DiagnosticLevel,
             category: DiagnosticCategory,
+            route: DiagnosticEventName,
             data: [(key: DiagnosticField, value: DiagnosticValue)]
         ) {
             nextSequence &+= 1
@@ -125,12 +122,8 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 category: category,
                 event: event,
                 origin: .productionRoute,
-                productionRoute: event,
-                attestation: DiagnosticCoverageAttestation.token(
-                    event: event,
-                    origin: .productionRoute,
-                    challenge: challenge
-                ),
+                productionRoute: route,
+                evidenceChannel: "productionRoutePipe",
                 data: data
             )
             append(record.jsonLine)

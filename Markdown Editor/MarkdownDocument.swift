@@ -125,7 +125,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     override func makeWindowControllers() {
         undoManager?.groupsByEvent = false
         attachUndoCheckpointObserverIfNeeded()
-        trace?.record(.documentOpened(utf16Count: (text as NSString).length))
+        trace?.record(route: .documentOpened, .documentOpened(utf16Count: (text as NSString).length))
         let contentView = ContentView(document: self)
         let hosting = NSHostingController(rootView: contentView)
         let window = NSWindow(contentViewController: hosting)
@@ -177,7 +177,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         completionHandler: @escaping (Error?) -> Void
     ) {
         let utf16Count = (text as NSString).length
-        trace?.record(.documentSaveStarted(utf16Count: utf16Count))
+        trace?.record(route: .documentSaveStarted, .documentSaveStarted(utf16Count: utf16Count))
         let start = DispatchTime.now().uptimeNanoseconds
         super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
             self?.recordSaveOutcome(error: error, utf16Count: utf16Count, startUptimeNanos: start)
@@ -195,11 +195,10 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     func recordSaveOutcome(error: Error?, utf16Count: Int, startUptimeNanos: UInt64) {
         saveOutcomeSequence &+= 1
         if error != nil {
-            trace?.record(.documentSaveFailed(reason: .saveFailedOrCancelled))
+            trace?.record(route: .documentSaveFailed, .documentSaveFailed(reason: .saveFailedOrCancelled))
         } else {
             let durationNanos = DispatchTime.now().uptimeNanoseconds - startUptimeNanos
-            trace?.record(
-                .documentSaveSucceeded(
+            trace?.record(route: .documentSaveSucceeded, .documentSaveSucceeded(
                     utf16Count: utf16Count,
                     sourceRevision: sourceVersion,
                     durationNanos: durationNanos
@@ -223,7 +222,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         } catch {
             MainActor.assumeIsolated {
                 guard !self.didReachDataRead else { return }
-                self.trace?.record(.documentLoadFailed(reason: .fileUnreadable))
+                self.trace?.record(route: .documentLoadFailed, .documentLoadFailed(reason: .fileUnreadable))
             }
             throw error
         }
@@ -253,7 +252,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             }
         } catch {
             MainActor.assumeIsolated {
-                self.trace?.record(.documentLoadFailed(reason: .invalidUTF8))
+                self.trace?.record(route: .documentLoadFailed, .documentLoadFailed(reason: .invalidUTF8))
             }
             throw error
         }
@@ -366,8 +365,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     // REQ-016: validate revision, range, and expected content; one private apply path.
     @discardableResult
     func commitSourceMutation(_ mutation: SourceMutation) -> SourceEditResult {
-        trace?.record(
-            .mutationRequested(
+        trace?.record(route: .mutationRequested, .mutationRequested(
                 id: mutation.id,
                 revision: mutation.expectedRevision,
                 location: mutation.range.location,
@@ -377,7 +375,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         )
 
         guard mutation.expectedRevision == sourceVersion else {
-            trace?.record(.mutationRefused(id: mutation.id, reason: .staleVersion))
+            trace?.record(route: .mutationRefused, .mutationRefused(id: mutation.id, reason: .staleVersion))
             return .refused(.staleVersion)
         }
 
@@ -387,13 +385,13 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         guard range.location >= 0,
               range.length >= 0,
               NSMaxRange(range) <= length else {
-            trace?.record(.mutationRefused(id: mutation.id, reason: .invalidRange))
+            trace?.record(route: .mutationRefused, .mutationRefused(id: mutation.id, reason: .invalidRange))
             return .refused(.invalidRange)
         }
 
         let actual = ns.substring(with: range)
         guard actual == mutation.expectedText else {
-            trace?.record(.mutationRefused(id: mutation.id, reason: .contentMismatch))
+            trace?.record(route: .mutationRefused, .mutationRefused(id: mutation.id, reason: .contentMismatch))
             return .refused(.contentMismatch)
         }
 
@@ -406,8 +404,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         let patch = HistoryPatch.fromCommitted(mutation)
         registerHistoryUndo(for: patch, grouping: mutation.grouping)
 
-        trace?.record(
-            .mutationCommitted(
+        trace?.record(route: .mutationCommitted, .mutationCommitted(
                 id: mutation.id,
                 newRevision: sourceVersion,
                 location: range.location,
@@ -441,7 +438,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
                 expectingUntitledSaveURL = false
                 // Test and controlled-operation adapters bypass AppKit's save override, so they
                 // must still leave the same privacy-safe document-I/O evidence as that path.
-                trace?.record(.documentSaveFailed(reason: .saveFailedOrCancelled))
+                trace?.record(route: .documentSaveFailed, .documentSaveFailed(reason: .saveFailedOrCancelled))
             }
             return outcome
         }
@@ -452,14 +449,14 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             // REQ-100: cancellation never reaches save(to:ofType:for:completionHandler:), so
             // record its closed-enum document-I/O failure shape here while returning its more
             // precise operation outcome to callers such as image placement.
-            trace?.record(.documentSaveFailed(reason: .saveFailedOrCancelled))
+            trace?.record(route: .documentSaveFailed, .documentSaveFailed(reason: .saveFailedOrCancelled))
             return .cancelled
         }
         return .succeeded
     }
 
     override func close() {
-        trace?.record(.documentClosed(sourceRevision: sourceVersion))
+        trace?.record(route: .documentClosed, .documentClosed(sourceRevision: sourceVersion))
         detachUndoCheckpointObserver()
         super.close()
     }
@@ -508,9 +505,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         updateChangeCount(.changeCleared)
         let utf16Count = (value as NSString).length
         if isInitialLoad {
-            trace?.record(.documentLoaded(utf16Count: utf16Count, sourceRevision: sourceVersion))
+            trace?.record(route: .documentLoaded, .documentLoaded(utf16Count: utf16Count, sourceRevision: sourceVersion))
         } else {
-            trace?.record(.documentReverted(sourceRevision: sourceVersion, utf16Count: utf16Count))
+            trace?.record(route: .documentReverted, .documentReverted(sourceRevision: sourceVersion, utf16Count: utf16Count))
         }
         }
     }
@@ -537,7 +534,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         direction: HistoryDirection
     ) -> SourceEditResult {
         guard patch.matchesCurrentContent(in: text) else {
-            trace?.record(.historyRefused(direction: direction, reason: .contentMismatch))
+            trace?.record(route: .historyRefused, .historyRefused(direction: direction, reason: .contentMismatch))
             return .refused(.contentMismatch)
         }
 
@@ -561,8 +558,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             }
         }
 
-        trace?.record(
-            .historyApplied(
+        trace?.record(route: .historyApplied, .historyApplied(
                 direction: direction,
                 newRevision: sourceVersion,
                 location: patch.range.location,
@@ -587,8 +583,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
                 _ = doc.applyHistoryPatch(patch, direction: .undo)
             }
             undoManager.endUndoGrouping()
-            trace?.record(
-                .undoRegistered(actionNameLength: patch.actionName.count, groupingTyping: false)
+            trace?.record(route: .undoRegistered, .undoRegistered(actionNameLength: patch.actionName.count, groupingTyping: false)
             )
         case .typing:
             if !typingGroupOpen {
@@ -604,8 +599,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             undoManager.registerUndo(withTarget: self) { [patch] doc in
                 _ = doc.applyHistoryPatch(patch, direction: .undo)
             }
-            trace?.record(
-                .undoRegistered(actionNameLength: patch.actionName.count, groupingTyping: true)
+            trace?.record(route: .undoRegistered, .undoRegistered(actionNameLength: patch.actionName.count, groupingTyping: true)
             )
         }
     }

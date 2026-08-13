@@ -134,7 +134,7 @@ final class LocalImageCache {
             identity: descriptor.fileIdentity
         )
         // REQ-089: privacy-safe cache instrumentation (cost/total only).
-        trace?.record(.imageCacheStore(cost: descriptor.byteCost, totalBytes: byteCache.totalBytes))
+        trace?.record(route: .imageCacheStore, .imageCacheStore(cost: descriptor.byteCost, totalBytes: byteCache.totalBytes))
         return displayImage
     }
 

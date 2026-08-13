@@ -498,10 +498,11 @@ ordinary files the user owns and can read, delete, or ignore.
 There is no second instrumentation route. `os_log` is not used for editor events.
 
 **Observed proof route (COR-68):** the coverage gate consumes only records emitted by an executed
-production route. Each such record carries its closed route name and a challenge-bound HMAC issued
-by the gate process; encoding probes and gate fixtures have different origins and cannot satisfy
-reachability. `docs/proof-routes.json` maps every event to an owner and entry, and the gate checks
-the event-specific production call in that owner rather than accepting an aggregate source match.
+production route through a gate-owned FIFO capture. Each such record carries its closed route name
+and `productionRoutePipe` channel marker; encoding probes and gate fixtures have different origins
+and cannot satisfy reachability. `docs/proof-routes.json` maps every event to an owner and entry,
+and the gate parses that owner's entry-function body, after masking comments and strings, for the
+event-specific typed route call rather than accepting an aggregate source match.
 
 Performance sampling is explicitly lifetime-owned:
 

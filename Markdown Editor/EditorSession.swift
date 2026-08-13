@@ -91,7 +91,7 @@ final class EditorSession: ObservableObject {
 
     private func reportReconciliationViolation(_ kind: ReconciliationViolation) {
         reconciliationViolationCount &+= 1
-        document?.trace?.record(.viewReconciliationViolation(kind: kind))
+        document?.trace?.record(route: .viewReconciliationViolation, .viewReconciliationViolation(kind: kind))
         #if DEBUG
         if trapsOnReconciliationViolation {
             assertionFailure(
@@ -134,7 +134,7 @@ final class EditorSession: ObservableObject {
             coordinator: performanceSamplerCoordinator
         )
         updateOrigin.didChange = { [weak document] origin in
-            document?.trace?.record(.updateOrigin(origin))
+            document?.trace?.record(route: .updateOrigin, .updateOrigin(origin))
         }
         imageCache.trace = document.trace
         cancellables.removeAll()
@@ -234,8 +234,7 @@ final class EditorSession: ObservableObject {
         // transition on nearly every keystroke.
         let editableAfter = isEditable(state.availability)
         if editableAfter != editableBefore {
-            document?.trace?.record(
-                .availabilityChanged(editable: editableAfter, sourceRevision: document?.sourceVersion ?? 0)
+            document?.trace?.record(route: .availabilityChanged, .availabilityChanged(editable: editableAfter, sourceRevision: document?.sourceVersion ?? 0)
             )
         }
     }
@@ -321,7 +320,7 @@ final class EditorSession: ObservableObject {
     }
 
     private func traceModeToggle(toSource: Bool) {
-        document?.trace?.record(.modeToggle(toSource: toSource))
+        document?.trace?.record(route: .modeToggle, .modeToggle(toSource: toSource))
     }
 
     func installPresentation(
@@ -380,8 +379,7 @@ final class EditorSession: ObservableObject {
                 projectionSelection: projectionSelection
             )
         }
-        document?.trace?.record(
-            .presentationInstalled(
+        document?.trace?.record(route: .presentationInstalled, .presentationInstalled(
                 snapshotID: snapshot.id.value,
                 sourceRevision: snapshot.sourceRevision.value,
                 provisional: provisional
@@ -431,12 +429,11 @@ final class EditorSession: ObservableObject {
                       transition.selectionAfter.range.revision.snapshotID == transition.nextSnapshot.id,
                       edit.projectionSelectionAfter?.range.revision.snapshotID == transition.nextSnapshot.id
                 else {
-                    document.trace?.record(.editRefused(category: .invalidPresentationTransition))
+                    document.trace?.record(route: .editRefused, .editRefused(category: .invalidPresentationTransition))
                     return .refused(.unprovable)
                 }
             }
-            document.trace?.record(
-                .editRouted(
+            document.trace?.record(route: .editRouted, .editRouted(
                     context: mode,
                     groupingTyping: edit.sourceMutation.grouping == .typing,
                     planner: PlannerKind(command)
@@ -452,8 +449,7 @@ final class EditorSession: ObservableObject {
                             $0.selection = edit.projectionSelectionAfter ?? transition.selectionAfter
                         }
                     }
-                    document.trace?.record(
-                        .presentationTransition(
+                    document.trace?.record(route: .presentationTransition, .presentationTransition(
                             from: transition.fromSnapshotID.value,
                             to: transition.nextSnapshot.id.value,
                             sourceRevision: transition.nextSnapshot.sourceRevision.value,
@@ -472,7 +468,7 @@ final class EditorSession: ObservableObject {
                 }
             }
         case .refused(let refusal):
-            document.trace?.record(.editRefused(category: .refusal(refusal)))
+            document.trace?.record(route: .editRefused, .editRefused(category: .refusal(refusal)))
             return .refused(refusal)
         }
         }

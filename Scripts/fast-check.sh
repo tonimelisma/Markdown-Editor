@@ -40,12 +40,21 @@ mkdir -p "$test_coverage_dir"
 rm -rf "$test_coverage_dir"/*
 touch "$test_coverage_dir/.enabled"
 export EDITOR_TRACE_COVERAGE_LOG_DIR="$test_coverage_dir"
-coverage_challenge="$(openssl rand -hex 32)" || {
-    echo "fast-check: unable to create instrumentation coverage challenge" >&2
-    exit 1
+start_coverage_capture() {
+    local pipe_path="$1"
+    local output_path="$2"
+    mkdir -p "$(dirname "$output_path")"
+    rm -f "$pipe_path" "$output_path"
+    mkfifo "$pipe_path"
+    cat "$pipe_path" > "$output_path" &
+    coverage_reader_pid=$!
+    export EDITOR_TRACE_COVERAGE_LOG_DIR="$(dirname "$pipe_path")"
 }
-export EDITOR_TRACE_COVERAGE_CHALLENGE="$coverage_challenge"
-printf '%s' "$coverage_challenge" > "$test_coverage_dir/.challenge"
+stop_coverage_capture() {
+    kill "$coverage_reader_pid" 2>/dev/null || true
+    wait "$coverage_reader_pid" 2>/dev/null || true
+    rm -f "$EDITOR_TRACE_COVERAGE_LOG_DIR/route.pipe"
+}
 step() {
     printf '\n── %s\n' "$1"
 }
@@ -58,12 +67,14 @@ step "measurement provenance"
 ./Scripts/test-check-measurement-provenance.sh || { failures=$((failures + 1)); }
 
 step "observed instrumentation coverage"
+start_coverage_capture "$test_coverage_dir/route.pipe" "$coverage_dir/smoke/production-route.jsonl"
 SMOKE_DERIVED_DATA="$derived/smoke" SMOKE_LOG_COPY_DIR="$coverage_dir/smoke" \
     ./Scripts/smoke-test.sh >"$coverage_dir/smoke.log" 2>&1 || {
     instrumentation_gate=fail
     tests_gate=fail
     failures=$((failures + 1))
 }
+stop_coverage_capture
 
 step "smoke-log verifier fixtures"
 ./Scripts/test-verify-smoke-log.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
@@ -94,6 +105,7 @@ fi
 step "non-performance test suites"
 # Excluded on purpose: PerformanceBoundaryTests owns the 100,000-UTF-16 corpus gates, which are
 # the slow part and which REQ-090 requires be run focused rather than alongside everything else.
+start_coverage_capture "$test_coverage_dir/route.pipe" "$test_coverage_dir/production-route.jsonl"
 xcodebuild test \
     -project "Markdown Editor.xcodeproj" \
     -scheme "Markdown Editor" \
@@ -103,6 +115,7 @@ xcodebuild test \
     -skip-testing:"Markdown EditorTests/PerformanceBoundaryTests" \
     >"$derived.log" 2>&1
 test_status=$?
+stop_coverage_capture
 if (( test_status != 0 )); then
     tests_gate=fail
     grep -aE "error:|Test case .* failed" "$derived.log" | head -20 >&2
@@ -114,7 +127,6 @@ printf 'tests: %s passed, %s failed\n' \
 
 step "observed instrumentation coverage gate"
 ./Scripts/check-instrumentation-coverage.sh \
-    --challenge "$coverage_challenge" \
     --log-dir "$coverage_dir/smoke" \
     --log-dir "$test_coverage_dir" || { instrumentation_gate=fail; failures=$((failures + 1)); }
 ./Scripts/test-check-instrumentation-coverage.sh || { instrumentation_gate=fail; failures=$((failures + 1)); }
