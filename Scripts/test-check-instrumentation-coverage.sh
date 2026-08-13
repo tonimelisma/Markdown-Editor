@@ -40,7 +40,7 @@ write_log() {
     local path="$1"; local origin="${2:-productionRoute}"; shift 2
     : > "$path"
     if [[ "$origin" == productionRoute ]]; then
-        printf '{"v":2,"ev":"runStart","run":{"session":"%s"}}\n' "$fixture_session" >> "$path"
+        printf '{"v":2,"ev":"runStart","run":{"host":"unitTest","session":"%s"}}\n' "$fixture_session" >> "$path"
     fi
     for event in "$@"; do
         if [[ "$origin" == productionRoute ]]; then
@@ -61,6 +61,7 @@ session_args=(--session-file "$session_file")
 
 write_log "$logs/complete.jsonl" productionRoute alpha beta
     ("$gate" "${session_args[@]}" --cases-file "$cases" --exemptions "$exemptions" --routes "$routes" --log-dir "$logs") >/dev/null
+expect_fail "$gate" --cases-file "$cases" --exemptions "$exemptions" --routes "$routes" --log-dir "$logs/complete.jsonl"
 
 write_log "$logs/missing.jsonl" productionRoute alpha
 expect_fail "$gate" "${session_args[@]}" --cases-file "$cases" --exemptions "$exemptions" --routes "$routes" --log-dir "$logs/missing.jsonl"
@@ -118,5 +119,12 @@ expect_fail "$gate" "${session_args[@]}" --cases-file "$root/process-only-cases.
 printf '{"v":2,"ev":"alpha","origin":"productionRoute","route":"alpha","channel":"productionRoutePipe","harness":"process","session":"%s"}\n' "$fixture_session" \
     > "$logs/forged-process.jsonl"
 expect_fail "$gate" "${session_args[@]}" --cases-file "$root/process-only-cases.txt" --exemptions "$root/process-only-exemptions.md" --routes "$root/process-only-routes.json" --log-dir "$logs/forged-process.jsonl"
+
+# A matching session/header still cannot claim a different harness than the run host.
+printf '{"v":2,"ev":"runStart","run":{"host":"unitTest","session":"%s"}}\n' "$fixture_session" \
+    > "$logs/forged-process-with-header.jsonl"
+printf '{"v":2,"ev":"alpha","origin":"productionRoute","route":"alpha","channel":"productionRoutePipe","harness":"process","session":"%s"}\n' "$fixture_session" \
+    >> "$logs/forged-process-with-header.jsonl"
+expect_fail "$gate" "${session_args[@]}" --cases-file "$root/process-only-cases.txt" --exemptions "$root/process-only-exemptions.md" --routes "$root/process-only-routes.json" --log-dir "$logs/forged-process-with-header.jsonl"
 
 echo "check-instrumentation-coverage fixtures: PASS"

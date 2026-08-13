@@ -22,11 +22,38 @@ struct DiagnosticLogTests {
         try Data().write(to: regular)
         let symlink = directory.appendingPathComponent("symlink.pipe")
         try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: regular)
-        let fifo = directory.appendingPathComponent("fifo.pipe")
+        let fifo = directory.appendingPathComponent("route.pipe")
         #expect(mkfifo(fifo.path, 0o600) == 0)
         #expect(!JSONLinesEditorTrace.isCoverageFIFO(at: regular))
         #expect(!JSONLinesEditorTrace.isCoverageFIFO(at: symlink))
         #expect(JSONLinesEditorTrace.isCoverageFIFO(at: fifo))
+        #expect(JSONLinesEditorTrace.coveragePipeURL(environment: [
+            "EDITOR_TRACE_COVERAGE_LOG_DIR": directory.path
+        ]) == fifo)
+        try FileManager.default.removeItem(at: fifo)
+        #expect(JSONLinesEditorTrace.coveragePipeURL(environment: [
+            "EDITOR_TRACE_COVERAGE_LOG_DIR": directory.path
+        ]) == nil)
+    }
+
+    @Test func coveragePipeOverrideRejectsRegularFileAndSymlink() throws {
+        let directory = makeTemporaryDirectory()
+        let regularDirectory = directory.appendingPathComponent("regular", isDirectory: true)
+        try FileManager.default.createDirectory(at: regularDirectory, withIntermediateDirectories: true)
+        try Data().write(to: regularDirectory.appendingPathComponent("route.pipe"))
+        let symlinkDirectory = directory.appendingPathComponent("symlink", isDirectory: true)
+        try FileManager.default.createDirectory(at: symlinkDirectory, withIntermediateDirectories: true)
+        let regular = directory.appendingPathComponent("regular-target.pipe")
+        try Data().write(to: regular)
+        try FileManager.default.createSymbolicLink(
+            at: symlinkDirectory.appendingPathComponent("route.pipe"), withDestinationURL: regular
+        )
+        #expect(JSONLinesEditorTrace.coveragePipeURL(environment: [
+            "EDITOR_TRACE_COVERAGE_LOG_DIR": regularDirectory.path
+        ]) == nil)
+        #expect(JSONLinesEditorTrace.coveragePipeURL(environment: [
+            "EDITOR_TRACE_COVERAGE_LOG_DIR": symlinkDirectory.path
+        ]) == nil)
     }
 
     @Test func samplerComputesPercentilesFromKnownDistribution() {

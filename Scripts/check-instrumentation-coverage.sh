@@ -10,7 +10,7 @@ log_dirs=()
 session_files=()
 
 usage() {
-    echo "usage: check-instrumentation-coverage.sh --log-dir <directory> [--log-dir <directory>]" >&2
+    echo "usage: check-instrumentation-coverage.sh --log-dir <directory> --session-file <file>" >&2
     exit 2
 }
 while [[ $# -gt 0 ]]; do
@@ -46,6 +46,8 @@ except ValueError:
     marker = len(tail)
 log_dirs = [pathlib.Path(value) for value in tail[:marker]]
 session_paths = [pathlib.Path(value) for value in tail[marker + 1:]] if marker < len(tail) else []
+if not session_paths:
+    raise SystemExit("instrumentation-coverage: at least one trusted session file is required")
 
 if not cases_path.is_file():
     raise SystemExit(f"instrumentation-coverage: missing case source {cases_path}")
@@ -233,6 +235,7 @@ known_origins = {"productionRoute", "encodingProbe", "gateFixture"}
 for file in files:
     expected_file_session = expected_session(file)
     header_session = None
+    header_host = None
     for line_number, line in enumerate(file.read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
             continue
@@ -242,11 +245,15 @@ for file in files:
             raise SystemExit(f"instrumentation-coverage: invalid JSON in {file}:{line_number}: {error}")
         event = record.get("ev")
         if event == "runStart":
-            header_session = record.get("run", {}).get("session")
-            if session_paths and header_session is not None and header_session != expected_file_session:
+            run = record.get("run")
+            header_session = run.get("session") if isinstance(run, dict) else None
+            header_host = run.get("host") if isinstance(run, dict) else None
+            if header_session != expected_file_session:
                 raise SystemExit(
                     f"instrumentation-coverage: run header session does not match capture sidecar in {file}"
                 )
+            if header_host not in {"production", "unitTest"}:
+                raise SystemExit(f"instrumentation-coverage: run header has unknown host in {file}")
         if event is not None:
             origin = record.get("origin")
             if event not in {"runStart", "runEnd", "repeated", "sizeLimitReached", "mainActorStall"}:
@@ -271,9 +278,15 @@ for file in files:
                             f"instrumentation-coverage: production event {event} has missing or unknown harness"
                         )
                     session = record.get("session")
-                    if session_paths and (session != expected_file_session or session != header_session):
+                    if session != expected_file_session or session != header_session:
                         raise SystemExit(
                             f"instrumentation-coverage: production event {event} is not bound to its capture session"
+                        )
+                    expected_harness = "process" if header_host == "production" else "component"
+                    if harness != expected_harness:
+                        raise SystemExit(
+                            f"instrumentation-coverage: production event {event} harness {harness!r} "
+                            f"does not match run host {header_host!r}"
                         )
                     # Component runs may exercise a route that is process-only in the final
                     # evidence contract. They must not count toward that contract, but their
