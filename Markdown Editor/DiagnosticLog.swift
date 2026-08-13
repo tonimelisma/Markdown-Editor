@@ -312,6 +312,8 @@ final class DiagnosticLog {
                 event: event,
                 document: document,
                 origin: origin,
+                productionRoute: origin == .productionRoute ? event : nil,
+                attestation: DiagnosticCoverageAttestation.token(event: event, origin: origin),
                 data: data
             ).jsonLine
         })

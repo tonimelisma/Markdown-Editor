@@ -3,7 +3,40 @@
 //  Markdown Editor
 //
 
+import CryptoKit
 import Foundation
+
+/// Authenticates production-route evidence for the local proof gate.
+///
+/// The challenge is supplied only by the gate process for the duration of a verification run;
+/// it is never written to a diagnostic file. A copied or hand-authored JSON record can therefore
+/// carry the right event name and origin but cannot claim production evidence without the
+/// challenge-bound proof.
+nonisolated enum DiagnosticCoverageAttestation {
+    static let environmentKey = "EDITOR_TRACE_COVERAGE_CHALLENGE"
+
+    static func token(
+        event: DiagnosticEventName,
+        origin: DiagnosticEvidenceOrigin,
+        challenge: String? = nil
+    ) -> String? {
+        token(eventName: event.rawValue, origin: origin, challenge: challenge)
+    }
+
+    static func token(
+        eventName: String,
+        origin: DiagnosticEvidenceOrigin,
+        challenge: String? = nil
+    ) -> String? {
+        guard origin == .productionRoute,
+              let challenge = challenge ?? ProcessInfo.processInfo.environment[environmentKey],
+              !challenge.isEmpty else { return nil }
+        let key = SymmetricKey(data: Data(challenge.utf8))
+        let message = Data("\(origin.rawValue)|\(eventName)".utf8)
+        let digest = HMAC<SHA256>.authenticationCode(for: message, using: key)
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+}
 
 /// Severity of one diagnostic record. Ordered so thresholds are comparable.
 nonisolated enum DiagnosticLevel: String, Sendable, Equatable, Comparable, CaseIterable {
@@ -58,6 +91,11 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
     /// Evidence provenance used by executable proof gates. Lifecycle records may omit it;
     /// ordinary records always carry an explicit origin.
     let origin: DiagnosticEvidenceOrigin?
+    /// The production route's closed event name. Present only for authenticated production
+    /// records, so a route checker can compare observed evidence with the reviewed map.
+    let productionRoute: DiagnosticEventName?
+    /// Challenge-bound proof that this production-route record came from the verification run.
+    let attestation: String?
     let data: [(key: DiagnosticField, value: DiagnosticValue)]
 
     init(
@@ -70,6 +108,8 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
         document: UInt64? = nil,
         collapsedEvent: DiagnosticEventName? = nil,
         origin: DiagnosticEvidenceOrigin? = .gateFixture,
+        productionRoute: DiagnosticEventName? = nil,
+        attestation: String? = nil,
         data: [(key: DiagnosticField, value: DiagnosticValue)] = []
     ) {
         self.wallClock = wallClock
@@ -81,6 +121,8 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
         self.document = document
         self.collapsedEvent = collapsedEvent
         self.origin = origin
+        self.productionRoute = productionRoute
+        self.attestation = attestation
         self.data = data
     }
 
@@ -92,6 +134,8 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
             && lhs.document == rhs.document
             && lhs.collapsedEvent == rhs.collapsedEvent
             && lhs.origin == rhs.origin
+            && lhs.productionRoute == rhs.productionRoute
+            && lhs.attestation == rhs.attestation
             && lhs.data.count == rhs.data.count
             && zip(lhs.data, rhs.data).allSatisfy { $0.key == $1.key && $0.value == $1.value }
     }
@@ -117,6 +161,12 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
         }
         if let origin {
             parts.append("\"origin\":\"\(origin.rawValue)\"")
+        }
+        if let productionRoute {
+            parts.append("\"route\":\"\(productionRoute.rawValue)\"")
+        }
+        if let attestation {
+            parts.append("\"attestation\":\"\(attestation)\"")
         }
         if !data.isEmpty {
             let fields = data.map { "\"\($0.key.rawValue)\":\($0.value.jsonFragment)" }

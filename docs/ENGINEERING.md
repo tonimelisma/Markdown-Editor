@@ -497,11 +497,11 @@ ordinary files the user owns and can read, delete, or ignore.
 
 There is no second instrumentation route. `os_log` is not used for editor events.
 
-**Current proof limitation (COR-68):** the production instrumentation route above exists, but the
-coverage gate currently unions it with a test that constructs and records every event case. That
-proves the closed encoder accepts the vocabulary; it does not prove each case is reachable through
-its production owner. REQ-099/REQ-135 therefore remain `Correction` until evidence origin is typed
-and only executed production routes may satisfy reachability.
+**Observed proof route (COR-68):** the coverage gate consumes only records emitted by an executed
+production route. Each such record carries its closed route name and a challenge-bound HMAC issued
+by the gate process; encoding probes and gate fixtures have different origins and cannot satisfy
+reachability. `docs/proof-routes.json` maps every event to an owner and entry, and the gate checks
+the event-specific production call in that owner rather than accepting an aggregate source match.
 
 Performance sampling is explicitly lifetime-owned:
 
@@ -647,7 +647,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-022 | Superseded pending parses do not enter source-copy/cmark work after the parser lock becomes available. | deterministic scheduler/lock test with controlled generations |
 | ARC-023 | Image display rejects over-limit encoded files before bulk read/hash/decode and derives references from the canonical parse tree. | file-operation spy; over-limit sparse-file test; scanner deletion gate |
 | ARC-024 | Menu and native toolbar are presentations of one window-scoped command model with shared validation. | command-router tests; menu/toolbar construction inspection |
-| ARC-027 | Trace-vocabulary coverage and delivery status are derived from observed production-route evidence and passing requirement proofs; encoding probes and gate fixtures cannot satisfy reachability, and every evidence artefact remains bound to the exact pushed commit and tree before local publication. | Currently unmet: COR-68 must add typed evidence origin, production-route execution, behavior-discriminating mutations, and refactor completion proofs before REQ-099/117/118/135/138 may be `Done` |
+| ARC-027 | Trace-vocabulary coverage and delivery status are derived from observed production-route evidence and passing requirement proofs; encoding probes and gate fixtures cannot satisfy reachability, and every evidence artefact remains bound to the exact pushed commit and tree before local publication. | Challenge-bound production records; owner-specific route-call checks; `Scripts/check-instrumentation-coverage.sh`; `Scripts/check-delivery-status.sh`; `Scripts/check-proof-results.sh`; `Scripts/check-falsification.sh` |
 
 **Reserved identifiers — approved but not yet true, and therefore not invariants of this
 architecture.** They are recorded here so no later increment reassigns them:

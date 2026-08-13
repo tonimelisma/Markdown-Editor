@@ -7,6 +7,7 @@ cases_file="$repo_root/Markdown Editor/EditorTrace.swift"
 exemptions_file="$repo_root/docs/trace-coverage-exemptions.md"
 routes_file="$repo_root/docs/proof-routes.json"
 log_dirs=()
+challenge="${EDITOR_TRACE_COVERAGE_CHALLENGE:-}"
 
 usage() {
     echo "usage: check-instrumentation-coverage.sh --log-dir <directory> [--log-dir <directory>]" >&2
@@ -18,6 +19,7 @@ while [[ $# -gt 0 ]]; do
         --cases-file) [[ $# -ge 2 ]] || usage; cases_file="$2"; shift 2 ;;
         --exemptions) [[ $# -ge 2 ]] || usage; exemptions_file="$2"; shift 2 ;;
         --routes) [[ $# -ge 2 ]] || usage; routes_file="$2"; shift 2 ;;
+        --challenge) [[ $# -ge 2 ]] || usage; challenge="$2"; shift 2 ;;
         *) usage ;;
     esac
 done
@@ -28,8 +30,14 @@ if [[ ${#log_dirs[@]} -eq 0 ]]; then
     echo "instrumentation-coverage: no diagnostic log directories supplied" >&2
     exit 1
 fi
+if [[ -z "$challenge" ]]; then
+    echo "instrumentation-coverage: no gate challenge supplied" >&2
+    exit 1
+fi
 
-python3 - "$cases_file" "$exemptions_file" "$routes_file" "${log_dirs[@]}" <<'PY'
+python3 - "$cases_file" "$exemptions_file" "$routes_file" "$challenge" "${log_dirs[@]}" <<'PY'
+import hashlib
+import hmac
 import json
 import pathlib
 import re
@@ -38,7 +46,8 @@ import sys
 cases_path = pathlib.Path(sys.argv[1])
 exemptions_path = pathlib.Path(sys.argv[2])
 routes_path = pathlib.Path(sys.argv[3])
-log_dirs = [pathlib.Path(value) for value in sys.argv[4:]]
+challenge = sys.argv[4]
+log_dirs = [pathlib.Path(value) for value in sys.argv[5:]]
 
 if not cases_path.is_file():
     raise SystemExit(f"instrumentation-coverage: missing case source {cases_path}")
@@ -79,14 +88,24 @@ for name, route in routes.items():
         raise SystemExit(f"instrumentation-coverage: route for {name} is incomplete")
     if route["expectedRecord"] != name:
         raise SystemExit(f"instrumentation-coverage: route for {name} expects {route['expectedRecord']!r}")
-    source_text = "\n".join(
-        path.read_text(encoding="utf-8", errors="ignore")
-        for directory in (cases_path.parent, cases_path.parent.parent / "Markdown EditorTests")
-        if directory.is_dir()
-        for path in directory.rglob("*.swift")
-    )
-    if route["owner"] not in source_text or route["entry"] not in source_text:
-        raise SystemExit(f"instrumentation-coverage: route for {name} names an absent production symbol")
+    owner_sources = []
+    for path in cases_path.parent.rglob("*.swift"):
+        if "Markdown EditorTests" in path.parts:
+            continue
+        source = path.read_text(encoding="utf-8", errors="ignore")
+        if re.search(rf"\b{re.escape(route['owner'])}\b", source):
+            owner_sources.append(source)
+    if not owner_sources:
+        raise SystemExit(f"instrumentation-coverage: route for {name} names an absent production owner")
+    if not any(
+        route["entry"] in source
+        and re.search(rf"\brecord\s*\(\s*\.{re.escape(name)}\b", source)
+        for source in owner_sources
+    ):
+        raise SystemExit(
+            f"instrumentation-coverage: route for {name} has no production record call in owner "
+            f"{route['owner']} entry {route['entry']}"
+        )
 
 exemptions = {}
 for line in exemptions_path.read_text(encoding="utf-8").splitlines():
@@ -130,6 +149,20 @@ for file in files:
                     raise SystemExit(f"instrumentation-coverage: event {event} has missing or unknown evidence origin")
                 origins.add(origin)
                 if origin == "productionRoute":
+                    route_name = record.get("route")
+                    if route_name != event:
+                        raise SystemExit(
+                            f"instrumentation-coverage: production event {event} has route {route_name!r}"
+                        )
+                    expected = hmac.new(
+                        challenge.encode("utf-8"),
+                        f"{origin}|{event}".encode("utf-8"),
+                        hashlib.sha256,
+                    ).hexdigest()
+                    if not hmac.compare_digest(record.get("attestation", ""), expected):
+                        raise SystemExit(
+                            f"instrumentation-coverage: production event {event} has invalid attestation"
+                        )
                     emitted.add(event)
 if not emitted:
     raise SystemExit("instrumentation-coverage: logs emitted zero event names")

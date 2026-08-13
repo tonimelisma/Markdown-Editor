@@ -40,6 +40,12 @@ mkdir -p "$test_coverage_dir"
 rm -rf "$test_coverage_dir"/*
 touch "$test_coverage_dir/.enabled"
 export EDITOR_TRACE_COVERAGE_LOG_DIR="$test_coverage_dir"
+coverage_challenge="$(openssl rand -hex 32)" || {
+    echo "fast-check: unable to create instrumentation coverage challenge" >&2
+    exit 1
+}
+export EDITOR_TRACE_COVERAGE_CHALLENGE="$coverage_challenge"
+printf '%s' "$coverage_challenge" > "$test_coverage_dir/.challenge"
 step() {
     printf '\n── %s\n' "$1"
 }
@@ -108,6 +114,7 @@ printf 'tests: %s passed, %s failed\n' \
 
 step "observed instrumentation coverage gate"
 ./Scripts/check-instrumentation-coverage.sh \
+    --challenge "$coverage_challenge" \
     --log-dir "$coverage_dir/smoke" \
     --log-dir "$test_coverage_dir" || { instrumentation_gate=fail; failures=$((failures + 1)); }
 ./Scripts/test-check-instrumentation-coverage.sh || { instrumentation_gate=fail; failures=$((failures + 1)); }

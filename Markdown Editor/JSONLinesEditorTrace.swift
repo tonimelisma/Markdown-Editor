@@ -63,6 +63,7 @@ final class JSONLinesEditorTrace: EditorTraceSink {
     @MainActor
     final class ProductionRouteCoverageRecorder {
         private let handle: FileHandle?
+        private let challenge: String?
         private let startedAt: Date
         private let startUptimeNanos: UInt64
         private var nextSequence: UInt64 = 0
@@ -72,6 +73,10 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 atPath: directory.appendingPathComponent(".enabled").path
             ) else { return nil }
             startedAt = Date()
+            challenge = try? String(
+                contentsOf: directory.appendingPathComponent(".challenge"),
+                encoding: .utf8
+            ).trimmingCharacters(in: .whitespacesAndNewlines)
             startUptimeNanos = DispatchTime.now().uptimeNanoseconds
             let runID = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12))
             let header = DiagnosticRunHeader(
@@ -120,6 +125,12 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 category: category,
                 event: event,
                 origin: .productionRoute,
+                productionRoute: event,
+                attestation: DiagnosticCoverageAttestation.token(
+                    event: event,
+                    origin: .productionRoute,
+                    challenge: challenge
+                ),
                 data: data
             )
             append(record.jsonLine)
