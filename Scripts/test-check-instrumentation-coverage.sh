@@ -11,7 +11,8 @@ logs="$root/logs"
 mkdir -p "$logs" "$root/Markdown Editor"
 cat > "$root/Markdown Editor/FixtureOwner.swift" <<'EOF'
 final class FixtureOwner {
-    func fixtureAlpha() { trace.record(route: .alpha, .alpha) }
+    func fixtureAlpha() {}
+    func fixtureAlpha(_ value: Int) { trace.record(route: .alpha, .alpha) }
     func fixtureBeta() { trace.record(route: .beta, .beta) }
     func fixtureGamma() { trace.record(route: .gamma, .gamma) }
 }

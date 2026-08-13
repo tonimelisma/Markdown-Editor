@@ -151,13 +151,13 @@ for name, route in routes.items():
         )
     bound = False
     for source in owner_sources:
-        entry_match = entry_pattern.search(source)
-        if not entry_match:
-            continue
-        entry_opening = source.find("{", entry_match.start())
-        entry_end = matching_brace(source, entry_opening)
-        if entry_end is not None and route_pattern.search(source, entry_match.start(), entry_end + 1):
-            bound = True
+        for entry_match in entry_pattern.finditer(source):
+            entry_opening = source.find("{", entry_match.start())
+            entry_end = matching_brace(source, entry_opening)
+            if entry_end is not None and route_pattern.search(source, entry_match.start(), entry_end + 1):
+                bound = True
+                break
+        if bound:
             break
     if not bound:
         raise SystemExit(

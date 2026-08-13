@@ -127,8 +127,8 @@ printf 'tests: %s passed, %s failed\n' \
 
 step "observed instrumentation coverage gate"
 ./Scripts/check-instrumentation-coverage.sh \
-    --log-dir "$coverage_dir/smoke" \
-    --log-dir "$test_coverage_dir" || { instrumentation_gate=fail; failures=$((failures + 1)); }
+    --log-dir "$coverage_dir/smoke/production-route.jsonl" \
+    --log-dir "$test_coverage_dir/production-route.jsonl" || { instrumentation_gate=fail; failures=$((failures + 1)); }
 ./Scripts/test-check-instrumentation-coverage.sh || { instrumentation_gate=fail; failures=$((failures + 1)); }
 
 step "proof results"
