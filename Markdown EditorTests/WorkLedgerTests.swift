@@ -3,6 +3,7 @@ import MachO
 import Testing
 import AppKit
 import Synchronization
+import UniformTypeIdentifiers
 @testable import Markdown_Editor
 
 @MainActor
@@ -63,8 +64,16 @@ struct MeasurementSubstrateProofTests {
         let trace = JSONLinesEditorTrace(log: log)
         let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
         let observer = FrameObserver(sampler: sampler)
-        observer.recordForTesting(hostTime: 0, cadenceNanos: 16_666_667)
-        observer.recordForTesting(hostTime: 1_000_000_000, cadenceNanos: 16_666_667)
+        observer.recordForTesting(
+            callbackUptimeNanos: 0,
+            ackUptimeNanos: 0,
+            cadenceNanos: 16_666_667
+        )
+        observer.recordForTesting(
+            callbackUptimeNanos: 1_000_000_000,
+            ackUptimeNanos: 1_000_000_000,
+            cadenceNanos: 16_666_667
+        )
         sampler.flush()
         await log.drain()
         let text = (try? String(contentsOf: log.fileURL, encoding: .utf8)) ?? ""
@@ -435,6 +444,66 @@ struct COR69IntentMeasurementTests {
         #expect(logText.contains("\"scope\":\"acceptedEdit\""))
         #expect(logText.contains("\"orphaned\":false"))
         #expect(logText.contains("\"documentParses\":1"))
+        session.detach()
+    }
+
+    // Verifies: REQ-123 — the production image-placement route publishes through the same
+    // staged accepted-edit identity that the parser consumes, rather than opening a second
+    // reconciliation owner at the document observer boundary.
+    @Test func imagePlacementRouteRetainsIntentThroughParse() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("image-intent-\\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let documentURL = directory.appendingPathComponent("note.md")
+        try Data().write(to: documentURL)
+
+        let document = MarkdownDocument()
+        document.installTextForTesting("")
+        document.fileURL = documentURL
+        let session = EditorSession()
+        session.attach(document: document)
+        let placement = ImagePlacementController()
+        placement.session = session
+        placement.attach(actions: document)
+
+        let reports = Mutex<[(IntentID, WorkLedger, Bool, DiagnosticSymbol?)]>([])
+        session.intentRecorder.setReporter { context, ledger, orphaned, reason in
+            reports.withLock { $0.append((context.id, ledger, orphaned, reason)) }
+        }
+
+        let intent = session.intentRecorder.begin(.acceptedEdit)
+        let target = ImagePlacementTarget(
+            sourceSelection: SourceSelection(utf16: NSRange(location: 0, length: 0)),
+            sourceRevision: SourceRevision(value: document.sourceVersion),
+            locationGeneration: document.locationGeneration,
+            operationID: UUID()
+        )
+        placement.handleImageAction(
+            intent: ImagePlacementIntent(
+                target: target,
+                claims: [.bitmapData(try makePNGData(), providerName: "proof.png", declaredType: .png)]
+            ),
+            documentURL: documentURL,
+            intentContext: intent
+        )
+
+        var observed: (IntentID, WorkLedger, Bool, DiagnosticSymbol?)?
+        for _ in 0..<500 {
+            observed = reports.withLock { reports in
+                reports.first { $0.0 == intent.id }
+            }
+            if observed != nil { break }
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(2))
+        }
+
+        #expect(placement.phaseForTesting == .idle)
+        #expect(document.text == "![](assets/proof.png)")
+        #expect(observed?.0 == intent.id)
+        #expect(observed?.1.documentParses == 1)
+        #expect(observed?.2 == false)
+        #expect(observed?.3 == nil)
         session.detach()
     }
 

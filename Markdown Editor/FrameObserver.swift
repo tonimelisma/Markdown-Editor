@@ -174,11 +174,6 @@ final class FrameObserver {
         clockRunning = false
     }
 
-    /// Component-test seam preserving the old production callback shape.
-    func recordForTesting(hostTime: UInt64, cadenceNanos: UInt64) {
-        acknowledge(FrameClockTick(callbackUptimeNanos: hostTime, cadenceNanos: cadenceNanos), ackUptimeNanos: hostTime)
-    }
-
     /// Deterministic seam for the complete callback-arrival → main-actor-ack path.
     func recordForTesting(callbackUptimeNanos: UInt64, ackUptimeNanos: UInt64, cadenceNanos: UInt64) {
         acknowledge(
