@@ -75,8 +75,9 @@ else
     fi
 fi
 
-python3 - "$repo_root" "$fixture_root" "$fixture_proof_status" "$git_root_override" <<'PY'
+python3 - "$repo_root" "$fixture_root" "$fixture_proof_status" "$git_root_override" "$bundle" <<'PY'
 import pathlib
+import json
 import re
 import subprocess
 import sys
@@ -85,6 +86,7 @@ repo = pathlib.Path(sys.argv[1])
 fixture_root = pathlib.Path(sys.argv[2]) if sys.argv[2] else None
 fixture_proof_status = sys.argv[3]
 git_root_override = pathlib.Path(sys.argv[4]) if sys.argv[4] else None
+bundle_path = pathlib.Path(sys.argv[5]) if sys.argv[5] else None
 root = fixture_root or repo
 git_root = git_root_override or repo
 roadmap_path = root / "docs/ROADMAP.md"
@@ -130,7 +132,18 @@ def parse_delivers(text, label):
         problems.append(f"{label}: Delivers is neither requirement IDs nor explicit none")
     return ids
 
+def parse_completion_proofs(text, label):
+    values = re.findall(r"^\s*Completion-Proofs:\s*(.+)$", text, re.MULTILINE)
+    if len(values) != 1:
+        problems.append(f"{label}: refactor plan requires exactly one Completion-Proofs field")
+        return frozenset()
+    proofs = frozenset(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", values[0]))
+    if not proofs:
+        problems.append(f"{label}: Completion-Proofs must name at least one proof")
+    return proofs
+
 plan_delivers = {}
+plan_completion = {}
 for plan_path in sorted(plans_dir.glob("*.md")):
     if plan_path.name == "README.md":
         continue
@@ -146,6 +159,8 @@ for plan_path in sorted(plans_dir.glob("*.md")):
     parsed = parse_delivers(f"Delivers: {values[0]}", str(plan_path))
     if parsed is not None:
         plan_delivers[increment] = parsed
+        if not parsed:
+            plan_completion[increment] = parse_completion_proofs(plan_path.read_text(), str(plan_path))
 
 plan_paths = {}
 for path in sorted(plans_dir.glob("*.md")):
@@ -196,6 +211,8 @@ for line_number, status, increment, delivers, block in roadmap_rows:
             problems.append(f"{increment}: plan Delivers could not be resolved")
         if plans and f"(plans/{plans[0].name})" not in block:
             problems.append(f"{increment}: ROADMAP does not link its matching plan {plans[0].name}")
+        if declared_plan == frozenset() and increment in plan_completion and not plan_completion[increment]:
+            problems.append(f"{increment}: refactor plan has no completion proofs")
         for requirement in sorted(delivers):
             if requirement not in requirement_status:
                 problems.append(f"{increment}: Delivers names unknown requirement {requirement}")
@@ -206,14 +223,34 @@ for line_number, status, increment, delivers, block in roadmap_rows:
             problems.append(f"ROADMAP:{line_number}:{increment}: delivered row still has a plan file")
         elif not fixture_root or git_root_override:
             head = subprocess.run(["git", "-C", str(git_root), "rev-parse", "HEAD"], capture_output=True, text=True, check=False).stdout.strip()
+            base_ref = "HEAD^"
+            remote_main = subprocess.run(
+                ["git", "-C", str(git_root), "rev-parse", "--verify", "origin/main"],
+                capture_output=True, text=True, check=False,
+            )
+            if remote_main.returncode == 0 and not git_root_override:
+                base_ref = subprocess.run(
+                    ["git", "-C", str(git_root), "merge-base", "origin/main", "HEAD"],
+                    capture_output=True, text=True, check=False,
+                ).stdout.strip() or base_ref
             changed = subprocess.run(
                 ["git", "-C", str(git_root), "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", head],
                 capture_output=True, text=True, check=False
             ).stdout.splitlines()
             deleted_plans = [p for p in changed if p.startswith(f"docs/plans/{increment}-") and p.endswith(".md")]
+            if not deleted_plans and base_ref != "HEAD^":
+                candidate = f"docs/plans/{increment}-"
+                branch_changed = subprocess.run(
+                    ["git", "-C", str(git_root), "diff", "--name-only", f"{base_ref}..HEAD"],
+                    capture_output=True, text=True, check=False,
+                ).stdout.splitlines()
+                deleted_plans = [p for p in branch_changed if p.startswith(candidate) and p.endswith(".md")]
             if deleted_plans:
+                plan_source_ref = f"{head}^"
+                if base_ref != "HEAD^":
+                    plan_source_ref = base_ref
                 original = subprocess.run(
-                    ["git", "-C", str(git_root), "show", f"{head}^:{deleted_plans[0]}"],
+                    ["git", "-C", str(git_root), "show", f"{plan_source_ref}:{deleted_plans[0]}"],
                     capture_output=True, text=True, check=False
                 ).stdout
                 original_values = re.findall(r"^- \*\*Delivers:\*\* (.+)$", "\n".join(original.splitlines()[:12]), re.MULTILINE)
@@ -223,7 +260,44 @@ for line_number, status, increment, delivers, block in roadmap_rows:
                     original_delivers = parse_delivers(f"Delivers: {original_values[0]}", f"deleted plan {deleted_plans[0]}")
                     if original_delivers is not None and original_delivers != delivers:
                         problems.append(f"{increment}: ROADMAP Delivers does not match the deleted plan's Delivers")
-                production = [p for p in changed if p and not p.startswith("docs/") and p not in {"CLAUDE.md", "AGENTS.md"}]
+                    if original_delivers == frozenset():
+                        completion = parse_completion_proofs(original, f"deleted plan {deleted_plans[0]}")
+                        if not completion:
+                            problems.append(f"{increment}: deleted refactor plan has no completion proofs")
+                        elif not fixture_root:
+                            if bundle_path is None or not bundle_path.is_dir():
+                                problems.append(f"{increment}: refactor delivery requires the closing result bundle")
+                            else:
+                                try:
+                                    raw_results = subprocess.run(
+                                        ["xcrun", "xcresulttool", "get", "test-results", "tests",
+                                         "--path", str(bundle_path), "--format", "json"],
+                                        check=True, capture_output=True, text=True,
+                                    ).stdout
+                                    result_data = json.loads(raw_results)
+                                    observed = {}
+                                    def walk_results(node):
+                                        if isinstance(node, dict):
+                                            if node.get("nodeType") == "Test Case":
+                                                identifier = node.get("nodeIdentifier") or node.get("name") or ""
+                                                leaf = re.sub(r"\(.*\)$", "", identifier.rsplit("/", 1)[-1]).strip()
+                                                if leaf:
+                                                    observed.setdefault(leaf, set()).add(node.get("result") or "")
+                                            for value in node.values():
+                                                walk_results(value)
+                                        elif isinstance(node, list):
+                                            for value in node:
+                                                walk_results(value)
+                                    walk_results(result_data)
+                                    for proof in sorted(completion):
+                                        if proof not in observed or not observed[proof].issubset({"Passed", "Expected Failure"}):
+                                            problems.append(f"{increment}: completion proof `{proof}` was not observed passing in the closing result bundle")
+                                except (subprocess.CalledProcessError, OSError, ValueError) as error:
+                                    problems.append(f"{increment}: could not inspect completion proofs: {error}")
+                changed_for_delivery = changed
+                if base_ref != "HEAD^":
+                    changed_for_delivery = branch_changed
+                production = [p for p in changed_for_delivery if p and not p.startswith("docs/") and p not in {"CLAUDE.md", "AGENTS.md"}]
                 if not production:
                     problems.append(f"{increment}: plan deletion commit {head[:12]} contains no production change")
         for requirement in sorted(delivers):

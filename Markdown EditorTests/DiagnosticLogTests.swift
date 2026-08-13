@@ -217,7 +217,7 @@ struct DiagnosticLogTests {
             directory: URL(fileURLWithPath: coveragePath, isDirectory: true),
             hostKind: .unitTest
         )
-        let sink = JSONLinesEditorTrace(log: coverageLog)
+        let sink = JSONLinesEditorTrace(log: coverageLog, origin: .encodingProbe)
         for event in events {
             sink.record(event)
         }
@@ -233,6 +233,32 @@ struct DiagnosticLogTests {
         ]
         let unreachable = Set(DiagnosticEventName.allCases).subtracting(covered).subtracting(logOwned)
         #expect(unreachable.isEmpty, "unmapped event names: \(unreachable.map(\.rawValue).sorted())")
+    }
+
+    // Verifies: REQ-099/135 — a production sink emits an explicit production-route origin. The
+    // closed encoder test above uses `encodingProbe` and cannot satisfy this assertion.
+    @Test func productionRouteRecordsCarryExplicitProductionOrigin() async {
+        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
+        let sink = JSONLinesEditorTrace(log: log)
+        sink.record(.documentOpened(utf16Count: 8))
+        let recorded = await lines(of: log)
+        let event = recorded
+            .compactMap(object)
+            .first { ($0["ev"] as? String) == DiagnosticEventName.documentOpened.rawValue }
+        #expect(event?["origin"] as? String == DiagnosticEvidenceOrigin.productionRoute.rawValue)
+    }
+
+    // Verifies: REQ-135 — an encoding probe remains visibly non-production evidence even when it
+    // emits a complete symbolic vocabulary.
+    @Test func encodingProbeRecordsCannotMasqueradeAsProductionRoute() async {
+        let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
+        let sink = JSONLinesEditorTrace(log: log, origin: .encodingProbe)
+        sink.record(.documentOpened(utf16Count: 8))
+        let recorded = await lines(of: log)
+        let event = recorded
+            .compactMap(object)
+            .first { ($0["ev"] as? String) == DiagnosticEventName.documentOpened.rawValue }
+        #expect(event?["origin"] as? String != DiagnosticEvidenceOrigin.productionRoute.rawValue)
     }
 
     // Verifies: REQ-095 — the run header survives a hostile runtime version string, which is

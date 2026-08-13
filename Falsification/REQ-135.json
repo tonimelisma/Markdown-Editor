@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-135",
+  "mutations": [
+    {
+      "rationale": "Changing the production sink default to encoding-probe provenance would let a real route disappear from observed production coverage.",
+      "file": "Markdown Editor/JSONLinesEditorTrace.swift",
+      "find": "init(log: DiagnosticLog, origin: DiagnosticEvidenceOrigin = .productionRoute)",
+      "replace": "init(log: DiagnosticLog, origin: DiagnosticEvidenceOrigin = .encodingProbe)",
+      "expect_red": ["productionRouteRecordsCarryExplicitProductionOrigin"]
+    }
+  ]
+}

@@ -76,6 +76,7 @@ step "push-policy fixtures"
 ./Scripts/test-check-delivery-status.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 
 step "changed-scope falsification"
+export FALSIFICATION_SOURCE_PACKAGES="${FALSIFICATION_SOURCE_PACKAGES:-$derived/smoke/SourcePackages}"
 if [[ -n "${FALSIFICATION_BASE:-}" ]]; then
     falsification_base="$FALSIFICATION_BASE"
 elif git rev-parse --verify origin/main >/dev/null 2>&1; then

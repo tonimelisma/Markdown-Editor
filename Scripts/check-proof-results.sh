@@ -36,6 +36,13 @@ export CHECK_PROOF_SKIPPED_SUITES="$skipped_suites"
 
 # Resolve an .xcresult bundle: explicit argument, else the newest under a derived-data path.
 bundle="${1:-}"
+fixture_root=""
+if [[ "${1:-}" == "--fixture-root" ]]; then
+    fixture_root="${2:-}"
+    bundle=""
+elif [[ "${2:-}" == "--fixture-root" ]]; then
+    fixture_root="${3:-}"
+fi
 if [[ -z "$bundle" ]]; then
     derived="${FAST_CHECK_DERIVED_DATA:-$repo_root/.fast-check-build}"
     if [[ -d "$derived/Logs/Test" ]]; then
@@ -50,7 +57,8 @@ if [[ -z "$bundle" || ! -d "$bundle" ]]; then
     exit 1
 fi
 
-python3 - "$repo_root" "$bundle" <<'PY'
+proof_root="${fixture_root:-$repo_root}"
+python3 - "$proof_root" "$bundle" <<'PY'
 import json
 import os
 import pathlib

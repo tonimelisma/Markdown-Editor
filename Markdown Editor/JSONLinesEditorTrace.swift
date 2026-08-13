@@ -13,16 +13,30 @@ import Foundation
 @MainActor
 final class JSONLinesEditorTrace: EditorTraceSink {
     private let log: DiagnosticLog
+    private let origin: DiagnosticEvidenceOrigin
+    /// Unit-test route runs are mirrored into the gate's shared evidence directory. The mirror
+    /// is created only for an explicitly production-origin sink; the encoding probe below never
+    /// enters it. This lets a component test exercise the real owner while keeping its own log
+    /// isolated from other tests.
+    private let coverageMirror: DiagnosticLog?
     /// Opaque per-run handle identifying the document this sink belongs to.
     private let documentHandle: UInt64?
 
-    init(log: DiagnosticLog) {
+    init(log: DiagnosticLog, origin: DiagnosticEvidenceOrigin = .productionRoute) {
         self.log = log
+        self.origin = origin
+        self.coverageMirror = Self.makeCoverageMirror(for: log, origin: origin)
         self.documentHandle = log.makeDocumentHandle()
     }
 
-    init(log: DiagnosticLog, documentHandle: UInt64?) {
+    init(
+        log: DiagnosticLog,
+        documentHandle: UInt64?,
+        origin: DiagnosticEvidenceOrigin = .productionRoute
+    ) {
         self.log = log
+        self.origin = origin
+        self.coverageMirror = Self.makeCoverageMirror(for: log, origin: origin)
         self.documentHandle = documentHandle
     }
 
@@ -33,7 +47,29 @@ final class JSONLinesEditorTrace: EditorTraceSink {
             level: mapped.level,
             category: mapped.category,
             document: documentHandle,
+            origin: origin,
             data: mapped.data
+        )
+        coverageMirror?.record(
+            mapped.name,
+            level: mapped.level,
+            category: mapped.category,
+            origin: .productionRoute,
+            data: mapped.data
+        )
+    }
+
+    private static func makeCoverageMirror(
+        for log: DiagnosticLog,
+        origin: DiagnosticEvidenceOrigin
+    ) -> DiagnosticLog? {
+        guard origin == .productionRoute,
+              log.header.hostKind == .unitTest,
+              let path = ProcessInfo.processInfo.environment["EDITOR_TRACE_COVERAGE_LOG_DIR"],
+              !path.isEmpty else { return nil }
+        return DiagnosticLog(
+            directory: URL(fileURLWithPath: path, isDirectory: true),
+            hostKind: .unitTest
         )
     }
 

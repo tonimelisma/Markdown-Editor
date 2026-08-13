@@ -13,6 +13,14 @@ nonisolated enum DiagnosticHostKind: String, Sendable, Equatable {
     case unitTest
 }
 
+/// Where a diagnostic event originated. This is schema metadata, not a payload value: encoding
+/// probes and gate fixtures can therefore never satisfy production route coverage.
+nonisolated enum DiagnosticEvidenceOrigin: String, Sendable, Equatable, CaseIterable {
+    case productionRoute
+    case encodingProbe
+    case gateFixture
+}
+
 /// Fixed-schema identification of one application run.
 ///
 /// Distinct from `DiagnosticRecord`: these fields are process facts, none derived from a
@@ -239,6 +247,7 @@ final class DiagnosticLog {
         level: DiagnosticLevel = .debug,
         category: DiagnosticCategory,
         document: UInt64? = nil,
+        origin: DiagnosticEvidenceOrigin = .gateFixture,
         data: [(key: DiagnosticField, value: DiagnosticValue)] = []
     ) {
         guard !closed else { return }
@@ -260,6 +269,7 @@ final class DiagnosticLog {
             level: level,
             category: category,
             document: document,
+            origin: origin,
             data: data,
             uptime: uptime
         )
@@ -270,6 +280,7 @@ final class DiagnosticLog {
         level: DiagnosticLevel,
         category: DiagnosticCategory,
         document: UInt64?,
+        origin: DiagnosticEvidenceOrigin,
         data: [(key: DiagnosticField, value: DiagnosticValue)],
         uptime: Double
     ) {
@@ -283,6 +294,7 @@ final class DiagnosticLog {
                 category: category,
                 event: event,
                 document: document,
+                origin: origin,
                 data: data
             ).jsonLine
         })

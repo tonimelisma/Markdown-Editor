@@ -61,6 +61,7 @@ printf '%s\n' '── push-policy fixtures'
 ./Scripts/test-check-push-policy.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 ./Scripts/test-check-delivery-status.sh >/dev/null || { tests_gate=fail; failures=$((failures + 1)); }
 printf '%s\n' '── changed-scope falsification'
+export FALSIFICATION_SOURCE_PACKAGES="${FALSIFICATION_SOURCE_PACKAGES:-$derived/smoke/SourcePackages}"
 if [[ -n "${FALSIFICATION_BASE:-}" ]]; then
     falsification_base="$FALSIFICATION_BASE"
 elif git rev-parse --verify origin/main >/dev/null 2>&1; then

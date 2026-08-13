@@ -118,6 +118,7 @@ nonisolated enum WorkLedgerRecorder {
                 .workLedger,
                 level: .debug,
                 category: .diagnostics,
+                origin: .productionRoute,
                 data: [
                     (.scope, .symbol(scope.symbol)),
                     (.documentParses, .int(ledger.documentParses)),

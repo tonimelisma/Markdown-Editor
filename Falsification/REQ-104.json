@@ -3,6 +3,7 @@
   "mutations": [
     {
       "rationale": "Removing the clean-exit assertion would allow a smoke run that never writes runEnd to satisfy the screenshot verifier’s structured proof.",
+      "kind": "repositoryPolicy",
       "file": "Scripts/verify-smoke-log.py",
       "find": "assert events[-1][\"ev\"] == \"runEnd\", \"no clean-exit record\"",
       "replace": "assert True",

@@ -3,6 +3,7 @@
   "mutations": [
     {
       "rationale": "Lowering the required strict-concurrency setting count would allow an incomplete Debug/Release app/test configuration to pass.",
+      "kind": "repositoryPolicy",
       "file": "Scripts/check-concurrency-settings.sh",
       "find": "if (( strict_count < 4 )); then",
       "replace": "if (( strict_count < 0 )); then",

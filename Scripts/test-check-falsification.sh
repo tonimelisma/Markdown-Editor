@@ -111,6 +111,12 @@ expect_failure 'absolute mutation path' 'target file must be a relative in-repos
 write_manifest 'return .bounded(range: changed)' 'return .full(range: changed)' fixtureProof '../Markdown Editor/Fixture.swift'
 expect_failure 'traversal mutation path' 'target file must be a relative in-repository path' "$gate" --all --fixture-root "$root"
 
+cat >"$root/ScriptsPolicy.swift" <<'EOF'
+policy
+EOF
+write_manifest 'return .bounded(range: changed)' 'return .full(range: changed)' fixtureProof Scripts/ScriptsPolicy.swift
+expect_failure 'script mutation without explicit policy kind' 'production mutation must target a file outside tests, scripts, and docs' "$gate" --all --fixture-root "$root"
+
 cat >>"$root/docs/REQUIREMENTS.md" <<'EOF'
 | REQ-002 | Unmanifested requirement | COR-61 | Done | Markdown Editor/Fixture.swift | test fixtureProof |
 EOF
@@ -172,7 +178,7 @@ rm -f "$root/Falsification/REQ-002.json"
 sed -i '' '/| REQ-002 /d' "$root/docs/REQUIREMENTS.md"
 
 write_manifest 'return 1' 'return 2' missingProof
-expect_failure 'unmatched expected proof' 'did not produce an observed named pass/fail outcome' "$gate" --all --fixture-root "$root"
+expect_failure 'unmatched expected proof' 'did not pass on the exact preimage' "$gate" --all --fixture-root "$root"
 
 # Restore a valid entry before the changed-range rehearsal. The preceding case is intentionally
 # invalid and must not contaminate the fixture's later baseline commit.
