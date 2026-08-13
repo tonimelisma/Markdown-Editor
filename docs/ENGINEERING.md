@@ -497,6 +497,12 @@ ordinary files the user owns and can read, delete, or ignore.
 
 There is no second instrumentation route. `os_log` is not used for editor events.
 
+**Current proof limitation (COR-68):** the production instrumentation route above exists, but the
+coverage gate currently unions it with a test that constructs and records every event case. That
+proves the closed encoder accepts the vocabulary; it does not prove each case is reachable through
+its production owner. REQ-099/REQ-135 therefore remain `Correction` until evidence origin is typed
+and only executed production routes may satisfy reachability.
+
 Performance sampling is explicitly lifetime-owned:
 
 - each attached `EditorSession` owns one sampler;
@@ -641,22 +647,21 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-022 | Superseded pending parses do not enter source-copy/cmark work after the parser lock becomes available. | deterministic scheduler/lock test with controlled generations |
 | ARC-023 | Image display rejects over-limit encoded files before bulk read/hash/decode and derives references from the canonical parse tree. | file-operation spy; over-limit sparse-file test; scanner deletion gate |
 | ARC-024 | Menu and native toolbar are presentations of one window-scoped command model with shared validation. | command-router tests; menu/toolbar construction inspection |
-| ARC-027 | Trace-vocabulary coverage and delivery status are derived from observed execution evidence: JSON Lines from an executed smoke or test run, and the same run's passing requirement proofs; every evidence artefact remains bound to the exact pushed commit and tree before local publication. | `Scripts/check-instrumentation-coverage.sh`; `Scripts/check-delivery-status.sh`; `Scripts/test-check-instrumentation-coverage.sh`; `Scripts/test-check-delivery-status.sh`; `Scripts/fast-check.sh`; `Scripts/full-check.sh`; passing `.gate-receipt.json` |
+| ARC-027 | Trace-vocabulary coverage and delivery status are derived from observed production-route evidence and passing requirement proofs; encoding probes and gate fixtures cannot satisfy reachability, and every evidence artefact remains bound to the exact pushed commit and tree before local publication. | Currently unmet: COR-68 must add typed evidence origin, production-route execution, behavior-discriminating mutations, and refactor completion proofs before REQ-099/117/118/135/138 may be `Done` |
 
 **Reserved identifiers — approved but not yet true, and therefore not invariants of this
-architecture.** They are recorded here so no later increment reassigns them, which is the defect
-that took `REQ-129` after COR-51's plan was deleted:
+architecture.** They are recorded here so no later increment reassigns them:
 
 | Identifier | Reserved by | Becomes an invariant when |
 | --- | --- | --- |
-| `ARC-025` | COR-51 (accessibility semantics) | that increment lands |
-| `ARC-026` | COR-44 (work ledger) | that increment lands. A row asserting this invariant was added on 2026-08-10 and removed on the same day: the implementation opened no scope outside an uncalled `private` method, so nothing was counted, and the cited `WorkLedgerTests` proofs were tautologies. |
-| `ARC-Q21` | COR-51 (accessibility semantics) | that increment lands |
-| `ARC-Q22` | COR-61 (falsification manifest) | that increment lands |
-| `ARC-Q23` | COR-63 (contrast conformance) | that increment lands |
-| `ARC-Q24` | COR-64 (text-scaling boundary) | that increment lands |
-| `ARC-Q25` | COR-65 (reduced motion/transparency/increase contrast) | that increment lands |
-| `ARC-Q26` | COR-66 (leak-free process verification) | that increment lands |
+| `ARC-025` | COR-81 (accessibility semantics) | that increment lands |
+| `ARC-026` | COR-69 (intent recorder and work ledger) | one explicit intent identity is proved to retain all downstream work across actor, task, and GCD boundaries |
+| `ARC-Q21` | COR-81 (accessibility semantics) | that increment lands |
+| `ARC-Q22` | COR-68 (proof architecture v2) | every retained `Done` claim has an observed production mutation that turns its cited behavior proof red |
+| `ARC-Q23` | COR-81 (contrast conformance) | that increment lands |
+| `ARC-Q24` | DISC-08 / REQ-140 (text-scaling boundary) | only after a new documented third-party platform API or separately approved in-app scaling requirement; currently Deferred |
+| `ARC-Q25` | COR-81 (reduced motion/transparency/increase contrast) | that increment lands |
+| `ARC-Q26` | COR-83 (process lifecycle) | a Stage 0-selected deterministic tool proves zero process leaks |
 
 ## 15. Architecture change gate
 
@@ -688,6 +693,11 @@ supersession documents. The working tree states current truth; Git records histo
 - Full projection compilation is fast enough off-main but not an acceptable dependency between
   consecutive keystrokes. Complete attributed-storage replacement is likewise forbidden on the
   ordinary local-edit path.
+- Ordinary WYSIWYG planning still reaches a synchronous full-document parse/compile route. COR-70
+  first creates one transaction seam; COR-71 then replaces that work with a bounded local transition
+  plus identity-checked asynchronous authority.
+- Source highlighting bounds attribute application but still tokenizes the full source and performs
+  whole-document fence scans. COR-72 replaces it with per-line state propagation.
 - Native `NSTextTable` currently keeps the WYSIWYG editor on the TextKit 1 compatibility path. A
   TextKit 2 migration requires a separate table, attachment, selection, IME, and performance POC.
 - Dense semantic typography makes patch boundaries more demanding: a local source edit can change
@@ -695,13 +705,19 @@ supersession documents. The working tree states current truth; Git records histo
   to the smallest complete affected semantic blocks and otherwise choose explicit recovery.
 - Image placement interacts with external files and asynchronous providers; containment and
   identity-pinned rollback remain mandatory.
+- Display cache identity must be established before bulk I/O. Full SHA-256 is correct for exact-copy
+  asset collision naming but not as a display-cache lookup precondition; sampled digests and MD5 are
+  not correctness identities. COR-73 creates the single display owner.
+- Work-ledger task-local context does not survive the current GCD semantic-worker hop, and queued
+  display-link timestamps do not reveal a blocked main actor. COR-69 replaces both proof seams and
+  produces the missing process benchmark baseline.
 - macOS's Accessibility ▸ Display ▸ Text Size preference has no documented, observable third-party
   API (`docs/research/DISC-08-macos-text-scaling.md`); the approved fixed typography default
-  (§7) has no platform-provided route to user scaling. `COR-64` records this as a guarded boundary
-  rather than a silent gap. Any future animation or translucent view must gate on
+  (§7) has no platform-provided route to user scaling. REQ-140 therefore remains `Deferred` rather
+  than pretending structural absence is a delivered feature. Any future animation or translucent view must gate on
   `NSWorkspace.shared.accessibilityDisplayShouldReduceMotion` /
-  `...ShouldReduceTransparency`; `COR-65`'s absence proof must be replaced with a presence-of-the-
-  gate proof in the same change that adds the first instance.
+  `...ShouldReduceTransparency`; COR-81 makes that policy executable and closes the semantic,
+  keyboard, contrast, and display-preference matrices together.
 
 ## 17. Glossary
 

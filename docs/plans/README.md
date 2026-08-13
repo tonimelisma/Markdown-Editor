@@ -10,7 +10,11 @@ plan must name:
 - requirements and `ARC-###` invariants;
 - a machine-readable **Delivers:** line naming the requirements this plan is expected to move to
   `Done`, or `none (refactor; no requirement changes status)`;
+- for a refactor-only plan, a machine-readable **Completion-Proofs:** line naming the observed
+  route/component proofs that make completion derivable rather than asserted (COR-68 makes this a
+  delivery-gate requirement before any refactor plan may close);
 - architecture impact (`none` unless separately researched and approved);
+- blockers and an explicit statement of what remains independently landable;
 - exact production files/types/routes to add, modify, and delete;
 - ordered implementation phases;
 - automated non-UI proof;
@@ -25,9 +29,10 @@ Read `../../CLAUDE.md` §3 (increment lifecycle) and §9 (definition of done) fi
 
 1. **Check the Executor line and the blockers.** Some plans are blocked on another increment; some
    demand judgement that an unattended agent should not supply alone. Both are stated in the header.
-2. **Take them in ROADMAP order.** The order encodes real dependencies, not preference. In the
-   current programme, COR-56 must land before COR-57 because COR-57's gate receipt requires a passing
-   `Scripts/fast-check.sh`, which cannot pass until COR-56 repairs the test target.
+2. **Take them in ROADMAP order.** The order encodes real dependencies. A plan is independent when it
+   is one reviewable, revertible vertical outcome with explicit inputs, owners, proofs, and deletion
+   gates—not when it pretends shared architectural prerequisites do not exist. After its named
+   blockers land, it must be possible to implement and merge the plan without bundling another plan.
 3. **Work in a worktree on a branch** (`inc-NN-slug` / `cor-NN-slug`), never on `main`. Swift changes
    need a PR and a separate-agent review; docs and project config commit directly to `main`.
 4. **Run the gates and read their output.** `Scripts/fast-check.sh` is the inner loop; the closing
@@ -37,6 +42,10 @@ Read `../../CLAUDE.md` §3 (increment lifecycle) and §9 (definition of done) fi
    Say so and re-plan; do not improvise production changes the plan does not authorise, and do not
    commit a placeholder to keep the sequence moving. On 2026-08-10 ten increments were committed as
    one-line stubs rather than reported as not-started, and the ROADMAP recorded them as delivered.
+6. **Characterize before replacing.** Existing production behavior may already contain part of a
+   retired plan (for example, the squash-integrated window and semantic-presentation checkpoints).
+   Keep proven correct code, add missing route evidence, and replace only a reproduced defect. Never
+   replay a historical patch or plan merely because its commit is unreachable after a squash.
 
 ### `file.swift:NNN` references are indicative; symbols are authoritative
 

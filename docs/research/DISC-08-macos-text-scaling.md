@@ -1,6 +1,6 @@
 # DISC-08 — Does AppKit's Dynamic Type route reach this app's editor content?
 
-- **Authority:** Evidence only — not architecture, not authorization. Current architecture is in `../ENGINEERING.md`; behavior in `../REQUIREMENTS.md`. Motivates `COR-64`.
+- **Authority:** Evidence only — not architecture, not authorization. Current architecture is in `../ENGINEERING.md`; behavior in `../REQUIREMENTS.md`. Supports deferred `REQ-140`.
 - **First researched:** 2026-08-11
 - **Last verified:** 2026-08-11
 - **Environment:** macOS 27.0 (project `MACOSX_DEPLOYMENT_TARGET`), Swift 6, AppKit (no Catalyst).
@@ -54,7 +54,7 @@ launch that silently stops matching the system setting — an unverifiable claim
 requirement about what the user sees" generalizes to "an API call does not discharge a requirement
 about what the user sees" when the call is not reliably observed to do anything). The honest
 position is: macOS provides no general third-party route to this preference today. Record the gap
-against `REQ-032`(accessibility) as a documented, guarded boundary (`COR-64`) rather than leaving it
+against `REQ-032` (accessibility) as a documented, guarded boundary (`REQ-140`) rather than leaving it
 undiscovered, and leave *user-selectable typography options* — a different, already-approved
 backlog idea in `ROADMAP.md`'s Post-MVP backlog — as the product's own lever if the user later
 wants in-app control independent of this OS limitation.
@@ -63,7 +63,7 @@ wants in-app control independent of this OS limitation.
 
 - Apple documents an observable notification or property for Accessibility Text Size in a future
   AppKit release, or extends `preferredFont(forTextStyle:)` to update live for third-party apps —
-  refresh in full and re-open the `COR-64` question as a build increment rather than a documented
+  refresh in full and re-open the `REQ-140` question as a build increment rather than a documented
   boundary.
 - The project's `MACOSX_DEPLOYMENT_TARGET` moves to a macOS version whose release notes mention
   Accessibility Text Size or Dynamic Type changes for AppKit.

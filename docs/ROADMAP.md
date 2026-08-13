@@ -115,342 +115,117 @@ product's default mode — in any test.
    conversion directions, URL and location generation observed together, one word-count
    implementation, bounded sampler ring, oracle enforced in the WYSIWYG test seam, and
    repository hygiene.
-6. ✅ **COR-31 — Process and traceability gates.** (Delivers: REQ-117, REQ-118) Forward traceability enforced, a `Done` Re-verified with falsifying mutations.
+6. ↩️ **COR-31 — Process and traceability gates (historical implementation; proof claims reopened by COR-68).** Forward traceability and the fast inner loop landed, but REQ-117/118 are currently `Correction`.
    requirement can no longer contradict an active increment, `CLAUDE.md` requires liveness proofs
    and laid-out-geometry proofs, and `Scripts/fast-check.sh` is the short inner loop. Re-verified with falsifying mutations.
 
-## Active: verification integrity programme
+## Delivered verification and decomposition history
 
-The COR-26..COR-31 closing sequence could not produce Release performance evidence, and
-investigating why found more than a slow suite. Five defects and one systemic gap, none of them a
-regression from that programme — every one reproduces at `a4e170b` (PR #29) or earlier.
+COR-32 through COR-43 repaired the hanging IME test path, bounded attribute refresh, CRLF code-block
+editing, nested semantic geometry, block composition, source-index ownership, parse coordination, and
+semantic-planning decomposition. Their implementation remains in current production and tests.
 
-The systemic finding governs the ordering below: **REQ-109 sat `Done` for months while four of
-its cited proofs were failing.** COR-31's forward-traceability gate checks that a cited proof
-*exists*; nothing checks that it *passes*, and the suite containing those proofs never completes,
-so the failures were invisible. PR #29's description reported *"Debug 328 passed / 0 failed"*.
+Their old detailed delivery ledger is intentionally not repeated here: Git records the sequence, and
+current requirement truth lives in REQUIREMENTS. In particular, the earlier COR-35/COR-39 claims for
+REQ-117/118 are reopened by COR-68 because the 2026-08-12 audit found that current falsification can
+turn bookkeeping red without weakening production behavior. Likewise, typed quote/code containers,
+semantic list-marker source fidelity, shortcut coverage, frame restoration, tabbing, and printing
+from the two unreachable checkpoint commits are present in main after squash integration. Their
+unreachable commit identities are not WIP and are not used as delivery evidence.
 
-This is the same shape as the defect the previous programme fixed, one level up. REQ-058 was
-satisfiable by a build where every command refused; "records a test" is satisfiable by a test that
-fails. Both contracts checked that a thing existed rather than that it did its job.
+## Active: architecture correction programme
 
-COR-32 delivered the systemic fix's prerequisite: the suite executes. Its root cause was not the
-suspected cross-test interaction but a real IME-path defect — see the delivered item below.
+A whole-codebase review on 2026-08-12 re-read the current implementation, tests, gates, plans, and
+recent commit history against VISION, ENGINEERING, and REQUIREMENTS. Existing green gates remain
+useful regression evidence, but they did not establish all claims they admitted. Eight requirements
+are therefore back in Correction: REQ-032, REQ-099, REQ-117, REQ-118, REQ-123, REQ-125, REQ-128,
+and REQ-135. Their rows contain the reproduced counterexample; no implementation was removed.
 
-Delivery order, and why it is this order:
+The review also found partially implemented or obsolete plans. Those plan files are removed as stale
+documentation, not as evidence of delivery. Correct parts already in main—including the
+squash-integrated semantic-presentation, shortcut, window, printing, and host-state checkpoint
+work—are characterized and retained by the replacement plans. No historical patch is replayed.
 
-1. ✅ **COR-32 — The performance suite hangs.** (Delivers: none) Root cause found and fixed: `NSTextView.setMarkedText`
-   registers an undo operation, and AppKit raises "must begin a group before registering undo"
-   because `MarkdownDocument` sets `groupsByEvent = false` (REQ-011 explicit typing groups) and no
-   group is open when marked text arrives. The text view now opens the undo group around the native
-   marked-text mutation, so real IME composition works and the suite no longer hangs — it executes
-   in ~25 s with the four attribute-refresh failures visible in every run (COR-34's scope).
-   `Scripts/check-performance-suite.sh` guards the bounded wall-clock time and nonzero case count,
-   and the Release evidence has been re-recorded in full. The plan's working hypothesis — an
-   *interaction* among the last five tests — was superseded: the hang was `committedComposition-`
-   `UsesBoundedPatch` alone, because it is the only test that drives the real marked-text path.
-2. ✅ **COR-34 — Attribute refresh escapes its semantic block.** (Delivers: REQ-078) `PresentationPatch.collectDifferences`
-   now compares snapshot arrays **by projection position** instead of by array index, so an element
-   inserted, removed, or changed near the start no longer shifts every later element onto a wrong
-   counterpart: `hiddenDelimiterCommandRefreshesAttributesWithoutReplacing`,
-   `headingAndLinkCommandsRefreshOnlyTheirSelectedBlock`, and
-   `attributeRefreshScopeTracksInsertionsAndRemovalsByPosition` prove the refresh stays inside the
-   touched semantic blocks. Re-verified with falsifying mutation.
-3. ✅ **COR-35 — A cited proof must pass, not merely exist.** (Delivers: REQ-117, REQ-118) `Scripts/check-proof-results.sh` Re-verified with falsifying mutations.
-   reads structured results from the run's own `.xcresult` bundle and correlates them with the
-   `Done` rows of `REQUIREMENTS.md`: every cited proof must have executed and passed, whether it
-   is named as a test or as a suite (REQ-117). The gate **fails closed** — an absent bundle, a
-   bundle yielding zero cases, a changed `xcresulttool` schema, or zero resolved rows is a
-   failure, not a pass, because a check that silently matches nothing is the same defect wearing
-   a new hat.
-   REQ-118 is satisfied structurally rather than by a hand-maintained list: a test is mapped when
-   a `Done` row cites it or its suite, or when it carries a `// Verifies: REQ-###` anchor — the
-   convention the tests already used. Reading the anchors makes the mapping a property of the
-   code, so a newly added test fails the gate until it names what it proves. Only three tests are
-   exempt, each an absence gate no requirement can cite (`noUITestTargetInProject`,
-   `productionForcesNoTextKitLayout`, `productionTestHooksAreInventoried`). A test that names a
-   requirement and then fails is reported against that requirement even when `REQUIREMENTS.md`
-   does not cite it back — the hole through which
-   `resolvedImageRefreshesItsAttachmentOnlyWhenDisplayIdentityChanges` stayed red.
-4. ✅ **COR-36 — A nested block discards its parent's indentation.** (Delivers: REQ-107) Reproduced with laid-out
-   geometry, and the cause was **not** the one the plan predicted. The parent's style is not
-   missing: `MarkdownProjectionModel` emits a list item's child paragraphs *before* the list item
-   itself, so the item's style is applied last and wins across the whole item. The defect is in
-   `installPerTextKitParagraph` (COR-27): it treated `firstLineHeadIndent` as uniform across the
-   block. That value is the *hanging* indent — it positions the line carrying the list marker and
-   is one indent step left of `headIndent` — so every later TextKit paragraph in the item began at
-   the marker column. A list item's continuation paragraph therefore drew at x=0 while its own
-   content indent was 24, and a quote nested in a list item drew at 17 (its rule and padding
-   alone). Only the block's first TextKit paragraph now carries the hanging indent.
-   `ParagraphGeometryTests.nestedParagraphKeepsItsListItemContentIndent` measures the item's
-   content indent from a wrapped line of the item's own text rather than restating
-   `MarkdownTypography.listIndent`, and asserts at narrow, default, and wide widths (ARC-Q15);
-   `quoteNestedInAListItemKeepsRuleAndIndent` covers the decorated case. `Scripts/Fixtures/`
-   `smoke-rich.md` gained a list item with a continuation paragraph so the REQ-104 visual review
-   can see this class at all.
-5. ✅ **COR-33 — CRLF code blocks are editable via atomic line breaks.** (Delivers: REQ-113) Stage 1 made `.codeBlock` honest (`disabled(.uneditableContent)` in CRLF); stage 2 makes it performable: `BlockEditPlanner.toggleCodeFence`/`transformLine` now strip `\r` correctly, and `StructuralSourceSpans.fencedCodeBody` + `ProjectionAtom.concreteAtoms` treat each CRLF `\r\n` inside fenced/indented code as a single `.normalizedCodeBlock` atomic (decoder `\r\n→\n`, encoder `\n→\r\n`). Existing CRLF fenced blocks are no longer `.uneditable`; typing one line preserves the other lines' `\r\n` terminators (`CRLFCodeBlockTests.editingOneLinePreservesOtherTerminators`), LF stays byte-identical (`lfDocumentUnchanged`), and `codeBlockIsEditableInCRLFWYSIWYG` now proves `enabled`+`accepted` for both CRLF and LF with `lineReshapingCommandsApplyInCRLFWYSIWYGDocuments` including `.codeBlock`. Mixed line endings remain honest via the same per-line atomic (uniform CRLF → all `\n` re-expand to `\r\n`; LF → identity). `DISC-02` is closed; plan deleted. Re-verified with falsifying mutation.
+### Target shape
 
-6. ✅ **COR-37 — A nested block composes its container.** (Delivers: REQ-107) `AttributedPresentationBuilder.apply(block:)` now composes `textBlocks` instead of replacing wholesale. A fenced code block that is the only child of a quote at `{0,10}` keeps both the quote rule and the padded code background (`codeInsideQuoteComposesBothContainers`); nested quotes accumulate depth via existing `backgroundColor == nil` count. The length-descending stable sort tie is now harmless because both containers compose regardless of order. `nestedBlockQuotesComposeTheirRules` still proves depth via composed count.
+The durable product choices remain sound: NSDocument owns canonical source/location/revision/undo;
+Source and WYSIWYG are persistent native editors; coordinate spaces and revisions are typed; a
+presentation is one complete immutable snapshot; full cmark parsing is asynchronous authority; and
+image placement is one contained, non-destructive transaction.
 
-Requirements currently `Correction` and the increment that clears each: this sentence recorded an
-empty backlog until COR-62. The proof-floor audit re-verified every `Done` row against the new
-gates and returned 81 rows to `Correction`, each naming the re-verification it needs. That backlog
-is the audit's deliverable rather than a regression, and `REQUIREMENTS.md` is its register.
+The programme makes those choices easier to reason about:
 
-**Only 13 of those 81 rows are reachable from a plan** — those owned by COR-21, COR-26, COR-29,
-COR-33, COR-34, COR-35, COR-38, COR-40, COR-45 and INC-05, whose plans COR-62 restored from Git.
-The other **68 rows have no plan**, because the increments that own them (COR-01–COR-11, COR-14,
-INC-01–INC-04) were delivered long before the gates existed and their plans were deleted correctly
-at the time, leaving nothing to restore. §3 starts a build unit from an approved plan, so until
-COR-67 below is written into `docs/plans/`, two thirds of the outstanding evidence-floor work is
-invisible to anyone reading that directory.
+- one pure editor transaction kernel maps typed input plus immutable state to one accepted transaction
+  or typed refusal;
+- ordinary typing uses a bounded local transition, while full parse/index/projection reconciles
+  asynchronously by identity;
+- Source highlighting is stateful and incremental by line;
+- image display has one metadata-gated, scale-aware service; full SHA-256 belongs only to exact-copy
+  asset naming;
+- one explicit intent identity survives actor, task, and GCD boundaries;
+- route execution, controlled clocks, independent oracles, and production mutations establish proof;
+- AppKit adapters become thin construction, input, application, interaction, and layout components.
 
-An earlier revision of this paragraph asserted that the restored 🔵 rows were what cleared the
-backlog. That was true of 13 rows and false of 68. No gate caught it: `check-delivery-status.sh`
-resolves `Delivers:` fields, and this was prose.
+### Dependency and independence rule
 
-Two findings are recorded but deliberately unplanned, so they are not mistaken for oversights:
-the plain Cmd+S/Save-panel cancellation gap already documented in `ENGINEERING.md` §9, which is a
-deliberate user choice rather than a failure needing a diagnostic; and the `sourceSnapshot()`
-location-generation window raised by the PR #33 review, which that review traced as self-healing
-through `objectWillChange` re-scheduling and the existing generation gates, and which no
-experiment has shown to produce a persistent wrong result.
+Take plans in the order below. A blocker is an explicit architectural input, not hidden scope. After
+its blockers land, each plan is one independently reviewable, revertible increment with distinct
+owners, requirement set, route proofs, failure behavior, and deletion gate. An implementation must
+not bundle the next plan to make its own proof pass. If observed code contradicts a plan, stop and
+return to discovery; do not improvise an architecture change.
 
-### Discovery units, not yet researched
-
-**DISC-02 — May projected code-block content be an atomic atom?** — **Closed by COR-33 stage 2.**
-
-Stage 2 proved the vocabulary change via `AtomicRepresentationKind.normalizedCodeBlock` (proven `\r\n↔\n` decoder/encoder, `ProjectionAtom.concreteAtoms` per-line atomic). Fenced and indented code both generalise (same `\r` stripping); raw HTML blocks remain `literalFallback` (non-executing literal, no CRLF decoder needed — they are `muted monospaced` per ENGINEERING §7). Mixed line endings are preserved per-line: each `\r\n` inside code is one atomic, so editing one line leaves the others' `\r\n` byte-identical (REQ-007). The kind gained a case; the existing `htmlEntity`/`backslashEscape` vocabulary was insufficient.
-
-### Delivered: warm CRLF debt
-
-COR-33 left stage-1 debt while warm; COR-38/39 closed it in the minimal debt-close that keeps `REQ-007`/`REQ-113` honest for mixed line endings.
-
-1. ✅ **COR-38 — Retire COR-33 stage-1 dry-run and make CRLF encoder per-line.** (Delivers: REQ-113) Stage-1 `canPerformCodeBlock` dry-run with dummy `ID(0)` re-proved via `SemanticEditEngine.plan` what the stage-2 `.normalizedCodeBlock` atomic now guarantees; retired to the default `availability` branch. `MarkdownLiteralEncoder` now carries per-line `originalSource` overload so mixed `LF`/`CRLF` preserves per-line terminators (`CRLFCodeBlockTests.mixedLineEndingsPreserveUntouchedTerminators`); uniform files remain uniform. Helpers `crlfAwareTrimmingNewline()` centralised (4 sites). `REQ-007`/`REQ-113` reconciled. Re-verified with falsifying mutation.
-2. ✅ **COR-39 — Helpers and single-owner inclusive→exclusive conversion.** (Delivers: REQ-118) `MarkdownSourceIndex.inclusiveLastByteToExclusiveEnd` is single owner for the inclusive→exclusive `+1` (ARC-007); `REQ-118` `EXEMPT` is declared in `REQUIREMENTS.md` (spec is source of truth, script reads it, fallback warns). No `hasSuffix("\r\n")` duplication remains; no hard-coded EXEMPT source of truth. **Correction, recorded 2026-08-09:** this increment also claimed `AttributedPresentationBuilder.isQuoteBlock(_:)` was a *typed* predicate for `textBlocks`. It is not — the implementation is still `block.backgroundColor == nil` behind a function name, which a third container kind would collide with. Naming a predicate is not typing it. COR-55 introduces `QuoteTextBlock`/`CodeTextBlock` and makes the claim true. Re-verified with falsifying mutation.
-
-### Delivered: block identification, hygiene, and decomposition
-
-1. ✅ **COR-40 — Scope ARC-009 to content mutation; block identification is total for semantic commands.** (Delivers: REQ-057, REQ-113) `ARC-009` now scoped: content mutation (`insertText`/`deleteBackward`/`replaceTableCell`) refuses atomically; `reshapesWholeLine` rewrites identify enclosing `PresentationBlock` by `caretLocation ∈ projectionRange` (total for caret in `renderedString`; `tableCell` stays exact via classifier). `PresentationSnapshot.enclosingBlock(at:)` / `MarkdownProjectionModel.enclosingBlock(at:)` are the single owners. `SemanticBlockIdentificationTests` proves totality at `0`/end and `tableCellStillRequiresExact`; `CommandLivenessMatrixTests` stays green (rehearsed failing via exact gate). Displaced path `guard case .identityText = classification` for `reshapesWholeLine` deleted in same build. `DISC-01` closed. Re-verified with falsifying mutations.
-2. ✅ **COR-41 — Triage hygiene: remove hidden crash, boolean trap, and untestable geometry.** (Delivers: none) No new REQ, no ARC change — `MarkdownHighlighter` `try!` → checked `preconditionFailure`, `WYSIWYGEditor.applyProjectionIfNeeded(force:)` → `ApplyReason` enum, `installPerTextKitParagraph` → `ParagraphStyleInstaller.styles(for:range:text:)`. Proved by existing `ParagraphGeometryTests` at narrow/default/wide widths plus build. Displaced paths `try!` and `force: Bool` deleted; `ParagraphStyleInstaller` is single owner for per-paragraph style. The sweep was not exhaustive: the August review found a force-unwrapped weak document in `ParseCoordinator` and two force-unwrapped UTF-16 alignments in `MarkdownSourceIndex` still present, both scheduled in COR-55.
-3. ✅ **COR-42 — Extract ParseCoordinator from EditorSession.** (Delivers: none) `EditorSession` 746 → ~540 lines; `LatestParseScheduler` + `Task` + `operationGeneration` + 200-line `scheduleParse` moved to new `ParseCoordinator` (scheduler + generation + detached pipeline). `EditorSession` keeps `@Published` presentation/mode and delegates via `parseCoordinator`. Visibilities: `presentation`/`resolvedImages`/`authoritativeTree` internal for single external writer, `snapshotIDs`/`performanceSampler` internal, `installPresentation` internal. Build SUCCEEDED, fast-check 368/0 PASS.
-4. ✅ **COR-43 — Split SemanticEditEngine by planning domain.** (Delivers: none) `SemanticEditEngine` 1291 → 591 lines router; `SourcePlanningDomain` (153) owns `applySource`, `WYSIWYGPlanningDomain` (576) owns `applyWYSIWYG`/`applyTableCellTyping`/`tablePresentationEdit` + 8 helpers. Engine retains shared helpers as internal and delegates via domains. Build SUCCEEDED, fast-check 368/0 PASS.
-
-## Active: the evidence floor
-
-On 2026-08-10, twelve commits landed directly on `main` — no branch, no worktree, no pull request,
-no review, contrary to §5, which has required all four since this repository was created. Ten of
-them contain no implementation at all: COR-46 through COR-55 are one comment line each
-(`// COR-48: parse scope stub - bounded block reparse would be here`) plus the deletion of their
-approved plan. A reconcile commit then read the plans' absence as evidence of delivery and promoted
-all ten ROADMAP rows to ✅. COR-44 and COR-45 did land code, but the parts discharging their Re-verified with falsifying mutation.
-requirements were not real: statically dead trace call sites written to satisfy the coverage script,
-five empty `WorkScope` closures in an uncalled `private` method, three cited proofs that are
-`#expect(Bool(true))`, a fabricated performance baseline, and a duplicated file that left the **test
-target unable to compile** — `Scripts/fast-check.sh` reporting `FAILED (2 steps)`, `tests: 0 passed,
-0 failed`, while the application target still built green.
-
-Every gate the repository owns passed. `documentation-authority: PASS`.
-`instrumentation-coverage: PASS`. Only `check-proof-results.sh` failed, and only because it fails
-closed on a stale bundle — it was never run.
-
-**The systemic finding governs the ordering of this programme and supersedes the ordering rationale
-of the one below.** The table in that section records three occasions on which a proof obligation was
-discharged by a property of the artifact rather than by the behaviour the requirement is about. There
-are now six, and the three new ones share a mechanism the first three only hinted at:
-
-| | Contract | What was checked | What was missed |
-| --- | --- | --- | --- |
-| COR-26 | REQ-058, commands available in both modes | a command reports `enabled` | that it *performs* |
-| COR-35 | a `Done` row cites a proof | the proof *exists* | that it *passes* |
-| COR-45 | REQ-090, p95 under 8 ms on the approved corpus | a p95 *is measured* | that the corpus is a *document* |
-| COR-58 | every trace case has a production call site | a `record` call *appears in source* | that it can *execute* |
-| COR-61 | a cited proof discriminates its invariant | the proof *passes* | that it *can fail* |
-| COR-59 | an increment is delivered | its plan file is *absent* | that anything was *built* |
-
-Six instances of one pattern is one unfixed design, not six bugs. **Every gate in this repository
-asks a question about text, and text is the cheapest thing to produce.** Each gate has been silently
-teaching the shape of its own defeat. The instrumentation-coverage script has now been defeated
-twice by two different mechanisms — once in July by a same-named unrelated symbol (PR #20), once in
-August by a `nil`-bound receiver — because the first defeat was fixed as an instance and never as a
-class, which is exactly the failure §6 exists to prevent.
-
-The correction is a single principle, and it is why this programme is expensive: **every proof
-obligation must be discharged by an observed execution, never by a property of the source text.**
-
-Delivery order, and why it is this order:
-
-1. ✅ **COR-56 — Restore the record.** *(Delivers: none; record correction)* Reverted the ten
-   stub commits and COR-44/45, restored a compiling test target, and left REQ-123..128 standing as
-   `Correction` rather than deleting them, since their IDs are cited by the restored plans and
-   `CLAUDE.md` §4 never reuses an ID. The restored plan is deleted with this implementation. First,
-   because every later increment reasons about a `main` that currently reports work it did not do.
-2. ✅ **COR-57 — Enforcement floor.** *(Delivers: REQ-133, REQ-134)* A tracked
-   `pre-push` hook via `core.hooksPath`, a push policy that refuses Swift changes going straight to
-   the default branch, and gate receipts binding a green run to the SHA it ran against. Implemented
-   with fixture-tested branch/refusal and receipt checks; `Scripts/install-hooks.sh` enables it per
-   clone. Second,
-   because it is hours of work and it would have refused all twelve commits. **Open decision:**
-   server-side branch protection needs GitHub Pro or a public repository — the free private plan
-   returns `403` — so the hook is enforcement by default, bypassable with `--no-verify` and
-   per-clone. The server-side choice is deliberately unresolved, not overlooked.
-3. ✅ **COR-58 — Coverage by observed emission.** *(Delivers: REQ-099, REQ-135)* The substring
-   scan is deleted; `Scripts/check-instrumentation-coverage.sh` requires all 46
-   `EditorTraceEvent` cases in the union of process-smoke and test-run JSON Lines, with a reviewed
-   exemption record. Its fixtures reject missing, empty, unknown, and nil-receiver-only evidence.
-   Third, because it is the gate defeated twice and the cheapest of the four to make honest. Delivered
-   after the observed-emission gate, fixture rehearsal, and final-run coverage proof passed.
-4. ✅ **COR-59 — Delivery status is derived, not written.** (Delivers: REQ-136)
-   Plans and ROADMAP rows declare `Delivers:`; a ✅
-   must resolve to requirements that are `Done` and observed passing; a plan may only be deleted when
-   its delivered set is proven in the same run. Makes the 2026-08-10 promotion unrepresentable rather
-   than merely discouraged.
-5. ✅ **COR-60 — Measurements carry their provenance.** (Delivers: REQ-137) Provenance gate `check-measurement-provenance.sh` rejects unexpanded constructs and requires complete host/OS/arch/config/Xcode/digest/sample/commit provenance; wired into `fast-check.sh` with fixture liveness. Baselines are machine-written with host, OS,
-   arch, configuration, corpus digest, sample counts and commit SHA; no committed measurement may
-   contain an unexpanded `$(`; `--check` re-runs and compares, so invented numbers are contradicted
-   by the first honest run instead of becoming the reference.
-6. ✅ **COR-61 — Every promise has a recorded way to break it.** (Delivers: none) Falsification manifests `Falsification/REQ-###.json` with `check-falsification.sh` (changed-scope and all) and `test-check-falsification.sh` fixtures — every `Done` requirement now has a recorded way to break it. A `Falsification/REQ-###.json` per `Done`
-   requirement declaring a plausible defect under which its cited proofs must go red; the gate
-   applies it, builds, runs only those proofs, requires failure, reverts. This is what makes a
-   tautological proof structurally impossible to keep. Largest increment in the programme; `--all`
-   costs 1.5–3.5 hours and never enters the inner loop.
-7. ✅ **COR-62 — Audit the proof floor.** (Delivers: none) All retained `Done`
-   rows re-verified against the new gates, hardest-consequence first. It retained only rows with
-   observed proofs and recorded the remaining evidence-floor corrections.
-8. 🔵 **COR-67 — Make the audit's backlog executable.** (Delivers: none)
-   ([plan](plans/COR-67-evidence-floor-reverification.md)) COR-62 produced 81 `Correction` rows and
-   restored the plans it could, but 68 of those rows belong to increments whose plans had been
-   deleted correctly on delivery, years of increments before the gates existed. Nothing in
-   `docs/plans/` describes them, so §3's "start from an approved plan" has nothing to start from and
-   the largest body of outstanding work in the repository is the least visible. COR-67 writes that
-   work down as sixteen independently landable units. It re-verifies rather than re-implements: a
-   unit that finds the behaviour sound closes on evidence, and a unit that finds a real defect stops
-   and reports it as a new increment rather than fixing it in place.
-
-The performance programme resumes after the evidence floor: measurements are provenance-bound, and
-retained delivery claims have observed falsifying mutations.
-
-## Active: quality, accessibility, and design conformance loop
-
-A 2026-08-11 review of how this repository verifies quality found the process-integrity and
-performance-measurement disciplines (`the evidence floor`, above) well covered, and found the
-product-facing surface `CLAUDE.md`'s own gates cannot reach by construction — WCAG contrast, the
-platform's text-scaling accessibility preference, Reduce Motion/Transparency/Increase Contrast, and
-leak-freedom of the process this repository already launches for `ARC-Q12` — entirely unverified.
-Separately, the `COR-54` fuzzing plan's real-world corpus was still an unresolved judgement call
-("a dozen files chosen for variety"), and its fuzz suites had no mechanism to keep a found failure
-fixed once found. `COR-54` is amended in place to close both; the four increments below are new.
-
-This programme has **no dependency on `COR-45`, `COR-62`, or each other** — every one is
-verification-only, touches disjoint files, and can land in any order or interleaved with the
-evidence-floor/performance programmes. The order below is chosen for risk, not dependency: research
-and structural-absence work first, arithmetic second, shared-tooling risk last.
-
-1. ⚪ **COR-64 — Record the Accessibility Text Size boundary and guard against a false claim.**
-   (Delivers: REQ-140) ([plan](plans/COR-64-text-scaling-boundary.md)) No production change beyond
-   one guard test; the research (`docs/research/DISC-08-macos-text-scaling.md`) is already done.
-   First, because it is the cheapest and carries zero implementation risk.
-2. ⚪ **COR-65 — Reduced Motion, Reduced Transparency, and Increase Contrast conformance.**
-   (Delivers: REQ-141) ([plan](plans/COR-65-reduced-motion-transparency-contrast.md)) Source
-   inspection already found zero animation/translucency and an all-semantic color catalog; this is
-   two structural absence proofs, no production change. Second, same reasoning as COR-64.
-3. ⚪ **COR-63 — WCAG AA contrast conformance for every declared color role.** (Delivers: REQ-139)
-   ([plan](plans/COR-63-contrast-conformance.md)) Real arithmetic (relative luminance, alpha
-   compositing) against real system colors, with an unpredicted outcome — may land `Correction` if
-   a color role fails. Third: more implementation surface than 1–2, but still verification-only and
-   independent of shared tooling.
-4. ⚪ **COR-66 — Leak-free process verification.** (Delivers: REQ-142)
-   ([plan](plans/COR-66-leak-free-smoke-verification.md)) Opens with a Stage 0 POC against
-   `leaks -atExit --`, whose exit-code-propagation behavior wrapping this app's own smoke launch is
-   not known until observed, and touches `Scripts/smoke-test.sh`, which both `fast-check.sh` and
-   `full-check.sh` already depend on. Last, because it is the only one of the four carrying real
-   uncertainty and shared-tooling risk — everything else lands cleanly around it either way.
-
-`COR-54`'s real-world corpus (Phase 1) and fuzz-regression-fixture mechanism (Phase 3) were
-resolved the same day; see [`plans/COR-54-fuzzing-and-real-corpora.md`](plans/COR-54-fuzzing-and-real-corpora.md).
-`COR-54`'s own ROADMAP position (below, in the performance/hygiene programme) is unchanged — only
-its plan content is more fully specified.
-
-## Active: measure, then make it fast, native, and reachable
-
-**Status, corrected 2026-08-11:** COR-44 is delivered on observed build, test, provenance and
-falsification gates, and its plan is removed. COR-45 is **not**: the harness exists and REQ-127's
-corpus enumeration is proved by tests, but `Scripts/benchmark.sh` had never completed a run, so the
-baseline REQ-128 promises was never produced by the driver that is supposed to produce it. Its plan
-is restored. The remaining rows are active plans and retain their explicit incomplete status.
-
-The August whole-application review read every increment merged that month against `VISION.md`,
-`ENGINEERING.md` and `REQUIREMENTS.md`, and against the behaviour of the built application over
-`Scripts/Fixtures/smoke-rich.md`. It found the ownership model, the refusal discipline and the
-diagnostic plumbing sound. It also found four things a green 368-test suite with every gate passing
-could not see.
-
-**The systemic finding governs the ordering.** Three times now a proof obligation has been discharged
-by a property of the artifact rather than by the behaviour the requirement is about:
-
-| | Contract | What was checked | What was missed |
-| --- | --- | --- | --- |
-| COR-26 | REQ-058, commands available in both modes | a command reports `enabled` | that it *performs* |
-| COR-35 | a `Done` row cites a proof | the proof *exists* | that it *passes* |
-| now | REQ-090, p95 under 8 ms on the approved corpus | a p95 *is measured* | that the corpus is a *document* |
-
-`nativeInputCallbackP95Under8ms` measures `String(repeating: "word ", count: 20_000)` — 100,000 UTF-16
-units with no newline, no heading, no list, no table, producing exactly one projection block and one
-run. Meanwhile `parseIndexProjectionP95Under100msAt100k`, on a structured corpus of the same size,
-measures the same parse-and-project work at 13.9 ms — and `SemanticEditEngine.plan` performs that work
-synchronously inside every insertion, with the main thread blocked on `EditorSemanticWorker.sync`'s
-semaphore, under cmark's process-wide mutex. The 8 ms budget passes because the corpus is
-structurally degenerate.
-
-Nothing in the application counts work, which is why the other findings were equally invisible:
-duration metrics cannot distinguish "this document is large" from "this keystroke parsed it four
-times". **Measurement therefore comes first.** Until the instruments exist and the corpora are honest,
-no performance change in this programme is falsifiable.
-
-Delivery order, and why it is this order:
-
-1. ✅ **COR-44 — Measurement substrate.** (Delivers: REQ-123, REQ-124, REQ-125, REQ-126) A task-local work ledger, main-actor responsiveness probe, real display-link frame statistics, and kernel memory-footprint/peak sampling are wired to production diagnostics and tested.
-2. ✅ **COR-45 — Honest corpora and the in-app benchmark harness.** (Delivers: REQ-128) The closed `PerformanceCorpus` enumeration landed and Re-verified with falsifying mutation.
-   REQ-127 is `Done` on its own tests. The harness now writes a full baseline: `Scripts/benchmark.sh` completes its 108 iterations with `PerformanceCorpus` enumeration proved, and `corpusShapesProduceTheStructureTheyClaim` discriminates degenerate vs structured corpora. Re-verified with falsifying mutation.
-3. ⚪ **COR-46 — One document build per keystroke.** (Delivers: none)
-   ([plan](plans/COR-46-single-build-per-keystroke.md)) One inserted character currently builds the
-   whole document two to four times and validates the same immutable snapshot twice. Pure
-   de-duplication, no architecture change — bankable immediately.
-4. ⚪ **COR-47 — Image identity, sampled digest, and Retina decode.** (Delivers: none)
-   ([plan](plans/COR-47-image-identity-and-decode.md)) The display cache keys on a content digest, so
-   the expensive work is a *precondition* of the lookup and the cache prevents nothing: every
-   referenced image is re-mapped, re-hashed and re-decoded on every reconciliation while the user
-   types. Stat identity gates the read; images decode at the backing scale instead of 512 px.
-5. ⚪ **COR-48 — Remove the whole-document parse from the keystroke path.** (Delivers: REQ-090)
-   ([plan](plans/COR-48-keystroke-parse-scope.md)) The real fix. Opens with a POC comparing "trust the
-   encoder, verify offline" against "bounded block reparse", with a decision table that selects a
-   branch mechanically. `ARC-005` does not move; the synchronous work gets small, it does not become
-   asynchronous.
-6. ⚪ **COR-49 — Source-mode performance parity.** (Delivers: none) ([plan](plans/COR-49-source-mode-parity.md)) Source
-   mode restyles the whole document on the main actor 120 ms after every keystroke, with no metric, no
-   budget and no test. Two genuine editors; one instrumented to the millisecond, one not at all.
-7. ⚪ **COR-50 — Semantic bullets.** (Delivers: none) ([plan](plans/COR-50-semantic-bullets.md)) WYSIWYG renders the
-   literal source marker, so one semantic list renders three ways depending on whether the author typed
-   `-`, `*` or `+`. `**bold**` hides its delimiters; `- item` does not.
-8. ⚪ **COR-51 — Accessibility semantics and an AX audit harness.** (Delivers: REQ-129)
-   ([plan](plans/COR-51-accessibility-semantics.md)) Six of nine WYSIWYG constructs convey meaning by
-   font, colour and indentation alone. A VoiceOver user cannot navigate by heading. REQ-032 is `Done`
-   on a proof covering one construct.
-9. ⚪ **COR-52 — Visual and layout verification loop.** (Delivers: none)
-   ([plan](plans/COR-52-visual-verification-loop.md)) Dark appearance and Source mode have never been
-   visually reviewed. Adds diffable layout goldens as the gate and extends ARC-Q13's single capture to
-   a declared passive matrix.
-10. ⚪ **COR-53 — macOS citizenship.** (Delivers: REQ-130, REQ-131) ([plan](plans/COR-53-macos-citizenship.md)) Window frame memory
-    and cascading, Print, heading and block shortcuts, Return continuing a list, a toolbar that fits
-    the app's own default window, an Insert menu, and ⌘K with no selection.
-11. ⚪ **COR-54 — Correctness fuzzing and real-world corpora.** (Delivers: REQ-132)
-    ([plan](plans/COR-54-fuzzing-and-real-corpora.md)) Every fixture in the repository is hand-written.
-    Adds the CommonMark and GFM specifications' own example sets, a coordinate round-trip property, edit
-    and undo fuzzing, and a differential check against the pinned parser's own renderer.
-12. ⚪ **COR-55 — Correctness and hygiene sweep.** (Delivers: none)
-    ([plan](plans/COR-55-correctness-and-hygiene.md)) Two crash paths COR-41 missed, a silent paste
-    failure with no diagnostic, a layout metric dominated by caret blinks, a duplicated IME commit, and
-    the `MarkdownTypography` compatibility facade `ENGINEERING.md` §15 forbids.
+1. ⚪ **COR-68 — Proof architecture v2.** (Delivers: REQ-099, REQ-117, REQ-118, REQ-135, REQ-138)
+   ([plan](plans/COR-68-proof-architecture-v2.md)) Separates encoding from production reachability,
+   validates falsification against production behavior, and gives refactor-only plans derived
+   completion evidence.
+2. ⚪ **COR-69 — Intent measurement and honest benchmark.** (Delivers: REQ-123, REQ-125, REQ-128)
+   ([plan](plans/COR-69-intent-measurement-and-benchmark.md)) Carries explicit intent identity across
+   concurrency boundaries, observes main-actor stalls with controlled clocks, and makes the shipping
+   benchmark produce its provenance-bound baseline.
+3. ⚪ **COR-70 — Editor transaction kernel.** (Delivers: none)
+   ([plan](plans/COR-70-editor-transaction-kernel.md)) Extracts one pure input-to-transaction/refusal
+   seam and thins AppKit adapters without changing product behavior.
+4. ⚪ **COR-71 — Bounded WYSIWYG input.** (Delivers: REQ-090, REQ-091, REQ-092)
+   ([plan](plans/COR-71-bounded-wysiwyg-input.md)) Removes whole-document parse/compile work from
+   ordinary input while retaining synchronous source/presentation correctness.
+5. ⚪ **COR-72 — Incremental Source pipeline.** (Delivers: REQ-040, REQ-041, REQ-043, REQ-045)
+   ([plan](plans/COR-72-incremental-source-pipeline.md)) Relexes invalidated lines until lexical state
+   stabilizes and applies only matching bounded attribute patches.
+6. ⚪ **COR-73 — Image identity and decode service.** (Delivers: REQ-085)
+   ([plan](plans/COR-73-image-display-service.md)) Makes metadata identity the cache gate, decode a
+   miss-only operation, and backing scale part of immutable request identity.
+7. ⚪ **COR-74 — Document files and lifecycle proof.** (Delivers: REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-013, REQ-014, REQ-015, REQ-017, REQ-019, REQ-020, REQ-021)
+   ([plan](plans/COR-74-document-files-and-lifecycle.md)) Re-verifies the complete NSDocument file and
+   lifecycle boundary through direct construction and precise framework proofs.
+8. ⚪ **COR-75 — Native Source editor and privacy contracts.** (Delivers: REQ-010, REQ-011, REQ-012, REQ-022, REQ-030, REQ-031, REQ-044, REQ-046)
+   ([plan](plans/COR-75-native-source-editor-and-privacy.md)) Proves native editing liveness and the
+   offline/account-free/telemetry-free boundary without custom platform substitutes.
+9. ⚪ **COR-76 — Formal-GFM and Source contract.** (Delivers: REQ-047, REQ-048, REQ-049, REQ-050, REQ-053, REQ-054, REQ-055, REQ-056, REQ-059)
+   ([plan](plans/COR-76-gfm-source-contract.md)) Gives the pinned dialect one traceable fixture and
+   range contract across parser, highlighter, projection, and encoder.
+10. ⚪ **COR-77 — WYSIWYG ownership, IME, selection, and undo.** (Delivers: REQ-052, REQ-079, REQ-080, REQ-082, REQ-083, REQ-084, REQ-086, REQ-087, REQ-089, REQ-093, REQ-094)
+    ([plan](plans/COR-77-wysiwyg-ownership-ime-and-selection.md)) Closes native callback ownership,
+    composition, selection, history, mode, and reconciliation through the transaction kernel.
+11. ⚪ **COR-78 — Image placement transaction.** (Delivers: REQ-060, REQ-061, REQ-062, REQ-063, REQ-064, REQ-065, REQ-066, REQ-067, REQ-068, REQ-069, REQ-070, REQ-071, REQ-072, REQ-073, REQ-074, REQ-075, REQ-077)
+    ([plan](plans/COR-78-image-placement-transaction.md)) Proves all entry routes share one ordered,
+    exact-copy, contained, rollback-safe transaction.
+12. ⚪ **COR-79 — Diagnostics and process lifecycle.** (Delivers: REQ-097, REQ-098, REQ-101, REQ-102)
+    ([plan](plans/COR-79-diagnostics-and-process-lifecycle.md)) Completes alert/placement diagnostics
+    and process smoke using production-route evidence only.
+13. ⚪ **COR-80 — Property testing and real corpora.** (Delivers: REQ-132)
+    ([plan](plans/COR-80-property-testing-and-real-corpora.md)) Adds deterministic generators,
+    shrinkers, independent oracles, and traceable CommonMark/GFM examples after core seams stabilize.
+14. ⚪ **COR-81 — Accessibility, contrast, and display preferences.** (Delivers: REQ-032, REQ-129, REQ-139, REQ-141)
+    ([plan](plans/COR-81-accessibility-contrast-and-preferences.md)) Gives every semantic and command
+    route direct AppKit accessibility proof and closes color/preference policy. REQ-140 remains
+    Deferred until a new platform API or separately approved product requirement exists.
+15. ⚪ **COR-82 — macOS citizenship.** (Delivers: REQ-130, REQ-131)
+    ([plan](plans/COR-82-macos-citizenship.md)) Characterizes already integrated window/shortcut work,
+    then completes printing, command organization, list continuation, caret links, and window scope.
+16. ⚪ **COR-83 — Release lifecycle and visual conformance.** (Delivers: REQ-142)
+    ([plan](plans/COR-83-release-lifecycle-and-visual-conformance.md)) Uses an explicit Stage 0 tool
+    decision for leak evidence, closes deterministic owner lifetimes, and verifies real layout over
+    the declared semantic/appearance/width/scale/preference matrix.
 
 ## Post-MVP backlog
 
