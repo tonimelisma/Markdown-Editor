@@ -452,7 +452,7 @@ struct COR69IntentMeasurementTests {
     // reconciliation owner at the document observer boundary.
     @Test func imagePlacementRouteRetainsIntentThroughParse() async throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("image-intent-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("image-intent-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let documentURL = directory.appendingPathComponent("note.md")
@@ -466,6 +466,10 @@ struct COR69IntentMeasurementTests {
         let placement = ImagePlacementController()
         placement.session = session
         placement.attach(actions: document)
+        let sharedLog = DiagnosticLog.shared
+        let initialLogByteCount = sharedLog.flatMap {
+            try? Data(contentsOf: $0.fileURL).count
+        } ?? 0
 
         let reports = Mutex<[(IntentID, WorkLedger, Bool, DiagnosticSymbol?)]>([])
         session.intentRecorder.setReporter { context, ledger, orphaned, reason in
@@ -492,6 +496,25 @@ struct COR69IntentMeasurementTests {
         for _ in 0..<500 {
             observed = reports.withLock { reports in
                 reports.first { $0.0 == intent.id }
+            }
+            if observed == nil, let log = sharedLog {
+                await log.drain()
+                let bytes = (try? Data(contentsOf: log.fileURL)) ?? Data()
+                let appended = bytes.dropFirst(min(initialLogByteCount, bytes.count))
+                let text = String(data: appended, encoding: .utf8) ?? ""
+                for line in text.split(separator: "\n") {
+                    guard let data = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                          data["ev"] as? String == "workLedger",
+                          let fields = data["data"] as? [String: Any],
+                          (fields["intentID"] as? NSNumber)?.uint64Value == intent.id.rawValue,
+                          fields["scope"] as? String == WorkScope.acceptedEdit.symbol.rawValue,
+                          let parses = (fields["documentParses"] as? NSNumber)?.intValue,
+                          let orphaned = fields["orphaned"] as? Bool else { continue }
+                    var ledger = WorkLedger()
+                    ledger.documentParses = parses
+                    observed = (intent.id, ledger, orphaned, nil)
+                    break
+                }
             }
             if observed != nil { break }
             await Task.yield()
