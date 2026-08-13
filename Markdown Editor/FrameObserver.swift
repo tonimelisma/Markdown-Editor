@@ -98,6 +98,7 @@ nonisolated final class ControlledFrameClock: FrameClock, @unchecked Sendable {
 @MainActor
 final class MainActorClock {
     private let source: any FrameClock
+    private var generation: UInt64 = 0
 
     init(source: any FrameClock) {
         self.source = source
@@ -105,12 +106,20 @@ final class MainActorClock {
 
     @discardableResult
     func start(_ acknowledge: @escaping @MainActor @Sendable (FrameClockTick) -> Void) -> Bool {
-        source.start { tick in
-            Task { @MainActor in acknowledge(tick) }
+        generation &+= 1
+        let generation = self.generation
+        let started = source.start { [weak self] tick in
+            Task { @MainActor [weak self] in
+                guard self?.generation == generation else { return }
+                acknowledge(tick)
+            }
         }
+        if !started { self.generation &-= 1 }
+        return started
     }
 
     func stop() {
+        generation &+= 1
         source.stop()
     }
 }
@@ -136,6 +145,7 @@ final class FrameObserver {
     private var hitchMillis: Double = 0
     private var longestFrameNanos: UInt64 = 0
     private var framesObserved: Int = 0
+    private var hitchInProgress = false
     private let sampler: PerformanceSampler
 
     init(sampler: PerformanceSampler, clock: any FrameClock = DisplayLinkFrameClock()) {
@@ -195,6 +205,7 @@ final class FrameObserver {
         hitchMillis = 0
         longestFrameNanos = 0
         framesObserved = 0
+        hitchInProgress = false
         return result
     }
 
@@ -216,7 +227,14 @@ final class FrameObserver {
         framesObserved += 1
         longestFrameNanos = max(longestFrameNanos, effectiveFrame)
         if effectiveFrame > cadence {
-            hitchMillis += Double(effectiveFrame - cadence) / 1_000_000
+            // Several callbacks can queue behind one main-actor stall. Count that contiguous
+            // backlog once, while retaining the longest observed frame as the measurement.
+            if !hitchInProgress {
+                hitchMillis += Double(effectiveFrame - cadence) / 1_000_000
+            }
+            hitchInProgress = true
+        } else {
+            hitchInProgress = false
         }
         self.lastCallbackUptime = tick.callbackUptimeNanos
     }

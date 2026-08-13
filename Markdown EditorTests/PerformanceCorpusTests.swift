@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Testing
 @testable import Markdown_Editor
 
@@ -118,7 +119,49 @@ func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
 }
 
 /// Named for direct mutation selection by the falsification gate.
+@MainActor
 struct COR69BenchmarkProofTests {
+    // Verifies: REQ-128 — the benchmark's real scroll action reaches a constructed AppKit
+    // document view and reports progress, so a positive aggregate cannot hide actions = 0.
+    @Test func benchmarkScrollRouteReportsProgress() {
+        let document = MarkdownDocument()
+        document.installTextForTesting(String(repeating: "scroll line\n", count: 400))
+        let session = EditorSession()
+        session.attach(document: document)
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 320, height: 160))
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 4_000))
+        textView.string = String(repeating: "scroll line\n", count: 400)
+        scrollView.documentView = textView
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 160),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        window.contentView = scrollView
+        let controller = EditorCommandController()
+        controller.bind(
+            document: document,
+            session: session,
+            actionRouter: EditorActionRouter(),
+            window: window
+        )
+
+        let counters = BenchmarkDriver.runOnce(
+            .scrollDocument,
+            controller: controller,
+            session: session,
+            document: document,
+            corpus: .structuredProse,
+            size: 100_000
+        )
+        #expect(counters.actionAttempts == 1)
+        #expect(counters.progress > 0)
+        #expect(counters.errors == 0)
+        session.detach()
+    }
+
+    // Verifies: REQ-128
     @Test func benchmarkRejectsNoProgressAndUnknownActions() {
         #expect(BenchmarkDriver.accepts(BenchmarkCaseOutcome(
             progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 0, duplicateSampleCount: 0

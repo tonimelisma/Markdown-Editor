@@ -337,6 +337,13 @@ final class DiagnosticLog {
         )
     }
 
+    /// Binds the intent recorder directly to the serialized writer. The binding reserves ledger
+    /// records synchronously off-main, so termination cannot close the stream before late work is
+    /// durable and no function-closure ownership cycle can recurse through the recorder.
+    func installWorkLedgerWriter(on recorder: IntentRecorder) {
+        recorder.setDurableWriter(writeCoordinator, startUptimeNanos: startUptimeNanos)
+    }
+
     private func recordInternal(
         _ event: DiagnosticEventName,
         level: DiagnosticLevel,

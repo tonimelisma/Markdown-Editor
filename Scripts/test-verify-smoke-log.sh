@@ -16,6 +16,7 @@ cases=(
     "unknown-metric.jsonl|unknown performance metric"
     "fault.jsonl|faults recorded"
     "no-run-end.jsonl|clean-exit"
+    "late-orphaned-intent.jsonl|faults recorded"
 )
 
 for item in "${cases[@]}"; do

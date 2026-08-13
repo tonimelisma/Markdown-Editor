@@ -6,7 +6,7 @@
       "file": "Markdown Editor/FrameObserver.swift",
       "find": "let effectiveFrame = max(callbackInterval, acknowledgementDelay)",
       "replace": "let effectiveFrame = callbackInterval",
-      "expect_red": ["Markdown EditorTests/COR69IntentMeasurementTests"]
+      "expect_red": ["Markdown EditorTests/COR69IntentMeasurementTests/frameObserverProductionRouteRetainsAcknowledgementDelay()"]
     }
   ]
 }

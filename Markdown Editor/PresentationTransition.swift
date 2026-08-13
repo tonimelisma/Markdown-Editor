@@ -24,6 +24,8 @@ nonisolated struct AcceptedEdit: Sendable, Equatable {
     let presentationTransition: PresentationTransition?
     let sourceSelectionAfter: SourceSelection
     let projectionSelectionAfter: ProjectionSelection?
+    /// The intent that planned this edit, carried explicitly into presentation application.
+    let intent: IntentContext?
 }
 
 nonisolated enum EditRefusal: Sendable, Equatable {

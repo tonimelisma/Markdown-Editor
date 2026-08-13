@@ -1,9 +1,10 @@
 # Falsification manifests
 
-This directory is the approved home for one `REQ-###.json` manifest per requirement that remains
-`Done`. COR-61 Phase 1 validates manifest shape and mutation quality. The mutation executor and
-reviewed requirement entries are deliberately not enabled until the later COR-61 phases; the plan
-and ROADMAP remain active until those phases and the COR-62 audit are complete.
+This directory is the approved home for one `REQ-###.json` manifest per delivered requirement and
+per active `Correction` requirement whose proof is being repaired. A manifest on a `Correction` row
+is pending evidence only; it never implies delivery. `Done` rows still require a manifest. COR-61
+Phase 1 validates manifest shape and mutation quality, and the executor runs both delivered and
+pending correction manifests selected by the requested scope.
 
 Each mutation names one exact production replacement and at least one proof that must turn red:
 

@@ -64,12 +64,23 @@ nonisolated struct IntentContext: Sendable, Equatable {
 /// Lock-guarded, session-owned recorder. It has no task-local or process-global current owner:
 /// callers must pass the context through every actor, task, and GCD boundary.
 nonisolated final class IntentRecorder: @unchecked Sendable {
+    typealias Reporter = @Sendable (IntentContext, WorkLedger, Bool, DiagnosticSymbol?) -> Void
     private struct State {
         var nextID: UInt64 = 0
         var ledgers: [IntentID: WorkLedger] = [:]
     }
 
     private let state = Mutex(State())
+    private let durableWriter = Mutex<(writer: DiagnosticWriteCoordinator?, startUptimeNanos: UInt64)>((nil, 0))
+    private let reporterState = Mutex<Reporter?>(nil)
+
+    func setReporter(_ reporter: @escaping Reporter) {
+        reporterState.withLock { $0 = reporter }
+    }
+
+    func setDurableWriter(_ writer: DiagnosticWriteCoordinator, startUptimeNanos: UInt64) {
+        durableWriter.withLock { $0 = (writer, startUptimeNanos) }
+    }
 
     func begin(_ scope: WorkScope) -> IntentContext {
         state.withLock { state in
@@ -81,10 +92,13 @@ nonisolated final class IntentRecorder: @unchecked Sendable {
     }
 
     func add(_ context: IntentContext, _ mutate: (inout WorkLedger) -> Void) {
-        state.withLock { state in
-            guard state.ledgers[context.id] != nil else { return }
+        let accepted = state.withLock { state in
+            guard state.ledgers[context.id] != nil else { return false }
             mutate(&state.ledgers[context.id]!)
+            return true
         }
+        guard !accepted else { return }
+        report(context: context, ledger: WorkLedger(), orphaned: true, reason: .lateWork)
     }
 
     func snapshot(_ context: IntentContext) -> WorkLedger? {
@@ -97,34 +111,61 @@ nonisolated final class IntentRecorder: @unchecked Sendable {
     func finish(_ context: IntentContext, orphaned: Bool = false) -> Bool {
         let ledger: WorkLedger? = state.withLock { $0.ledgers.removeValue(forKey: context.id) }
         guard let ledger else { return false }
-        recordWorkLedger(context: context, ledger: ledger, orphaned: orphaned)
+        report(context: context, ledger: ledger, orphaned: orphaned, reason: orphaned ? .cancelled : nil)
         return true
     }
 
-    private func recordWorkLedger(context: IntentContext, ledger: WorkLedger, orphaned: Bool) {
+    private func report(context: IntentContext, ledger: WorkLedger, orphaned: Bool, reason: DiagnosticSymbol?) {
+        let destination = durableWriter.withLock { $0 }
+        if let writer = destination.writer {
+            let start = destination.startUptimeNanos
+            let timestamp = Date()
+            _ = writer.appendRecord { sequence in
+                DiagnosticRecord(
+                    wallClock: timestamp,
+                    uptimeSeconds: Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000_000,
+                    sequence: sequence,
+                    level: orphaned ? .fault : .debug,
+                    category: .diagnostics,
+                    event: .workLedger,
+                    origin: .productionRoute,
+                    productionRoute: .workLedger,
+                    data: Self.data(context: context, ledger: ledger, orphaned: orphaned, reason: reason)
+                ).jsonLine
+            }
+            return
+        }
+        if let reporter = reporterState.withLock({ $0 }) {
+            reporter(context, ledger, orphaned, reason)
+            return
+        }
         Task { @MainActor in
             guard let log = DiagnosticLog.shared else { return }
-            log.recordProduction(
-                .workLedger,
-                level: orphaned ? .fault : .debug,
-                category: .diagnostics,
-                route: .workLedger,
-                data: [
-                    (.scope, .symbol(context.scope.symbol)),
-                    (.intentID, .uint(context.id.rawValue)),
-                    (.orphaned, .bool(orphaned)),
-                    (.documentParses, .int(ledger.documentParses)),
-                    (.projectionCompiles, .int(ledger.projectionCompiles)),
-                    (.oracleValidations, .int(ledger.oracleValidations)),
-                    (.attributedBuilds, .int(ledger.attributedBuilds)),
-                    (.attributedCharactersWritten, .int(ledger.attributedCharactersWritten)),
-                    (.storageFullReplacements, .int(ledger.storageFullReplacements)),
-                    (.imageDecodes, .int(ledger.imageDecodes)),
-                    (.fileBytesRead, .int(ledger.fileBytesRead)),
-                    (.mainThreadBlockedNanos, .uint(ledger.mainThreadBlockedNanos)),
-                ]
-            )
+            log.recordProduction(.workLedger, level: orphaned ? .fault : .debug, category: .diagnostics, route: .workLedger,
+                data: Self.data(context: context, ledger: ledger, orphaned: orphaned, reason: reason))
         }
+    }
+
+    static func data(context: IntentContext, ledger: WorkLedger, orphaned: Bool, reason: DiagnosticSymbol?) -> [(key: DiagnosticField, value: DiagnosticValue)] {
+        var data: [(key: DiagnosticField, value: DiagnosticValue)] = [
+            (.scope, .symbol(context.scope.symbol)),
+            (.intentID, .uint(context.id.rawValue)),
+            (.orphaned, .bool(orphaned)),
+            (.documentParses, .int(ledger.documentParses)),
+            (.projectionCompiles, .int(ledger.projectionCompiles)),
+            (.oracleValidations, .int(ledger.oracleValidations)),
+            (.attributedBuilds, .int(ledger.attributedBuilds)),
+            (.attributedCharactersWritten, .int(ledger.attributedCharactersWritten)),
+            (.storageFullReplacements, .int(ledger.storageFullReplacements)),
+            (.imageDecodes, .int(ledger.imageDecodes)),
+            (.fileBytesRead, .int(ledger.fileBytesRead)),
+            (.mainThreadBlockedNanos, .uint(ledger.mainThreadBlockedNanos)),
+        ]
+        if let reason {
+            data.append((.orphanReason, .symbol(reason)))
+            data.append((.lateWork, .bool(reason == .lateWork)))
+        }
+        return data
     }
 }
 

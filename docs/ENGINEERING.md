@@ -643,12 +643,11 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-017 | Every user-visible failure or warning alert has a corresponding diagnostic record. | `alert` is `private(set)`; `presentAlert(_:reason:)` is its only assignment route (compiler-enforced); structural conformance test |
 | ARC-018 | Typography is derived from semantic inline/block presentation plus immutable tokens and never changes canonical source, history, or coordinate meaning. | attributed-presentation semantic tests; source-before/after equality |
 | ARC-019 | An ordinary accepted WYSIWYG edit applies one validated attributed patch and performs no full-storage replacement. | instrumented `NSTextStorage` component test; native-input performance corpus |
-| ARC-020 | Performance samples are lifetime-owned, bounded, honestly named, and include every synchronous operation claimed by their boundary; intent measurements are attributed to one explicit session-owned identity and frame measurements include callback cadence plus main-actor acknowledgement delay. | sampler lifetime tests; intent propagation and overhead tests; controlled-clock frame tests; nonzero Release evidence; boundary-spy tests |
+| ARC-020 | Performance samples are lifetime-owned, bounded, honestly named, and include every synchronous operation claimed by their boundary. | sampler lifetime tests; nonzero Release evidence; boundary-spy tests |
 | ARC-021 | A main-actor stall can be made durable without scheduling the report onto the main actor, and terminal durability never waits on a main-actor hop. | blocked-main component test; bounded terminal-close test |
 | ARC-022 | Superseded pending parses do not enter source-copy/cmark work after the parser lock becomes available. | deterministic scheduler/lock test with controlled generations |
 | ARC-023 | Image display rejects over-limit encoded files before bulk read/hash/decode and derives references from the canonical parse tree. | file-operation spy; over-limit sparse-file test; scanner deletion gate |
 | ARC-024 | Menu and native toolbar are presentations of one window-scoped command model with shared validation. | command-router tests; menu/toolbar construction inspection |
-| ARC-026 | One explicit intent identity, owned by `EditorSession`, is retained through every downstream actor, task, and GCD boundary; terminal completion occurs exactly once and late work is recorded as a typed orphan fault. | `COR69IntentMeasurementTests`; `IntentRecorder` exactly-once/orphan tests; full Debug gate and falsifying mutation |
 | ARC-027 | Trace-vocabulary coverage and delivery status are derived from observed production-route evidence and passing requirement proofs; encoding probes and gate fixtures cannot satisfy reachability, and every evidence artefact remains bound to the exact pushed commit and tree before local publication. | Gate-owned FIFO production records with trusted run harness; exact nested owner-entry route checks; `Scripts/check-instrumentation-coverage.sh`; `Scripts/check-delivery-status.sh`; `Scripts/check-proof-results.sh`; `Scripts/check-falsification.sh` |
 
 **Reserved identifiers — approved but not yet true, and therefore not invariants of this
@@ -657,6 +656,7 @@ architecture.** They are recorded here so no later increment reassigns them:
 | Identifier | Reserved by | Becomes an invariant when |
 | --- | --- | --- |
 | `ARC-025` | COR-81 (accessibility semantics) | that increment lands |
+| `ARC-026` | COR-69 (intent recorder and work ledger) | one explicit intent identity is proved to retain all downstream work across actor, task, and GCD boundaries |
 | `ARC-Q21` | COR-81 (accessibility semantics) | that increment lands |
 | `ARC-Q22` | COR-68 (proof architecture v2) | every retained `Done` claim has an observed production mutation that turns its cited behavior proof red |
 | `ARC-Q23` | COR-81 (contrast conformance) | that increment lands |
@@ -709,10 +709,10 @@ supersession documents. The working tree states current truth; Git records histo
 - Display cache identity must be established before bulk I/O. Full SHA-256 is correct for exact-copy
   asset collision naming but not as a display-cache lookup precondition; sampled digests and MD5 are
   not correctness identities. COR-73 creates the single display owner.
-- Intent measurements now use an explicit `EditorSession`-owned context across actor, task, and GCD
-  boundaries, and frame measurements combine real callback cadence with main-actor acknowledgement.
-  The Release benchmark baseline is generated atomically from the Swift-owned corpus/action matrix;
-  future changes must preserve its provenance and falsification evidence.
+- COR-69 remains a correction increment: its implementation is present but not yet an architectural
+  invariant. The current review requires production-route intent ownership, durable late-work and
+  shutdown ordering, generation-safe frame acknowledgements, exact benchmark contracts, and observed
+  falsifying mutations before ARC-026 or the related requirements become current truth.
 - macOS's Accessibility ▸ Display ▸ Text Size preference has no documented, observable third-party
   API (`docs/research/DISC-08-macos-text-scaling.md`); the approved fixed typography default
   (§7) has no platform-provided route to user scaling. REQ-140 therefore remains `Deferred` rather

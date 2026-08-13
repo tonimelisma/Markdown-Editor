@@ -203,6 +203,8 @@ nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
     case scope
     case intentID
     case orphaned
+    case orphanReason
+    case lateWork
     case documentParses
     case projectionCompiles
     case oracleValidations

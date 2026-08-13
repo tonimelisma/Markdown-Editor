@@ -127,6 +127,11 @@ sed -i '' '/| REQ-002 /d' "$root/docs/REQUIREMENTS.md"
 write_manifest 'return 1' 'return 2' fixtureProof
 "$gate" --all --fixture-root "$root" >/dev/null
 
+# A pending correction manifest must execute without requiring a premature Done claim.
+sed -i '' 's/| Done |/| Correction |/' "$root/docs/REQUIREMENTS.md"
+"$gate" --all --fixture-root "$root" >/dev/null
+sed -i '' 's/| Correction |/| Done |/' "$root/docs/REQUIREMENTS.md"
+
 write_manifest 'return 1' 'return .notACompileableValue' fixtureProof
 expect_failure 'noncompiling mutant' 'mutant does not compile' "$gate" --all --fixture-root "$root"
 

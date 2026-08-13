@@ -16,7 +16,8 @@ enum WYSIWYGPlanningDomain {
         snapshot: SourceSnapshot,
         presentation: PresentationSnapshot,
         tree: MarkdownTree?,
-        grouping: MutationGrouping
+        grouping: MutationGrouping,
+        intent: IntentContext? = nil
     ) -> SemanticEditResult {
         guard presentation.sourceRevision.value == snapshot.sourceVersion,
               selection.range.revision.snapshotID == presentation.id else {
@@ -44,7 +45,8 @@ enum WYSIWYGPlanningDomain {
                 selectionBefore: SourceSelection(
                     utf16: NSRange(location: 0, length: 0),
                     affinity: selection.affinity
-                )
+                ),
+                intent: intent
             )
 
         case .replaceTableCell(let nodeID, let text):
@@ -59,7 +61,8 @@ enum WYSIWYGPlanningDomain {
                 nodeID: nodeID,
                 text: text,
                 grouping: grouping,
-                selectionBefore: before
+                selectionBefore: before,
+                intent: intent
             )
 
         case .insertImageMarkdown(let markdown):
@@ -71,7 +74,8 @@ enum WYSIWYGPlanningDomain {
                 replacement: markdown,
                 action: "Insert Image",
                 grouping: .discrete,
-                selectionBefore: SourceSelection(utf16: sourceRange, affinity: selection.affinity)
+                selectionBefore: SourceSelection(utf16: sourceRange, affinity: selection.affinity),
+                intent: intent
             )
 
         case .insertText(let text):
@@ -86,7 +90,8 @@ enum WYSIWYGPlanningDomain {
                     projection: projection,
                     tree: tree,
                     grouping: grouping,
-                    deletingBackward: false
+                    deletingBackward: false,
+                    intent: intent
                 )
             case .uneditable:
                 return .refused(.unsupportedCommand)
@@ -101,7 +106,8 @@ enum WYSIWYGPlanningDomain {
                     selectionBefore: SourceSelection(
                         utf16: NSRange(location: 0, length: 0),
                         affinity: selection.affinity
-                    )
+                    ),
+                    intent: intent
                 )
             case .ambiguous:
                 return .refused(.ambiguousSelection)
@@ -120,7 +126,8 @@ enum WYSIWYGPlanningDomain {
                 replacement: text,
                 action: "Typing",
                 grouping: grouping,
-                selectionBefore: SourceSelection(utf16: sourceRange, affinity: selection.affinity)
+                selectionBefore: SourceSelection(utf16: sourceRange, affinity: selection.affinity),
+                intent: intent
             )
 
         case .deleteBackward:
@@ -133,7 +140,8 @@ enum WYSIWYGPlanningDomain {
                     projection: projection,
                     tree: tree,
                     grouping: grouping,
-                    deletingBackward: true
+                    deletingBackward: true,
+                    intent: intent
                 )
             }
             guard let sourceRange = SemanticEditEngine.sourceRange(for: classification, affinity: selection.affinity)
@@ -145,7 +153,8 @@ enum WYSIWYGPlanningDomain {
                     replacement: "",
                     action: "Delete",
                     grouping: grouping,
-                    selectionBefore: SourceSelection(utf16: sourceRange, affinity: selection.affinity)
+                    selectionBefore: SourceSelection(utf16: sourceRange, affinity: selection.affinity),
+                    intent: intent
                 )
             }
             guard sourceRange.location > 0 else { return .refused(.invalidRange) }
@@ -155,7 +164,8 @@ enum WYSIWYGPlanningDomain {
                 replacement: "",
                 action: "Delete",
                 grouping: grouping,
-                selectionBefore: SourceSelection(utf16: sourceRange, affinity: selection.affinity)
+                selectionBefore: SourceSelection(utf16: sourceRange, affinity: selection.affinity),
+                intent: intent
             )
 
         case .toggleBold, .toggleItalic, .toggleStrikethrough, .toggleInlineCode,
@@ -204,7 +214,8 @@ enum WYSIWYGPlanningDomain {
                         command: command,
                         selection: sourceSelection,
                         snapshot: snapshot,
-                        grouping: grouping
+                        grouping: grouping,
+                        intent: intent
                     )
                 }
             }
@@ -215,7 +226,8 @@ enum WYSIWYGPlanningDomain {
                 command: command,
                 selection: sourceSelection,
                 snapshot: snapshot,
-                grouping: grouping
+                grouping: grouping,
+                intent: intent
             )
         }
     }
@@ -232,7 +244,8 @@ enum WYSIWYGPlanningDomain {
         projection: MarkdownProjectionModel,
         tree: MarkdownTree?,
         grouping: MutationGrouping,
-        deletingBackward: Bool
+        deletingBackward: Bool,
+        intent: IntentContext? = nil
     ) -> SemanticEditResult {
         guard let cell = projection.tables.flatMap(\.cells).first(where: { $0.nodeID == nodeID }),
               let cellSource = cell.sourceUTF16Range else {
@@ -297,7 +310,8 @@ enum WYSIWYGPlanningDomain {
                 sourceRange: cellSource,
                 text: encodedText,
                 grouping: grouping,
-                selectionBefore: SourceSelection(utf16: cellSource, affinity: selection.affinity)
+                selectionBefore: SourceSelection(utf16: cellSource, affinity: selection.affinity),
+                intent: intent
             )
         }
 
@@ -323,7 +337,8 @@ enum WYSIWYGPlanningDomain {
                 sourceRange: cellSource,
                 text: newCellText,
                 grouping: grouping,
-                selectionBefore: SourceSelection(utf16: mapped, affinity: selection.affinity)
+                selectionBefore: SourceSelection(utf16: mapped, affinity: selection.affinity),
+                intent: intent
             )
         }
 
@@ -349,7 +364,8 @@ enum WYSIWYGPlanningDomain {
             sourceRange: cellSource,
             text: newCellText,
             grouping: grouping,
-            selectionBefore: SourceSelection(utf16: absolute, affinity: selection.affinity)
+            selectionBefore: SourceSelection(utf16: absolute, affinity: selection.affinity),
+            intent: intent
         )
     }
 

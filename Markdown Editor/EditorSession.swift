@@ -47,7 +47,7 @@ final class EditorSession: ObservableObject {
     let imageCache = LocalImageCache()
     /// Sole owner of intent identities for this editor window.
     let intentRecorder = IntentRecorder()
-    internal(set) var activeIntentContext: IntentContext?
+    private var presentationIntents: [PresentationSnapshot.ID: IntentContext] = [:]
     let updateOrigin = EditorUpdateOriginScope()
     let snapshotIDs = PresentationSnapshotIDFactory()
 
@@ -131,6 +131,9 @@ final class EditorSession: ObservableObject {
         parseCoordinator.cancel()
         performanceSampler?.invalidate()
         self.document = document
+        if let diagnosticLog = DiagnosticLog.shared {
+            diagnosticLog.installWorkLedgerWriter(on: intentRecorder)
+        }
         document.updateCanonicalAssetReferences(CanonicalAssetReferences(values: []))
         performanceSampler = PerformanceSampler(
             trace: document.trace,
@@ -343,7 +346,8 @@ final class EditorSession: ObservableObject {
     func installPresentation(
         _ snapshot: PresentationSnapshot,
         tree: MarkdownTree?,
-        provisional: Bool
+        provisional: Bool,
+        intent: IntentContext? = nil
     ) {
         let previous = presentation
         let sourceSelection: SourceSelection? = {
@@ -359,6 +363,9 @@ final class EditorSession: ObservableObject {
             return SourceSelection(utf16: sourceRange, affinity: existing.affinity)
         }()
         presentation = snapshot
+        if let intent {
+            presentationIntents[snapshot.id] = intent
+        }
         if !provisional {
             authoritativeTree = tree
         }
@@ -404,10 +411,15 @@ final class EditorSession: ObservableObject {
         )
     }
 
+    /// Transfers the context that installed a snapshot to the host adapter exactly once. The
+    /// lookup is snapshot-bound, so a late host update cannot borrow a newer operation's owner.
+    func takePresentationIntent(for snapshotID: PresentationSnapshot.ID) -> IntentContext? {
+        presentationIntents.removeValue(forKey: snapshotID)
+    }
+
     func scheduleParse(intent: IntentContext? = nil) {
         guard let document else { return }
         let context = intent ?? intentRecorder.begin(.reconciliation)
-        activeIntentContext = context
         parseCoordinator.scheduleParse(session: self, document: document, intent: context)
     }
 
@@ -471,7 +483,7 @@ final class EditorSession: ObservableObject {
                 updateSourceModeState { $0.selection = edit.sourceSelectionAfter }
                 if let transition = edit.presentationTransition {
                     updateOrigin.with(.programmaticPresentation) {
-                        installPresentation(transition.nextSnapshot, tree: authoritativeTree, provisional: true)
+                        installPresentation(transition.nextSnapshot, tree: authoritativeTree, provisional: true, intent: edit.intent)
                         updateWYSIWYGModeState {
                             $0.selection = edit.projectionSelectionAfter ?? transition.selectionAfter
                         }

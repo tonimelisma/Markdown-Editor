@@ -6,7 +6,7 @@
       "file": "Markdown Editor/WorkLedger.swift",
       "find": "guard state.ledgers[context.id] != nil else { return }",
       "replace": "guard false else { return }",
-      "expect_red": ["Markdown EditorTests/COR69IntentMeasurementTests"]
+      "expect_red": ["Markdown EditorTests/COR69IntentMeasurementTests/editorSessionRouteRetainsIntentThroughParse()"]
     }
   ]
 }

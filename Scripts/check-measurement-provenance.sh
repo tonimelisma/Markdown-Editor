@@ -60,13 +60,19 @@ if not research.is_dir():
     print(f"check-measurement-provenance: missing research directory: {research}", file=sys.stderr)
     sys.exit(1)
 
-# The production corpus is a checked-in closed enumeration. Its source digest is the same
-# immutable digest emitted by benchmark.sh; fixtures supply their own explicit digest.
+# The production corpus and closed action enumeration are checked-in authorities. Their combined
+# source digest is the same immutable digest emitted by benchmark.sh; fixtures supply their own.
 if fixture_root:
     corpus_digest = expected_digest
 else:
     corpus_source = repo / "Markdown Editor/PerformanceCorpus.swift"
-    corpus_digest = __import__("hashlib").sha256(corpus_source.read_bytes()).hexdigest() if corpus_source.is_file() else ""
+    action_source = repo / "Markdown Editor/BenchmarkDriver.swift"
+    if corpus_source.is_file() and action_source.is_file():
+        corpus_digest = __import__("hashlib").sha256(
+            corpus_source.read_bytes() + b"\n-- benchmark action authority --\n" + action_source.read_bytes()
+        ).hexdigest()
+    else:
+        corpus_digest = ""
 
 def has_results_table(text):
     # This is the benchmark schema, not every ordinary evidence table in research. COR-45 owns

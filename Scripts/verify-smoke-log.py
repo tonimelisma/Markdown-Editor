@@ -33,6 +33,28 @@ BUDGET_NANOS = {
     "sourceHighlightApplication": 8_000_000,
 }
 
+WORK_SCOPES = {"acceptedEdit", "reconciliation", "documentOpen", "modeTransition", "semanticCommand"}
+WORK_LEDGER_FIELDS = {
+    "documentParses", "projectionCompiles", "oracleValidations", "attributedBuilds",
+    "attributedCharactersWritten", "storageFullReplacements", "imageDecodes",
+    "fileBytesRead", "mainThreadBlockedNanos",
+}
+
+
+def is_bounded_cancelled_orphan(record: dict) -> bool:
+    data = record.get("data", {})
+    if record.get("lvl") != "fault" or record.get("ev") != "workLedger":
+        return False
+    if data.get("orphaned") is not True or data.get("orphanReason") != "cancelled":
+        return False
+    if data.get("lateWork") is not False:
+        return False
+    if not isinstance(data.get("intentID"), int) or data["intentID"] <= 0:
+        return False
+    if data.get("scope") not in WORK_SCOPES:
+        return False
+    return all(isinstance(data.get(field), int) and data[field] >= 0 for field in WORK_LEDGER_FIELDS)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -250,8 +272,7 @@ def verify(
         and record.get("ev") not in allowed_faults
         and not (
             allow_orphaned_intents
-            and record.get("ev") == "workLedger"
-            and record.get("data", {}).get("orphaned") is True
+            and is_bounded_cancelled_orphan(record)
         )
     ]
     assert not faults, f"faults recorded: {[record['ev'] for record in faults]}"

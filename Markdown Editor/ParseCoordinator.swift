@@ -16,6 +16,7 @@ final class ParseCoordinator {
     private var parseTask: Task<Void, Never>?
     private let parseScheduler = LatestParseScheduler()
     private var operationGeneration: UInt64 = 0
+    private var pendingIntent: IntentContext?
     private let snapshotIDs: PresentationSnapshotIDFactory
 
     init(snapshotIDs: PresentationSnapshotIDFactory) {
@@ -25,6 +26,10 @@ final class ParseCoordinator {
     func cancel() {
         parseTask?.cancel()
         parseTask = nil
+        if let pendingIntent {
+            pendingIntent.recorder.finish(pendingIntent, orphaned: true)
+            self.pendingIntent = nil
+        }
         parseScheduler.cancel()
     }
 
@@ -51,7 +56,6 @@ final class ParseCoordinator {
         let currentPresentation = session.presentation
         let cachedImageIdentities = session.imageCache.currentIdentities()
         let intent = intent ?? session.intentRecorder.begin(.reconciliation)
-        session.activeIntentContext = intent
 
         if currentPresentation?.sourceRevision.value != snapshot.sourceVersion
             || currentPresentation?.locationGeneration != snapshot.locationGeneration {
@@ -66,7 +70,10 @@ final class ParseCoordinator {
         parseTask?.cancel()
         let request = LatestParseRequest(source: snapshot, operationGeneration: generation)
         guard parseScheduler.submit(request) else {
-            intent.recorder.finish(intent, orphaned: true)
+            if let replaced = pendingIntent {
+                replaced.recorder.finish(replaced, orphaned: true)
+            }
+            pendingIntent = intent
             return
         }
         document.trace?.record(route: .reconciliationScheduled, .reconciliationScheduled(sourceRevision: snapshot.sourceVersion, generation: generation)
@@ -212,10 +219,10 @@ final class ParseCoordinator {
                 let applicationStart = DispatchTime.now().uptimeNanoseconds
                 if session.presentation?.sourceRevision.value == authoritative.sourceRevision.value {
                     session.updateOrigin.with(.programmaticPresentation) {
-                        session.installPresentation(authoritative, tree: tree, provisional: false)
+                        session.installPresentation(authoritative, tree: tree, provisional: false, intent: intent)
                     }
                 } else {
-                    session.installPresentation(authoritative, tree: tree, provisional: false)
+                    session.installPresentation(authoritative, tree: tree, provisional: false, intent: intent)
                 }
                 let authoritativeApplicationDuration = DispatchTime.now().uptimeNanoseconds &- applicationStart
                 session.performanceSampler?.record(.parseProjection, durationNanos: parseProjectionDuration)
@@ -236,7 +243,9 @@ final class ParseCoordinator {
             await task.value
             guard let session, let self else { return }
             if self.parseScheduler.finish(request), let document {
-                self.scheduleParse(session: session, document: document)
+                let nextIntent = self.pendingIntent
+                self.pendingIntent = nil
+                self.scheduleParse(session: session, document: document, intent: nextIntent)
             }
         }
     }

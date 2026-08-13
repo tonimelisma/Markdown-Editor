@@ -4,6 +4,6 @@
 {"seq":3,"lvl":"debug","cat":"session","ev":"availabilityChanged","doc":1,"data":{"editable":true}}
 {"seq":4,"lvl":"debug","cat":"projection","ev":"reconciliationApplied","doc":1}
 {"seq":5,"lvl":"debug","cat":"viewUpdate","ev":"hostUpdateEnded","doc":1}
-{"seq":6,"lvl":"fault","cat":"diagnostics","ev":"workLedger","data":{"orphaned":true}}
+{"seq":6,"lvl":"fault","cat":"diagnostics","ev":"workLedger","data":{"scope":"reconciliation","intentID":9,"orphaned":true,"orphanReason":"cancelled","lateWork":false,"documentParses":0,"projectionCompiles":0,"oracleValidations":0,"attributedBuilds":0,"attributedCharactersWritten":0,"storageFullReplacements":0,"imageDecodes":0,"fileBytesRead":0,"mainThreadBlockedNanos":0}}
 {"seq":7,"lvl":"info","cat":"session","ev":"performanceSummary","doc":1,"data":{"metric":"parseProjection","count":1}}
 {"seq":8,"lvl":"info","cat":"lifecycle","ev":"runEnd"}

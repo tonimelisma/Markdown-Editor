@@ -65,10 +65,25 @@ enum BenchmarkDriver {
         let timeoutCount: Int
         let unknownActionCount: Int
         let duplicateSampleCount: Int
+        let expectedActionAttemptsMinimum: Int
+        let expectedProgressMinimum: Int
         let metrics: [MetricResult]
     }
 
-    private struct Counters: Sendable {
+    private struct CaseKey: Codable, Sendable, Equatable {
+        let scenario: Scenario
+        let corpus: PerformanceCorpus
+        let size: Int
+    }
+
+    private struct BenchmarkSummary: Codable, Sendable {
+        let expectedCases: [CaseKey]
+        let completedCases: [CaseKey]
+    }
+
+    /// Per-iteration action evidence. The process harness serializes the aggregate, while the
+    /// internal route seam lets component proofs exercise the same production action owner.
+    struct Counters: Sendable {
         var actionAttempts = 0
         var accepted = 0
         var started = 0
@@ -108,6 +123,22 @@ enum BenchmarkDriver {
             && outcome.unknownActionCount == 0
             && outcome.duplicateSampleCount == 0
             && outcome.progress > 0
+    }
+
+    private static func minimumActionAttempts(for scenario: Scenario) -> Int {
+        switch scenario {
+        case .typeProse, .typeInTable, .typeAdjacentMarkup: return 1
+        case .applyCommands: return EditorCommand.allCases.count * 2
+        case .toggleModes: return 1
+        case .scrollDocument: return 1
+        case .undoRedoStorm: return 100
+        case .openAndIdle: return 1
+        case .soak: return minimumActionAttempts(for: .typeProse) + minimumActionAttempts(for: .toggleModes) + minimumActionAttempts(for: .undoRedoStorm)
+        }
+    }
+
+    private static func minimumProgress(for scenario: Scenario) -> Int {
+        1
     }
 
     static var isRequested: Bool {
@@ -176,6 +207,7 @@ enum BenchmarkDriver {
         guard let session = controller.session, let document = controller.document else { return }
 
         try? await Task.sleep(for: .seconds(1))
+        var completedCases: [CaseKey] = []
         for configuration in configurations where !Task.isCancelled {
             document.installTextForBenchmark(configuration.corpus.source(utf16Target: configuration.size))
             session.resetBenchmarkTransientState()
@@ -215,6 +247,8 @@ enum BenchmarkDriver {
                 timeoutCount: counters.timeoutCount,
                 unknownActionCount: counters.unknownActionCount,
                 duplicateSampleCount: counters.duplicateSampleCount,
+                expectedActionAttemptsMinimum: minimumActionAttempts(for: configuration.scenario),
+                expectedProgressMinimum: minimumProgress(for: configuration.scenario),
                 metrics: metrics
             )
             if let resultURL = configuration.resultURL {
@@ -222,9 +256,22 @@ enum BenchmarkDriver {
                     try FileManager.default.createDirectory(at: resultURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                     let data = try JSONEncoder().encode(result)
                     try data.write(to: resultURL, options: .atomic)
+                    completedCases.append(CaseKey(scenario: configuration.scenario, corpus: configuration.corpus, size: configuration.size))
                 } catch {
-                    NSLog("benchmark result write failed: %@", error.localizedDescription)
+                    fatalError("benchmark result write failed: \(error.localizedDescription)")
                 }
+            }
+        }
+
+        if let first = configurations.first, let summaryURL = first.resultURL?.deletingLastPathComponent().appendingPathComponent("benchmark-summary.json") {
+            let summary = BenchmarkSummary(
+                expectedCases: configurations.map { CaseKey(scenario: $0.scenario, corpus: $0.corpus, size: $0.size) },
+                completedCases: completedCases
+            )
+            do {
+                try JSONEncoder().encode(summary).write(to: summaryURL, options: .atomic)
+            } catch {
+                fatalError("benchmark summary write failed: \(error.localizedDescription)")
             }
         }
 
@@ -234,7 +281,7 @@ enum BenchmarkDriver {
         NSApp.terminate(nil)
     }
 
-    private static func runOnce(
+    static func runOnce(
         _ scenario: Scenario,
         controller: EditorCommandController,
         session: EditorSession,
@@ -297,6 +344,7 @@ enum BenchmarkDriver {
             var result = Counters()
             let windows = controller.presentingWindow.map { [$0] } ?? NSApp.windows
             let scrolls = windows.flatMap({ scrollViews(in: $0.contentView) })
+            result.actionAttempts = 1
             guard !scrolls.isEmpty else {
                 result.errors = 1
                 return result
@@ -345,7 +393,9 @@ enum BenchmarkDriver {
             return result
 
         case .openAndIdle:
-            return Counters(progress: session.presentation?.sourceRevision.value == document.sourceVersion ? 1 : 0)
+            var result = Counters(progress: session.presentation?.sourceRevision.value == document.sourceVersion ? 1 : 0)
+            result.actionAttempts = 1
+            return result
 
         case .soak:
             return runOnce(.typeProse, controller: controller, session: session, document: document, corpus: corpus, size: size)
