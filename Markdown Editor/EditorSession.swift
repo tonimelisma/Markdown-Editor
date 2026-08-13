@@ -45,6 +45,9 @@ final class EditorSession: ObservableObject {
     private(set) var pendingSelectionRestoration: PendingSelectionRestoration?
 
     let imageCache = LocalImageCache()
+    /// Sole owner of intent identities for this editor window.
+    let intentRecorder = IntentRecorder()
+    internal(set) var activeIntentContext: IntentContext?
     let updateOrigin = EditorUpdateOriginScope()
     let snapshotIDs = PresentationSnapshotIDFactory()
 
@@ -156,7 +159,8 @@ final class EditorSession: ObservableObject {
                 self?.requestSelectionRestoration(selection)
             }
             .store(in: &cancellables)
-        scheduleParse()
+        let openIntent = intentRecorder.begin(.documentOpen)
+        scheduleParse(intent: openIntent)
     }
 
     /// Ends the window/session lifetime without retaining the document, sampler, timer, or
@@ -279,6 +283,19 @@ final class EditorSession: ObservableObject {
         }
     }
 
+    /// Re-seeds transient selections between process-level benchmark cases so one case cannot
+    /// feed a stale range into the next fixture's ordinary source-command route.
+    func resetBenchmarkTransientState() {
+        updateSourceModeState {
+            $0.selection = SourceSelection(
+                utf16: NSRange(location: 0, length: 0),
+                affinity: .downstream
+            )
+        }
+        wysiwygModeState = WYSIWYGModeState()
+        pendingSelectionRestoration = nil
+    }
+
     /// Test hook for the presentation boundary: image resolution is derived state, and tests
     /// need to prove that a same-text authoritative snapshot refreshes an attachment exactly
     /// when its resolved display image changes.
@@ -387,9 +404,11 @@ final class EditorSession: ObservableObject {
         )
     }
 
-    func scheduleParse() {
+    func scheduleParse(intent: IntentContext? = nil) {
         guard let document else { return }
-        parseCoordinator.scheduleParse(session: self, document: document)
+        let context = intent ?? intentRecorder.begin(.reconciliation)
+        activeIntentContext = context
+        parseCoordinator.scheduleParse(session: self, document: document, intent: context)
     }
 
     /// Primary edit entry — returns accepted source+presentation transition or refusal.
@@ -398,10 +417,17 @@ final class EditorSession: ObservableObject {
         _ command: SemanticCommand,
         selection: EditorSelection,
         expectedSourceRevision: SourceRevision,
-        grouping groupingOverride: MutationGrouping? = nil
+        grouping groupingOverride: MutationGrouping? = nil,
+        intentScope: WorkScope = .acceptedEdit
     ) -> EditorEditOutcome {
         guard let document else { return .refused(.unavailable) }
-        return WorkLedgerRecorder.scope(.acceptedEdit) {
+        let intent = intentRecorder.begin(intentScope)
+        var handedOffToReconciliation = false
+        defer {
+            if !handedOffToReconciliation {
+                intentRecorder.finish(intent)
+            }
+        }
         let snapshot = document.sourceSnapshot()
         let grouping = groupingOverride ?? SemanticEditEngine.defaultGrouping(for: command)
         let request = EditorEditRequest(
@@ -416,7 +442,8 @@ final class EditorSession: ObservableObject {
             snapshot: snapshot,
             presentation: presentation,
             tree: authoritativeTree,
-            nextSnapshotID: snapshotIDs.make()
+            nextSnapshotID: snapshotIDs.make(),
+            intent: intent
         )
         switch outcome {
         case .accepted(let edit):
@@ -458,7 +485,8 @@ final class EditorSession: ObservableObject {
                     )
                 }
                 publishSelectionRestoration(edit: edit)
-                scheduleParse()
+                scheduleParse(intent: intent)
+                handedOffToReconciliation = true
                 return .accepted(edit)
             case .refused(let refusal):
                 switch refusal {
@@ -470,7 +498,6 @@ final class EditorSession: ObservableObject {
         case .refused(let refusal):
             document.trace?.record(route: .editRefused, .editRefused(category: .refusal(refusal)))
             return .refused(refusal)
-        }
         }
     }
 

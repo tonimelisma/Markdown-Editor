@@ -166,9 +166,12 @@ extension MarkdownProjectionModel {
     /// // REQ-054–056/055/087: unsupported/HTML → literal fallback; mapping failures → literal.
     nonisolated static func build(
         tree: MarkdownTree,
-        index: MarkdownSourceIndex
+        index: MarkdownSourceIndex,
+        intent: IntentContext? = nil
     ) -> MarkdownProjectionModel {
-        WorkLedgerRecorder.add { $0.projectionCompiles += 1 }
+        if let intent {
+            intent.recorder.add(intent) { $0.projectionCompiles += 1 }
+        }
         return ProjectionCompiler.compile(tree: tree, map: SourceCoordinateMap(index: index))
     }
 }

@@ -146,7 +146,7 @@ enum WYSIWYGEditor {
 
             session.updateOrigin.with(.programmaticPresentation) {
                 let built = buildPresentation(presentation)
-                textStorageApplier.applyInitialPresentation(built, to: textView)
+                textStorageApplier.applyInitialPresentation(built, to: textView, intent: session.activeIntentContext)
                 appliedSnapshot = presentation
                 appliedImageIdentities = imageIdentities(for: presentation)
                 restoreSelection(for: presentation, in: textView, limit: built.attributed.length)
@@ -179,7 +179,8 @@ enum WYSIWYGEditor {
                             theme: MarkdownTypography(),
                             images: session.resolvedImages,
                             onTaskPress: { [weak self] nodeID in self?.performTaskToggle(nodeID: nodeID) },
-                            scope: scope
+                            scope: scope,
+                            intent: session.activeIntentContext
                         ),
                         to: textView,
                         expectedCurrent: applied
@@ -206,7 +207,8 @@ enum WYSIWYGEditor {
                         theme: MarkdownTypography(),
                         images: self?.session.resolvedImages ?? [:],
                         onTaskPress: { nodeID in self?.performTaskToggle(nodeID: nodeID) },
-                        scope: scope
+                        scope: scope,
+                        intent: self?.session.activeIntentContext
                     )
                 }
             ) else {
@@ -238,7 +240,8 @@ enum WYSIWYGEditor {
                 images: session.resolvedImages,
                 onTaskPress: { [weak self] nodeID in
                     self?.performTaskToggle(nodeID: nodeID)
-                }
+                },
+                intent: session.activeIntentContext
             )
         }
 
@@ -369,7 +372,8 @@ enum WYSIWYGEditor {
                         theme: MarkdownTypography(),
                         images: self?.session.resolvedImages ?? [:],
                         onTaskPress: { nodeID in self?.performTaskToggle(nodeID: nodeID) },
-                        scope: scope
+                        scope: scope,
+                        intent: self?.session.activeIntentContext
                     )
                 }
             ) else {
@@ -423,10 +427,11 @@ enum WYSIWYGEditor {
                 images: session.resolvedImages,
                 onTaskPress: { [weak self] nodeID in
                     self?.performTaskToggle(nodeID: nodeID)
-                }
+                },
+                intent: session.activeIntentContext
             )
             session.updateOrigin.with(.programmaticPresentation) {
-                textStorageApplier.applyRecoveryPresentation(built, to: textView)
+                textStorageApplier.applyRecoveryPresentation(built, to: textView, intent: session.activeIntentContext)
             }
             appliedSnapshot = snapshot
             appliedImageIdentities = imageIdentities(for: snapshot)

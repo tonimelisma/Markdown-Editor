@@ -1,6 +1,14 @@
 import Foundation
 import Synchronization
 
+/// Stable identity for one user-invoked operation and all of its downstream work.
+///
+/// The raw value is intentionally opaque and is only emitted as a numeric diagnostic field.
+/// // REQ-123; ARC-026.
+nonisolated struct IntentID: RawRepresentable, Hashable, Sendable, Equatable {
+    let rawValue: UInt64
+}
+
 /// Counts of work performed per unit of user intent.
 ///
 /// // REQ-123; ARC-026.
@@ -42,85 +50,69 @@ nonisolated enum WorkScope: String, Sendable, CaseIterable {
     case semanticCommand
 }
 
-/// Lock-guarded recorder. Scopes nest; inner work counts toward enclosing.
-nonisolated enum WorkLedgerRecorder {
-    private final class Frame: @unchecked Sendable {
-        let scope: WorkScope
-        let parent: Frame?
-        private let ledger = Mutex(WorkLedger())
+/// Explicit, sendable context retained by every downstream operation.
+nonisolated struct IntentContext: Sendable, Equatable {
+    let id: IntentID
+    let scope: WorkScope
+    let recorder: IntentRecorder
 
-        init(scope: WorkScope, parent: Frame?) {
-            self.scope = scope
-            self.parent = parent
-        }
+    static func == (lhs: IntentContext, rhs: IntentContext) -> Bool {
+        lhs.id == rhs.id && lhs.scope == rhs.scope
+    }
+}
 
-        func add(_ mutate: (inout WorkLedger) -> Void) {
-            ledger.withLock { mutate(&$0) }
-        }
-
-        func snapshot() -> WorkLedger {
-            ledger.withLock { $0 }
-        }
+/// Lock-guarded, session-owned recorder. It has no task-local or process-global current owner:
+/// callers must pass the context through every actor, task, and GCD boundary.
+nonisolated final class IntentRecorder: @unchecked Sendable {
+    private struct State {
+        var nextID: UInt64 = 0
+        var ledgers: [IntentID: WorkLedger] = [:]
     }
 
-    @TaskLocal private static var currentFrame: Frame?
+    private let state = Mutex(State())
 
-    static func scope<T>(
-        _ scope: WorkScope,
-        _ body: () throws -> T
-    ) rethrows -> T {
-        let frame = Frame(scope: scope, parent: currentFrame)
-        return try $currentFrame.withValue(frame) {
-            defer { finish(frame) }
-            return try body()
+    func begin(_ scope: WorkScope) -> IntentContext {
+        state.withLock { state in
+            state.nextID &+= 1
+            let id = IntentID(rawValue: state.nextID)
+            state.ledgers[id] = WorkLedger()
+            return IntentContext(id: id, scope: scope, recorder: self)
         }
     }
 
-    static func scope<T>(
-        _ scope: WorkScope,
-        _ body: () async throws -> T
-    ) async rethrows -> T {
-        let frame = Frame(scope: scope, parent: currentFrame)
-        return try await $currentFrame.withValue(frame) {
-            defer { finish(frame) }
-            return try await body()
+    func add(_ context: IntentContext, _ mutate: (inout WorkLedger) -> Void) {
+        state.withLock { state in
+            guard state.ledgers[context.id] != nil else { return }
+            mutate(&state.ledgers[context.id]!)
         }
     }
 
-    static func add(_ mutate: (inout WorkLedger) -> Void) {
-        currentFrame?.add(mutate)
+    func snapshot(_ context: IntentContext) -> WorkLedger? {
+        state.withLock { $0.ledgers[context.id] }
     }
 
-    static func currentForTesting() -> WorkLedger? {
-        currentFrame?.snapshot()
+    /// Completes an intent exactly once. A late/cancelled operation is terminally classified as
+    /// an orphan instead of silently losing the work it performed.
+    @discardableResult
+    func finish(_ context: IntentContext, orphaned: Bool = false) -> Bool {
+        let ledger: WorkLedger? = state.withLock { $0.ledgers.removeValue(forKey: context.id) }
+        guard let ledger else { return false }
+        recordWorkLedger(context: context, ledger: ledger, orphaned: orphaned)
+        return true
     }
 
-    // Test helper to clear state between tests.
-    static func resetForTesting() {
-        // Task-local state is scoped to the calling task and cannot leak between tests.
-    }
-
-    private static func finish(_ frame: Frame) {
-        let finished = frame.snapshot()
-        frame.parent?.add { $0 = $0 + finished }
-        recordWorkLedger(scope: frame.scope, ledger: finished)
-    }
-
-    private static func recordWorkLedger(
-        scope: WorkScope,
-        ledger: WorkLedger
-    ) {
-        // Write through the shared serialized log so detached work cannot cross an actor-isolated
-        // editor sink. The mapped event remains the same closed diagnostic vocabulary.
+    private func recordWorkLedger(context: IntentContext, ledger: WorkLedger, orphaned: Bool) {
         Task { @MainActor in
             guard let log = DiagnosticLog.shared else { return }
             log.recordProduction(
                 .workLedger,
-                level: .debug,
+                level: orphaned ? .fault : .debug,
                 category: .diagnostics,
                 route: .workLedger,
                 data: [
-                    (.scope, .symbol(scope.symbol)),
+                    (.scope, .symbol(context.scope.symbol)),
+                    (.intentID, .uint(context.id.rawValue)),
+                    (.orphaned, .bool(orphaned)),
                     (.documentParses, .int(ledger.documentParses)),
                     (.projectionCompiles, .int(ledger.projectionCompiles)),
                     (.oracleValidations, .int(ledger.oracleValidations)),

@@ -120,8 +120,6 @@ struct ProductionTestHookInventoryTests {
             "trapsOnReconciliationViolation", // lets a suite provoke ARC-015 without trapping
             "recordForTesting",               // feeds FrameObserver's real callback without a display link
             "bumpGenerationWithoutCancellationForTesting", // delivers a completed parse as stale
-            "currentForTesting",              // observes the active work-ledger frame
-            "resetForTesting",                // clears test-owned ledger state between cases
         ]
         for hook in hooks {
             #expect(source.contains(hook), "inventoried hook \(hook) no longer exists")

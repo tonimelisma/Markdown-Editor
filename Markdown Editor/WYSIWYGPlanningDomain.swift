@@ -403,7 +403,8 @@ enum WYSIWYGPlanningDomain {
         presentation: PresentationSnapshot,
         projectionRange: NSRange,
         visibleReplacement: String,
-        nextSnapshotID: PresentationSnapshot.ID
+        nextSnapshotID: PresentationSnapshot.ID,
+        intent: IntentContext? = nil
     ) -> LiteralCandidateProof {
         let source = snapshot.text as NSString
         guard mutation.range.location >= 0, NSMaxRange(mutation.range) <= source.length else {
@@ -418,7 +419,8 @@ enum WYSIWYGPlanningDomain {
             source: candidate,
             sourceRevision: mutation.expectedRevision &+ 1,
             snapshotID: nextSnapshotID,
-            locationGeneration: presentation.locationGeneration
+            locationGeneration: presentation.locationGeneration,
+            intent: intent
         ) else {
             return .unbuildable
         }
@@ -485,7 +487,8 @@ enum WYSIWYGPlanningDomain {
         presentation: PresentationSnapshot,
         projectionRange: NSRange,
         visibleReplacement: String,
-        nextSnapshotID: PresentationSnapshot.ID
+        nextSnapshotID: PresentationSnapshot.ID,
+        intent: IntentContext? = nil
     ) -> (mutation: SourceMutation, built: PresentationSnapshot)? {
         guard original.range.length == 0 else { return nil }
         let source = snapshot.text as NSString
@@ -525,7 +528,8 @@ enum WYSIWYGPlanningDomain {
                 presentation: presentation,
                 projectionRange: projectionRange,
                 visibleReplacement: visibleReplacement,
-                nextSnapshotID: nextSnapshotID
+                nextSnapshotID: nextSnapshotID,
+                intent: intent
             ) {
             case .preservesPresentation(let built), .changesPresentation(let built):
                 return (candidate, built)

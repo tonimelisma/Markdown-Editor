@@ -114,7 +114,11 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
     /// restoration for this run) put a bare, non-dash-prefixed value token in `arguments` too, so
     /// a dash-based filter would misidentify that token as the fixture path.
     nonisolated static var smokeFixtureURL: URL? {
-        let args = ProcessInfo.processInfo.arguments.dropFirst()
+        var args = Array(ProcessInfo.processInfo.arguments.dropFirst())
+        if let manifestIndex = args.firstIndex(of: "--benchmark-manifest") {
+            let end = min(args.count, manifestIndex + 2)
+            args.removeSubrange(manifestIndex..<end)
+        }
         guard let path = args.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
             return nil
         }

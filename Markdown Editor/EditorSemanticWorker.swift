@@ -21,6 +21,7 @@ nonisolated enum EditorSemanticWorker {
     )
 
     static func sync<Value: Sendable>(
+        intent: IntentContext? = nil,
         _ work: @escaping @Sendable () -> Value
     ) -> Value {
         let isMain = Thread.isMainThread
@@ -35,7 +36,9 @@ nonisolated enum EditorSemanticWorker {
         completion.wait()
         if isMain {
             let dt = DispatchTime.now().uptimeNanoseconds &- t0
-            WorkLedgerRecorder.add { $0.mainThreadBlockedNanos &+= dt }
+            if let intent {
+                intent.recorder.add(intent) { $0.mainThreadBlockedNanos &+= dt }
+            }
         }
         guard let value = box.value else {
             preconditionFailure("Semantic worker completed without producing a value")

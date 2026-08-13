@@ -8,10 +8,11 @@ import AppKit
 struct MeasurementSubstrateProofTests {
     // Verifies: REQ-123
     @Test func workLedgerMutationProof() {
-        let ledger = WorkLedgerRecorder.scope(.acceptedEdit) {
-            WorkLedgerRecorder.add { $0.documentParses += 1 }
-            return WorkLedgerRecorder.currentForTesting()
-        }
+        let recorder = IntentRecorder()
+        let context = recorder.begin(.acceptedEdit)
+        recorder.add(context) { $0.documentParses += 1 }
+        let ledger = recorder.snapshot(context)
+        #expect(recorder.finish(context))
         #expect(ledger?.documentParses == 1)
     }
 
@@ -63,23 +64,27 @@ struct MeasurementSubstrateProofTests {
 
 // Verifies: REQ-123
 @Test func acceptedEditRecordsItsWorkLedger() {
-    let ledger = WorkLedgerRecorder.scope(.acceptedEdit) {
-        WorkLedgerRecorder.add { $0.documentParses += 1 }
-        return WorkLedgerRecorder.currentForTesting()
-    }
+    let recorder = IntentRecorder()
+    let context = recorder.begin(.acceptedEdit)
+    recorder.add(context) { $0.documentParses += 1 }
+    let ledger = recorder.snapshot(context)
+    #expect(recorder.finish(context))
     #expect(ledger?.documentParses == 1)
 }
 
 // Verifies: REQ-123
-@Test func nestedWorkScopesAccumulateIntoTheEnclosingScope() {
-    let outer = WorkLedgerRecorder.scope(.acceptedEdit) {
-        WorkLedgerRecorder.add { $0.documentParses += 1 }
-        _ = WorkLedgerRecorder.scope(.semanticCommand) {
-            WorkLedgerRecorder.add { $0.documentParses += 1 }
+@Test func asyncAndGCDWorkRetainTheExplicitIntentLegacy() async {
+    let recorder = IntentRecorder()
+    let context = recorder.begin(.acceptedEdit)
+    await withCheckedContinuation { continuation in
+        DispatchQueue.global().async {
+            recorder.add(context) { $0.documentParses += 1 }
+            continuation.resume()
         }
-        return WorkLedgerRecorder.currentForTesting()
     }
-    #expect(outer?.documentParses == 2)
+    #expect(recorder.snapshot(context)?.documentParses == 1)
+    #expect(recorder.finish(context))
+    #expect(!recorder.finish(context))
 }
 
 // Verifies: REQ-123
@@ -121,10 +126,54 @@ struct MeasurementSubstrateProofTests {
 }
 
 // Verifies: REQ-125
-@Test func frameBudgetFollowsTheDisplayLinkCadenceRatherThanAConstant() {
-    #expect(FrameObserver.hitchMillisPerSecond(frameIntervalsNanos: [8_333_333, 8_333_333], cadenceNanos: 8_333_333) == 0)
-    #expect(FrameObserver.hitchMillisPerSecond(frameIntervalsNanos: [8_333_333, 24_333_333], cadenceNanos: 8_333_333) > 15)
-}
+    @Test func frameBudgetFollowsTheDisplayLinkCadenceRatherThanAConstant() {
+        #expect(FrameObserver.hitchMillisPerSecond(frameIntervalsNanos: [8_333_333, 8_333_333], cadenceNanos: 8_333_333) == 0)
+        #expect(FrameObserver.hitchMillisPerSecond(frameIntervalsNanos: [8_333_333, 24_333_333], cadenceNanos: 8_333_333) > 15)
+    }
+
+    // Verifies: REQ-125 — a queued acknowledgement exposes a main-actor stall even when the
+    // display-link callback cadence itself remained regular.
+    @Test @MainActor func queuedAcknowledgementCountsAsAFrameHitchLegacy() {
+        let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
+        let clock = ControlledFrameClock()
+        let observer = FrameObserver(sampler: sampler, clock: clock)
+        observer.recordForTesting(
+            callbackUptimeNanos: 0,
+            ackUptimeNanos: 0,
+            cadenceNanos: 16_666_667
+        )
+        observer.recordForTesting(
+            callbackUptimeNanos: 16_666_667,
+            ackUptimeNanos: 16_666_667,
+            cadenceNanos: 16_666_667
+        )
+        observer.recordForTesting(
+            callbackUptimeNanos: 33_333_334,
+            ackUptimeNanos: 233_333_334,
+            cadenceNanos: 16_666_667
+        )
+        let statistics = observer.drainStatistics()
+        #expect(statistics?.longestFrameNanos == 200_000_000)
+        #expect((statistics?.hitchMillisPerSecond ?? 0) > 100)
+        observer.stop()
+        sampler.invalidate()
+    }
+
+    // Verifies: REQ-125 — stop/restart does not retain the previous clock stream.
+    @Test @MainActor func controlledClockCanStopAndRestart() {
+        let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
+        let clock = ControlledFrameClock()
+        let observer = FrameObserver(sampler: sampler, clock: clock)
+        observer.startControlled()
+        clock.emit(callbackUptimeNanos: 10, cadenceNanos: 10)
+        observer.stop()
+        clock.emit(callbackUptimeNanos: 20, cadenceNanos: 10)
+        observer.startControlled()
+        clock.emit(callbackUptimeNanos: 30, cadenceNanos: 10)
+        #expect(observer.drainStatistics() == nil)
+        observer.stop()
+        sampler.invalidate()
+    }
 
 // Verifies: REQ-126
 @Test func memoryFootprintRecordIsNumericOnly() {
@@ -147,20 +196,85 @@ struct MeasurementSubstrateProofTests {
 
 // Verifies: REQ-123
 @Test func everyWorkScopeIsOpenedByProduction() {
+    let recorder = IntentRecorder()
     let observed = WorkScope.allCases.map { scope in
-        WorkLedgerRecorder.scope(scope) { WorkLedgerRecorder.currentForTesting() != nil }
+        let context = recorder.begin(scope)
+        let live = recorder.snapshot(context) != nil
+        #expect(recorder.finish(context))
+        return live
     }
     #expect(observed.allSatisfy { $0 })
 }
 
 // Verifies: REQ-123
-@Test func ledgerRecordingOverheadIsBelowOnePercent() {
-    let start = DispatchTime.now().uptimeNanoseconds
-    let ledger = WorkLedgerRecorder.scope(.acceptedEdit) {
-        for _ in 0..<1000 { WorkLedgerRecorder.add { $0.documentParses += 1 } }
-        return WorkLedgerRecorder.currentForTesting()
+@Test func recorderOverheadUsesAnIdenticalNoRecorderControlLegacy() {
+    let iterations = 10_000
+    var control = 0
+    let controlStart = DispatchTime.now().uptimeNanoseconds
+    for _ in 0..<iterations { control += 1 }
+    let controlNanos = DispatchTime.now().uptimeNanoseconds &- controlStart
+
+    let recorder = IntentRecorder()
+    let context = recorder.begin(.acceptedEdit)
+    let measuredStart = DispatchTime.now().uptimeNanoseconds
+    for _ in 0..<iterations { recorder.add(context) { $0.documentParses += 1 } }
+    let measuredNanos = DispatchTime.now().uptimeNanoseconds &- measuredStart
+    #expect(control == iterations)
+    #expect(recorder.snapshot(context)?.documentParses == iterations)
+    #expect(recorder.finish(context))
+    // The control is the same arithmetic loop with recording removed. Keep a generous bound so
+    // this catches accidental per-sample I/O without turning a machine-speed claim into a flaky
+    // wall-clock assertion.
+    #expect(measuredNanos <= max(1_000_000, controlNanos * 100 + 50_000_000))
+}
+
+/// These proofs live in a named suite so the falsification gate can select and observe each
+/// mutation. Aggregate Swift Testing execution alone is insufficient evidence for a mutation.
+@MainActor
+struct COR69IntentMeasurementTests {
+    @Test func asyncAndGCDWorkRetainTheExplicitIntent() async {
+        let recorder = IntentRecorder()
+        let context = recorder.begin(.acceptedEdit)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                recorder.add(context) { $0.documentParses += 1 }
+                continuation.resume()
+            }
+        }
+        #expect(recorder.snapshot(context)?.documentParses == 1)
+        #expect(recorder.finish(context))
+        #expect(!recorder.finish(context))
     }
-    let elapsed = DispatchTime.now().uptimeNanoseconds - start
-    #expect(elapsed < 100_000_000)
-    #expect(ledger?.documentParses == 1000)
+
+    @Test func recorderOverheadUsesAnIdenticalNoRecorderControl() {
+        let iterations = 10_000
+        var control = 0
+        let controlStart = DispatchTime.now().uptimeNanoseconds
+        for _ in 0..<iterations { control += 1 }
+        let controlNanos = DispatchTime.now().uptimeNanoseconds &- controlStart
+
+        let recorder = IntentRecorder()
+        let context = recorder.begin(.acceptedEdit)
+        let measuredStart = DispatchTime.now().uptimeNanoseconds
+        for _ in 0..<iterations { recorder.add(context) { $0.documentParses += 1 } }
+        let measuredNanos = DispatchTime.now().uptimeNanoseconds &- measuredStart
+        #expect(control == iterations)
+        #expect(recorder.snapshot(context)?.documentParses == iterations)
+        #expect(recorder.finish(context))
+        #expect(measuredNanos <= max(1_000_000, controlNanos * 100 + 50_000_000))
+    }
+
+    @Test func queuedAcknowledgementCountsAsAFrameHitch() {
+        let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
+        let clock = ControlledFrameClock()
+        let observer = FrameObserver(sampler: sampler, clock: clock)
+        observer.recordForTesting(callbackUptimeNanos: 0, ackUptimeNanos: 0, cadenceNanos: 16_666_667)
+        observer.recordForTesting(callbackUptimeNanos: 16_666_667, ackUptimeNanos: 16_666_667, cadenceNanos: 16_666_667)
+        observer.recordForTesting(callbackUptimeNanos: 33_333_334, ackUptimeNanos: 233_333_334, cadenceNanos: 16_666_667)
+        let statistics = observer.drainStatistics()
+        #expect(statistics?.longestFrameNanos == 200_000_000)
+        #expect((statistics?.hitchMillisPerSecond ?? 0) > 100)
+        observer.stop()
+        sampler.invalidate()
+    }
 }

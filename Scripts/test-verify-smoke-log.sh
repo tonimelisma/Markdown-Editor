@@ -32,4 +32,7 @@ for item in "${cases[@]}"; do
     fi
 done
 
+python3 "$verifier" "$fixture_dir/orphaned-intent.jsonl" 20 --label orphaned-intent \
+    --allow-orphaned-intents
+
 echo "verify-smoke-log: all fixtures discriminated"

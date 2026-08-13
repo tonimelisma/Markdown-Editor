@@ -63,6 +63,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--allow-orphaned-intents",
+        action="store_true",
+        help=(
+            "Allow only workLedger fault records whose structured data marks the intent as "
+            "orphaned; ordinary faults remain fatal during intentional process shutdown."
+        ),
+    )
+    parser.add_argument(
         "--fail-on-budget-exceeded",
         action="store_true",
         help="Fail when a performance summary exceeds its declared p95 budget.",
@@ -88,6 +96,7 @@ def verify(
     run_file: Path,
     host_update_threshold: int,
     allowed_faults: frozenset[str] = frozenset(),
+    allow_orphaned_intents: bool = False,
     expect_edits: bool = False,
     fail_on_budget_exceeded: bool = False,
     reconciliation_ceiling: int | None = None,
@@ -239,6 +248,11 @@ def verify(
         record for record in events
         if record.get("lvl") in ("error", "fault")
         and record.get("ev") not in allowed_faults
+        and not (
+            allow_orphaned_intents
+            and record.get("ev") == "workLedger"
+            and record.get("data", {}).get("orphaned") is True
+        )
     ]
     assert not faults, f"faults recorded: {[record['ev'] for record in faults]}"
     # REQ-104: the screenshot is not valid evidence unless its companion process run closes cleanly.
@@ -254,6 +268,7 @@ def main() -> int:
             args.run_file,
             args.host_update_threshold,
             frozenset(args.allow_fault),
+            args.allow_orphaned_intents,
             args.expect_edits,
             args.fail_on_budget_exceeded,
             args.reconciliation_ceiling,

@@ -3,7 +3,7 @@ import Foundation
 /// Closed corpus enumeration whose shapes assert their own structure.
 ///
 /// // REQ-127.
-nonisolated enum PerformanceCorpus: String, CaseIterable, Sendable {
+nonisolated enum PerformanceCorpus: String, CaseIterable, Codable, Sendable {
     case degenerateParagraph
     case structuredProse
     case heavyLists

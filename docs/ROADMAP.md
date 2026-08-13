@@ -181,10 +181,9 @@ return to discovery; do not improvise an architecture change.
    falsification against production behavior, and gives refactor-only plans derived completion
    evidence. Full gate observed passing: 437 tests, 50 emitted routes, 40 Done rows, 29/29 changed-
    scope falsifications.
-2. ⚪ **COR-69 — Intent measurement and honest benchmark.** (Delivers: REQ-123, REQ-125, REQ-128)
-   ([plan](plans/COR-69-intent-measurement-and-benchmark.md)) Carries explicit intent identity across
-   concurrency boundaries, observes main-actor stalls with controlled clocks, and makes the shipping
-   benchmark produce its provenance-bound baseline.
+2. ✅ **COR-69 — Intent measurement and honest benchmark.** (Delivers: REQ-123, REQ-125, REQ-128)
+   Carries explicit intent identity across concurrency boundaries, observes main-actor stalls with
+   controlled clocks, and makes the shipping benchmark produce its provenance-bound baseline.
 3. ⚪ **COR-70 — Editor transaction kernel.** (Delivers: none)
    ([plan](plans/COR-70-editor-transaction-kernel.md)) Extracts one pure input-to-transaction/refusal
    seam and thins AppKit adapters without changing product behavior.

@@ -68,7 +68,8 @@ nonisolated enum SemanticEditEngine {
         snapshot: SourceSnapshot,
         presentation: PresentationSnapshot?,
         tree: MarkdownTree?,
-        nextSnapshotID: PresentationSnapshot.ID
+        nextSnapshotID: PresentationSnapshot.ID,
+        intent: IntentContext? = nil
     ) -> EditorEditOutcome {
         guard request.expectedSourceRevision.value == snapshot.sourceVersion else {
             return .refused(.staleVersion)
@@ -130,7 +131,8 @@ nonisolated enum SemanticEditEngine {
                         taskNodeID: {
                             if case .toggleTask(let nodeID) = request.command { return nodeID }
                             return nil
-                        }()
+                        }(),
+                        intent: intent
                     )
                 }
 
@@ -150,7 +152,8 @@ nonisolated enum SemanticEditEngine {
                         presentation: presentation,
                         nextSnapshotID: nextSnapshotID,
                         affinity: projSel.affinity,
-                        projectionSelectionLocation: tableEdit.selectionLocation
+                        projectionSelectionLocation: tableEdit.selectionLocation,
+                        intent: intent
                     )
                 }
 
@@ -183,7 +186,8 @@ nonisolated enum SemanticEditEngine {
                                 presentation: presentation,
                                 projectionRange: projSel.range.utf16,
                                 visibleReplacement: text,
-                                nextSnapshotID: nextSnapshotID
+                                nextSnapshotID: nextSnapshotID,
+                                intent: intent
                             ) {
                             case .preservesPresentation:
                                 return finishIdentityTransition(
@@ -216,7 +220,8 @@ nonisolated enum SemanticEditEngine {
                                 presentation: presentation,
                                 nextSnapshotID: nextSnapshotID,
                                 affinity: projSel.affinity,
-                                prebuilt: contextual.built
+                                prebuilt: contextual.built,
+                                intent: intent
                             )
                         case .refused:
                             return .refused(.unprovable)
@@ -295,7 +300,8 @@ nonisolated enum SemanticEditEngine {
         affinity: SelectionAffinity,
         taskNodeID: MarkdownNodeID? = nil,
         projectionSelectionLocation: Int? = nil,
-        prebuilt: PresentationSnapshot? = nil
+        prebuilt: PresentationSnapshot? = nil,
+        intent: IntentContext? = nil
     ) -> EditorEditOutcome {
         let activeMutation = mutation
         // Apply the candidate to immutable source, then build one exact authoritative result.
@@ -319,7 +325,8 @@ nonisolated enum SemanticEditEngine {
                 source: usableSource,
                 sourceRevision: nextRevision,
                 snapshotID: nextSnapshotID,
-                locationGeneration: presentation.locationGeneration
+                locationGeneration: presentation.locationGeneration,
+                intent: intent
             ) else { return .refused(.unprovable) }
             nextFixed = built
         }

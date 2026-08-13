@@ -275,9 +275,9 @@ struct EditorHostView: NSViewRepresentable {
 
         func applyMode(_ mode: EditorMode, focus: Bool) {
             if lastAppliedMode != nil && lastAppliedMode != mode {
-                WorkLedgerRecorder.scope(.modeTransition) {
-                    applyModeBody(mode, focus: focus)
-                }
+                let intent = session.intentRecorder.begin(.modeTransition)
+                defer { session.intentRecorder.finish(intent) }
+                applyModeBody(mode, focus: focus)
             } else {
                 applyModeBody(mode, focus: focus)
             }

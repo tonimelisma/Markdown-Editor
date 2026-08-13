@@ -1,18 +1,36 @@
 import AppKit
 import Foundation
 
-/// Process-level benchmark driver, reachable only through `--benchmark`.
+nonisolated struct BenchmarkCaseOutcome: Sendable, Equatable {
+    let progress: Int
+    let errors: Int
+    let timeoutCount: Int
+    let unknownActionCount: Int
+    let duplicateSampleCount: Int
+}
+
+/// Process-level benchmark driver, reachable only through `--benchmark-manifest`.
 ///
-/// It drives the same window-owned session and command controller as ordinary application use;
-/// it never synthesizes events or reads view pixels. The only output consumed by the harness is
-/// the structured diagnostic log produced by the normal production routes.
-///
+/// The manifest carries matrix parameters only. `PerformanceCorpus` and `Scenario.allCases` are
+/// the single authorities for fixture and action enumeration; the shell harness never recreates
+/// corpus text or command loops.
 /// // REQ-128; ARC-Q12.
 @MainActor
 enum BenchmarkDriver {
-    enum Scenario: String, CaseIterable, Sendable {
+    enum Scenario: String, CaseIterable, Codable, Sendable {
         case typeProse, typeInTable, typeAdjacentMarkup, applyCommands, toggleModes
         case scrollDocument, undoRedoStorm, openAndIdle, soak
+    }
+
+    struct Manifest: Codable, Sendable, Equatable {
+        let durationSeconds: Double
+        let intervalMillis: Double
+        let sizes: [Int]
+        let resultDirectory: URL
+
+        var resultDirectoryURL: URL {
+            resultDirectory.isFileURL ? resultDirectory : URL(fileURLWithPath: resultDirectory.path)
+        }
     }
 
     struct Configuration: Sendable {
@@ -21,20 +39,115 @@ enum BenchmarkDriver {
         let size: Int
         let duration: Duration
         let interval: Duration
+        let resultURL: URL?
     }
 
-    private static var configuration: Configuration?
+    private struct MetricResult: Codable, Sendable {
+        let name: String
+        let count: Int
+        let p50Nanos: UInt64
+        let p95Nanos: UInt64
+        let maxNanos: UInt64
+    }
+
+    private struct CaseResult: Codable, Sendable {
+        let scenario: Scenario
+        let corpus: PerformanceCorpus
+        let size: Int
+        let passed: Bool
+        let actionAttempts: Int
+        let accepted: Int
+        let started: Int
+        let refused: Int
+        let disabled: Int
+        let progress: Int
+        let errors: Int
+        let timeoutCount: Int
+        let unknownActionCount: Int
+        let duplicateSampleCount: Int
+        let metrics: [MetricResult]
+    }
+
+    private struct Counters: Sendable {
+        var actionAttempts = 0
+        var accepted = 0
+        var started = 0
+        var refused = 0
+        var disabled = 0
+        var progress = 0
+        var errors = 0
+        var timeoutCount = 0
+        var unknownActionCount = 0
+        var duplicateSampleCount = 0
+
+        init(progress: Int = 0) {
+            self.progress = progress
+        }
+
+        static func +(lhs: Counters, rhs: Counters) -> Counters {
+            var result = lhs
+            result.actionAttempts += rhs.actionAttempts
+            result.accepted += rhs.accepted
+            result.started += rhs.started
+            result.refused += rhs.refused
+            result.disabled += rhs.disabled
+            result.progress += rhs.progress
+            result.errors += rhs.errors
+            result.timeoutCount += rhs.timeoutCount
+            result.unknownActionCount += rhs.unknownActionCount
+            result.duplicateSampleCount += rhs.duplicateSampleCount
+            return result
+        }
+    }
+
+    private static var configurations: [Configuration] = []
+
+    nonisolated static func accepts(_ outcome: BenchmarkCaseOutcome) -> Bool {
+        outcome.errors == 0
+            && outcome.timeoutCount == 0
+            && outcome.unknownActionCount == 0
+            && outcome.duplicateSampleCount == 0
+            && outcome.progress > 0
+    }
 
     static var isRequested: Bool {
         CommandLine.arguments.contains("--benchmark")
+            || CommandLine.arguments.contains("--benchmark-manifest")
     }
 
     static func runIfRequested() -> Bool {
-        guard let parsed = configuration(arguments: CommandLine.arguments) else { return false }
-        configuration = parsed
+        if let manifestIndex = CommandLine.arguments.firstIndex(of: "--benchmark-manifest"),
+           CommandLine.arguments.indices.contains(manifestIndex + 1),
+           let data = try? Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[manifestIndex + 1])),
+           let manifest = try? JSONDecoder().decode(Manifest.self, from: data) {
+            configurations = configurations(from: manifest)
+            return !configurations.isEmpty
+        }
+        guard let config = configuration(arguments: CommandLine.arguments) else { return false }
+        configurations = [config]
         return true
     }
 
+    nonisolated static func configurations(from manifest: Manifest) -> [Configuration] {
+        PerformanceCorpus.allCases.flatMap { corpus in
+            manifest.sizes.flatMap { size in
+                Scenario.allCases.map { scenario in
+                    Configuration(
+                        scenario: scenario,
+                        corpus: corpus,
+                        size: max(1, size),
+                        duration: .milliseconds(max(1, Int(manifest.durationSeconds * 1_000))),
+                        interval: .milliseconds(max(1, Int(manifest.intervalMillis))),
+                        resultURL: manifest.resultDirectoryURL
+                            .appendingPathComponent("\(scenario.rawValue)-\(corpus.rawValue)-\(size).json")
+                    )
+                }
+            }
+        }
+    }
+
+    /// Legacy one-case parser remains a component seam; production benchmark scripts use the
+    /// manifest parser above so no shell-side corpus or action authority remains.
     nonisolated static func configuration(arguments: [String]) -> Configuration? {
         guard let index = arguments.firstIndex(of: "--benchmark"),
               arguments.indices.contains(index + 1) else { return nil }
@@ -48,102 +161,232 @@ enum BenchmarkDriver {
         let seconds = max(1, Double(value(after: "--duration") ?? "5") ?? 5)
         let intervalMillis = max(1, Double(value(after: "--interval-ms") ?? "120") ?? 120)
         return Configuration(
-            scenario: scenario, corpus: corpus, size: size,
+            scenario: scenario,
+            corpus: corpus,
+            size: size,
             duration: .milliseconds(Int(seconds * 1_000)),
-            interval: .milliseconds(Int(intervalMillis))
+            interval: .milliseconds(Int(intervalMillis)),
+            resultURL: nil
         )
     }
 
     static func run() async {
-        guard let configuration else { return }
-        // Let the fixture's first authoritative projection land before measuring the scenario.
+        guard !configurations.isEmpty,
+              let controller = editorController() else { return }
+        guard let session = controller.session, let document = controller.document else { return }
+
         try? await Task.sleep(for: .seconds(1))
-        let deadline = ContinuousClock.now + configuration.duration
-        repeat {
-            runOnce(configuration.scenario, corpus: configuration.corpus, size: configuration.size)
-            try? await Task.sleep(for: configuration.interval)
-        } while ContinuousClock.now < deadline && !Task.isCancelled
+        for configuration in configurations where !Task.isCancelled {
+            document.installTextForBenchmark(configuration.corpus.source(utf16Target: configuration.size))
+            session.resetBenchmarkTransientState()
+            try? await Task.sleep(for: .milliseconds(500))
+            session.performanceSampler?.drainSummaries()
+            var counters = Counters()
+            let deadline = ContinuousClock.now + configuration.duration
+            repeat {
+                counters = counters + runOnce(configuration.scenario, controller: controller, session: session, document: document, corpus: configuration.corpus, size: configuration.size)
+                try? await Task.sleep(for: configuration.interval)
+            } while ContinuousClock.now < deadline && !Task.isCancelled
+
+            let metrics = session.performanceSampler?.drainSummaries().map {
+                MetricResult(
+                    name: metricName($0.metric), count: $0.count,
+                    p50Nanos: $0.p50, p95Nanos: $0.p95, maxNanos: $0.max
+                )
+            } ?? []
+            let result = CaseResult(
+                scenario: configuration.scenario,
+                corpus: configuration.corpus,
+                size: configuration.size,
+                passed: accepts(BenchmarkCaseOutcome(
+                    progress: counters.progress,
+                    errors: counters.errors,
+                    timeoutCount: counters.timeoutCount,
+                    unknownActionCount: counters.unknownActionCount,
+                    duplicateSampleCount: counters.duplicateSampleCount
+                )),
+                actionAttempts: counters.actionAttempts,
+                accepted: counters.accepted,
+                started: counters.started,
+                refused: counters.refused,
+                disabled: counters.disabled,
+                progress: counters.progress,
+                errors: counters.errors,
+                timeoutCount: counters.timeoutCount,
+                unknownActionCount: counters.unknownActionCount,
+                duplicateSampleCount: counters.duplicateSampleCount,
+                metrics: metrics
+            )
+            if let resultURL = configuration.resultURL {
+                do {
+                    try FileManager.default.createDirectory(at: resultURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    let data = try JSONEncoder().encode(result)
+                    try data.write(to: resultURL, options: .atomic)
+                } catch {
+                    NSLog("benchmark result write failed: %@", error.localizedDescription)
+                }
+            }
+        }
 
         DiagnosticRunCoordinator.shared.flushAndInvalidateAll()
         DiagnosticLog.shared?.finishSynchronously()
-        // The benchmark intentionally mutates its fixture. Mark that benchmark run clean before
-        // terminating so AppKit does not open a save-confirmation panel in the headless process.
-        // Ordinary user documents never pass through this driver and retain normal save prompts.
-        for document in NSDocumentController.shared.documents {
-            document.updateChangeCount(.changeCleared)
-        }
+        document.updateChangeCount(.changeCleared)
         NSApp.terminate(nil)
     }
 
-    private static func runOnce(_ scenario: Scenario, corpus: PerformanceCorpus? = nil, size: Int = 1) {
-        guard let controller = NSApp.windows
-            .compactMap({ ($0.toolbar?.delegate as? EditorToolbarController)?.commandController })
-            .first,
-            let session = controller.session,
-            let document = controller.document else { return }
-
+    private static func runOnce(
+        _ scenario: Scenario,
+        controller: EditorCommandController,
+        session: EditorSession,
+        document: MarkdownDocument,
+        corpus: PerformanceCorpus,
+        size: Int
+    ) -> Counters {
         switch scenario {
         case .typeProse, .typeInTable, .typeAdjacentMarkup:
             session.setMode(.source)
-            let requested = corpus?.source(utf16Target: min(size, 4_096)) ?? "x"
+            let requested = corpus.source(utf16Target: min(size, 4_096))
             let payload: String = switch scenario {
             case .typeInTable: "| \(requested.replacingOccurrences(of: "\n", with: " ")) |"
             case .typeAdjacentMarkup: "**\(requested.prefix(64))**"
             default: String(requested.prefix(128))
             }
             let iterations = min(100, max(1, size / 2_500))
+            var result = Counters()
             for _ in 0..<iterations {
-                let selection = session.sourceModeState.selection
-                _ = session.perform(
+                result.actionAttempts += 1
+                let outcome = session.perform(
                     .insertText(payload),
-                    selection: .source(selection),
+                    selection: .source(session.sourceModeState.selection),
                     expectedSourceRevision: SourceRevision(value: document.sourceVersion)
                 )
+                if case .accepted = outcome { result.accepted += 1; result.progress += 1 }
+                else { result.refused += 1; result.errors += 1 }
             }
+            return result
+
         case .applyCommands:
+            var result = Counters()
             for mode in [EditorMode.source, .wysiwyg] {
                 session.setMode(mode)
-                // Add Image owns an asynchronous NSOpenPanel and Edit Link owns a modal sheet;
-                // neither can complete in a process-level, non-UI benchmark. Their routes are
-                // covered by the component suites; every deterministic editor route remains in
-                // this liveness matrix.
-                for command in EditorCommand.allCases where command != .addImage && command != .editLink {
-                    _ = controller.perform(command)
+                for command in EditorCommand.allCases {
+                    result.actionAttempts += 1
+                    switch controller.perform(command) {
+                    case .accepted: result.accepted += 1; result.progress += 1
+                    case .started: result.started += 1; result.progress += 1
+                    case .refused: result.refused += 1
+                    case .disabled: result.disabled += 1
+                    }
                 }
             }
+            return result
+
         case .toggleModes:
+            var result = Counters()
             for _ in 0..<40 {
-                session.setMode(session.mode == .source ? .wysiwyg : .source)
+                let next = session.mode == .source ? EditorMode.wysiwyg : .source
+                session.setMode(next)
+                result.actionAttempts += 1
+                if session.mode == next { result.accepted += 1; result.progress += 1 }
+                else { result.errors += 1 }
             }
+            return result
+
         case .scrollDocument:
-            for scrollView in scrollViews(in: NSApp.windows.first?.contentView) {
-                let maxY = max(0, scrollView.documentView?.bounds.height ?? 0 - scrollView.contentView.bounds.height)
-                scrollView.contentView.setBoundsOrigin(NSPoint(x: 0, y: maxY))
-                scrollView.contentView.setBoundsOrigin(.zero)
+            session.setMode(.wysiwyg)
+            var result = Counters()
+            let windows = controller.presentingWindow.map { [$0] } ?? NSApp.windows
+            let scrolls = windows.flatMap({ scrollViews(in: $0.contentView) })
+            guard !scrolls.isEmpty else {
+                result.errors = 1
+                return result
             }
+            for scrollView in scrolls {
+                scrollView.layoutSubtreeIfNeeded()
+                scrollView.documentView?.layoutSubtreeIfNeeded()
+                let maxY = measuredMaxScrollY(in: scrollView)
+                guard maxY > 0 else { continue }
+                let before = scrollView.contentView.bounds.origin.y
+                scrollView.contentView.setBoundsOrigin(NSPoint(x: 0, y: maxY))
+                let reached = scrollView.contentView.bounds.origin.y == maxY
+                scrollView.contentView.setBoundsOrigin(.zero)
+                if reached && before != maxY {
+                    result.progress += 1
+                    break
+                }
+            }
+            if result.progress == 0 && result.errors == 0 { result.errors = 1 }
+            return result
+
         case .undoRedoStorm:
             session.setMode(.source)
+            var result = Counters()
             for _ in 0..<100 {
-                let selection = session.sourceModeState.selection
-                _ = session.perform(
-                    .insertText("x"),
-                    selection: .source(selection),
-                    expectedSourceRevision: SourceRevision(value: document.sourceVersion)
+                result.actionAttempts += 1
+                let before = document.sourceVersion
+                let outcome = session.perform(
+                    .insertText("x"), selection: .source(session.sourceModeState.selection),
+                    expectedSourceRevision: SourceRevision(value: document.sourceVersion),
+                    grouping: .discrete
                 )
+                if case .accepted = outcome, document.sourceVersion != before { result.accepted += 1; result.progress += 1 }
+                else { result.errors += 1 }
             }
-            for _ in 0..<100 { document.undoManager?.undo() }
-            for _ in 0..<100 { document.undoManager?.redo() }
+            for _ in 0..<100 {
+                let before = document.sourceVersion
+                document.undoManager?.undo()
+                if document.sourceVersion == before { result.errors += 1 }
+            }
+            for _ in 0..<100 {
+                let before = document.sourceVersion
+                document.undoManager?.redo()
+                if document.sourceVersion == before { result.errors += 1 }
+            }
+            return result
+
         case .openAndIdle:
-            break
+            return Counters(progress: session.presentation?.sourceRevision.value == document.sourceVersion ? 1 : 0)
+
         case .soak:
-            runOnce(.typeProse, corpus: corpus, size: size)
-            runOnce(.toggleModes, corpus: corpus, size: size)
-            runOnce(.undoRedoStorm, corpus: corpus, size: size)
+            return runOnce(.typeProse, controller: controller, session: session, document: document, corpus: corpus, size: size)
+                + runOnce(.toggleModes, controller: controller, session: session, document: document, corpus: corpus, size: size)
+                + runOnce(.undoRedoStorm, controller: controller, session: session, document: document, corpus: corpus, size: size)
+        }
+    }
+
+    private static func editorController() -> EditorCommandController? {
+        NSApp.windows.compactMap { ($0.toolbar?.delegate as? EditorToolbarController)?.commandController }.first
+    }
+
+    private static func metricName(_ metric: PerformanceSampler.Metric) -> String {
+        switch metric {
+        case .nativeInputCallback: return "nativeInputCallback"
+        case .modeTransition: return "modeTransition"
+        case .parseProjection: return "parseProjection"
+        case .imageResolution: return "imageResolution"
+        case .authoritativeApplication: return "authoritativeApplication"
+        case .layoutApplication: return "layoutApplication"
+        case .mainActorLatency: return "mainActorLatency"
+        case .sourceHighlightApplication: return "sourceHighlightApplication"
         }
     }
 
     private static func scrollViews(in view: NSView?) -> [NSScrollView] {
         guard let view else { return [] }
         return (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews(in:))
+    }
+
+    private static func measuredMaxScrollY(in scrollView: NSScrollView) -> CGFloat {
+        guard let documentView = scrollView.documentView else { return 0 }
+        let renderedHeight: CGFloat
+        if let textView = documentView as? NSTextView,
+           let layoutManager = textView.layoutManager,
+           let textContainer = textView.textContainer {
+            let used = layoutManager.usedRect(for: textContainer)
+            renderedHeight = max(textView.bounds.height, used.maxY + textView.textContainerInset.height * 2)
+        } else {
+            renderedHeight = documentView.bounds.height
+        }
+        return max(0, renderedHeight - scrollView.contentView.bounds.height)
     }
 }

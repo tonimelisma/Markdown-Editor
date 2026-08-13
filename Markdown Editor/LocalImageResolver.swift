@@ -64,12 +64,14 @@ nonisolated enum LocalImageResolver {
         documentURL: URL?,
         nodeID: MarkdownNodeID,
         sourceVersion: UInt64,
-        locationGeneration: UInt64
+        locationGeneration: UInt64,
+        intent: IntentContext? = nil
     ) -> Result<LocalImageDescriptor, LocalImageResolveFailure> {
         switch LocalImageDecoder.decode(
             destination: destination,
             documentURL: documentURL,
-            locationGeneration: locationGeneration
+            locationGeneration: locationGeneration,
+            intent: intent
         ) {
         case .failure(let err):
             return .failure(err)

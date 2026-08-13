@@ -15,17 +15,19 @@ nonisolated enum AuthoritativePresentationBuilder {
         source: String,
         sourceRevision: UInt64,
         snapshotID: PresentationSnapshot.ID,
-        locationGeneration: UInt64
+        locationGeneration: UInt64,
+        intent: IntentContext? = nil
     ) -> PresentationSnapshot? {
-        EditorSemanticWorker.sync {
+        EditorSemanticWorker.sync(intent: intent) {
             let index = MarkdownSourceIndex(source: source, sourceVersion: sourceRevision)
             guard case .success(let tree) = MarkdownParser.parse(
                 source,
-                sourceVersion: sourceRevision
+                sourceVersion: sourceRevision,
+                intent: intent
             ) else {
                 return nil
             }
-            let model = MarkdownProjectionModel.build(tree: tree, index: index)
+            let model = MarkdownProjectionModel.build(tree: tree, index: index, intent: intent)
             return PresentationSnapshot.from(
                 model: model,
                 id: snapshotID,

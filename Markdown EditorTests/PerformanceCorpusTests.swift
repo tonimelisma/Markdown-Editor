@@ -30,6 +30,19 @@ struct PerformanceCorpusProofTests {
         #expect(config?.duration == .seconds(7))
         #expect(config?.interval == .milliseconds(80))
     }
+
+    // Verifies: REQ-128 — the manifest expands to every closed corpus/scenario combination.
+    @Test func benchmarkManifestEnumeratesTheClosedMatrix() {
+        let manifest = BenchmarkDriver.Manifest(
+            durationSeconds: 1,
+            intervalMillis: 50,
+            sizes: [10_000, 100_000],
+            resultDirectory: URL(fileURLWithPath: "/tmp/benchmark-results")
+        )
+        let configurations = BenchmarkDriver.configurations(from: manifest)
+        #expect(configurations.count == PerformanceCorpus.allCases.count * BenchmarkDriver.Scenario.allCases.count * 2)
+        #expect(Set(configurations.map { "\($0.scenario.rawValue)/\($0.corpus.rawValue)/\($0.size)" }).count == configurations.count)
+    }
 }
 
 // Verifies: REQ-127
@@ -77,6 +90,46 @@ func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
     let source = try! String(contentsOf: root.appendingPathComponent("Markdown Editor/BenchmarkDriver.swift"), encoding: .utf8)
     #expect(!source.contains("accessibility"))
     #expect(!source.contains("synthetic"))
+}
+
+// Verifies: REQ-128 — the shell passes a parameter-only manifest and never owns corpus text or
+// the action matrix.
+@Test func benchmarkShellUsesSwiftAuthority() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+    let source = try String(contentsOf: root.appendingPathComponent("Scripts/benchmark.sh"), encoding: .utf8)
+    #expect(source.contains("--benchmark-manifest"))
+    #expect(source.contains("os.replace"))
+    #expect(!source.contains("make_fixture"))
+    #expect(!source.contains("degenerateParagraph"))
+    #expect(!source.contains("typeProse typeInTable"))
+}
+
+// Verifies: REQ-128 — malformed benchmark outcomes cannot be admitted as evidence.
+@Test func benchmarkRejectsNoProgressAndUnknownActionsLegacy() {
+    #expect(BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+        progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 0, duplicateSampleCount: 0
+    )))
+    #expect(!BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+        progress: 0, errors: 0, timeoutCount: 0, unknownActionCount: 0, duplicateSampleCount: 0
+    )))
+    #expect(!BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+        progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 1, duplicateSampleCount: 0
+    )))
+}
+
+/// Named for direct mutation selection by the falsification gate.
+struct COR69BenchmarkProofTests {
+    @Test func benchmarkRejectsNoProgressAndUnknownActions() {
+        #expect(BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+            progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 0, duplicateSampleCount: 0
+        )))
+        #expect(!BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+            progress: 0, errors: 0, timeoutCount: 0, unknownActionCount: 0, duplicateSampleCount: 0
+        )))
+        #expect(!BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+            progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 1, duplicateSampleCount: 0
+        )))
+    }
 }
 
 // Verifies: REQ-128
