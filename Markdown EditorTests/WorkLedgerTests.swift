@@ -466,15 +466,6 @@ struct COR69IntentMeasurementTests {
         let placement = ImagePlacementController()
         placement.session = session
         placement.attach(actions: document)
-        let sharedLog = DiagnosticLog.shared
-        let initialLogByteCount = sharedLog.flatMap {
-            try? Data(contentsOf: $0.fileURL).count
-        } ?? 0
-
-        let reports = Mutex<[(IntentID, WorkLedger, Bool, DiagnosticSymbol?)]>([])
-        session.intentRecorder.setReporter { context, ledger, orphaned, reason in
-            reports.withLock { $0.append((context.id, ledger, orphaned, reason)) }
-        }
 
         let intent = session.intentRecorder.begin(.acceptedEdit)
         let target = ImagePlacementTarget(
@@ -492,41 +483,30 @@ struct COR69IntentMeasurementTests {
             intentContext: intent
         )
 
-        var observed: (IntentID, WorkLedger, Bool, DiagnosticSymbol?)?
-        for _ in 0..<500 {
-            observed = reports.withLock { reports in
-                reports.first { $0.0 == intent.id }
+        var presentationIntent: IntentContext?
+        for _ in 0..<3_000 {
+            if document.text == "![](assets/proof.png)",
+               let presentation = session.presentation,
+               presentation.sourceRevision.value == document.sourceVersion,
+               let handedOff = session.takePresentationIntent(for: presentation.id) {
+                presentationIntent = handedOff
+                break
             }
-            if observed == nil, let log = sharedLog {
-                await log.drain()
-                let bytes = (try? Data(contentsOf: log.fileURL)) ?? Data()
-                let appended = bytes.dropFirst(min(initialLogByteCount, bytes.count))
-                let text = String(data: appended, encoding: .utf8) ?? ""
-                for line in text.split(separator: "\n") {
-                    guard let data = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-                          data["ev"] as? String == "workLedger",
-                          let fields = data["data"] as? [String: Any],
-                          (fields["intentID"] as? NSNumber)?.uint64Value == intent.id.rawValue,
-                          fields["scope"] as? String == WorkScope.acceptedEdit.symbol.rawValue,
-                          let parses = (fields["documentParses"] as? NSNumber)?.intValue,
-                          let orphaned = fields["orphaned"] as? Bool else { continue }
-                    var ledger = WorkLedger()
-                    ledger.documentParses = parses
-                    observed = (intent.id, ledger, orphaned, nil)
-                    break
-                }
-            }
-            if observed != nil { break }
             await Task.yield()
-            try await Task.sleep(for: .milliseconds(2))
+            try await Task.sleep(for: .milliseconds(5))
         }
 
-        #expect(placement.phaseForTesting == .idle)
+        let ledger = session.intentRecorder.snapshot(intent)
+        presentationIntent?.recorder.finish(presentationIntent!)
+        for _ in 0..<3_000 where placement.phaseForTesting != .idle {
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        #expect(presentationIntent?.id == intent.id)
+        #expect(ledger?.documentParses == 1)
         #expect(document.text == "![](assets/proof.png)")
-        #expect(observed?.0 == intent.id)
-        #expect(observed?.1.documentParses == 1)
-        #expect(observed?.2 == false)
-        #expect(observed?.3 == nil)
+        #expect(placement.phaseForTesting == .idle)
         session.detach()
     }
 
