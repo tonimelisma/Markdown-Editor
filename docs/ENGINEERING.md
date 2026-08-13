@@ -644,6 +644,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-018 | Typography is derived from semantic inline/block presentation plus immutable tokens and never changes canonical source, history, or coordinate meaning. | attributed-presentation semantic tests; source-before/after equality |
 | ARC-019 | An ordinary accepted WYSIWYG edit applies one validated attributed patch and performs no full-storage replacement. | instrumented `NSTextStorage` component test; native-input performance corpus |
 | ARC-020 | Performance samples are lifetime-owned, bounded, honestly named, and include every synchronous operation claimed by their boundary. | sampler lifetime tests; nonzero Release evidence; boundary-spy tests |
+| ARC-026 | One explicit sendable intent identity owns all downstream work across actor, task, GCD, parser, presentation, and terminal lifecycle boundaries; late or cancelled work is typed and durably emitted. | `COR69IntentMeasurementTests/editorSessionRouteRetainsIntentThroughParse()`; `asyncAndGCDWorkRetainTheExplicitIntent()`; `presentationLeaseDefersTerminalLedger()`; `lateWorkAfterFinishIsTypedOrphan()`; process smoke diagnostics |
 | ARC-021 | A main-actor stall can be made durable without scheduling the report onto the main actor, and terminal durability never waits on a main-actor hop. | blocked-main component test; bounded terminal-close test |
 | ARC-022 | Superseded pending parses do not enter source-copy/cmark work after the parser lock becomes available. | deterministic scheduler/lock test with controlled generations |
 | ARC-023 | Image display rejects over-limit encoded files before bulk read/hash/decode and derives references from the canonical parse tree. | file-operation spy; over-limit sparse-file test; scanner deletion gate |
@@ -656,7 +657,6 @@ architecture.** They are recorded here so no later increment reassigns them:
 | Identifier | Reserved by | Becomes an invariant when |
 | --- | --- | --- |
 | `ARC-025` | COR-81 (accessibility semantics) | that increment lands |
-| `ARC-026` | COR-69 (intent recorder and work ledger) | one explicit intent identity is proved to retain all downstream work across actor, task, and GCD boundaries |
 | `ARC-Q21` | COR-81 (accessibility semantics) | that increment lands |
 | `ARC-Q22` | COR-68 (proof architecture v2) | every retained `Done` claim has an observed production mutation that turns its cited behavior proof red |
 | `ARC-Q23` | COR-81 (contrast conformance) | that increment lands |
@@ -709,10 +709,12 @@ supersession documents. The working tree states current truth; Git records histo
 - Display cache identity must be established before bulk I/O. Full SHA-256 is correct for exact-copy
   asset collision naming but not as a display-cache lookup precondition; sampled digests and MD5 are
   not correctness identities. COR-73 creates the single display owner.
-- COR-69 remains a correction increment: its implementation is present but not yet an architectural
-  invariant. The current review requires production-route intent ownership, durable late-work and
-  shutdown ordering, generation-safe frame acknowledgements, exact benchmark contracts, and observed
-  falsifying mutations before ARC-026 or the related requirements become current truth.
+- COR-69 is current architecture: one explicit sendable intent identity is retained through parser,
+  presentation, actor, task, and GCD boundaries; presentation leases defer terminal ledger closure
+  until downstream work finishes; late or cancelled work is typed and durably emitted; frame
+  acknowledgements are generation-safe; and the benchmark matrix and provenance-bound baseline are
+  structurally and operationally verified. The full gate observed the required tests and falsifying
+  mutations before ARC-026 and REQ-123/125/128 were promoted to current truth.
 - macOS's Accessibility ▸ Display ▸ Text Size preference has no documented, observable third-party
   API (`docs/research/DISC-08-macos-text-scaling.md`); the approved fixed typography default
   (§7) has no platform-provided route to user scaling. REQ-140 therefore remains `Deferred` rather
