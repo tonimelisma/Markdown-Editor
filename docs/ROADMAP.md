@@ -183,7 +183,7 @@ return to discovery; do not improvise an architecture change.
    falsification against production behavior, and gives refactor-only plans derived completion
    evidence. Full gate observed passing: 437 tests, 50 emitted routes, 40 Done rows, 29/29 changed-
    scope falsifications.
-2. ✅ **COR-69 — Intent measurement and honest benchmark.** (Delivered: REQ-123, REQ-125, REQ-128)
+2. ✅ **COR-69 — Intent measurement and honest benchmark.** (Delivers: REQ-123, REQ-125, REQ-128)
    Carries explicit intent identity across concurrency boundaries, observes main-actor stalls with
    controlled clocks, and makes the shipping benchmark produce its provenance-bound baseline. The
    final full gate observed 454 passing tests, 50 production trace routes, 35/35 falsifying mutations,
