@@ -172,6 +172,46 @@ struct COR69BenchmarkProofTests {
         #expect(!BenchmarkDriver.accepts(BenchmarkCaseOutcome(
             progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 1, duplicateSampleCount: 0
         )))
+        #expect(!BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+            progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 0,
+            duplicateSampleCount: 0, actionContractFailureCount: 1
+        )))
+    }
+
+    // Verifies: REQ-128 — the closed command matrix records and validates every expected
+    // outcome, rather than proving only aggregate progress.
+    @Test func benchmarkCommandRouteRecordsEveryActionContract() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("benchmark selection\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 160),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        let controller = EditorCommandController()
+        controller.bind(
+            document: document,
+            session: session,
+            actionRouter: EditorActionRouter(),
+            window: window
+        )
+
+        let counters = BenchmarkDriver.runOnce(
+            .applyCommands,
+            controller: controller,
+            session: session,
+            document: document,
+            corpus: .structuredProse,
+            size: 100_000
+        )
+        #expect(counters.actionAttempts == EditorCommand.allCases.count * 2)
+        #expect(counters.actionContractFailures == 0, "unexpected action contracts: \(counters.actionOutcomes)")
+        #expect(counters.actionOutcomes.count == counters.actionAttempts)
+        #expect(counters.actionOutcomes.allSatisfy { $0.expected == $0.observed }, "action outcomes: \(counters.actionOutcomes)")
+        session.detach()
     }
 }
 

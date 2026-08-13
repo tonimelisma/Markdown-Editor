@@ -75,6 +75,14 @@ for path in results:
         raise SystemExit(f"benchmark: failed case {key}: {value}")
     if value["timeoutCount"] or value["unknownActionCount"] or value["duplicateSampleCount"]:
         raise SystemExit(f"benchmark: invalid outcome accounting for {key}")
+    outcomes = value.get("actionOutcomes")
+    if not isinstance(outcomes, list) or len(outcomes) != value["actionAttempts"]:
+        raise SystemExit(f"benchmark: missing per-action outcome contract for {key}: {value}")
+    if value.get("actionContractFailureCount", 0) != 0:
+        raise SystemExit(f"benchmark: unexpected action outcome for {key}: {value}")
+    for outcome in outcomes:
+        if not outcome.get("action") or outcome.get("expected") != outcome.get("observed"):
+            raise SystemExit(f"benchmark: action contract mismatch for {key}: {outcome}")
     if value["actionAttempts"] < value["expectedActionAttemptsMinimum"]:
         raise SystemExit(f"benchmark: action contract not exercised for {key}: {value}")
     if value["progress"] < value["expectedProgressMinimum"]:

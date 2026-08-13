@@ -27,9 +27,13 @@ final class EditorActionRouter: ObservableObject {
         pendingImageTarget = nil
     }
 
-    func handleAddImageClaims(_ claims: [ImageClaim]) {
-        guard let placement, let document else { return }
+    func handleAddImageClaims(_ claims: [ImageClaim], intentContext: IntentContext? = nil) {
+        guard let placement, let document else {
+            if let intentContext { intentContext.recorder.finish(intentContext) }
+            return
+        }
         guard !claims.isEmpty else {
+            if let intentContext { intentContext.recorder.finish(intentContext) }
             pendingImageTarget = nil
             return
         }
@@ -38,13 +42,14 @@ final class EditorActionRouter: ObservableObject {
               target.locationGeneration == document.locationGeneration else {
             // REQ-101: the picker returned known claims, but the source-domain intent is no
             // longer exact. Refuse without mutation while leaving an actionable diagnostic.
-            placement.recordRejectedImageAction(claimCount: claims.count, reason: .parentChanged)
+            placement.recordRejectedImageAction(claimCount: claims.count, reason: .parentChanged, intentContext: intentContext)
             pendingImageTarget = nil
             return
         }
         placement.handleImageAction(
             intent: ImagePlacementIntent(target: target, claims: claims),
-            documentURL: document.publishedFileURL ?? document.fileURL
+            documentURL: document.publishedFileURL ?? document.fileURL,
+            intentContext: intentContext
         )
         pendingImageTarget = nil
     }

@@ -49,6 +49,29 @@ enum SourceEditor {
             session?.updateOrigin.current ?? .nativeUserInput
         }
 
+        /// Native AppKit edits do not pass through `EditorSession.perform`. Create and retain
+        /// their intent here, then hand the same identity to the document publication observer
+        /// before the canonical mutation is committed.
+        @discardableResult
+        func commitNativeMutation(_ mutation: SourceMutation) -> SourceEditResult {
+            let intent = session?.intentRecorder.begin(.acceptedEdit)
+            let staged = if let intent, let session {
+                session.stageDocumentMutationIntent(intent)
+            } else {
+                false
+            }
+            let result = document.commitSourceMutation(mutation)
+            if let intent {
+                if case .committed = result, staged {
+                    intent.recorder.finish(intent)
+                } else {
+                    if staged { session?.cancelStagedDocumentMutationIntent(intent) }
+                    intent.recorder.finish(intent)
+                }
+            }
+            return result
+        }
+
         func textView(
             _ textView: NSTextView,
             shouldChangeTextIn affectedCharRange: NSRange,
@@ -83,7 +106,7 @@ enum SourceEditor {
                 actionName: grouping == .discrete ? "Paste" : "Typing",
                 grouping: grouping
             )
-            switch document.commitSourceMutation(mutation) {
+            switch commitNativeMutation(mutation) {
             case .committed(let selection):
                 pendingStyleRange = union(
                     pendingStyleRange,
@@ -318,7 +341,13 @@ final class MarkdownSourceTextView: NSTextView {
         ) else {
             return
         }
-        switch actions.commitSourceMutation(mutation) {
+        let result: SourceEditResult
+        if let sourceCoordinator {
+            result = sourceCoordinator.commitNativeMutation(mutation)
+        } else {
+            result = actions.commitSourceMutation(mutation)
+        }
+        switch result {
         case .committed:
             if selectEmptyDescription {
                 let descStart = range.location + 2

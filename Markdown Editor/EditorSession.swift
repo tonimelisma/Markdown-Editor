@@ -8,7 +8,7 @@ import Combine
 import Foundation
 import UniformTypeIdentifiers
 
-nonisolated enum EditorMode: String, Sendable, Equatable, CaseIterable {
+nonisolated enum EditorMode: String, Sendable, Equatable, Codable, CaseIterable {
     case wysiwyg
     case source
 }
@@ -48,6 +48,9 @@ final class EditorSession: ObservableObject {
     /// Sole owner of intent identities for this editor window.
     let intentRecorder = IntentRecorder()
     private var presentationIntents: [PresentationSnapshot.ID: IntentContext] = [:]
+    /// Native source/image mutations stage their owner before the document publishes. The
+    /// publication observer consumes this exact context instead of creating a second owner.
+    private var pendingDocumentMutationIntent: IntentContext?
     let updateOrigin = EditorUpdateOriginScope()
     let snapshotIDs = PresentationSnapshotIDFactory()
 
@@ -153,7 +156,8 @@ final class EditorSession: ObservableObject {
                     self?.invalidateDerivedState()
                 }
                 Task { @MainActor in
-                    self?.scheduleParse()
+                    guard let self else { return }
+                    self.scheduleParse(intent: self.takePendingDocumentMutationIntent())
                 }
             }
             .store(in: &cancellables)
@@ -170,6 +174,10 @@ final class EditorSession: ObservableObject {
     /// Combine subscriptions. Repeated detach is intentionally harmless.
     func detach() {
         parseCoordinator.cancel()
+        if let pendingDocumentMutationIntent {
+            pendingDocumentMutationIntent.recorder.finish(pendingDocumentMutationIntent, orphaned: true)
+            self.pendingDocumentMutationIntent = nil
+        }
         let pendingIntents = presentationIntents.values
         presentationIntents.removeAll()
         for intent in pendingIntents {
@@ -217,6 +225,29 @@ final class EditorSession: ObservableObject {
         document?.closeTypingUndoGroup()
         mode = newMode
         traceModeToggle(toSource: newMode == .source)
+    }
+
+    /// Retains one downstream parse lease for a native source/image mutation. The initial lease
+    /// remains owned by the caller until the synchronous document operation returns.
+    @discardableResult
+    func stageDocumentMutationIntent(_ intent: IntentContext) -> Bool {
+        if let previous = pendingDocumentMutationIntent {
+            previous.recorder.finish(previous, orphaned: true)
+        }
+        guard intent.recorder.retain(intent) else { return false }
+        pendingDocumentMutationIntent = intent
+        return true
+    }
+
+    func cancelStagedDocumentMutationIntent(_ intent: IntentContext) {
+        guard pendingDocumentMutationIntent == intent else { return }
+        pendingDocumentMutationIntent = nil
+        intent.recorder.finish(intent, orphaned: true)
+    }
+
+    private func takePendingDocumentMutationIntent() -> IntentContext? {
+        defer { pendingDocumentMutationIntent = nil }
+        return pendingDocumentMutationIntent
     }
 
     func updateSourceModeState(_ mutate: (inout SourceModeState) -> Void) {
@@ -553,14 +584,28 @@ final class EditorSession: ObservableObject {
 
     func addImages() async {
         // REQ-060/082; ARC-012: capture immutable source-domain intent before async picker work.
-        guard let target = imagePlacementTarget() else { return }
+        let intent = intentRecorder.begin(.acceptedEdit)
+        guard let target = imagePlacementTarget() else {
+            intent.recorder.finish(intent)
+            return
+        }
         actionRouter?.captureImagePlacementTarget(target)
 
-        guard let imagePicker else { return }
+        guard let imagePicker else {
+            intent.recorder.finish(intent)
+            return
+        }
         let urls = await imagePicker.pickImages()
-        guard !urls.isEmpty else { return }
+        guard !urls.isEmpty else {
+            intent.recorder.finish(intent)
+            return
+        }
         let claims = urls.map { ImageClaim.fileURL($0, providerName: $0.lastPathComponent, declaredType: nil) }
-        actionRouter?.handleAddImageClaims(claims)
+        guard let actionRouter else {
+            intent.recorder.finish(intent)
+            return
+        }
+        actionRouter.handleAddImageClaims(claims, intentContext: intent)
     }
 
     private func imagePlacementTarget() -> ImagePlacementTarget? {

@@ -55,13 +55,6 @@ struct MeasurementSubstrateProofTests {
         sampler.invalidate()
     }
 
-    // Verifies: REQ-125
-    @Test func frameStatisticsMutationProof() {
-        #expect(FrameObserver.hitchMillisPerSecond(
-            frameIntervalsNanos: [8_333_333, 24_333_333], cadenceNanos: 8_333_333
-        ) > 15)
-    }
-
     // Verifies: REQ-125 — the real frame observer callback reaches the sampler's production
     // frameStatistics route, not only the pure hitch-rate calculation.
     @Test func frameObserverProductionRouteRecordsStatistics() async {
@@ -154,10 +147,24 @@ struct MeasurementSubstrateProofTests {
 }
 
 // Verifies: REQ-125
-    @Test func frameBudgetFollowsTheDisplayLinkCadenceRatherThanAConstant() {
-        #expect(FrameObserver.hitchMillisPerSecond(frameIntervalsNanos: [8_333_333, 8_333_333], cadenceNanos: 8_333_333) == 0)
-        #expect(FrameObserver.hitchMillisPerSecond(frameIntervalsNanos: [8_333_333, 24_333_333], cadenceNanos: 8_333_333) > 15)
-    }
+@Test @MainActor func frameBudgetFollowsTheDisplayLinkCadenceRatherThanAConstant() async {
+    let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
+    let clock = ControlledFrameClock()
+    let observer = FrameObserver(sampler: sampler, clock: clock)
+    observer.startControlled()
+    let base = DispatchTime.now().uptimeNanoseconds
+    clock.emit(callbackUptimeNanos: base, cadenceNanos: 1_000_000_000)
+    clock.emit(callbackUptimeNanos: base + 1_000_000_000, cadenceNanos: 1_000_000_000)
+    clock.emit(callbackUptimeNanos: base + 3_000_000_000, cadenceNanos: 2_000_000_000)
+    for _ in 0..<3 { await Task.yield() }
+    let statistics = observer.drainStatistics()
+    #expect(statistics?.framesObserved == 2)
+    #expect((statistics?.longestFrameNanos ?? .max) >= 1_000_000_000)
+    #expect(statistics?.longestFrameNanos == 2_000_000_000)
+    #expect(statistics?.hitchMillisPerSecond == 0)
+    observer.stop()
+    sampler.invalidate()
+}
 
     // Verifies: REQ-125 — a queued acknowledgement exposes a main-actor stall even when the
     // display-link callback cadence itself remained regular.
@@ -260,6 +267,177 @@ struct MeasurementSubstrateProofTests {
 /// mutation. Aggregate Swift Testing execution alone is insufficient evidence for a mutation.
 @MainActor
 struct COR69IntentMeasurementTests {
+    // Verifies: REQ-111 — cancelling the real parse owner emits the typed production cancellation
+    // route, keeping the fast coverage gate independent of the excluded performance suite.
+    @Test func parseCancellationRecordsProductionRoute() async {
+        let document = MarkdownDocument()
+        document.installTextForTesting(String(repeating: "# heading\n\nparagraph with enough structure to parse.\n", count: 20_000))
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let session = EditorSession()
+        session.attach(document: document)
+        await Task.yield()
+        session.parseCoordinator.cancel()
+        for _ in 0..<500 where !trace.events.contains(where: {
+            if case .parseCancelled = $0 { return true }
+            return false
+        }) {
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(trace.events.contains {
+            if case .parseCancelled = $0 { return true }
+            return false
+        }, "events: \(trace.events)")
+        session.detach()
+    }
+
+    // Verifies: REQ-109 — the real WYSIWYG adapter records recovery when its applied TextKit
+    // storage has drifted, without relying on the excluded performance-boundary suite.
+    @Test func presentationDriftRecordsRecoveryProductionRoute() throws {
+        let source = "Hello world.\n\nSecond paragraph.\n"
+        let document = MarkdownDocument()
+        document.installTextForTesting(source)
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let session = EditorSession()
+        session.attach(document: document)
+        session.setMode(.wysiwyg)
+        let index = MarkdownSourceIndex(source: source, sourceVersion: document.sourceVersion)
+        let tree = try #require(MarkdownParser.parse(source, sourceVersion: document.sourceVersion).get())
+        session.installProjectionForTesting(
+            MarkdownProjectionModel.build(tree: tree, index: index),
+            tree: tree
+        )
+        let placement = ImagePlacementController()
+        let coordinator = WYSIWYGEditor.Coordinator(
+            document: document,
+            session: session,
+            placementController: placement
+        )
+        let (textView, storage) = makeSpyBackedTextView()
+        textView.delegate = coordinator
+        textView.inputCoordinator = coordinator.input
+        textView.documentActions = document
+        textView.session = session
+        textView.adapterCoordinator = coordinator
+        coordinator.textView = textView
+        coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+        storage.replaceCharacters(in: NSRange(location: 0, length: 5), with: "DRIFT")
+        storage.resetSpy()
+        coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+        #expect(trace.events.contains {
+            if case .presentationRecovered = $0 { return true }
+            return false
+        }, "events: \(trace.events)")
+        session.detach()
+    }
+
+    // Verifies: REQ-084 — the real WYSIWYG marked-text route emits composition start and its
+    // terminal cancellation record through the production trace owner.
+    @Test func compositionRoutesRecordProductionEvents() throws {
+        let document = MarkdownDocument()
+        document.installTextForTesting("ab\n")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let session = EditorSession()
+        session.attach(document: document)
+        session.setMode(.wysiwyg)
+        let index = MarkdownSourceIndex(source: document.text, sourceVersion: document.sourceVersion)
+        let tree = try #require(MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion).get())
+        session.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: tree,
+                index: index
+            ),
+            tree: tree
+        )
+        let placement = ImagePlacementController()
+        let coordinator = WYSIWYGEditor.Coordinator(
+            document: document,
+            session: session,
+            placementController: placement
+        )
+        let (textView, _) = makeSpyBackedTextView()
+        textView.delegate = coordinator
+        textView.inputCoordinator = coordinator.input
+        textView.documentActions = document
+        textView.session = session
+        textView.adapterCoordinator = coordinator
+        coordinator.textView = textView
+        coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
+        textView.setMarkedText(
+            "日",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: 2, length: 0)
+        )
+        textView.unmarkText()
+        textView.unmarkText()
+        #expect(trace.events.contains {
+            if case .compositionBegan = $0 { return true }
+            return false
+        }, "events: \(trace.events)")
+        #expect(trace.events.contains {
+            if case .compositionCancelled = $0 { return true }
+            return false
+        }, "events: \(trace.events)")
+        session.detach()
+    }
+
+    // Verifies: REQ-123 — the native AppKit source route stages the same accepted-edit intent
+    // before the document publishes, so its parser work is not attributed to a new owner.
+    @Test func nativeSourceRouteRetainsIntentThroughParse() async {
+        let document = MarkdownDocument()
+        document.installTextForTesting("hello\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        let placement = ImagePlacementController()
+        placement.attach(actions: document)
+        let coordinator = SourceEditor.Coordinator(
+            document: document,
+            placementController: placement,
+            session: session
+        )
+        let mutation = SourceMutation(
+            expectedRevision: document.sourceVersion,
+            range: NSRange(location: 0, length: 1),
+            expectedText: "h",
+            replacement: "H",
+            selectionBefore: SourceSelection(utf16: NSRange(location: 0, length: 1)),
+            selectionAfter: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+            actionName: "Typing",
+            grouping: .typing
+        )
+        #expect({
+            if case .committed = coordinator.commitNativeMutation(mutation) { return true }
+            return false
+        }())
+
+        let sharedLog = DiagnosticLog.shared
+        var logText = ""
+        for _ in 0..<500 {
+            if let presentation = session.presentation,
+               let intent = session.takePresentationIntent(for: presentation.id) {
+                intent.recorder.finish(intent)
+            }
+            await sharedLog?.drain()
+            logText = (try? String(contentsOf: sharedLog?.fileURL ?? URL(fileURLWithPath: "/dev/null"), encoding: .utf8)) ?? ""
+            if logText.contains("\"scope\":\"acceptedEdit\"")
+                && logText.contains("\"orphaned\":false")
+                && logText.contains("\"documentParses\":1") {
+                break
+            }
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(document.text == "Hello\n")
+        #expect(logText.contains("\"scope\":\"acceptedEdit\""))
+        #expect(logText.contains("\"orphaned\":false"))
+        #expect(logText.contains("\"documentParses\":1"))
+        session.detach()
+    }
+
     // Verifies: REQ-123 — the real editor route carries one accepted edit's context through
     // parsing and projection instead of only proving IntentRecorder in isolation.
     @Test func editorSessionRouteRetainsIntentThroughParse() async {

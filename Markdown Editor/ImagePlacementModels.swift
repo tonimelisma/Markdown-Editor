@@ -62,6 +62,7 @@ nonisolated struct FilePromiseReceiptToken: Sendable, Hashable {
 
 nonisolated struct ImageActionSnapshot: Sendable {
     let id: ImageActionID
+    let intent: IntentContext?
     let claims: [ImageClaim]
     let documentURL: URL?
     let documentLocationGeneration: UInt64

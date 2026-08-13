@@ -642,6 +642,11 @@ final class DiagnosticLog {
             gate.signal()
         }
         _ = gate.wait(timeout: .now() + timeoutSeconds)
+        // `finish()` schedules this balance on the main actor, but this method is itself used
+        // from the main actor immediately before process termination. Waiting for durability
+        // without releasing the disable-sudden-termination token leaves the app alive forever:
+        // the main actor cannot run the scheduled callback while the caller is blocked here.
+        allowSuddenTermination()
     }
 
     /// Keeps the newest `keeping` run files; removes the rest oldest-first.

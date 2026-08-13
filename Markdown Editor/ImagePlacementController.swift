@@ -29,6 +29,9 @@ final class ImagePlacementController: ObservableObject {
     @Published private(set) var alert: AlertKind?
 
     private var state = ImagePlacementState()
+    weak var session: EditorSession?
+    private let standaloneIntentRecorder = IntentRecorder()
+    private var activeIntent: IntentContext?
     private weak var actions: DocumentActionInterface?
     /// REQ-101/102; ARC-017. Not exposed on `DocumentActionInterface`: that protocol is an
     /// editor-neutral document surface, and widening it just for logging is unnecessary when a
@@ -104,8 +107,13 @@ final class ImagePlacementController: ObservableObject {
     }
 
     // REQ-060/064: begin from already-classified immutable claims (no main-thread file I/O).
-    func handleImageAction(intent: ImagePlacementIntent, documentURL: URL?) {
+    func handleImageAction(
+        intent: ImagePlacementIntent,
+        documentURL: URL?,
+        intentContext: IntentContext? = nil
+    ) {
         guard !intent.claims.isEmpty else { return }
+        let context = intentContext ?? (session?.intentRecorder ?? standaloneIntentRecorder).begin(.acceptedEdit)
         let id = ImageActionID()
         guard let next = ImagePlacementReducer.reduce(
             state: state,
@@ -118,8 +126,10 @@ final class ImagePlacementController: ObservableObject {
             trace?.record(route: .imagePlacementStarted, .imagePlacementStarted(claimCount: intent.claims.count))
             trace?.record(route: .imagePlacementFailed, .imagePlacementFailed(reason: .busy, phase: state.phase))
             presentAlert(.error(ImagePlacementError.busy.userMessage), reason: .placement(.busy))
+            context.recorder.finish(context, orphaned: true)
             return
         }
+        activeIntent = context
         recordPhaseIfChanged(from: state.phase, to: next.phase)
         state = next
         trace?.record(route: .imagePlacementStarted, .imagePlacementStarted(claimCount: intent.claims.count))
@@ -137,6 +147,7 @@ final class ImagePlacementController: ObservableObject {
         activeTrackingGeneration = actions.beginPlacementTracking(range: intent.target.sourceSelection.range)
         let snapshot = ImageActionSnapshot(
             id: id,
+            intent: context,
             claims: intent.claims,
             documentURL: documentURL,
             documentLocationGeneration: live.locationGeneration,
@@ -150,7 +161,10 @@ final class ImagePlacementController: ObservableObject {
             activeTask = Task { await self.runPlacement(snapshot: snapshot, documentURL: documentURL) }
         } else {
             // REQ-075
-            guard apply(.startAwaitingSave, id: id) else { return }
+            guard apply(.startAwaitingSave, id: id) else {
+                finishActiveIntent(orphaned: true)
+                return
+            }
             Task { await self.beginUntitledSave(snapshot: snapshot) }
         }
     }
@@ -158,9 +172,11 @@ final class ImagePlacementController: ObservableObject {
     func handleFilePromises(
         _ receivers: [NSFilePromiseReceiver],
         target: ImagePlacementTarget,
-        documentURL: URL?
+        documentURL: URL?,
+        intentContext: IntentContext? = nil
     ) {
         guard !receivers.isEmpty else { return }
+        let context = intentContext ?? (session?.intentRecorder ?? standaloneIntentRecorder).begin(.acceptedEdit)
         let id = ImageActionID()
         guard let next = ImagePlacementReducer.reduce(
             state: state,
@@ -171,8 +187,10 @@ final class ImagePlacementController: ObservableObject {
             trace?.record(route: .imagePlacementStarted, .imagePlacementStarted(claimCount: receivers.count))
             trace?.record(route: .imagePlacementFailed, .imagePlacementFailed(reason: .busy, phase: state.phase))
             presentAlert(.error(ImagePlacementError.busy.userMessage), reason: .placement(.busy))
+            context.recorder.finish(context, orphaned: true)
             return
         }
+        activeIntent = context
         recordPhaseIfChanged(from: state.phase, to: next.phase)
         state = next
         trace?.record(route: .imagePlacementStarted, .imagePlacementStarted(claimCount: receivers.count))
@@ -191,6 +209,7 @@ final class ImagePlacementController: ObservableObject {
         let token = FilePromiseReceiptToken()
         let snapshot = ImageActionSnapshot(
             id: id,
+            intent: context,
             claims: [.promiseToken(token)],
             documentURL: documentURL,
             documentLocationGeneration: live.locationGeneration,
@@ -199,7 +218,10 @@ final class ImagePlacementController: ObservableObject {
             operationID: target.operationID
         )
         pendingSnapshot = snapshot
-        guard apply(.startReceivingPromises, id: id) else { return }
+        guard apply(.startReceivingPromises, id: id) else {
+            finishActiveIntent(orphaned: true)
+            return
+        }
         activeTask = Task { await self.receivePromisesThenPlace(receivers, snapshot: snapshot, documentURL: documentURL) }
     }
 
@@ -237,7 +259,10 @@ final class ImagePlacementController: ObservableObject {
 
     private func continueAfterSave(snapshot: ImageActionSnapshot, documentURL: URL) async {
         guard state.phase == .awaitingSave, state.activeID == snapshot.id else { return }
-        guard apply(.saveSucceeded, id: snapshot.id) else { return }
+        guard apply(.saveSucceeded, id: snapshot.id) else {
+            finishActiveIntent(orphaned: true)
+            return
+        }
         await runPlacement(snapshot: snapshot, documentURL: documentURL)
     }
 
@@ -253,11 +278,13 @@ final class ImagePlacementController: ObservableObject {
             )
             guard apply(.promisesReceived, id: snapshot.id) else {
                 try? FileManager.default.removeItem(at: result.stagingDirectory)
+                finishActiveIntent(orphaned: true)
                 return
             }
             let claims = result.urls.map { ImageClaim.fileURL($0, providerName: $0.lastPathComponent, declaredType: nil) }
             let updated = ImageActionSnapshot(
                 id: snapshot.id,
+                intent: snapshot.intent,
                 claims: claims,
                 documentURL: documentURL,
                 documentLocationGeneration: snapshot.documentLocationGeneration,
@@ -271,6 +298,7 @@ final class ImagePlacementController: ObservableObject {
             } else {
                 guard apply(.startAwaitingSave, id: snapshot.id) else {
                     try? FileManager.default.removeItem(at: result.stagingDirectory)
+                    finishActiveIntent(orphaned: true)
                     return
                 }
                 // Stash promise staging for cleanup after save path — attach as file URLs already resolved.
@@ -313,7 +341,10 @@ final class ImagePlacementController: ObservableObject {
             fail(snapshot.id, .writeFailed)
             return
         }
-        guard apply(.startStaging, id: snapshot.id) else { return }
+        guard apply(.startStaging, id: snapshot.id) else {
+            finishActiveIntent(orphaned: true)
+            return
+        }
 
         do {
             let artifacts = try await ImageBatchPreflight.stage(claims: snapshot.claims, executor: executor)
@@ -324,7 +355,10 @@ final class ImagePlacementController: ObservableObject {
                 }
             }
 
-            guard apply(.startPublishing, id: snapshot.id) else { return }
+            guard apply(.startPublishing, id: snapshot.id) else {
+                finishActiveIntent(orphaned: true)
+                return
+            }
             let published = try await AssetDirectoryStore.publish(
                 artifacts: artifacts,
                 documentURL: documentURL,
@@ -359,6 +393,7 @@ final class ImagePlacementController: ObservableObject {
 
             guard apply(.startCommitting, id: snapshot.id) else {
                 await rollbackAndRecord(published)
+                finishActiveIntent(orphaned: true)
                 return
             }
 
@@ -399,7 +434,15 @@ final class ImagePlacementController: ObservableObject {
                 fail(snapshot.id, .writeFailed)
                 return
             }
-            switch actions.commitSourceMutation(mutation) {
+            if let intent = snapshot.intent, let session {
+                guard session.stageDocumentMutationIntent(intent) else {
+                    await rollbackAndRecord(published)
+                    fail(snapshot.id, .writeFailed)
+                    return
+                }
+            }
+            let commitResult = actions.commitSourceMutation(mutation)
+            switch commitResult {
             case .committed:
                 if published.published.count == 1 {
                     let descStart = tracker.range.location + 2
@@ -411,6 +454,9 @@ final class ImagePlacementController: ObservableObject {
                     actions.requestSelectionRestoration(pending)
                 }
             case .refused:
+                if let intent = snapshot.intent {
+                    session?.cancelStagedDocumentMutationIntent(intent)
+                }
                 await rollbackAndRecord(published)
                 fail(snapshot.id, .writeFailed)
                 return
@@ -464,6 +510,13 @@ final class ImagePlacementController: ObservableObject {
     private func resetToIdle() {
         recordPhaseIfChanged(from: state.phase, to: .idle)
         state = ImagePlacementState()
+        finishActiveIntent(orphaned: false)
+    }
+
+    private func finishActiveIntent(orphaned: Bool) {
+        guard let activeIntent else { return }
+        self.activeIntent = nil
+        activeIntent.recorder.finish(activeIntent, orphaned: orphaned)
     }
 
     @discardableResult
@@ -491,10 +544,17 @@ final class ImagePlacementController: ObservableObject {
     /// REQ-101: Add Image may become stale while its picker is open. No placement state was ever
     /// accepted in that case, so record its known claims and typed rejection without mutating an
     /// unrelated active operation or presenting a new alert.
-    func recordRejectedImageAction(claimCount: Int, reason: ImagePlacementError) {
+    func recordRejectedImageAction(
+        claimCount: Int,
+        reason: ImagePlacementError,
+        intentContext: IntentContext? = nil
+    ) {
         guard claimCount > 0 else { return }
         trace?.record(route: .imagePlacementStarted, .imagePlacementStarted(claimCount: claimCount))
         trace?.record(route: .imagePlacementFailed, .imagePlacementFailed(reason: reason, phase: state.phase))
+        if let intentContext {
+            intentContext.recorder.finish(intentContext, orphaned: true)
+        }
     }
 
     // Test helpers
@@ -503,10 +563,13 @@ final class ImagePlacementController: ObservableObject {
 
     func prepareUntitledPlacementForTesting(claims: [ImageClaim]) {
         let id = ImageActionID()
+        let context = (session?.intentRecorder ?? standaloneIntentRecorder).begin(.acceptedEdit)
+        activeIntent = context
         state = ImagePlacementReducer.reduce(state: .init(), event: .begin(id), actionID: nil) ?? state
         _ = apply(.startAwaitingSave, id: id)
         pendingSnapshot = ImageActionSnapshot(
             id: id,
+            intent: context,
             claims: claims,
             documentURL: nil,
             documentLocationGeneration: documentLocationGeneration,

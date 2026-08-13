@@ -7,6 +7,37 @@ nonisolated struct BenchmarkCaseOutcome: Sendable, Equatable {
     let timeoutCount: Int
     let unknownActionCount: Int
     let duplicateSampleCount: Int
+    let actionContractFailureCount: Int
+
+    init(
+        progress: Int,
+        errors: Int,
+        timeoutCount: Int,
+        unknownActionCount: Int,
+        duplicateSampleCount: Int,
+        actionContractFailureCount: Int = 0
+    ) {
+        self.progress = progress
+        self.errors = errors
+        self.timeoutCount = timeoutCount
+        self.unknownActionCount = unknownActionCount
+        self.duplicateSampleCount = duplicateSampleCount
+        self.actionContractFailureCount = actionContractFailureCount
+    }
+}
+
+nonisolated enum BenchmarkActionResult: String, Codable, Sendable {
+    case accepted
+    case started
+    case refused
+    case disabled
+}
+
+nonisolated struct BenchmarkActionObservation: Codable, Sendable, Equatable {
+    let mode: EditorMode?
+    let action: String
+    let expected: BenchmarkActionResult
+    let observed: BenchmarkActionResult
 }
 
 /// Process-level benchmark driver, reachable only through `--benchmark-manifest`.
@@ -65,6 +96,8 @@ enum BenchmarkDriver {
         let timeoutCount: Int
         let unknownActionCount: Int
         let duplicateSampleCount: Int
+        let actionContractFailureCount: Int
+        let actionOutcomes: [BenchmarkActionObservation]
         let expectedActionAttemptsMinimum: Int
         let expectedProgressMinimum: Int
         let metrics: [MetricResult]
@@ -94,6 +127,8 @@ enum BenchmarkDriver {
         var timeoutCount = 0
         var unknownActionCount = 0
         var duplicateSampleCount = 0
+        var actionContractFailures = 0
+        var actionOutcomes: [BenchmarkActionObservation] = []
 
         init(progress: Int = 0) {
             self.progress = progress
@@ -111,7 +146,40 @@ enum BenchmarkDriver {
             result.timeoutCount += rhs.timeoutCount
             result.unknownActionCount += rhs.unknownActionCount
             result.duplicateSampleCount += rhs.duplicateSampleCount
+            result.actionContractFailures += rhs.actionContractFailures
+            result.actionOutcomes.append(contentsOf: rhs.actionOutcomes)
             return result
+        }
+
+        mutating func record(
+            mode: EditorMode?,
+            action: String,
+            expected: BenchmarkActionResult,
+            observed: BenchmarkActionResult
+        ) {
+            actionAttempts += 1
+            actionOutcomes.append(BenchmarkActionObservation(
+                mode: mode,
+                action: action,
+                expected: expected,
+                observed: observed
+            ))
+            if expected != observed {
+                actionContractFailures += 1
+                errors += 1
+            }
+            switch observed {
+            case .accepted:
+                accepted += 1
+                progress += 1
+            case .started:
+                started += 1
+                progress += 1
+            case .refused:
+                refused += 1
+            case .disabled:
+                disabled += 1
+            }
         }
     }
 
@@ -122,6 +190,7 @@ enum BenchmarkDriver {
             && outcome.timeoutCount == 0
             && outcome.unknownActionCount == 0
             && outcome.duplicateSampleCount == 0
+            && outcome.actionContractFailureCount == 0
             && outcome.progress > 0
     }
 
@@ -131,7 +200,7 @@ enum BenchmarkDriver {
         case .applyCommands: return EditorCommand.allCases.count * 2
         case .toggleModes: return 1
         case .scrollDocument: return 1
-        case .undoRedoStorm: return 100
+        case .undoRedoStorm: return 300
         case .openAndIdle: return 1
         case .soak: return minimumActionAttempts(for: .typeProse) + minimumActionAttempts(for: .toggleModes) + minimumActionAttempts(for: .undoRedoStorm)
         }
@@ -139,6 +208,57 @@ enum BenchmarkDriver {
 
     private static func minimumProgress(for scenario: Scenario) -> Int {
         1
+    }
+
+    private static func expectedOutcome(
+        for command: EditorCommand,
+        controller: EditorCommandController
+    ) -> BenchmarkActionResult {
+        if case .disabled = controller.availability(for: command) {
+            return .disabled
+        }
+        switch command {
+        case .addImage, .editLink:
+            return .started
+        case .removeLink:
+            // The benchmark selection is the first four UTF-16 units of each corpus. None of
+            // the closed corpus fixtures begins with a complete link destination, so the
+            // command's enabled-but-refused outcome is the expected contract for this input.
+            return .refused
+        default:
+            return .accepted
+        }
+    }
+
+    private static func prepareBenchmarkSelection(
+        mode: EditorMode,
+        session: EditorSession,
+        document: MarkdownDocument
+    ) {
+        let length = (document.text as NSString).length
+        let sourceSelection = SourceSelection(
+            utf16: NSRange(location: 0, length: min(4, length)),
+            affinity: .downstream
+        )
+        session.updateSourceModeState { $0.selection = sourceSelection }
+        guard mode == .wysiwyg,
+              let presentation = session.presentation,
+              case .exact(let projected) = presentation.coordinateMap.projectionRange(
+                forSource: sourceSelection.range.utf16,
+                affinity: sourceSelection.affinity
+              ) else { return }
+        session.updateWYSIWYGModeState {
+            $0.selection = ProjectionSelection(
+                utf16: projected,
+                revision: presentation.projectionRevision,
+                affinity: sourceSelection.affinity
+            )
+        }
+    }
+
+    private static func editWasAccepted(_ outcome: EditorEditOutcome) -> Bool {
+        if case .accepted = outcome { return true }
+        return false
     }
 
     static var isRequested: Bool {
@@ -212,6 +332,7 @@ enum BenchmarkDriver {
             document.installTextForBenchmark(configuration.corpus.source(utf16Target: configuration.size))
             session.resetBenchmarkTransientState()
             try? await Task.sleep(for: .milliseconds(500))
+            await waitForBenchmarkPresentation(session: session, document: document)
             session.performanceSampler?.drainSummaries()
             var counters = Counters()
             let deadline = ContinuousClock.now + configuration.duration
@@ -235,7 +356,8 @@ enum BenchmarkDriver {
                     errors: counters.errors,
                     timeoutCount: counters.timeoutCount,
                     unknownActionCount: counters.unknownActionCount,
-                    duplicateSampleCount: counters.duplicateSampleCount
+                    duplicateSampleCount: counters.duplicateSampleCount,
+                    actionContractFailureCount: counters.actionContractFailures
                 )),
                 actionAttempts: counters.actionAttempts,
                 accepted: counters.accepted,
@@ -247,6 +369,8 @@ enum BenchmarkDriver {
                 timeoutCount: counters.timeoutCount,
                 unknownActionCount: counters.unknownActionCount,
                 duplicateSampleCount: counters.duplicateSampleCount,
+                actionContractFailureCount: counters.actionContractFailures,
+                actionOutcomes: counters.actionOutcomes,
                 expectedActionAttemptsMinimum: minimumActionAttempts(for: configuration.scenario),
                 expectedProgressMinimum: minimumProgress(for: configuration.scenario),
                 metrics: metrics
@@ -279,6 +403,12 @@ enum BenchmarkDriver {
         DiagnosticLog.shared?.finishSynchronously()
         document.updateChangeCount(.changeCleared)
         NSApp.terminate(nil)
+        // The benchmark is a process-level command-line verification. In a headless launch
+        // SwiftUI/AppKit can return from terminate without draining the application event loop,
+        // leaving the already-complete matrix process alive indefinitely. The durable runEnd
+        // record has been synchronously written above, so terminate this verification process
+        // explicitly rather than making Scripts/benchmark.sh guess whether the matrix finished.
+        Foundation.exit(EXIT_SUCCESS)
     }
 
     static func runOnce(
@@ -301,29 +431,40 @@ enum BenchmarkDriver {
             let iterations = min(100, max(1, size / 2_500))
             var result = Counters()
             for _ in 0..<iterations {
-                result.actionAttempts += 1
                 let outcome = session.perform(
                     .insertText(payload),
                     selection: .source(session.sourceModeState.selection),
                     expectedSourceRevision: SourceRevision(value: document.sourceVersion)
                 )
-                if case .accepted = outcome { result.accepted += 1; result.progress += 1 }
-                else { result.refused += 1; result.errors += 1 }
+                result.record(
+                    mode: .source,
+                    action: "insertText",
+                    expected: .accepted,
+                    observed: editWasAccepted(outcome) ? .accepted : .refused
+                )
             }
             return result
 
         case .applyCommands:
             var result = Counters()
             for mode in [EditorMode.source, .wysiwyg] {
-                session.setMode(mode)
                 for command in EditorCommand.allCases {
-                    result.actionAttempts += 1
+                    session.setMode(mode)
+                    prepareBenchmarkSelection(mode: mode, session: session, document: document)
+                    let expected = expectedOutcome(for: command, controller: controller)
+                    let observed: BenchmarkActionResult
                     switch controller.perform(command) {
-                    case .accepted: result.accepted += 1; result.progress += 1
-                    case .started: result.started += 1; result.progress += 1
-                    case .refused: result.refused += 1
-                    case .disabled: result.disabled += 1
+                    case .accepted: observed = .accepted
+                    case .started: observed = .started
+                    case .refused: observed = .refused
+                    case .disabled: observed = .disabled
                     }
+                    result.record(
+                        mode: mode,
+                        action: String(describing: command),
+                        expected: expected,
+                        observed: observed
+                    )
                 }
             }
             return result
@@ -333,9 +474,12 @@ enum BenchmarkDriver {
             for _ in 0..<40 {
                 let next = session.mode == .source ? EditorMode.wysiwyg : .source
                 session.setMode(next)
-                result.actionAttempts += 1
-                if session.mode == next { result.accepted += 1; result.progress += 1 }
-                else { result.errors += 1 }
+                result.record(
+                    mode: next,
+                    action: "toggleMode",
+                    expected: .accepted,
+                    observed: session.mode == next ? .accepted : .refused
+                )
             }
             return result
 
@@ -344,56 +488,89 @@ enum BenchmarkDriver {
             var result = Counters()
             let windows = controller.presentingWindow.map { [$0] } ?? NSApp.windows
             let scrolls = windows.flatMap({ scrollViews(in: $0.contentView) })
-            result.actionAttempts = 1
             guard !scrolls.isEmpty else {
-                result.errors = 1
+                result.record(mode: .wysiwyg, action: "scrollDocument", expected: .refused, observed: .refused)
                 return result
+            }
+            let hasScrollableDocument = scrolls.contains { scrollView in
+                waitForBenchmarkScrollLayout(in: scrollView)
+                return canReachBenchmarkBottom(in: scrollView)
             }
             for scrollView in scrolls {
                 waitForBenchmarkScrollLayout(in: scrollView)
                 let maxY = measuredMaxScrollY(in: scrollView)
                 guard maxY > 0 else { continue }
-                let before = scrollView.contentView.bounds.origin.y
-                scrollView.contentView.setBoundsOrigin(NSPoint(x: 0, y: maxY))
-                let reached = scrollView.contentView.bounds.origin.y == maxY
-                scrollView.contentView.setBoundsOrigin(.zero)
-                if reached && before != maxY {
-                    result.progress += 1
-                    break
+                for _ in 0..<8 {
+                    let before = scrollView.contentView.bounds.origin.y
+                    scrollView.contentView.setBoundsOrigin(NSPoint(x: 0, y: maxY))
+                    let reached = scrollView.contentView.bounds.origin.y == maxY
+                    scrollView.contentView.setBoundsOrigin(.zero)
+                    if reached && before != maxY {
+                        result.progress += 1
+                        break
+                    }
+                    RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.025))
+                    scrollView.layoutSubtreeIfNeeded()
+                    scrollView.documentView?.layoutSubtreeIfNeeded()
                 }
+                if result.progress > 0 { break }
             }
-            if result.progress == 0 && result.errors == 0 { result.errors = 1 }
+            result.record(
+                mode: .wysiwyg,
+                action: "scrollDocument",
+                expected: hasScrollableDocument ? .accepted : .refused,
+                observed: result.progress > 0 ? .accepted : .refused
+            )
             return result
 
         case .undoRedoStorm:
             session.setMode(.source)
             var result = Counters()
             for _ in 0..<100 {
-                result.actionAttempts += 1
                 let before = document.sourceVersion
                 let outcome = session.perform(
                     .insertText("x"), selection: .source(session.sourceModeState.selection),
                     expectedSourceRevision: SourceRevision(value: document.sourceVersion),
                     grouping: .discrete
                 )
-                if case .accepted = outcome, document.sourceVersion != before { result.accepted += 1; result.progress += 1 }
-                else { result.errors += 1 }
+                result.record(
+                    mode: .source,
+                    action: "insertText",
+                    expected: .accepted,
+                    observed: editWasAccepted(outcome) && document.sourceVersion != before ? .accepted : .refused
+                )
             }
             for _ in 0..<100 {
                 let before = document.sourceVersion
                 document.undoManager?.undo()
-                if document.sourceVersion == before { result.errors += 1 }
+                result.record(
+                    mode: .source,
+                    action: "undo",
+                    expected: .accepted,
+                    observed: document.sourceVersion != before ? .accepted : .refused
+                )
             }
             for _ in 0..<100 {
                 let before = document.sourceVersion
                 document.undoManager?.redo()
-                if document.sourceVersion == before { result.errors += 1 }
+                result.record(
+                    mode: .source,
+                    action: "redo",
+                    expected: .accepted,
+                    observed: document.sourceVersion != before ? .accepted : .refused
+                )
             }
             return result
 
         case .openAndIdle:
-            var result = Counters(progress: session.presentation?.sourceRevision.value == document.sourceVersion ? 1 : 0)
-            result.actionAttempts = 1
+            let ready = session.presentation?.sourceRevision.value == document.sourceVersion
+            var result = Counters()
+            result.record(
+                mode: session.mode,
+                action: "openAndIdle",
+                expected: .accepted,
+                observed: ready ? .accepted : .refused
+            )
             return result
 
         case .soak:
@@ -436,6 +613,29 @@ enum BenchmarkDriver {
             scrollView.documentView?.displayIfNeeded()
             if measuredMaxScrollY(in: scrollView) > 0 { return }
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.025))
+        }
+    }
+
+    private static func canReachBenchmarkBottom(in scrollView: NSScrollView) -> Bool {
+        let maxY = measuredMaxScrollY(in: scrollView)
+        guard maxY > 0 else { return false }
+        for _ in 0..<8 {
+            let before = scrollView.contentView.bounds.origin.y
+            scrollView.contentView.setBoundsOrigin(NSPoint(x: 0, y: maxY))
+            let reached = scrollView.contentView.bounds.origin.y == maxY
+            scrollView.contentView.setBoundsOrigin(.zero)
+            if reached && before != maxY { return true }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.025))
+            scrollView.layoutSubtreeIfNeeded()
+            scrollView.documentView?.layoutSubtreeIfNeeded()
+        }
+        return false
+    }
+
+    private static func waitForBenchmarkPresentation(session: EditorSession, document: MarkdownDocument) async {
+        for _ in 0..<200 {
+            if session.presentation?.sourceRevision.value == document.sourceVersion { return }
+            try? await Task.sleep(for: .milliseconds(25))
         }
     }
 

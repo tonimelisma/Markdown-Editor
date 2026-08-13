@@ -239,16 +239,4 @@ final class FrameObserver {
         self.lastCallbackUptime = tick.callbackUptimeNanos
     }
 
-    nonisolated static func hitchMillisPerSecond(
-        frameIntervalsNanos: [UInt64],
-        cadenceNanos: UInt64,
-        observedNanos: UInt64? = nil
-    ) -> Double {
-        guard cadenceNanos > 0 else { return 0 }
-        let excessMillis = frameIntervalsNanos.reduce(0.0) { total, interval in
-            total + Double(interval > cadenceNanos ? interval - cadenceNanos : 0) / 1_000_000
-        }
-        let denominator = Double(observedNanos ?? max(cadenceNanos, frameIntervalsNanos.reduce(0, +))) / 1_000_000_000
-        return denominator > 0 ? excessMillis / denominator : 0
-    }
 }
