@@ -401,12 +401,9 @@ final class InMemoryEditorTrace: EditorTraceSink {
     private let coverageLog: DiagnosticLog?
 
     init() {
-        if FileManager.default.fileExists(
-            atPath: JSONLinesEditorTrace.hostedCoverageDirectory()
-                .appendingPathComponent("route.pipe").path
-        ) {
+        if let coveragePipeURL = JSONLinesEditorTrace.coveragePipeURL() {
             coverageLog = DiagnosticLog(
-                directory: JSONLinesEditorTrace.hostedCoverageDirectory(),
+                directory: coveragePipeURL.deletingLastPathComponent(),
                 hostKind: .unitTest
             )
         } else {

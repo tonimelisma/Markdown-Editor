@@ -8,10 +8,50 @@
 import Testing
 import AppKit
 import Foundation
+import Darwin
 @testable import Markdown_Editor
 
 @MainActor
 struct DiagnosticLogTests {
+
+    // Verifies: REQ-135 — evidence coverage accepts only a gate-owned FIFO, not a regular file
+    // or symlink that could redirect records outside the capture channel.
+    @Test func coverageEvidenceRequiresFIFOs() throws {
+        let directory = makeTemporaryDirectory()
+        let regular = directory.appendingPathComponent("regular.pipe")
+        try Data().write(to: regular)
+        let symlink = directory.appendingPathComponent("symlink.pipe")
+        try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: regular)
+        let fifo = directory.appendingPathComponent("route.pipe")
+        #expect(mkfifo(fifo.path, 0o600) == 0)
+        #expect(!JSONLinesEditorTrace.isCoverageFIFO(at: regular))
+        #expect(!JSONLinesEditorTrace.isCoverageFIFO(at: symlink))
+        #expect(JSONLinesEditorTrace.isCoverageFIFO(at: fifo))
+        #expect(JSONLinesEditorTrace.coveragePipeURL(environment: [
+            "EDITOR_TRACE_COVERAGE_LOG_DIR": directory.path
+        ]) == fifo)
+    }
+
+    // Verifies: REQ-135 — a regular-file or symlink override cannot become a coverage pipe.
+    @Test func coveragePipeOverrideRejectsRegularFileAndSymlink() throws {
+        let directory = makeTemporaryDirectory()
+        let regularDirectory = directory.appendingPathComponent("regular", isDirectory: true)
+        try FileManager.default.createDirectory(at: regularDirectory, withIntermediateDirectories: true)
+        try Data().write(to: regularDirectory.appendingPathComponent("route.pipe"))
+        let symlinkDirectory = directory.appendingPathComponent("symlink", isDirectory: true)
+        try FileManager.default.createDirectory(at: symlinkDirectory, withIntermediateDirectories: true)
+        let regular = directory.appendingPathComponent("regular-target.pipe")
+        try Data().write(to: regular)
+        try FileManager.default.createSymbolicLink(
+            at: symlinkDirectory.appendingPathComponent("route.pipe"), withDestinationURL: regular
+        )
+        #expect(JSONLinesEditorTrace.coveragePipeURL(environment: [
+            "EDITOR_TRACE_COVERAGE_LOG_DIR": regularDirectory.path
+        ]) == nil)
+        #expect(JSONLinesEditorTrace.coveragePipeURL(environment: [
+            "EDITOR_TRACE_COVERAGE_LOG_DIR": symlinkDirectory.path
+        ]) == nil)
+    }
 
     @Test func samplerComputesPercentilesFromKnownDistribution() {
         let sampler = PerformanceSampler(trace: nil)

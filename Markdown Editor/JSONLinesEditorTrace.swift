@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import Darwin
 
 /// Production editor trace sink. Maps typed editor events onto JSON Lines diagnostic records.
 ///
@@ -79,25 +80,29 @@ final class JSONLinesEditorTrace: EditorTraceSink {
     @MainActor
     final class ProductionRouteCoverageRecorder {
         private let handle: FileHandle?
+        private let harness: String
+        private let evidenceSession: String
         private let startedAt: Date
         private let startUptimeNanos: UInt64
         private var nextSequence: UInt64 = 0
 
-        init?() {
-            let path = JSONLinesEditorTrace.hostedCoverageDirectory()
-                .appendingPathComponent("route.pipe")
-            guard FileManager.default.fileExists(atPath: path.path) else { return nil }
+        init?(hostKind: DiagnosticHostKind) {
+            guard let path = JSONLinesEditorTrace.coveragePipeURL(),
+                  let session = JSONLinesEditorTrace.coverageSession(for: path) else { return nil }
+            harness = hostKind == .production ? "process" : "component"
+            evidenceSession = session
             startedAt = Date()
             startUptimeNanos = DispatchTime.now().uptimeNanoseconds
             let runID = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12))
             let header = DiagnosticRunHeader(
                 runID: runID,
                 startedAt: startedAt,
-                hostKind: .unitTest,
+                hostKind: hostKind,
                 shortVersion: "0",
                 buildVersion: "0",
                 osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
-                processID: ProcessInfo.processInfo.processIdentifier
+                processID: ProcessInfo.processInfo.processIdentifier,
+                evidenceSession: session
             )
             handle = try? FileHandle(forWritingTo: path)
             append(header.jsonLine)
@@ -124,6 +129,8 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 origin: .productionRoute,
                 productionRoute: route,
                 evidenceChannel: "productionRoutePipe",
+                evidenceHarness: harness,
+                evidenceSession: evidenceSession,
                 data: data
             )
             append(record.jsonLine)
@@ -142,6 +149,40 @@ final class JSONLinesEditorTrace: EditorTraceSink {
         return URL(fileURLWithPath: repoRoot, isDirectory: true)
             .appendingPathComponent(".build", isDirectory: true)
             .appendingPathComponent("instrumentation-coverage-tests", isDirectory: true)
+    }
+
+    /// Gate scripts may override the pipe directory for a directly launched process. Test hosts
+    /// that do not inherit that environment fall back to the deterministic checkout path used by
+    /// the scripts, so the normal xcodebuild gate remains hermetic.
+    static func coveragePipeURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL? {
+        if let override = environment["EDITOR_TRACE_COVERAGE_LOG_DIR"], !override.isEmpty {
+            let candidate = URL(fileURLWithPath: override, isDirectory: true)
+                .appendingPathComponent("route.pipe")
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return Self.isCoverageFIFO(at: candidate) ? candidate : nil
+            }
+        }
+        let fallback = hostedCoverageDirectory().appendingPathComponent("route.pipe")
+        return Self.isCoverageFIFO(at: fallback) ? fallback : nil
+    }
+
+    static func isCoverageFIFO(at url: URL) -> Bool {
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else { return false }
+        return (info.st_mode & S_IFMT) == S_IFIFO
+    }
+
+    private static func coverageSession(for pipeURL: URL) -> String? {
+        let sidecar = pipeURL.deletingLastPathComponent().appendingPathComponent(".coverage-session")
+        if let session = try? String(contentsOf: sidecar, encoding: .utf8),
+           session.trimmingCharacters(in: .whitespacesAndNewlines).range(of: "^[0-9a-f]{32}$", options: .regularExpression) != nil {
+            return session.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard let session = ProcessInfo.processInfo.environment["EDITOR_TRACE_COVERAGE_SESSION"],
+              session.range(of: "^[0-9a-f]{32}$", options: .regularExpression) != nil else { return nil }
+        return session
     }
 
     struct Mapped {

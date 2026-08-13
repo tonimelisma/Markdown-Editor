@@ -35,6 +35,27 @@ nonisolated struct DiagnosticRunHeader: Sendable, Equatable {
     let buildVersion: String
     let osVersion: String
     let processID: Int32
+    let evidenceSession: String?
+
+    init(
+        runID: String,
+        startedAt: Date,
+        hostKind: DiagnosticHostKind,
+        shortVersion: String,
+        buildVersion: String,
+        osVersion: String,
+        processID: Int32,
+        evidenceSession: String? = nil
+    ) {
+        self.runID = runID
+        self.startedAt = startedAt
+        self.hostKind = hostKind
+        self.shortVersion = shortVersion
+        self.buildVersion = buildVersion
+        self.osVersion = osVersion
+        self.processID = processID
+        self.evidenceSession = evidenceSession
+    }
 
     /// // REQ-095: encoded rather than interpolated. `osVersion` and the bundle versions are
     /// // runtime strings, so a quote or backslash in any of them would otherwise make the one
@@ -48,6 +69,7 @@ nonisolated struct DiagnosticRunHeader: Sendable, Equatable {
                 let build: String
                 let os: String
                 let pid: Int32
+                let session: String?
             }
             let v: Int
             let ev: String
@@ -66,7 +88,8 @@ nonisolated struct DiagnosticRunHeader: Sendable, Equatable {
                 version: shortVersion,
                 build: buildVersion,
                 os: osVersion,
-                pid: processID
+                pid: processID,
+                session: evidenceSession
             )
         )
         let encoder = JSONEncoder()
@@ -182,7 +205,8 @@ final class DiagnosticLog {
             shortVersion: (bundle?["CFBundleShortVersionString"] as? String) ?? "0",
             buildVersion: (bundle?["CFBundleVersion"] as? String) ?? "0",
             osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
-            processID: ProcessInfo.processInfo.processIdentifier
+            processID: ProcessInfo.processInfo.processIdentifier,
+            evidenceSession: nil
         )
         try? FileManager.default.createDirectory(
             at: directory,
@@ -200,7 +224,7 @@ final class DiagnosticLog {
         }
         let sink = DiagnosticFileSink(url: fileURL, byteLimit: Self.maximumFileBytes)
         writeCoordinator = DiagnosticWriteCoordinator(sink: sink)
-        coverageRecorder = JSONLinesEditorTrace.ProductionRouteCoverageRecorder()
+        coverageRecorder = JSONLinesEditorTrace.ProductionRouteCoverageRecorder(hostKind: hostKind)
         startUptimeNanos = DispatchTime.now().uptimeNanoseconds
         // A document app with no dirty documents is eligible for sudden termination: the process
         // is killed without `applicationWillTerminate`, so the terminating record never lands and
