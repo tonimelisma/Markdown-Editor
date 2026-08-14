@@ -67,6 +67,10 @@ final class EditorSession: ObservableObject {
     let parseCoordinator: ParseCoordinator
     private var cancellables = Set<AnyCancellable>()
     private var publicationObserver: AnyCancellable?
+    /// Coalesces the multiple `@Published` emissions produced by one canonical document
+    /// mutation. The mutation's staged intent must be consumed by the one resulting parse,
+    /// rather than allowing the second property emission to create a fresh reconciliation owner.
+    private var pendingDocumentChangeTask: Task<Void, Never>?
 
     // MARK: - View reconciliation scope (REQ-094/096; ARC-015)
 
@@ -153,11 +157,9 @@ final class EditorSession: ObservableObject {
                 // old map synchronously so loaded/reverted source is never editable
                 // through a presentation carrying the previous content identity.
                 MainActor.assumeIsolated {
-                    self?.invalidateDerivedState()
-                }
-                Task { @MainActor in
                     guard let self else { return }
-                    self.scheduleParse(intent: self.takePendingDocumentMutationIntent())
+                    self.invalidateDerivedState()
+                    self.scheduleDocumentChangeParse()
                 }
             }
             .store(in: &cancellables)
@@ -173,6 +175,8 @@ final class EditorSession: ObservableObject {
     /// Ends the window/session lifetime without retaining the document, sampler, timer, or
     /// Combine subscriptions. Repeated detach is intentionally harmless.
     func detach() {
+        pendingDocumentChangeTask?.cancel()
+        pendingDocumentChangeTask = nil
         parseCoordinator.cancel()
         if let pendingDocumentMutationIntent {
             pendingDocumentMutationIntent.recorder.finish(pendingDocumentMutationIntent, orphaned: true)
@@ -195,6 +199,19 @@ final class EditorSession: ObservableObject {
         presentation = nil
         authoritativeTree = nil
         resolvedImages = [:]
+    }
+
+    /// Schedule one reconciliation after the synchronous `@Published` burst for a canonical
+    /// mutation has settled. `MarkdownDocument.applyReplacement` publishes `text` and
+    /// `sourceVersion` separately; both describe one edit and must share its staged intent.
+    private func scheduleDocumentChangeParse() {
+        guard pendingDocumentChangeTask == nil else { return }
+        pendingDocumentChangeTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, !Task.isCancelled else { return }
+            self.pendingDocumentChangeTask = nil
+            self.scheduleParse(intent: self.takePendingDocumentMutationIntent())
+        }
     }
 
     func recordPerformance(_ metric: PerformanceSampler.Metric, durationNanos: UInt64) {
