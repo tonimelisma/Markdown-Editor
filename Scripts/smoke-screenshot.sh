@@ -147,7 +147,7 @@ fi
 # reconciliation and then a hostUpdateEnded record with a strictly later sequence number, then
 # add a short fixed margin for the window server to composite.
 rendered=0
-for _ in $(seq 1 100); do
+for _ in $(seq 1 "$smoke_wait_loops"); do
     if python3 - "$run_file" <<'PYEOF'
 import json, sys
 records = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
@@ -247,7 +247,7 @@ fi
 # successful screenshot or by the verifier's own exit status.
 app_exit_failed=0
 app_exit_code=0
-for _ in $(seq 1 100); do
+for _ in $(seq 1 "$smoke_wait_loops"); do
     kill -0 "$app_pid" 2>/dev/null || break
     sleep 0.1
 done
