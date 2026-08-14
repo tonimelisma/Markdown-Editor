@@ -135,6 +135,35 @@ struct EditorTransactionKernelTests {
         #expect(document.sourceVersion == 0)
         #expect(document.documentUndoManager?.canUndo == false)
 
+        let commandMismatch = SourceMutation(
+            expectedRevision: state.source.sourceVersion,
+            range: NSRange(location: 0, length: 0),
+            expectedText: "",
+            replacement: "Y",
+            selectionBefore: selection,
+            selectionAfter: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+            actionName: "Typing",
+            grouping: .typing
+        )
+        let commandMismatchResult = EditorTransactionKernel.reduce(
+            .semanticCommand(
+                EditorSemanticInput(
+                    request: request,
+                    plannedOutcome: .accepted(
+                        AcceptedEdit(
+                            sourceMutation: commandMismatch,
+                            presentationTransition: nil,
+                            sourceSelectionAfter: commandMismatch.selectionAfter,
+                            projectionSelectionAfter: nil,
+                            intent: nil
+                        )
+                    )
+                )
+            ),
+            state: state
+        )
+        #expect(commandMismatchResult == .refused(.contentMismatch))
+
         let staleSelectionMutation = SourceMutation(
             expectedRevision: state.source.sourceVersion,
             range: NSRange(location: 0, length: 0),
@@ -204,6 +233,8 @@ struct EditorTransactionKernelTests {
             if case .mutationCommitted = $0 { return true }
             return false
         }.count
+        // The native selection callback owns the pre-edit identity; the mutation cannot invent it.
+        session.captureSelection(.source(mutation.selectionBefore))
         let result = coordinator.commitNativeMutation(mutation)
         guard case .committed = result else {
             Issue.record("real source route refused: \(result)")
@@ -216,6 +247,40 @@ struct EditorTransactionKernelTests {
             return false
         }.count - before == 1)
         #expect(document.documentUndoManager?.canUndo == true)
+    }
+
+    // Verifies: COR-70 — the window-scoped command route performs one kernel commit and does not
+    // recapture its own request as owner selection.
+    @Test func realCommandRouteUsesKernelCommitExactlyOnce() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("hello\n")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let session = EditorSession()
+        session.attach(document: document)
+        session.setMode(.source)
+        session.captureSelection(.source(
+            SourceSelection(utf16: NSRange(location: 0, length: 5))
+        ))
+        let controller = EditorCommandController()
+        controller.bind(
+            document: document,
+            session: session,
+            actionRouter: EditorActionRouter(),
+            window: nil
+        )
+        let before = trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count
+
+        #expect(controller.perform(.bold) == .accepted)
+        #expect(document.text == "**hello**\n")
+        #expect(trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count - before == 1)
+        session.detach()
     }
 
     // Verifies: COR-70 everyInputRouteUsesEditorTransactionKernel.

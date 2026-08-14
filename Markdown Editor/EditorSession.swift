@@ -314,9 +314,10 @@ final class EditorSession: ObservableObject {
         }
     }
 
-    /// Captures a native or command-surface selection before a transaction is planned. This is
-    /// input capture, not transaction validation: the kernel validates the submitted selection
-    /// against this owner state after the capture has completed.
+    /// Captures a native selection or native action identity before a transaction is planned.
+    /// This is input capture, not transaction validation: the kernel validates the submitted
+    /// selection against this owner state after the capture has completed. Transaction adapters
+    /// never call this with a proposed mutation range.
     func captureSelection(_ selection: EditorSelection) {
         switch selection {
         case .source(let value):

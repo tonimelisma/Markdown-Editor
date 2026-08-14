@@ -471,6 +471,9 @@ nonisolated enum EditorTransactionKernel {
         guard mutation.expectedRevision == state.source.sourceVersion else {
             return .staleVersion
         }
+        guard mutation.grouping == request.grouping else {
+            return .invalidIdentity
+        }
         let source = state.source.text as NSString
         guard mutation.range.location >= 0,
               mutation.range.length >= 0,
@@ -497,6 +500,14 @@ nonisolated enum EditorTransactionKernel {
                   edit.presentationTransition == nil,
                   edit.projectionSelectionAfter == nil else {
                 return .invalidIdentity
+            }
+            switch request.command {
+            case .insertText(let text):
+                guard mutation.replacement == text else { return .contentMismatch }
+            case .deleteBackward:
+                guard mutation.replacement.isEmpty else { return .contentMismatch }
+            default:
+                break
             }
         case .projection(let selection):
             guard let presentation = state.presentation,
@@ -535,6 +546,46 @@ nonisolated enum EditorTransactionKernel {
             )
             guard projected == transition.nextSnapshot.renderedString else {
                 return .invalidIdentity
+            }
+            switch request.command {
+            case .insertText(let text):
+                if transition.projectionReplacementRange == selection.range.utf16 {
+                    guard case .exact(let sourceRange) = presentation.coordinateMap.sourceRange(
+                        forProjection: selection.range.utf16,
+                        affinity: selection.affinity
+                    ), mutation.range == sourceRange else {
+                        return .ambiguousSelection
+                    }
+                }
+                let expected = (presentation.renderedString as NSString).replacingCharacters(
+                    in: selection.range.utf16,
+                    with: text
+                )
+                if transition.projectionReplacementRange == selection.range.utf16 {
+                    guard transition.projectionReplacement == text else { return .contentMismatch }
+                } else {
+                    guard transition.nextSnapshot.renderedString == expected else { return .contentMismatch }
+                }
+            case .deleteBackward:
+                if transition.projectionReplacementRange == selection.range.utf16 {
+                    guard case .exact(let sourceRange) = presentation.coordinateMap.sourceRange(
+                        forProjection: selection.range.utf16,
+                        affinity: selection.affinity
+                    ), mutation.range == sourceRange else {
+                        return .ambiguousSelection
+                    }
+                }
+                let expected = (presentation.renderedString as NSString).replacingCharacters(
+                    in: selection.range.utf16,
+                    with: ""
+                )
+                if transition.projectionReplacementRange == selection.range.utf16 {
+                    guard transition.projectionReplacement.isEmpty else { return .contentMismatch }
+                } else {
+                    guard transition.nextSnapshot.renderedString == expected else { return .contentMismatch }
+                }
+            default:
+                break
             }
         }
         return nil

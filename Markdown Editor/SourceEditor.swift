@@ -68,9 +68,13 @@ enum SourceEditor {
                         intentID: intent?.id ?? IntentID(rawValue: 0)
                     )
                 )
-                session?.captureSelection(.source(mutation.selectionBefore))
-                let committed = session?.commitEditorInput(input)
-                    ?? document.commitEditorInput(input)
+                let committed: EditorTransactionCommitResult
+                if let session {
+                    committed = session.commitEditorInput(input)
+                } else {
+                    document.captureSourceSelection(mutation.selectionBefore)
+                    committed = document.commitEditorInput(input)
+                }
                 switch committed {
                 case .committed(let transaction):
                     guard case .edit(let edit) = transaction.effect else { return .refused(.conflict) }
@@ -345,6 +349,11 @@ final class MarkdownSourceTextView: NSTextView {
             utf16: selectedRange(),
             affinity: selectionAffinity == .upstream ? .upstream : .downstream
         )
+        if let document = actions as? MarkdownDocument {
+            // This adapter has no session owner, so preserve the native selection at the event
+            // boundary before the direct document commit. The mutation remains untrusted input.
+            document.captureSourceSelection(selectionBefore)
+        }
         guard let mutation = SourceMutation.exact(
             snapshot: snapshot,
             range: range,

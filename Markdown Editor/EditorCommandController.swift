@@ -112,7 +112,6 @@ final class EditorCommandController: ObservableObject {
         session: EditorSession
     ) -> EditorCommandResult {
         let selection = currentSelection(in: session)
-        session.captureSelection(selection)
         let outcome = session.perform(
             command,
             selection: selection,

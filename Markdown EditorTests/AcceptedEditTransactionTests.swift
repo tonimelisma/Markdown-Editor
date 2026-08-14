@@ -378,6 +378,8 @@ struct AcceptedEditTransactionTests {
     @Test func adapterStorageMatchesCommittedPresentationBeforeCallbackReturns() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
+        let trace = InMemoryEditorTrace()
+        doc.trace = trace
         let session = EditorSession()
         session.attach(document: doc)
         let tree = MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get()!
@@ -399,6 +401,10 @@ struct AcceptedEditTransactionTests {
         textView.documentActions = doc
         coordinator.textView = textView
         coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+        let beforeCommitCount = trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count
 
         let allowNative = coordinator.textView(
             textView,
@@ -410,6 +416,10 @@ struct AcceptedEditTransactionTests {
         #expect(doc.text == "ahi\n")
         #expect(textView.string == "ahi\n")
         #expect(textView.string == session.presentation?.renderedString)
+        #expect(trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count - beforeCommitCount == 1)
     }
 
     // Verifies: REQ-016/059/091; ARC-005 — paste advances source, session, and
@@ -417,6 +427,8 @@ struct AcceptedEditTransactionTests {
     @Test func plainTextPasteAppliesAcceptedTransitionSynchronously() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
+        let trace = InMemoryEditorTrace()
+        doc.trace = trace
         let session = EditorSession()
         session.attach(document: doc)
         let tree = MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get()!
@@ -439,6 +451,10 @@ struct AcceptedEditTransactionTests {
         coordinator.textView = textView
         coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
         textView.setSelectedRange(NSRange(location: 0, length: 0))
+        let beforeCommitCount = trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count
 
         let applied = textView.pastePlainText("*")
 
@@ -447,6 +463,10 @@ struct AcceptedEditTransactionTests {
         #expect(session.presentation?.renderedString == "*hi\n")
         #expect(textView.string == "*hi\n")
         #expect(textView.selectedRange() == NSRange(location: 1, length: 0))
+        #expect(trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count - beforeCommitCount == 1)
     }
 
     // Verifies: REQ-091; ARC-005 — refused edit changes neither source nor presentation.

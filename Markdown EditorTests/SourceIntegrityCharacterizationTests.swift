@@ -201,9 +201,7 @@ struct SourceIntegrityCharacterizationTests {
         let cancellable = doc.selectionRestorations.sink { restorations.append($0) }
         defer { cancellable.cancel() }
 
-        expectCommitted(
-            doc.commitSourceMutation(
-                SourceMutation(
+        let upper = SourceMutation(
                     expectedRevision: doc.sourceVersion,
                     range: NSRange(location: 0, length: 5),
                     expectedText: "hello",
@@ -212,9 +210,9 @@ struct SourceIntegrityCharacterizationTests {
                     selectionAfter: after,
                     actionName: "Upper",
                     grouping: .discrete
-                )
-            )
         )
+        doc.captureSourceSelection(upper.selectionBefore)
+        expectCommitted(doc.commitSourceMutation(upper))
         #expect(restorations.isEmpty)
 
         doc.undoManager?.undo()
@@ -303,7 +301,7 @@ struct SourceIntegrityCharacterizationTests {
         grouping: MutationGrouping
     ) -> SourceMutation {
         let afterLoc = range.location + (replacement as NSString).length
-        return SourceMutation(
+        let value = SourceMutation(
             expectedRevision: doc.sourceVersion,
             range: range,
             expectedText: expected,
@@ -313,6 +311,8 @@ struct SourceIntegrityCharacterizationTests {
             actionName: name,
             grouping: grouping
         )
+        doc.captureSourceSelection(value.selectionBefore)
+        return value
     }
 
     private func expectCommitted(_ result: SourceEditResult) {

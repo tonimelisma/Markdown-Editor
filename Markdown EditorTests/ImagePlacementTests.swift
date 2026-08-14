@@ -541,14 +541,24 @@ struct ImageMarkdownCommitTests {
     @Test @MainActor func commitsOrderedBatchAsOneUndoableReplacement() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("Hello|")
+        let trace = InMemoryEditorTrace()
+        doc.trace = trace
         let tv = MarkdownSourceTextView(usingTextLayoutManager: false)
         tv.documentActions = doc
         tv.string = doc.text
         tv.setSelectedRange(NSRange(location: 5, length: 1))
+        let before = trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count
         let markdown = "![](assets/a.png)\n![](assets/b.png)"
         tv.insertImageMarkdown(markdown, at: NSRange(location: 5, length: 1), selectEmptyDescription: false)
         #expect(doc.text == "Hello![](assets/a.png)\n![](assets/b.png)")
         #expect(doc.sourceVersion == 1)
+        #expect(trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count - before == 1)
     }
 
     // Verifies: REQ-073

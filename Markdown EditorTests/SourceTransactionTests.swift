@@ -45,6 +45,7 @@ struct SourceTransactionTests {
             actionName: mutation.actionName,
             grouping: mutation.grouping
         )
+        doc.captureSourceSelection(forced.selectionBefore)
         return doc.commitSourceMutation(forced)
     }
 
