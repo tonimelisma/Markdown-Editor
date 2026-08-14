@@ -28,6 +28,11 @@ protocol DocumentActionInterface: AnyObject {
     @MainActor @discardableResult
     func commitSourceMutation(_ mutation: SourceMutation) -> SourceEditResult
 
+    /// Kernel-owned input entry for adapter routes. Adapters must submit typed input rather than
+    /// calling the document's mutation implementation directly.
+    @MainActor @discardableResult
+    func commitEditorInput(_ input: EditorInput) -> EditorTransactionCommitResult
+
     /// Publish a source-domain selection restoration event to the attached editor session.
     @MainActor func requestSelectionRestoration(_ selection: SourceSelection)
 

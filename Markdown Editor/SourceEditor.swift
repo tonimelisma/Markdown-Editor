@@ -60,7 +60,19 @@ enum SourceEditor {
             } else {
                 false
             }
-            let result = document.commitSourceMutation(mutation)
+            let result: SourceEditResult = {
+                let input = EditorInput.sourceReplacement(
+                    EditorReplacementInput(mutation: mutation, intentID: intent?.id ?? IntentID(rawValue: 0))
+                )
+                let committed = session?.commitEditorInput(input) ?? document.commitEditorInput(input)
+                switch committed {
+                case .committed(let transaction):
+                    guard case .edit(let edit) = transaction.effect else { return .refused(.conflict) }
+                    return .committed(edit.sourceSelectionAfter)
+                case .refused(let refusal):
+                    return .refused(refusal.asSourceRefusal)
+                }
+            }()
             if let intent {
                 if case .committed = result, staged {
                     intent.recorder.finish(intent)
@@ -345,7 +357,19 @@ final class MarkdownSourceTextView: NSTextView {
         if let sourceCoordinator {
             result = sourceCoordinator.commitNativeMutation(mutation)
         } else {
-            result = actions.commitSourceMutation(mutation)
+            let input = EditorInput.imageReference(
+                EditorReplacementInput(mutation: mutation)
+            )
+            switch actions.commitEditorInput(input) {
+            case .committed(let transaction):
+                if case .edit(let edit) = transaction.effect {
+                    result = .committed(edit.sourceSelectionAfter)
+                } else {
+                    result = .refused(.conflict)
+                }
+            case .refused(let refusal):
+                result = .refused(refusal.asSourceRefusal)
+            }
         }
         switch result {
         case .committed:

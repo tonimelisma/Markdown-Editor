@@ -362,9 +362,63 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     var documentUndoManager: UndoManager? { undoManager }
 
-    // REQ-016: validate revision, range, and expected content; one private apply path.
+    // REQ-016; ARC-001/010: all canonical source writes reduce through the transaction kernel.
     @discardableResult
     func commitSourceMutation(_ mutation: SourceMutation) -> SourceEditResult {
+        switch commitEditorInput(.sourceReplacement(EditorReplacementInput(mutation: mutation))) {
+        case .committed(let transaction):
+            guard case .edit(let edit) = transaction.effect else {
+                return .refused(.conflict)
+            }
+            return .committed(edit.sourceSelectionAfter)
+        case .refused(let refusal):
+            return .refused(refusal.asSourceRefusal)
+        }
+    }
+
+    /// Main-actor application seam for every canonical document input. Reduction is pure; this
+    /// method alone performs source replacement, history registration, and diagnostic emission.
+    @discardableResult
+    func commitEditorInput(_ input: EditorInput) -> EditorTransactionCommitResult {
+        let mutationSelection: SourceSelection = {
+            switch input {
+            case .sourceReplacement(let value), .imageReference(let value):
+                return value.mutation.selectionBefore
+            case .undoRedo(let value):
+                return value.patch.selectionBefore
+            default:
+                return SourceSelection(utf16: NSRange(location: 0, length: 0))
+            }
+        }()
+        let state = EditorStateSnapshot(
+            source: sourceSnapshot(),
+            sourceSelection: mutationSelection
+        )
+        switch EditorTransactionKernel.reduce(input, state: state) {
+        case .refused(let refusal):
+            if case .sourceReplacement(let value) = input {
+                trace?.record(route: .mutationRefused, .mutationRefused(id: value.mutation.id, reason: refusal.asSourceRefusal))
+            } else if case .imageReference(let value) = input {
+                trace?.record(route: .mutationRefused, .mutationRefused(id: value.mutation.id, reason: refusal.asSourceRefusal))
+            }
+            if case .undoRedo(let history) = input {
+                trace?.record(route: .historyRefused, .historyRefused(direction: history.direction, reason: .contentMismatch))
+            }
+            return .refused(refusal)
+        case .accepted(let transaction):
+            switch transaction.effect {
+            case .edit(let edit):
+                applyCommittedMutation(edit.sourceMutation)
+                return .committed(transaction)
+            case .history(let history):
+                return applyHistoryPatchAfterReduction(history.patch, direction: history.direction, transaction: transaction)
+            case .markedText, .modeChange, .reconciliation:
+                return .committed(transaction)
+            }
+        }
+    }
+
+    private func applyCommittedMutation(_ mutation: SourceMutation) {
         trace?.record(route: .mutationRequested, .mutationRequested(
                 id: mutation.id,
                 revision: mutation.expectedRevision,
@@ -374,32 +428,8 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             )
         )
 
-        guard mutation.expectedRevision == sourceVersion else {
-            trace?.record(route: .mutationRefused, .mutationRefused(id: mutation.id, reason: .staleVersion))
-            return .refused(.staleVersion)
-        }
-
-        let ns = text as NSString
-        let length = ns.length
-        let range = mutation.range
-        guard range.location >= 0,
-              range.length >= 0,
-              NSMaxRange(range) <= length else {
-            trace?.record(route: .mutationRefused, .mutationRefused(id: mutation.id, reason: .invalidRange))
-            return .refused(.invalidRange)
-        }
-
-        let actual = ns.substring(with: range)
-        guard actual == mutation.expectedText else {
-            trace?.record(route: .mutationRefused, .mutationRefused(id: mutation.id, reason: .contentMismatch))
-            return .refused(.contentMismatch)
-        }
-
         let replacementUTF16 = (mutation.replacement as NSString).length
-        applyReplacement(
-            range: range,
-            replacement: mutation.replacement
-        )
+        applyReplacement(range: mutation.range, replacement: mutation.replacement)
 
         let patch = HistoryPatch.fromCommitted(mutation)
         registerHistoryUndo(for: patch, grouping: mutation.grouping)
@@ -407,12 +437,11 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         trace?.record(route: .mutationCommitted, .mutationCommitted(
                 id: mutation.id,
                 newRevision: sourceVersion,
-                location: range.location,
-                length: range.length,
+                location: mutation.range.location,
+                length: mutation.range.length,
                 replacementLength: replacementUTF16
             )
         )
-        return .committed(mutation.selectionAfter)
     }
 
     /// Test / history seam: apply a patch with content validation (no revision gate).
@@ -537,10 +566,24 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         _ patch: HistoryPatch,
         direction: HistoryDirection
     ) -> SourceEditResult {
-        guard patch.matchesCurrentContent(in: text) else {
+        let input = EditorInput.undoRedo(
+            EditorHistoryInput(patch: patch, direction: direction)
+        )
+        switch commitEditorInput(input) {
+        case .refused:
             trace?.record(route: .historyRefused, .historyRefused(direction: direction, reason: .contentMismatch))
             return .refused(.contentMismatch)
+        case .committed(let transaction):
+            guard case .history = transaction.effect else { return .refused(.conflict) }
+            return .committed(patch.selectionBefore)
         }
+    }
+
+    private func applyHistoryPatchAfterReduction(
+        _ patch: HistoryPatch,
+        direction: HistoryDirection,
+        transaction: AcceptedEditorTransaction
+    ) -> EditorTransactionCommitResult {
 
         applyReplacement(
             range: patch.range,
@@ -569,7 +612,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
                 length: patch.range.length
             )
         )
-        return .committed(patch.selectionBefore)
+        return .committed(transaction)
     }
 
     private func registerHistoryUndo(for patch: HistoryPatch, grouping: MutationGrouping) {

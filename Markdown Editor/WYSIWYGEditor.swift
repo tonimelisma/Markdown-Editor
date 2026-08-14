@@ -347,7 +347,8 @@ enum WYSIWYGEditor {
             let outcome = session.perform(
                 command,
                 selection: .projection(projectionSelection),
-                expectedSourceRevision: SourceRevision(value: document.sourceVersion)
+                expectedSourceRevision: SourceRevision(value: document.sourceVersion),
+                inputRoute: .wysiwygReplacement
             )
             switch outcome {
             case .accepted(let edit):
@@ -487,7 +488,8 @@ enum WYSIWYGEditor {
             _ = session.perform(
                 .toggleTask(nodeID: nodeID),
                 selection: .projection(selection),
-                expectedSourceRevision: presentation.sourceRevision
+                expectedSourceRevision: presentation.sourceRevision,
+                inputRoute: .checkbox
             )
             applyProjectionIfNeeded(reason: .reapplyIfDrift)
         }
@@ -598,6 +600,9 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             marked: NSRange(location: sourceRange.location, length: markedLength),
             snapshotID: session?.presentation?.id
         )
+        _ = session?.reduceTransientEditorInput(
+            .markedText(EditorMarkedTextInput(phase: .update))
+        )
         inputCoordinator?.allowingMarkedText = true
         // REQ-084: NSTextView registers marked-text edits on its undo manager, and AppKit
         // requires an open group before registering. The document's undo manager disables
@@ -646,6 +651,9 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             if marked.location != NSNotFound, let storage = textStorage {
                 guard marked.location >= 0, NSMaxRange(marked) <= storage.length else {
                     input.cancel()
+                    _ = session?.reduceTransientEditorInput(
+                        .markedText(EditorMarkedTextInput(phase: .cancel))
+                    )
                     performNativeUnmark()
                     (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
                     return
@@ -656,6 +664,9 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             }
             if text.isEmpty {
                 input.cancel()
+                _ = session?.reduceTransientEditorInput(
+                    .markedText(EditorMarkedTextInput(phase: .cancel))
+                )
                 performNativeUnmark()
                 (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
                 return
@@ -664,6 +675,9 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             return
         }
         inputCoordinator?.cancel()
+        _ = session?.reduceTransientEditorInput(
+            .markedText(EditorMarkedTextInput(phase: .cancel))
+        )
         performNativeUnmark()
         (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
     }
@@ -723,7 +737,8 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
         let result = session.perform(
             .insertText(text),
             selection: .projection(selection),
-            expectedSourceRevision: SourceRevision(value: captured.version)
+            expectedSourceRevision: SourceRevision(value: captured.version),
+            inputRoute: .markedText
         )
         (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCommitted, .compositionCommitted(sourceVersion: captured.version, replacementLength: (text as NSString).length)
         )

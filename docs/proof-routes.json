@@ -1,9 +1,9 @@
 {
   "version": 1,
   "events": {
-    "mutationRequested": {"owner": "MarkdownDocument", "entry": "commitSourceMutation", "expectedRecord": "mutationRequested", "allowedHarness": "component"},
-    "mutationCommitted": {"owner": "MarkdownDocument", "entry": "commitSourceMutation", "expectedRecord": "mutationCommitted", "allowedHarness": "component"},
-    "mutationRefused": {"owner": "MarkdownDocument", "entry": "commitSourceMutation", "expectedRecord": "mutationRefused", "allowedHarness": "component"},
+    "mutationRequested": {"owner": "MarkdownDocument", "entry": "applyCommittedMutation", "expectedRecord": "mutationRequested", "allowedHarness": "component"},
+    "mutationCommitted": {"owner": "MarkdownDocument", "entry": "applyCommittedMutation", "expectedRecord": "mutationCommitted", "allowedHarness": "component"},
+    "mutationRefused": {"owner": "MarkdownDocument", "entry": "commitEditorInput", "expectedRecord": "mutationRefused", "allowedHarness": "component"},
     "undoRegistered": {"owner": "MarkdownDocument", "entry": "registerHistoryUndo", "expectedRecord": "undoRegistered", "allowedHarness": "component"},
     "historyApplied": {"owner": "MarkdownDocument", "entry": "applyHistoryPatch", "expectedRecord": "historyApplied", "allowedHarness": "component"},
     "historyRefused": {"owner": "MarkdownDocument", "entry": "applyHistoryPatch", "expectedRecord": "historyRefused", "allowedHarness": "component"},

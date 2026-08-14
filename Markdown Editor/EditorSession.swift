@@ -239,6 +239,23 @@ final class EditorSession: ObservableObject {
 
     func setMode(_ newMode: EditorMode) {
         guard newMode != mode else { return }
+        if let document {
+            let intent = intentRecorder.begin(.modeTransition)
+            let input = EditorInput.modeChange(
+                EditorModeInput(mode: newMode, intentID: intent.id)
+            )
+            let state = editorStateSnapshot(intentID: intent.id)
+            guard case .accepted(let transaction) = EditorTransactionKernel.reduce(input, state: state),
+                  case .modeChange(let acceptedMode) = transaction.effect else {
+                intent.recorder.finish(intent, orphaned: true)
+                return
+            }
+            document.closeTypingUndoGroup()
+            mode = acceptedMode
+            traceModeToggle(toSource: acceptedMode == .source)
+            intent.recorder.finish(intent)
+            return
+        }
         document?.closeTypingUndoGroup()
         mode = newMode
         traceModeToggle(toSource: newMode == .source)
@@ -402,6 +419,22 @@ final class EditorSession: ObservableObject {
         provisional: Bool,
         intent: IntentContext? = nil
     ) {
+        if !provisional, let document {
+            let input = EditorInput.reconciliation(
+                EditorReconciliationInput(
+                    sourceRevision: SourceRevision(value: snapshot.sourceRevision.value),
+                    locationGeneration: snapshot.locationGeneration,
+                    projectionID: snapshot.id,
+                    intentID: intent?.id ?? IntentID(rawValue: 0)
+                )
+            )
+            guard case .accepted = EditorTransactionKernel.reduce(
+                input,
+                state: editorStateSnapshot(intentID: intent?.id ?? IntentID(rawValue: 0))
+            ), document.sourceVersion == snapshot.sourceRevision.value else {
+                return
+            }
+        }
         let previous = presentation
         let sourceSelection: SourceSelection? = {
             guard let previous,
@@ -485,6 +518,41 @@ final class EditorSession: ObservableObject {
         parseCoordinator.scheduleParse(session: self, document: document, intent: context)
     }
 
+    /// Captures the immutable session/document state consumed by the pure transaction reducer.
+    func editorStateSnapshot(intentID: IntentID = IntentID(rawValue: 0)) -> EditorStateSnapshot {
+        let source = document?.sourceSnapshot() ?? SourceSnapshot(
+            text: "",
+            sourceVersion: 0,
+            locationGeneration: 0,
+            fileURL: nil
+        )
+        return EditorStateSnapshot(
+            source: source,
+            mode: mode,
+            origin: updateOrigin.current,
+            sourceSelection: sourceModeState.selection,
+            projectionSelection: wysiwygModeState.selection,
+            presentation: presentation,
+            tree: authoritativeTree,
+            intentID: intentID,
+            nextPresentationID: snapshotIDs.make()
+        )
+    }
+
+    /// Adapter-facing source/image commit. The document remains the sole mutable owner; this
+    /// method exists so coordinators never call `commitSourceMutation` directly.
+    @discardableResult
+    func commitEditorInput(_ input: EditorInput) -> EditorTransactionCommitResult {
+        guard let document else { return .refused(.unavailable) }
+        return document.commitEditorInput(input)
+    }
+
+    /// Reduces a transient callback such as marked-text update/cancel without mutating source.
+    @discardableResult
+    func reduceTransientEditorInput(_ input: EditorInput) -> EditorTransactionReduction {
+        EditorTransactionKernel.reduce(input, state: editorStateSnapshot())
+    }
+
     /// Primary edit entry — returns accepted source+presentation transition or refusal.
     @discardableResult
     func perform(
@@ -492,7 +560,8 @@ final class EditorSession: ObservableObject {
         selection: EditorSelection,
         expectedSourceRevision: SourceRevision,
         grouping groupingOverride: MutationGrouping? = nil,
-        intentScope: WorkScope = .acceptedEdit
+        intentScope: WorkScope = .acceptedEdit,
+        inputRoute: EditorInputRoute = .semanticCommand
     ) -> EditorEditOutcome {
         guard let document else { return .refused(.unavailable) }
         let intent = intentRecorder.begin(intentScope)
@@ -511,16 +580,34 @@ final class EditorSession: ObservableObject {
             grouping: grouping
         )
         let editStart = DispatchTime.now().uptimeNanoseconds
-        let outcome = SemanticEditEngine.plan(
-            request,
-            snapshot: snapshot,
-            presentation: presentation,
-            tree: authoritativeTree,
-            nextSnapshotID: snapshotIDs.make(),
-            intent: intent
+        let semanticInput = EditorSemanticInput(request: request, intentID: intent.id)
+        let input: EditorInput
+        switch inputRoute {
+        case .wysiwygReplacement:
+            input = .wysiwygReplacement(semanticInput)
+        case .markedText:
+            input = .markedText(
+                EditorMarkedTextInput(
+                    phase: .commit,
+                    request: request,
+                    intentID: intent.id
+                )
+            )
+        case .checkbox:
+            input = .checkbox(semanticInput)
+        default:
+            input = .semanticCommand(semanticInput)
+        }
+        let reduction = EditorTransactionKernel.reduce(
+            input,
+            state: editorStateSnapshot(intentID: intent.id)
         )
-        switch outcome {
-        case .accepted(let edit):
+        switch reduction {
+        case .accepted(let transaction):
+            guard case .edit(let plannedEdit) = transaction.effect else {
+                return .refused(.unavailable)
+            }
+            let edit = plannedEdit.withIntent(intent)
             if case .projection = selection {
                 guard let current = presentation,
                       let transition = edit.presentationTransition,
@@ -540,7 +627,10 @@ final class EditorSession: ObservableObject {
                     planner: PlannerKind(command)
                 )
             )
-            switch document.commitSourceMutation(edit.sourceMutation) {
+            let commitInput = EditorInput.sourceReplacement(
+                EditorReplacementInput(mutation: edit.sourceMutation, intentID: intent.id)
+            )
+            switch document.commitEditorInput(commitInput) {
             case .committed:
                 updateSourceModeState { $0.selection = edit.sourceSelectionAfter }
                 if let transition = edit.presentationTransition {
@@ -563,15 +653,12 @@ final class EditorSession: ObservableObject {
                 handedOffToReconciliation = true
                 return .accepted(edit)
             case .refused(let refusal):
-                switch refusal {
-                case .staleVersion: return .refused(.staleVersion)
-                case .invalidRange: return .refused(.invalidRange)
-                case .conflict, .contentMismatch: return .refused(.ambiguousSelection)
-                }
+                document.trace?.record(route: .editRefused, .editRefused(category: .refusal(refusal.asEditRefusal)))
+                return .refused(refusal.asEditRefusal)
             }
         case .refused(let refusal):
-            document.trace?.record(route: .editRefused, .editRefused(category: .refusal(refusal)))
-            return .refused(refusal)
+            document.trace?.record(route: .editRefused, .editRefused(category: .refusal(refusal.asEditRefusal)))
+            return .refused(refusal.asEditRefusal)
         }
     }
 

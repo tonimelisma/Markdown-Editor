@@ -108,9 +108,10 @@ as an independently authoritative partial snapshot.
 ### Source edit
 
 1. The source `NSTextView` asks its delegate whether a native replacement may occur.
-2. The adapter forms an exact `SourceEditRequest`.
-3. The session validates the request against the current document revision.
-4. The document commits one `SourceMutation`, advances once, and registers undo.
+2. The adapter forms an exact `SourceMutation` and submits a typed `EditorInput`.
+3. `EditorTransactionKernel.reduce` validates the immutable source/session snapshot and returns
+   one accepted transaction or one typed refusal.
+4. The main-actor document commit applies one `SourceMutation`, advances once, and registers undo.
 5. Native source storage and the session's source selection are updated with explicit
    programmatic origin.
 6. Asynchronous parse/projection reconciliation is scheduled.
@@ -120,8 +121,9 @@ as an independently authoritative partial snapshot.
 An accepted WYSIWYG edit is a synchronous atomic transition:
 
 1. The view submits an immutable native replacement and current `ProjectionSelection`.
-2. The session classifies the entire selection against the exact presented snapshot.
-3. The semantic engine returns either:
+2. The session captures an `EditorStateSnapshot`; the transaction kernel classifies the entire
+   selection against the exact presented snapshot.
+3. The semantic engine, called only behind the kernel, returns either:
    - `AcceptedEdit { sourceMutation, presentationTransition, selectionAfter }`, or
    - a typed refusal with no mutation.
 4. For an accepted edit, the document commits the source mutation once.
@@ -624,16 +626,16 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 
 | ID | Invariant | Required proof |
 | --- | --- | --- |
-| ARC-001 | One canonical source, revision, URL generation, and undo owner: `MarkdownDocument`. | type/API inspection; document transaction tests |
+| ARC-001 | One canonical source, revision, URL generation, and undo owner: `MarkdownDocument`; all editor inputs cross `EditorTransactionKernel` before the document commit. | type/API inspection; `EditorTransactionKernelTests`; document transaction tests |
 | ARC-002 | One session-owned typed state per editor mode; no parallel compatibility state. | compiler types; documentation/source conformance check |
 | ARC-003 | Presented string, attributes, structure, coordinate map, and revision form one snapshot. | snapshot construction API; oracle |
-| ARC-004 | Editable WYSIWYG always matches current canonical source/location identity. | state-machine tests and traces |
-| ARC-005 | Accepted WYSIWYG edits advance source and presentation synchronously and exactly once. | reducer/adapter integration tests; rapid-input property tests |
+| ARC-004 | Editable WYSIWYG always matches current canonical source/location identity. | state-machine tests and traces; `EditorTransactionKernelTests` |
+| ARC-005 | Accepted WYSIWYG edits advance source and presentation synchronously and exactly once. | `acceptedEditAdvancesSourcePresentationSelectionAndUndoOnce`; rapid-input property tests |
 | ARC-006 | Background reconciliation cannot overwrite newer state. | adversarial generation tests and traces |
 | ARC-007 | Coordinate conversion is exact or refused; never guessed or clamped. | typed APIs; projection oracle; generated fixtures |
 | ARC-008 | Literal typing and semantic formatting are separate commands. | punctuation/context fixtures; toolbar tests |
 | ARC-009 | Content mutation (insertText/deleteBackward/replaceTableCell) that is unsupported, mixed, cross-cell, or unprovable refuses atomically; `reshapesWholeLine` block identification is total via enclosing `PresentationBlock` (`caretLocation ∈ projectionRange`; `tableCell` stays exact). | exhaustive selection-classification tests + block-identification totality tests |
-| ARC-010 | All text changes and history use one document-owned source mutation path. | API restriction; history tests |
+| ARC-010 | All text changes and history use one document-owned source mutation path behind the transaction kernel. | `everyInputRouteUsesEditorTransactionKernel`; API restriction; history tests |
 | ARC-011 | Mutable document/AppKit state remains main-actor-owned; background work uses immutable values. | Swift 6 complete-concurrency clean build |
 | ARC-012 | Image entry points share one exact-copy, contained, non-destructive transaction. | route tests; filesystem adversarial suite |
 | ARC-013 | Programmatic view updates cannot masquerade as user input or alter undo grouping. | explicit origin type; callback tests |
@@ -695,7 +697,7 @@ supersession documents. The working tree states current truth; Git records histo
   consecutive keystrokes. Complete attributed-storage replacement is likewise forbidden on the
   ordinary local-edit path.
 - Ordinary WYSIWYG planning still reaches a synchronous full-document parse/compile route. COR-70
-  first creates one transaction seam; COR-71 then replaces that work with a bounded local transition
+  creates the transaction seam; COR-71 then replaces that work with a bounded local transition
   plus identity-checked asynchronous authority.
 - Source highlighting bounds attribute application but still tokenizes the full source and performs
   whole-document fence scans. COR-72 replaces it with per-line state propagation.

@@ -441,9 +441,24 @@ final class ImagePlacementController: ObservableObject {
                     return
                 }
             }
-            let commitResult = actions.commitSourceMutation(mutation)
+            let commitResult: EditorTransactionCommitResult = actions.commitEditorInput(
+                .imageReference(
+                    EditorReplacementInput(
+                        mutation: mutation,
+                        intentID: snapshot.intent?.id ?? IntentID(rawValue: 0)
+                    )
+                )
+            )
             switch commitResult {
-            case .committed:
+            case .committed(let transaction):
+                guard case .edit = transaction.effect else {
+                    if let intent = snapshot.intent {
+                        session?.cancelStagedDocumentMutationIntent(intent)
+                    }
+                    await rollbackAndRecord(published)
+                    fail(snapshot.id, .writeFailed)
+                    return
+                }
                 if published.published.count == 1 {
                     let descStart = tracker.range.location + 2
                     let pending = SourceSelection(utf16: NSRange(location: descStart, length: 0))

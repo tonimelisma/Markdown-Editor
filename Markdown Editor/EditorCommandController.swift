@@ -71,14 +71,10 @@ final class EditorCommandController: ObservableObject {
         guard let document, let session else { return .disabled(.noDocument) }
         switch command {
         case .sourceMode:
-            let intent = session.intentRecorder.begin(.modeTransition)
             session.setMode(.source)
-            intent.recorder.finish(intent)
             return .accepted
         case .wysiwygMode:
-            let intent = session.intentRecorder.begin(.modeTransition)
             session.setMode(.wysiwyg)
-            intent.recorder.finish(intent)
             return .accepted
         case .addImage:
             Task { await session.addImages() }
