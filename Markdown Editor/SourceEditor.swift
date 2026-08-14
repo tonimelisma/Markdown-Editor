@@ -68,16 +68,9 @@ enum SourceEditor {
                         intentID: intent?.id ?? IntentID(rawValue: 0)
                     )
                 )
-                let committed = session?.commitEditorInput(
-                    input,
-                    selectionOverride: .source(mutation.selectionBefore)
-                ) ?? document.commitEditorInput(
-                    input,
-                    state: EditorStateSnapshot(
-                        source: document.sourceSnapshot(),
-                        sourceSelection: mutation.selectionBefore
-                    )
-                )
+                session?.captureSelection(.source(mutation.selectionBefore))
+                let committed = session?.commitEditorInput(input)
+                    ?? document.commitEditorInput(input)
                 switch committed {
                 case .committed(let transaction):
                     guard case .edit(let edit) = transaction.effect else { return .refused(.conflict) }

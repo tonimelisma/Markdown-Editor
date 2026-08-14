@@ -147,6 +147,7 @@ extension EditorSession {
                 )
             )
         }
+        captureSelection(editorSelection)
         return perform(
             command,
             selection: editorSelection,

@@ -43,11 +43,15 @@ accepted result; they do not parse, plan, mutate the document, repair selection,
 ## Proof and failure behavior
 
 - Table-driven tests enumerate every `EditorInput` case and accepted/refused result class.
-- For accepted inputs, source/presentation/selection/undo/intent advance exactly once together.
+- For accepted inputs, source/presentation/selection/undo/intent advance exactly once together;
+  a tampered planned outcome is refused when its source content, selection identity, or
+  presentation transition does not match the captured state.
 - For stale, invalid, mixed-domain, marked-text, and unprovable inputs, every mutable spy remains
   unchanged and one typed refusal is recorded.
 - Adapter integration tests prove each delegate/controller route calls the kernel once and applies
-  only its returned transaction. Re-entrancy and programmatic updates never enter as user input.
+  only its returned transaction (`realSourceAdapterRouteUsesKernelCommitExactlyOnce` plus the
+  existing WYSIWYG, checkbox, paste, marked-text, and image route proofs). Re-entrancy and
+  programmatic updates never enter as user input.
 
 ## Deletion/conformance gate
 

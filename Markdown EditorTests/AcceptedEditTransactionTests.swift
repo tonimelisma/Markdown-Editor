@@ -121,6 +121,9 @@ struct AcceptedEditTransactionTests {
         session.installProjectionForTesting(model, tree: tree)
 
         let presentation = session.presentation!
+        session.captureSelection(.projection(
+            ProjectionSelection(utf16: NSRange(location: 2, length: 0), revision: presentation.projectionRevision)
+        ))
         let outcome = session.perform(
             .insertText("日"),
             selection: .projection(
@@ -193,6 +196,9 @@ struct AcceptedEditTransactionTests {
 
         for location in [2, 0] {
             let current = session.presentation!
+            session.captureSelection(.projection(
+                ProjectionSelection(utf16: NSRange(location: location, length: 0), revision: current.projectionRevision)
+            ))
             let result = session.perform(
                 .insertText("*"),
                 selection: .projection(
@@ -305,6 +311,9 @@ struct AcceptedEditTransactionTests {
         session.installProjectionForTesting(model, tree: tree)
         let cell = try #require(session.presentation?.tables.first?.cells.first)
         let caret = cell.utf16Range.location + 1
+        session.captureSelection(.projection(
+            ProjectionSelection(utf16: NSRange(location: caret, length: 0), revision: try #require(session.presentation?.projectionRevision))
+        ))
 
         let outcome = session.perform(
             .insertText("*"),
@@ -342,6 +351,9 @@ struct AcceptedEditTransactionTests {
         session.installProjectionForTesting(model, tree: tree)
         let cell = try #require(session.presentation?.tables.first?.cells.first)
         let caret = cell.utf16Range.location + 2
+        session.captureSelection(.projection(
+            ProjectionSelection(utf16: NSRange(location: caret, length: 0), revision: try #require(session.presentation?.projectionRevision))
+        ))
 
         let outcome = session.perform(
             .deleteBackward,
@@ -451,6 +463,9 @@ struct AcceptedEditTransactionTests {
         session.installProjectionForTesting(model, tree: tree)
         let beforeText = doc.text
         let beforeID = session.presentation!.id
+        session.captureSelection(.projection(
+            ProjectionSelection(utf16: NSRange(location: 0, length: 0), revision: ProjectionRevision(value: 999_999))
+        ))
 
         let outcome = session.perform(
             .insertText("z"),

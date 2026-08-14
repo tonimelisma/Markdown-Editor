@@ -378,13 +378,18 @@ nonisolated enum EditorTransactionKernel {
         guard mutation.expectedRevision == state.source.sourceVersion else {
             return .refused(.staleVersion)
         }
-        if route != .imageReference {
-            guard mutation.selectionBefore == state.sourceSelection || value.selectionIdentity != nil else {
-                return .refused(.ambiguousSelection)
-            }
-        }
         if let selectionIdentity = value.selectionIdentity {
             guard selectionIdentity.matches(state) else { return .refused(.ambiguousSelection) }
+            if route != .imageReference,
+               case .projection(let projectionSelection) = selectionIdentity {
+                guard mutation.selectionBefore.affinity == projectionSelection.affinity else {
+                    return .refused(.ambiguousSelection)
+                }
+            }
+        } else if route != .imageReference {
+            guard mutation.selectionBefore == state.sourceSelection else {
+                return .refused(.ambiguousSelection)
+            }
         }
         let source = state.source.text as NSString
         guard mutation.range.location >= 0,
@@ -416,20 +421,123 @@ nonisolated enum EditorTransactionKernel {
         input: EditorInput,
         state: EditorStateSnapshot
     ) -> EditorTransactionReduction {
+        guard value.request.expectedSourceRevision.value == state.source.sourceVersion else {
+            return .refused(.staleVersion)
+        }
+        guard requestSelectionMatchesOwner(value.request.selection, state: state) else {
+            return .refused(.ambiguousSelection)
+        }
         let outcome = value.plannedOutcome
         guard let outcome else { return .refused(.unavailable) }
         switch outcome {
         case .accepted(let edit):
-            return .accepted(
-                AcceptedEditorTransaction(
-                    route: input.route,
-                    intentID: value.intentID,
-                    effect: .edit(edit)
+            guard let refusal = validateAcceptedEdit(edit, request: value.request, state: state) else {
+                return .accepted(
+                    AcceptedEditorTransaction(
+                        route: input.route,
+                        intentID: value.intentID,
+                        effect: .edit(edit)
+                    )
                 )
-            )
+            }
+            return .refused(refusal)
         case .refused(let refusal):
             return .refused(EditorRefusal(refusal))
         }
+    }
+
+    private static func requestSelectionMatchesOwner(
+        _ selection: EditorSelection,
+        state: EditorStateSnapshot
+    ) -> Bool {
+        switch selection {
+        case .source(let value):
+            return value == state.sourceSelection
+        case .projection(let value):
+            return value == state.projectionSelection
+        }
+    }
+
+    /// Validate the immutable result produced before reduction. The kernel cannot re-run the
+    /// semantic planner (that would reintroduce worker/clock work), but it can and must reject a
+    /// result whose content, identity, revision, selection, or presentation transition does not
+    /// correspond to the request and captured owner state.
+    private static func validateAcceptedEdit(
+        _ edit: AcceptedEdit,
+        request: EditorEditRequest,
+        state: EditorStateSnapshot
+    ) -> EditorRefusal? {
+        let mutation = edit.sourceMutation
+        guard mutation.expectedRevision == state.source.sourceVersion else {
+            return .staleVersion
+        }
+        let source = state.source.text as NSString
+        guard mutation.range.location >= 0,
+              mutation.range.length >= 0,
+              NSMaxRange(mutation.range) <= source.length else {
+            return .invalidRange
+        }
+        guard source.substring(with: mutation.range) == mutation.expectedText else {
+            return .contentMismatch
+        }
+        guard mutation.selectionAfter == edit.sourceSelectionAfter else {
+            return .invalidIdentity
+        }
+        let nextSourceLength = source.length - mutation.range.length
+            + (mutation.replacement as NSString).length
+        guard mutation.selectionAfter.range.utf16.location >= 0,
+              mutation.selectionAfter.range.utf16.length >= 0,
+              NSMaxRange(mutation.selectionAfter.range.utf16) <= nextSourceLength else {
+            return .invalidIdentity
+        }
+
+        switch request.selection {
+        case .source(let selection):
+            guard mutation.selectionBefore == selection,
+                  edit.presentationTransition == nil,
+                  edit.projectionSelectionAfter == nil else {
+                return .invalidIdentity
+            }
+        case .projection(let selection):
+            guard let presentation = state.presentation,
+                  presentation.sourceRevision.value == state.source.sourceVersion,
+                  presentation.locationGeneration == state.source.locationGeneration,
+                  presentation.id == selection.range.revision.snapshotID,
+                  mutation.selectionBefore.affinity == selection.affinity,
+                  let transition = edit.presentationTransition else {
+                return .stalePresentation
+            }
+            guard transition.fromSnapshotID == presentation.id,
+                  transition.nextSnapshot.id == state.nextPresentationID,
+                  transition.nextSnapshot.sourceRevision.value == state.source.sourceVersion &+ 1,
+                  transition.nextSnapshot.locationGeneration == state.source.locationGeneration,
+                  transition.nextSnapshot.sourceUTF16Count == nextSourceLength,
+                  transition.nextSnapshot.isOracleValid,
+                  let projectionSelectionAfter = edit.projectionSelectionAfter,
+                  projectionSelectionAfter == transition.selectionAfter,
+                  projectionSelectionAfter.range.revision.snapshotID == transition.nextSnapshot.id,
+                  transition.selectionAfter.range.revision.snapshotID == transition.nextSnapshot.id else {
+                return .invalidIdentity
+            }
+            let rendered = presentation.renderedString as NSString
+            guard transition.projectionReplacementRange.location >= 0,
+                  transition.projectionReplacementRange.length >= 0,
+                  NSMaxRange(transition.projectionReplacementRange) <= rendered.length,
+                  projectionSelectionAfter.range.utf16.location >= 0,
+                  projectionSelectionAfter.range.utf16.length >= 0,
+                  NSMaxRange(projectionSelectionAfter.range.utf16)
+                    <= (transition.nextSnapshot.renderedString as NSString).length else {
+                return .invalidRange
+            }
+            let projected = rendered.replacingCharacters(
+                in: transition.projectionReplacementRange,
+                with: transition.projectionReplacement
+            )
+            guard projected == transition.nextSnapshot.renderedString else {
+                return .invalidIdentity
+            }
+        }
+        return nil
     }
 
 }

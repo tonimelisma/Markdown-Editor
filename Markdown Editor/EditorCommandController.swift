@@ -111,9 +111,11 @@ final class EditorCommandController: ObservableObject {
         document: MarkdownDocument,
         session: EditorSession
     ) -> EditorCommandResult {
+        let selection = currentSelection(in: session)
+        session.captureSelection(selection)
         let outcome = session.perform(
             command,
-            selection: currentSelection(in: session),
+            selection: selection,
             expectedSourceRevision: SourceRevision(value: document.sourceVersion),
             intentScope: .semanticCommand
         )

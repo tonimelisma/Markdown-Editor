@@ -92,6 +92,132 @@ struct EditorTransactionKernelTests {
         #expect(document.documentUndoManager?.canUndo == false)
     }
 
+    // Verifies: COR-70 kernelRejectsMismatchedPlansAndSelectionIdentities.
+    @Test func kernelRejectsMismatchedPlansAndSelectionIdentities() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("abc")
+        let selection = SourceSelection(utf16: NSRange(location: 0, length: 0))
+        let state = EditorStateSnapshot(
+            source: document.sourceSnapshot(),
+            sourceSelection: selection
+        )
+        let request = EditorEditRequest(
+            command: .insertText("X"),
+            selection: .source(selection),
+            expectedSourceRevision: SourceRevision(value: state.source.sourceVersion),
+            grouping: .typing
+        )
+        let mismatchedMutation = SourceMutation(
+            expectedRevision: state.source.sourceVersion,
+            range: NSRange(location: 0, length: 1),
+            expectedText: "not-abc",
+            replacement: "X",
+            selectionBefore: selection,
+            selectionAfter: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+            actionName: "Typing",
+            grouping: .typing
+        )
+        let mismatchedPlan = EditorEditOutcome.accepted(
+            AcceptedEdit(
+                sourceMutation: mismatchedMutation,
+                presentationTransition: nil,
+                sourceSelectionAfter: mismatchedMutation.selectionAfter,
+                projectionSelectionAfter: nil,
+                intent: nil
+            )
+        )
+        let plannedResult = EditorTransactionKernel.reduce(
+            .semanticCommand(EditorSemanticInput(request: request, plannedOutcome: mismatchedPlan)),
+            state: state
+        )
+        #expect(plannedResult == .refused(.contentMismatch))
+        #expect(document.text == "abc")
+        #expect(document.sourceVersion == 0)
+        #expect(document.documentUndoManager?.canUndo == false)
+
+        let staleSelectionMutation = SourceMutation(
+            expectedRevision: state.source.sourceVersion,
+            range: NSRange(location: 0, length: 0),
+            expectedText: "",
+            replacement: "X",
+            selectionBefore: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+            selectionAfter: SourceSelection(utf16: NSRange(location: 2, length: 0)),
+            actionName: "Typing",
+            grouping: .typing
+        )
+        let identityResult = EditorTransactionKernel.reduce(
+            .sourceReplacement(
+                EditorReplacementInput(
+                    mutation: staleSelectionMutation,
+                    selectionIdentity: .source(staleSelectionMutation.selectionBefore)
+                )
+            ),
+            state: state
+        )
+        #expect(identityResult == .refused(.ambiguousSelection))
+        #expect(document.text == "abc")
+        #expect(document.sourceVersion == 0)
+    }
+
+    // Verifies: COR-70 reconciliationRejectsUnexpectedCurrentPresentationIdentity.
+    @Test func reconciliationRejectsUnexpectedCurrentPresentationIdentity() {
+        let source = SourceSnapshot(text: "abc", sourceVersion: 3, locationGeneration: 7, fileURL: nil)
+        let state = EditorStateSnapshot(source: source)
+        let result = EditorTransactionKernel.reduce(
+            .reconciliation(
+                EditorReconciliationInput(
+                    sourceRevision: SourceRevision(value: 3),
+                    locationGeneration: 7,
+                    projectionID: PresentationSnapshot.ID(value: 11),
+                    expectedProjectionID: PresentationSnapshot.ID(value: 10)
+                )
+            ),
+            state: state
+        )
+        #expect(result == .refused(.staleVersion))
+    }
+
+    // Verifies: COR-70 realSourceAdapterRouteUsesKernelCommitExactlyOnce.
+    @Test func realSourceAdapterRouteUsesKernelCommitExactlyOnce() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("abc")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let session = EditorSession()
+        session.attach(document: document)
+        let coordinator = SourceEditor.Coordinator(
+            document: document,
+            placementController: ImagePlacementController(),
+            session: session
+        )
+        let mutation = SourceMutation(
+            expectedRevision: document.sourceVersion,
+            range: NSRange(location: 0, length: 1),
+            expectedText: "a",
+            replacement: "A",
+            selectionBefore: SourceSelection(utf16: NSRange(location: 0, length: 1)),
+            selectionAfter: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+            actionName: "Typing",
+            grouping: .typing
+        )
+        let before = trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count
+        let result = coordinator.commitNativeMutation(mutation)
+        guard case .committed = result else {
+            Issue.record("real source route refused: \(result)")
+            return
+        }
+        #expect(document.text == "Abc")
+        #expect(document.sourceVersion == 1)
+        #expect(trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count - before == 1)
+        #expect(document.documentUndoManager?.canUndo == true)
+    }
+
     // Verifies: COR-70 everyInputRouteUsesEditorTransactionKernel.
     @Test(arguments: EditorInputRoute.allCases)
     func everyInputRouteUsesEditorTransactionKernel(_ route: EditorInputRoute) throws {

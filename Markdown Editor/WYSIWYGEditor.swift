@@ -336,6 +336,7 @@ enum WYSIWYGEditor {
                 revision: presentation.projectionRevision,
                 affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
             )
+            session.captureSelection(.projection(projectionSelection))
             let command: SemanticCommand
             if replacement.isEmpty && affectedCharRange.length > 0 {
                 command = .insertText("")
@@ -483,6 +484,7 @@ enum WYSIWYGEditor {
                 utf16: NSRange(location: attachment.utf16Location, length: 1),
                 revision: presentation.projectionRevision
             )
+            session.captureSelection(.projection(selection))
             _ = session.perform(
                 .toggleTask(nodeID: nodeID),
                 selection: .projection(selection),
@@ -606,7 +608,9 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
         let updateResult = session?.commitEditorInput(updateInput)
             ?? documentActions.commitEditorInput(updateInput)
         guard case .committed = updateResult else {
-            inputCoordinator?.cancel()
+            if cancelMarkedTextForInput() {
+                (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
+            }
             return
         }
         inputCoordinator?.beginMarkedText(
@@ -739,16 +743,17 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             utf16: captured.range,
             revision: presentation.projectionRevision
         )
+        session.captureSelection(.projection(selection))
         let result = session.perform(
             .insertText(text),
             selection: .projection(selection),
             expectedSourceRevision: SourceRevision(value: captured.version),
             inputRoute: .markedText
         )
-        (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCommitted, .compositionCommitted(sourceVersion: captured.version, replacementLength: (text as NSString).length)
-        )
         switch result {
         case .accepted:
+            (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCommitted, .compositionCommitted(sourceVersion: captured.version, replacementLength: (text as NSString).length)
+            )
             input.committingComposition = true
             input.allowingMarkedText = true
             performNativeUnmark()
@@ -823,6 +828,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             utf16: NSRange(location: index, length: 1),
             revision: presentation.projectionRevision
         )
+        session.captureSelection(.projection(selection))
         let result = session.perform(
             .toggleTask(nodeID: attachment.nodeID),
             selection: .projection(selection),
@@ -918,6 +924,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             revision: presentation.projectionRevision,
             affinity: selectionAffinity == .upstream ? .upstream : .downstream
         )
+        session.captureSelection(.projection(selection))
         // Paste must not coalesce into an open typing undo group (REQ-016).
         let outcome = session.perform(
             .insertText(plain),

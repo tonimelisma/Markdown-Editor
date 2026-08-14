@@ -108,7 +108,8 @@ as an independently authoritative partial snapshot.
 ### Source edit
 
 1. The source `NSTextView` asks its delegate whether a native replacement may occur.
-2. The adapter forms an exact `SourceMutation` and submits a typed `EditorInput`.
+2. The adapter captures the native source selection into the session-owned mode state, forms an
+   exact `SourceMutation`, and submits a typed `EditorInput`.
 3. `EditorTransactionKernel.reduce` validates the immutable source/session snapshot and returns
    one accepted transaction or one typed refusal.
 4. The main-actor document commit applies one `SourceMutation`, advances once, and registers undo.
@@ -120,9 +121,11 @@ as an independently authoritative partial snapshot.
 
 An accepted WYSIWYG edit is a synchronous atomic transition:
 
-1. The view submits an immutable native replacement and current `ProjectionSelection`.
+1. The view captures its current `ProjectionSelection` into session-owned mode state and submits
+   an immutable native replacement.
 2. The session captures an `EditorStateSnapshot`; the transaction kernel classifies the entire
-   selection against the exact presented snapshot.
+   submitted selection against the exact presented snapshot and never replaces that snapshot with
+   input-provided identity.
 3. The session plans the request off-main with the originating `IntentID`, then supplies that
    immutable outcome to the pure kernel. The kernel validates and returns either:
    - `AcceptedEdit { sourceMutation, presentationTransition, selectionAfter }`, or

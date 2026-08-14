@@ -314,6 +314,18 @@ final class EditorSession: ObservableObject {
         }
     }
 
+    /// Captures a native or command-surface selection before a transaction is planned. This is
+    /// input capture, not transaction validation: the kernel validates the submitted selection
+    /// against this owner state after the capture has completed.
+    func captureSelection(_ selection: EditorSelection) {
+        switch selection {
+        case .source(let value):
+            updateSourceModeState { $0.selection = value }
+        case .projection(let value):
+            updateWYSIWYGModeState { $0.selection = value }
+        }
+    }
+
     /// // REQ-094; ARC-015: mode state records real editor events, never reconciliation.
     private func noteModeStateMutation() {
         modeStateMutationCount &+= 1
@@ -345,6 +357,11 @@ final class EditorSession: ObservableObject {
         // not the production reconciliation route and therefore does not pass through the live
         // document identity guard.
         installPresentation(snapshot, tree: tree, provisional: false, validateReconciliation: false)
+        if wysiwygModeState.selection == nil {
+            captureSelection(.projection(
+                ProjectionSelection(utf16: NSRange(location: 0, length: 0), revision: snapshot.projectionRevision)
+            ))
+        }
     }
 
     /// Test/hook: drop derived projection so pending-selection wait paths can be exercised.
@@ -524,8 +541,7 @@ final class EditorSession: ObservableObject {
 
     /// Captures the immutable session/document state consumed by the pure transaction reducer.
     func editorStateSnapshot(
-        intentID: IntentID = IntentID(rawValue: 0),
-        selectionOverride: EditorSelection? = nil
+        intentID: IntentID = IntentID(rawValue: 0)
     ) -> EditorStateSnapshot {
         let source = document?.sourceSnapshot() ?? SourceSnapshot(
             text: "",
@@ -537,14 +553,8 @@ final class EditorSession: ObservableObject {
             source: source,
             mode: mode,
             origin: updateOrigin.current,
-            sourceSelection: {
-                if case .source(let selection) = selectionOverride { return selection }
-                return sourceModeState.selection
-            }(),
-            projectionSelection: {
-                if case .projection(let selection) = selectionOverride { return selection }
-                return wysiwygModeState.selection
-            }(),
+            sourceSelection: sourceModeState.selection,
+            projectionSelection: wysiwygModeState.selection,
             presentation: presentation,
             tree: authoritativeTree,
             intentID: intentID,
@@ -556,16 +566,12 @@ final class EditorSession: ObservableObject {
     /// method exists so coordinators never call `commitSourceMutation` directly.
     @discardableResult
     func commitEditorInput(
-        _ input: EditorInput,
-        selectionOverride: EditorSelection? = nil
+        _ input: EditorInput
     ) -> EditorTransactionCommitResult {
         guard let document else { return .refused(.unavailable) }
         return document.commitEditorInput(
             input,
-            state: editorStateSnapshot(
-                intentID: input.intentID,
-                selectionOverride: selectionOverride
-            )
+            state: editorStateSnapshot(intentID: input.intentID)
         )
     }
 
@@ -602,7 +608,7 @@ final class EditorSession: ObservableObject {
             grouping: grouping
         )
         let editStart = DispatchTime.now().uptimeNanoseconds
-        let state = editorStateSnapshot(intentID: intent.id, selectionOverride: selection)
+        let state = editorStateSnapshot(intentID: intent.id)
         let plannedOutcome = EditorSemanticWorker.sync(intent: intent) {
             SemanticEditEngine.plan(
                 request,
