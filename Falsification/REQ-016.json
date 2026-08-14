@@ -4,7 +4,7 @@
     {
       "rationale": "Accepting a mutation only when its expected revision is stale would invert the document transaction guard.",
       "file": "Markdown Editor/EditorTransactionKernel.swift",
-      "find": "guard mutation.expectedRevision == state.source.sourceVersion else {",
+      "find": "guard mutation.expectedRevision == state.source.sourceVersion else {\n            return .refused(.staleVersion)\n        }\n        if let selectionIdentity = value.selectionIdentity {",
       "replace": "guard mutation.expectedRevision != state.source.sourceVersion else {",
       "expect_red": ["exactUTF16ReplaceAdvancesVersion", "SourceIntegrityCharacterizationTests"]
     }
