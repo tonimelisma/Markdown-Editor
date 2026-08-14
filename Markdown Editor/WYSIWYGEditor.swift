@@ -472,8 +472,6 @@ enum WYSIWYGEditor {
                     )
                 }
             }
-            // Close typing groups on real native caret moves.
-            document.closeTypingUndoGroup()
         }
 
         func performTaskToggle(nodeID: MarkdownNodeID) {
@@ -594,34 +592,30 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
         } else {
             markedLength = 0
         }
+        guard let documentActions else {
+            super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+            return
+        }
+        let updateInput = EditorInput.markedText(
+            EditorMarkedTextInput(
+                phase: .update,
+                sourceRevision: SourceRevision(value: version),
+                projectionID: session?.presentation?.id
+            )
+        )
+        let updateResult = session?.commitEditorInput(updateInput)
+            ?? documentActions.commitEditorInput(updateInput)
+        guard case .committed = updateResult else {
+            inputCoordinator?.cancel()
+            return
+        }
         inputCoordinator?.beginMarkedText(
             sourceVersion: version,
             sourceRange: sourceRange,
             marked: NSRange(location: sourceRange.location, length: markedLength),
             snapshotID: session?.presentation?.id
         )
-        _ = session?.reduceTransientEditorInput(
-            .markedText(EditorMarkedTextInput(phase: .update))
-        )
         inputCoordinator?.allowingMarkedText = true
-        // REQ-084: NSTextView registers marked-text edits on its undo manager, and AppKit
-        // requires an open group before registering. The document's undo manager disables
-        // event grouping (`groupsByEvent = false`, REQ-011) because the app drives typing
-        // groups explicitly, so a marked-text update that arrives before any explicit group
-        // is open would raise "must begin a group before registering undo". Open the group
-        // around the native marked-text mutation and close it afterwards; the composition
-        // commit itself opens its own group when it reaches source.
-        let undoManager = documentActions?.documentUndoManager
-        let opensUndoGroup = undoManager?.groupingLevel == 0
-        if opensUndoGroup { undoManager?.beginUndoGrouping() }
-        defer {
-            // Mirror MarkdownDocument.closeTypingGroupIfNeeded: never end a group at level 0.
-            // A checkpoint could in principle have closed the group mid-call; ending at level 0
-            // would raise the same "invalid state" exception the fix exists to prevent.
-            if opensUndoGroup, undoManager?.groupingLevel ?? 0 > 0 {
-                undoManager?.endUndoGrouping()
-            }
-        }
         if let session {
             session.updateOrigin.with(.composition) {
                 super.setMarkedText(
@@ -650,11 +644,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             let text: String
             if marked.location != NSNotFound, let storage = textStorage {
                 guard marked.location >= 0, NSMaxRange(marked) <= storage.length else {
-                    input.cancel()
-                    _ = session?.reduceTransientEditorInput(
-                        .markedText(EditorMarkedTextInput(phase: .cancel))
-                    )
-                    performNativeUnmark()
+                    guard cancelMarkedTextForInput() else { return }
                     (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
                     return
                 }
@@ -663,23 +653,40 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
                 text = ""
             }
             if text.isEmpty {
-                input.cancel()
-                _ = session?.reduceTransientEditorInput(
-                    .markedText(EditorMarkedTextInput(phase: .cancel))
-                )
-                performNativeUnmark()
+                guard cancelMarkedTextForInput() else { return }
                 (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
                 return
             }
             _ = commitComposition(text: text)
             return
         }
-        inputCoordinator?.cancel()
-        _ = session?.reduceTransientEditorInput(
-            .markedText(EditorMarkedTextInput(phase: .cancel))
-        )
-        performNativeUnmark()
+        guard cancelMarkedTextForInput() else { return }
         (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
+    }
+
+    /// Reduces cancellation before touching native marked-text state. A refusal leaves both the
+    /// document-owned undo group and AppKit composition state untouched for the caller to recover.
+    private func cancelMarkedTextForInput() -> Bool {
+        guard reduceMarkedTextPhase(.cancel) else { return false }
+        inputCoordinator?.cancel()
+        performNativeUnmark()
+        return true
+    }
+
+    @discardableResult
+    private func reduceMarkedTextPhase(_ phase: EditorMarkedTextInput.Phase) -> Bool {
+        let snapshot = documentActions?.sourceSnapshot()
+        let input = EditorInput.markedText(
+            EditorMarkedTextInput(
+                phase: phase,
+                sourceRevision: snapshot.map { SourceRevision(value: $0.sourceVersion) },
+                projectionID: session?.presentation?.id
+            )
+        )
+        let result = session?.commitEditorInput(input)
+            ?? documentActions?.commitEditorInput(input)
+        if case .committed = result { return true }
+        return false
     }
 
     override func insertText(_ insertString: Any, replacementRange: NSRange) {
@@ -715,8 +722,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
         let currentVersion = documentActions?.sourceSnapshot().sourceVersion ?? 0
         guard input.prepareCommit(currentVersion: currentVersion),
               let captured = input.complete() else {
-            input.cancel()
-            performNativeUnmark()
+            guard cancelMarkedTextForInput() else { return false }
             (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionRefusedStale, .compositionRefusedStale)
             return false
         }
@@ -725,8 +731,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
               let capturedSnapshotID = captured.snapshotID,
               presentation.id == capturedSnapshotID,
               adapterCoordinator?.hasAppliedSnapshot(capturedSnapshotID) == true else {
-            input.cancel()
-            performNativeUnmark()
+            guard cancelMarkedTextForInput() else { return false }
             (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
             return false
         }
@@ -752,8 +757,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             adapterCoordinator?.applyProjectionIfNeeded(reason: .reapplyIfDrift)
             return true
         case .refused:
-            input.cancel()
-            performNativeUnmark()
+            guard cancelMarkedTextForInput() else { return false }
             (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
             return false
         }
@@ -822,7 +826,8 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
         let result = session.perform(
             .toggleTask(nodeID: attachment.nodeID),
             selection: .projection(selection),
-            expectedSourceRevision: presentation.sourceRevision
+            expectedSourceRevision: presentation.sourceRevision,
+            inputRoute: .checkbox
         )
         if case .accepted = result { return true }
         return false
@@ -918,7 +923,8 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             .insertText(plain),
             selection: .projection(selection),
             expectedSourceRevision: SourceRevision(value: snapshot.sourceVersion),
-            grouping: .discrete
+            grouping: .discrete,
+            inputRoute: .wysiwygReplacement
         )
         guard case .accepted(let edit) = outcome else { return false }
         adapterCoordinator.applyAcceptedEdit(edit, from: appliedPresentation, in: self)

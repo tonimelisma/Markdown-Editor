@@ -441,14 +441,14 @@ final class ImagePlacementController: ObservableObject {
                     return
                 }
             }
-            let commitResult: EditorTransactionCommitResult = actions.commitEditorInput(
-                .imageReference(
-                    EditorReplacementInput(
-                        mutation: mutation,
-                        intentID: snapshot.intent?.id ?? IntentID(rawValue: 0)
-                    )
+            let imageInput = EditorInput.imageReference(
+                EditorReplacementInput(
+                    mutation: mutation,
+                    intentID: snapshot.intent?.id ?? IntentID(rawValue: 0)
                 )
             )
+            let commitResult: EditorTransactionCommitResult = session?.commitEditorInput(imageInput)
+                ?? actions.commitEditorInput(imageInput)
             switch commitResult {
             case .committed(let transaction):
                 guard case .edit = transaction.effect else {

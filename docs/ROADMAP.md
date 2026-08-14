@@ -188,11 +188,9 @@ return to discovery; do not improvise an architecture change.
    controlled clocks, and makes the shipping benchmark produce its provenance-bound baseline. The
    final full gate observed 454 passing tests, 50 production trace routes, 35/35 falsifying mutations,
    and a 108-case Release baseline; process smoke diagnostics also passed.
-3. ✅ **COR-70 — Editor transaction kernel.** (Delivers: none)
-   Extracted one pure input-to-transaction/refusal seam and thinned AppKit adapters without changing
-   product behavior. The closing full gate observed 471 passing tests, 50 production trace routes,
-   27/27 falsifying mutations, and 405 tests supporting the 43 existing Done rows; the three COR-70
-   completion proofs passed.
+3. ⚪ **COR-70 — Editor transaction kernel.** (Delivers: none)
+   ([plan](plans/COR-70-editor-transaction-kernel.md)) Extracts one pure input-to-transaction/refusal
+   seam and thins AppKit adapters without changing product behavior.
 4. ⚪ **COR-71 — Bounded WYSIWYG input.** (Delivers: REQ-090, REQ-091, REQ-092)
    ([plan](plans/COR-71-bounded-wysiwyg-input.md)) Removes whole-document parse/compile work from
    ordinary input while retaining synchronous source/presentation correctness.

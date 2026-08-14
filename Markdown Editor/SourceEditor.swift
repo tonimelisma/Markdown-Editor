@@ -62,9 +62,22 @@ enum SourceEditor {
             }
             let result: SourceEditResult = {
                 let input = EditorInput.sourceReplacement(
-                    EditorReplacementInput(mutation: mutation, intentID: intent?.id ?? IntentID(rawValue: 0))
+                    EditorReplacementInput(
+                        mutation: mutation,
+                        selectionIdentity: .source(mutation.selectionBefore),
+                        intentID: intent?.id ?? IntentID(rawValue: 0)
+                    )
                 )
-                let committed = session?.commitEditorInput(input) ?? document.commitEditorInput(input)
+                let committed = session?.commitEditorInput(
+                    input,
+                    selectionOverride: .source(mutation.selectionBefore)
+                ) ?? document.commitEditorInput(
+                    input,
+                    state: EditorStateSnapshot(
+                        source: document.sourceSnapshot(),
+                        sourceSelection: mutation.selectionBefore
+                    )
+                )
                 switch committed {
                 case .committed(let transaction):
                     guard case .edit(let edit) = transaction.effect else { return .refused(.conflict) }
@@ -159,10 +172,6 @@ enum SourceEditor {
             // already holds. Writing it back makes reconciliation a state change.
             guard currentOrigin == .nativeUserInput else { return }
             let range = textView.selectedRange()
-            // Close typing groups on caret moves; skip selection churn from in-flight typing.
-            if nativeStorageState == .idle {
-                document.closeTypingUndoGroup()
-            }
             session?.updateSourceModeState { state in
                 state.selection = SourceSelection(
                     utf16: range,

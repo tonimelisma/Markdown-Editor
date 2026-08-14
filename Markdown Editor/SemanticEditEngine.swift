@@ -51,7 +51,7 @@ nonisolated enum SemanticEditRefusal: Error, Sendable, Equatable {
 }
 
 nonisolated enum SemanticEditResult: Sendable, Equatable {
-    /// Complete content-validated mutation ready for `commitSourceMutation`.
+    /// Complete content-validated mutation ready for the kernel-owned editor-input commit.
     case mutation(SourceMutation)
     case refused(SemanticEditRefusal)
 }

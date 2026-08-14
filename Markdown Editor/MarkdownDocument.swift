@@ -91,6 +91,13 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     /// Open typing undo group (MutationGrouping.typing coalescing).
     private var typingGroupOpen = false
+    /// Last source-domain selection committed through the document seam. It is used only to
+    /// close a typing group when the next input was captured after a caret move, keeping that
+    /// boundary in the document owner rather than in either AppKit adapter.
+    private var lastCommittedSourceSelection: SourceSelection?
+    /// AppKit records marked-text changes on the document undo manager. The document owns the
+    /// short-lived group opened for that native transient route.
+    private var markedTextGroupOpen = false
     private var undoCheckpointObserver: NSObjectProtocol?
 
     /// Notification center seam for observer lifecycle tests.
@@ -365,7 +372,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     // REQ-016; ARC-001/010: all canonical source writes reduce through the transaction kernel.
     @discardableResult
     func commitSourceMutation(_ mutation: SourceMutation) -> SourceEditResult {
-        switch commitEditorInput(.sourceReplacement(EditorReplacementInput(mutation: mutation))) {
+        let input = EditorInput.sourceReplacement(EditorReplacementInput(mutation: mutation))
+        let state = EditorStateSnapshot(
+            source: sourceSnapshot(),
+            sourceSelection: mutation.selectionBefore
+        )
+        switch commitEditorInput(input, state: state) {
         case .committed(let transaction):
             guard case .edit(let edit) = transaction.effect else {
                 return .refused(.conflict)
@@ -380,20 +392,22 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// method alone performs source replacement, history registration, and diagnostic emission.
     @discardableResult
     func commitEditorInput(_ input: EditorInput) -> EditorTransactionCommitResult {
-        let mutationSelection: SourceSelection = {
-            switch input {
-            case .sourceReplacement(let value), .imageReference(let value):
-                return value.mutation.selectionBefore
-            case .undoRedo(let value):
-                return value.patch.selectionBefore
-            default:
-                return SourceSelection(utf16: NSRange(location: 0, length: 0))
-            }
-        }()
         let state = EditorStateSnapshot(
             source: sourceSnapshot(),
-            sourceSelection: mutationSelection
+            sourceSelection: lastCommittedSourceSelection
+                ?? SourceSelection(utf16: NSRange(location: 0, length: 0))
         )
+        return commitEditorInput(input, state: state)
+    }
+
+    /// Applies a reduction against the caller's immutable session snapshot. The overload is the
+    /// production route: a document never reconstructs selection or presentation identity from
+    /// the proposed mutation, so a stale adapter cannot make its own input appear current.
+    @discardableResult
+    func commitEditorInput(
+        _ input: EditorInput,
+        state: EditorStateSnapshot
+    ) -> EditorTransactionCommitResult {
         switch EditorTransactionKernel.reduce(input, state: state) {
         case .refused(let refusal):
             if case .sourceReplacement(let value) = input {
@@ -402,17 +416,36 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
                 trace?.record(route: .mutationRefused, .mutationRefused(id: value.mutation.id, reason: refusal.asSourceRefusal))
             }
             if case .undoRedo(let history) = input {
-                trace?.record(route: .historyRefused, .historyRefused(direction: history.direction, reason: .contentMismatch))
+                trace?.record(route: .historyRefused, .historyRefused(direction: history.direction, reason: refusal.asSourceRefusal))
             }
             return .refused(refusal)
         case .accepted(let transaction):
             switch transaction.effect {
             case .edit(let edit):
+                closeMarkedTextGroupIfNeeded()
+                if lastCommittedSourceSelection != edit.sourceMutation.selectionBefore {
+                    closeTypingGroupIfNeeded()
+                }
+                lastCommittedSourceSelection = edit.sourceSelectionAfter
                 applyCommittedMutation(edit.sourceMutation)
                 return .committed(transaction)
             case .history(let history):
                 return applyHistoryPatchAfterReduction(history.patch, direction: history.direction, transaction: transaction)
-            case .markedText, .modeChange, .reconciliation:
+            case .markedText(let phase):
+                switch phase {
+                case .update:
+                    beginMarkedTextGroupIfNeeded()
+                case .cancel:
+                    closeMarkedTextGroupIfNeeded()
+                case .commit:
+                    closeMarkedTextGroupIfNeeded()
+                }
+                return .committed(transaction)
+            case .modeChange:
+                closeMarkedTextGroupIfNeeded()
+                closeTypingGroupIfNeeded()
+                return .committed(transaction)
+            case .reconciliation:
                 return .committed(transaction)
             }
         }
@@ -496,9 +529,11 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     func installTextForTesting(_ value: String) {
         undoManager?.groupsByEvent = false
         attachUndoCheckpointObserverIfNeeded()
+        closeMarkedTextGroupIfNeeded()
         closeTypingGroupIfNeeded()
         text = value
         sourceVersion = 0
+        lastCommittedSourceSelection = nil
         updateChangeCount(.changeCleared)
         undoManager?.removeAllActions()
         canonicalAssetReferences = CanonicalAssetReferences(values: [])
@@ -570,9 +605,8 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             EditorHistoryInput(patch: patch, direction: direction)
         )
         switch commitEditorInput(input) {
-        case .refused:
-            trace?.record(route: .historyRefused, .historyRefused(direction: direction, reason: .contentMismatch))
-            return .refused(.contentMismatch)
+        case .refused(let refusal):
+            return .refused(refusal.asSourceRefusal)
         case .committed(let transaction):
             guard case .history = transaction.effect else { return .refused(.conflict) }
             return .committed(patch.selectionBefore)
@@ -589,6 +623,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             range: patch.range,
             replacement: patch.before
         )
+        lastCommittedSourceSelection = patch.selectionBefore
         requestSelectionRestoration(patch.selectionBefore)
 
         // Register the inverse dynamically — never call the version-gated public API.
@@ -656,6 +691,19 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         typingGroupOpen = false
         // Only end a group we actually opened — AppKit/checkpoint churn can leave
         // groupingLevel 0 while our flag was still set.
+        guard let undoManager, undoManager.groupingLevel > 0 else { return }
+        undoManager.endUndoGrouping()
+    }
+
+    private func beginMarkedTextGroupIfNeeded() {
+        guard !markedTextGroupOpen, let undoManager, undoManager.groupingLevel == 0 else { return }
+        undoManager.beginUndoGrouping()
+        markedTextGroupOpen = true
+    }
+
+    private func closeMarkedTextGroupIfNeeded() {
+        guard markedTextGroupOpen else { return }
+        markedTextGroupOpen = false
         guard let undoManager, undoManager.groupingLevel > 0 else { return }
         undoManager.endUndoGrouping()
     }

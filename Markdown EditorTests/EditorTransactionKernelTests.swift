@@ -115,18 +115,30 @@ struct EditorTransactionKernelTests {
             expectedSourceRevision: SourceRevision(value: source.sourceVersion),
             grouping: .discrete
         )
+        let plannedOutcome = EditorEditOutcome.accepted(
+            AcceptedEdit(
+                sourceMutation: mutation,
+                presentationTransition: nil,
+                sourceSelectionAfter: mutation.selectionAfter,
+                projectionSelectionAfter: nil,
+                intent: nil
+            )
+        )
         let input: EditorInput
         switch route {
         case .sourceReplacement:
             input = .sourceReplacement(EditorReplacementInput(mutation: mutation))
         case .wysiwygReplacement:
-            input = .wysiwygReplacement(EditorSemanticInput(request: request))
+            input = .wysiwygReplacement(EditorSemanticInput(request: request, plannedOutcome: plannedOutcome))
         case .markedText:
-            input = .markedText(EditorMarkedTextInput(phase: .update))
+            input = .markedText(EditorMarkedTextInput(
+                phase: .update,
+                sourceRevision: SourceRevision(value: source.sourceVersion)
+            ))
         case .semanticCommand:
-            input = .semanticCommand(EditorSemanticInput(request: request))
+            input = .semanticCommand(EditorSemanticInput(request: request, plannedOutcome: plannedOutcome))
         case .checkbox:
-            input = .checkbox(EditorSemanticInput(request: request))
+            input = .checkbox(EditorSemanticInput(request: request, plannedOutcome: plannedOutcome))
         case .imageReference:
             input = .imageReference(EditorReplacementInput(mutation: mutation))
         case .undoRedo:
@@ -165,6 +177,13 @@ struct EditorTransactionKernelTests {
         }
 
         let productionFiles = try productionSourceFiles()
+        let kernelSource = try String(
+            contentsOf: productionFiles.first { $0.lastPathComponent == "EditorTransactionKernel.swift" }!,
+            encoding: .utf8
+        )
+        #expect(!kernelSource.contains("EditorSemanticWorker"))
+        #expect(!kernelSource.contains("DispatchTime"))
+        #expect(!kernelSource.contains("UndoManager"))
         let nonKernel = try productionFiles
             .filter {
                 ![
@@ -175,7 +194,22 @@ struct EditorTransactionKernelTests {
             }
             .map { try String(contentsOf: $0, encoding: .utf8) }
             .joined(separator: "\n")
-        #expect(!nonKernel.contains("SemanticEditEngine.plan("))
         #expect(!nonKernel.contains("commitSourceMutation("))
+
+        let sourceEditor = try String(contentsOf: productionFiles.first { $0.lastPathComponent == "SourceEditor.swift" }!, encoding: .utf8)
+        let wysiwygEditor = try String(contentsOf: productionFiles.first { $0.lastPathComponent == "WYSIWYGEditor.swift" }!, encoding: .utf8)
+        let imagePlacement = try String(contentsOf: productionFiles.first { $0.lastPathComponent == "ImagePlacementController.swift" }!, encoding: .utf8)
+        #expect(!sourceEditor.contains("SemanticEditEngine.plan("))
+        #expect(!wysiwygEditor.contains("SemanticEditEngine.plan("))
+        #expect(!imagePlacement.contains("SemanticEditEngine.plan("))
+        #expect(sourceEditor.contains("EditorInput.sourceReplacement"))
+        #expect(wysiwygEditor.contains("inputRoute: .wysiwygReplacement"))
+        #expect(wysiwygEditor.contains("inputRoute: .markedText"))
+        #expect(wysiwygEditor.contains("inputRoute: .checkbox"))
+        #expect(wysiwygEditor.contains("EditorInput.markedText"))
+        #expect(imagePlacement.contains("EditorInput.imageReference"))
+        #expect(!sourceEditor.contains("closeTypingUndoGroup"))
+        #expect(!wysiwygEditor.contains("beginUndoGrouping"))
+        #expect(!wysiwygEditor.contains("closeTypingUndoGroup"))
     }
 }

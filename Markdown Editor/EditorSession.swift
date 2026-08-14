@@ -245,18 +245,16 @@ final class EditorSession: ObservableObject {
                 EditorModeInput(mode: newMode, intentID: intent.id)
             )
             let state = editorStateSnapshot(intentID: intent.id)
-            guard case .accepted(let transaction) = EditorTransactionKernel.reduce(input, state: state),
+            guard case .committed(let transaction) = document.commitEditorInput(input, state: state),
                   case .modeChange(let acceptedMode) = transaction.effect else {
                 intent.recorder.finish(intent, orphaned: true)
                 return
             }
-            document.closeTypingUndoGroup()
             mode = acceptedMode
             traceModeToggle(toSource: acceptedMode == .source)
             intent.recorder.finish(intent)
             return
         }
-        document?.closeTypingUndoGroup()
         mode = newMode
         traceModeToggle(toSource: newMode == .source)
     }
@@ -430,6 +428,7 @@ final class EditorSession: ObservableObject {
                     sourceRevision: SourceRevision(value: snapshot.sourceRevision.value),
                     locationGeneration: snapshot.locationGeneration,
                     projectionID: snapshot.id,
+                    expectedProjectionID: presentation?.id,
                     intentID: intent?.id ?? IntentID(rawValue: 0)
                 )
             )
@@ -524,7 +523,10 @@ final class EditorSession: ObservableObject {
     }
 
     /// Captures the immutable session/document state consumed by the pure transaction reducer.
-    func editorStateSnapshot(intentID: IntentID = IntentID(rawValue: 0)) -> EditorStateSnapshot {
+    func editorStateSnapshot(
+        intentID: IntentID = IntentID(rawValue: 0),
+        selectionOverride: EditorSelection? = nil
+    ) -> EditorStateSnapshot {
         let source = document?.sourceSnapshot() ?? SourceSnapshot(
             text: "",
             sourceVersion: 0,
@@ -535,8 +537,14 @@ final class EditorSession: ObservableObject {
             source: source,
             mode: mode,
             origin: updateOrigin.current,
-            sourceSelection: sourceModeState.selection,
-            projectionSelection: wysiwygModeState.selection,
+            sourceSelection: {
+                if case .source(let selection) = selectionOverride { return selection }
+                return sourceModeState.selection
+            }(),
+            projectionSelection: {
+                if case .projection(let selection) = selectionOverride { return selection }
+                return wysiwygModeState.selection
+            }(),
             presentation: presentation,
             tree: authoritativeTree,
             intentID: intentID,
@@ -547,9 +555,18 @@ final class EditorSession: ObservableObject {
     /// Adapter-facing source/image commit. The document remains the sole mutable owner; this
     /// method exists so coordinators never call `commitSourceMutation` directly.
     @discardableResult
-    func commitEditorInput(_ input: EditorInput) -> EditorTransactionCommitResult {
+    func commitEditorInput(
+        _ input: EditorInput,
+        selectionOverride: EditorSelection? = nil
+    ) -> EditorTransactionCommitResult {
         guard let document else { return .refused(.unavailable) }
-        return document.commitEditorInput(input)
+        return document.commitEditorInput(
+            input,
+            state: editorStateSnapshot(
+                intentID: input.intentID,
+                selectionOverride: selectionOverride
+            )
+        )
     }
 
     /// Reduces a transient callback such as marked-text update/cancel without mutating source.
@@ -585,7 +602,22 @@ final class EditorSession: ObservableObject {
             grouping: grouping
         )
         let editStart = DispatchTime.now().uptimeNanoseconds
-        let semanticInput = EditorSemanticInput(request: request, intentID: intent.id)
+        let state = editorStateSnapshot(intentID: intent.id, selectionOverride: selection)
+        let plannedOutcome = EditorSemanticWorker.sync(intent: intent) {
+            SemanticEditEngine.plan(
+                request,
+                snapshot: state.source,
+                presentation: state.presentation,
+                tree: state.tree,
+                nextSnapshotID: state.nextPresentationID,
+                intent: intent
+            )
+        }
+        let semanticInput = EditorSemanticInput(
+            request: request,
+            plannedOutcome: plannedOutcome,
+            intentID: intent.id
+        )
         let input: EditorInput
         switch inputRoute {
         case .wysiwygReplacement:
@@ -595,6 +627,9 @@ final class EditorSession: ObservableObject {
                 EditorMarkedTextInput(
                     phase: .commit,
                     request: request,
+                    sourceRevision: expectedSourceRevision,
+                    projectionID: state.presentation?.id,
+                    plannedOutcome: plannedOutcome,
                     intentID: intent.id
                 )
             )
@@ -605,7 +640,7 @@ final class EditorSession: ObservableObject {
         }
         let reduction = EditorTransactionKernel.reduce(
             input,
-            state: editorStateSnapshot(intentID: intent.id)
+            state: state
         )
         switch reduction {
         case .accepted(let transaction):
@@ -633,9 +668,13 @@ final class EditorSession: ObservableObject {
                 )
             )
             let commitInput = EditorInput.sourceReplacement(
-                EditorReplacementInput(mutation: edit.sourceMutation, intentID: intent.id)
+                EditorReplacementInput(
+                    mutation: edit.sourceMutation,
+                    selectionIdentity: selection,
+                    intentID: intent.id
+                )
             )
-            switch document.commitEditorInput(commitInput) {
+            switch document.commitEditorInput(commitInput, state: state) {
             case .committed:
                 updateSourceModeState { $0.selection = edit.sourceSelectionAfter }
                 if let transition = edit.presentationTransition {

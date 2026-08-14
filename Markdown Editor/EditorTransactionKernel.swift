@@ -24,20 +24,32 @@ nonisolated enum EditorInputRoute: String, CaseIterable, Sendable, Equatable {
 
 nonisolated struct EditorReplacementInput: Sendable, Equatable {
     let mutation: SourceMutation
+    let selectionIdentity: EditorSelection?
     let intentID: IntentID
 
-    init(mutation: SourceMutation, intentID: IntentID = IntentID(rawValue: 0)) {
+    init(
+        mutation: SourceMutation,
+        selectionIdentity: EditorSelection? = nil,
+        intentID: IntentID = IntentID(rawValue: 0)
+    ) {
         self.mutation = mutation
+        self.selectionIdentity = selectionIdentity
         self.intentID = intentID
     }
 }
 
 nonisolated struct EditorSemanticInput: Sendable, Equatable {
     let request: EditorEditRequest
+    let plannedOutcome: EditorEditOutcome?
     let intentID: IntentID
 
-    init(request: EditorEditRequest, intentID: IntentID = IntentID(rawValue: 0)) {
+    init(
+        request: EditorEditRequest,
+        plannedOutcome: EditorEditOutcome? = nil,
+        intentID: IntentID = IntentID(rawValue: 0)
+    ) {
         self.request = request
+        self.plannedOutcome = plannedOutcome
         self.intentID = intentID
     }
 }
@@ -51,15 +63,24 @@ nonisolated struct EditorMarkedTextInput: Sendable, Equatable {
 
     let phase: Phase
     let request: EditorEditRequest?
+    let sourceRevision: SourceRevision?
+    let projectionID: PresentationSnapshot.ID?
+    let plannedOutcome: EditorEditOutcome?
     let intentID: IntentID
 
     init(
         phase: Phase,
         request: EditorEditRequest? = nil,
+        sourceRevision: SourceRevision? = nil,
+        projectionID: PresentationSnapshot.ID? = nil,
+        plannedOutcome: EditorEditOutcome? = nil,
         intentID: IntentID = IntentID(rawValue: 0)
     ) {
         self.phase = phase
         self.request = request
+        self.sourceRevision = sourceRevision
+        self.projectionID = projectionID
+        self.plannedOutcome = plannedOutcome
         self.intentID = intentID
     }
 }
@@ -94,17 +115,20 @@ nonisolated struct EditorReconciliationInput: Sendable, Equatable {
     let sourceRevision: SourceRevision
     let locationGeneration: UInt64
     let projectionID: PresentationSnapshot.ID
+    let expectedProjectionID: PresentationSnapshot.ID?
     let intentID: IntentID
 
     init(
         sourceRevision: SourceRevision,
         locationGeneration: UInt64,
         projectionID: PresentationSnapshot.ID,
+        expectedProjectionID: PresentationSnapshot.ID? = nil,
         intentID: IntentID = IntentID(rawValue: 0)
     ) {
         self.sourceRevision = sourceRevision
         self.locationGeneration = locationGeneration
         self.projectionID = projectionID
+        self.expectedProjectionID = expectedProjectionID
         self.intentID = intentID
     }
 }
@@ -169,6 +193,18 @@ nonisolated enum EditorInput: Sendable, Equatable {
         case .reconciliation: return .reconciliation
         }
     }
+
+    var intentID: IntentID {
+        switch self {
+        case .sourceReplacement(let value), .imageReference(let value): return value.intentID
+        case .wysiwygReplacement(let value), .semanticCommand(let value), .checkbox(let value):
+            return value.intentID
+        case .markedText(let value): return value.intentID
+        case .undoRedo(let value): return value.intentID
+        case .modeChange(let value): return value.intentID
+        case .reconciliation(let value): return value.intentID
+        }
+    }
 }
 
 nonisolated enum EditorTransactionEffect: Sendable, Equatable {
@@ -220,7 +256,9 @@ nonisolated enum EditorRefusal: Error, Sendable, Equatable, CaseIterable {
         switch self {
         case .staleVersion: return .staleVersion
         case .invalidRange: return .invalidRange
-        case .contentMismatch, .ambiguousSelection, .mixedDomain, .crossCell, .unprovable,
+        case .contentMismatch:
+            return .contentMismatch
+        case .ambiguousSelection, .mixedDomain, .crossCell, .unprovable,
              .stalePresentation, .unsupportedCommand, .mappingFailure, .unavailable,
              .invalidIdentity:
             return .conflict
@@ -257,11 +295,22 @@ nonisolated enum EditorTransactionKernel {
             guard state.origin == .composition || state.origin == .nativeUserInput else {
                 return .refused(.invalidIdentity)
             }
+            guard value.sourceRevision == nil
+                || value.sourceRevision == SourceRevision(value: state.source.sourceVersion) else {
+                return .refused(.staleVersion)
+            }
+            guard value.projectionID == nil || value.projectionID == state.presentation?.id else {
+                return .refused(.stalePresentation)
+            }
             if value.phase == .commit {
                 guard let request = value.request else { return .refused(.invalidIdentity) }
                 return reduceSemantic(
-                    EditorSemanticInput(request: request, intentID: value.intentID),
-                    input: .semanticCommand(EditorSemanticInput(request: request, intentID: value.intentID)),
+                    EditorSemanticInput(
+                        request: request,
+                        plannedOutcome: value.plannedOutcome,
+                        intentID: value.intentID
+                    ),
+                    input: .markedText(value),
                     state: state
                 )
             }
@@ -306,7 +355,8 @@ nonisolated enum EditorTransactionKernel {
             )
         case .reconciliation(let value):
             guard value.sourceRevision.value == state.source.sourceVersion,
-                  value.locationGeneration == state.source.locationGeneration else {
+                  value.locationGeneration == state.source.locationGeneration,
+                  value.expectedProjectionID == nil || value.expectedProjectionID == state.presentation?.id else {
                 return .refused(.staleVersion)
             }
             return .accepted(
@@ -327,6 +377,14 @@ nonisolated enum EditorTransactionKernel {
         let mutation = value.mutation
         guard mutation.expectedRevision == state.source.sourceVersion else {
             return .refused(.staleVersion)
+        }
+        if route != .imageReference {
+            guard mutation.selectionBefore == state.sourceSelection || value.selectionIdentity != nil else {
+                return .refused(.ambiguousSelection)
+            }
+        }
+        if let selectionIdentity = value.selectionIdentity {
+            guard selectionIdentity.matches(state) else { return .refused(.ambiguousSelection) }
         }
         let source = state.source.text as NSString
         guard mutation.range.location >= 0,
@@ -358,21 +416,8 @@ nonisolated enum EditorTransactionKernel {
         input: EditorInput,
         state: EditorStateSnapshot
     ) -> EditorTransactionReduction {
-        let request: EditorEditRequest
-        switch input {
-        case .checkbox:
-            request = value.request
-        default:
-            request = value.request
-        }
-        let outcome = SemanticEditEngine.plan(
-            request,
-            snapshot: state.source,
-            presentation: state.presentation,
-            tree: state.tree,
-            nextSnapshotID: state.nextPresentationID,
-            intent: nil
-        )
+        let outcome = value.plannedOutcome
+        guard let outcome else { return .refused(.unavailable) }
         switch outcome {
         case .accepted(let edit):
             return .accepted(
@@ -402,6 +447,17 @@ private extension EditorRefusal {
         case .mixedDomain: self = .mixedDomain
         case .crossCell: self = .crossCell
         case .unprovable: self = .unprovable
+        }
+    }
+}
+
+private extension EditorSelection {
+    func matches(_ state: EditorStateSnapshot) -> Bool {
+        switch self {
+        case .source(let selection):
+            return selection == state.sourceSelection
+        case .projection(let selection):
+            return selection == state.projectionSelection
         }
     }
 }

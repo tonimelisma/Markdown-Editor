@@ -123,7 +123,8 @@ An accepted WYSIWYG edit is a synchronous atomic transition:
 1. The view submits an immutable native replacement and current `ProjectionSelection`.
 2. The session captures an `EditorStateSnapshot`; the transaction kernel classifies the entire
    selection against the exact presented snapshot.
-3. The semantic engine, called only behind the kernel, returns either:
+3. The session plans the request off-main with the originating `IntentID`, then supplies that
+   immutable outcome to the pure kernel. The kernel validates and returns either:
    - `AcceptedEdit { sourceMutation, presentationTransition, selectionAfter }`, or
    - a typed refusal with no mutation.
 4. For an accepted edit, the document commits the source mutation once.
@@ -305,13 +306,10 @@ Rules:
 - Selection restoration is a one-shot session instruction consumed by the relevant adapter.
 - `NSTextView` owns marked text. Canonical source receives one completed composition transaction;
   projection replacement never occurs through active marked text.
-- Marked-text arrival opens the document's undo group around the native mutation. AppKit registers
-  marked-text edits on the undo manager, and `NSTextView.setMarkedText` raises "must begin a group
-  before registering undo" when the document's undo manager has `groupsByEvent = false` (REQ-011:
-  the app drives typing groups explicitly) and no group is open — which is exactly the state at the
-  start of a composition. The WYSIWYG text view therefore opens the group when none is open,
-  mutates marked text inside it, and closes it afterwards; the composition commit then opens its
-  own group when it reaches source.
+- Marked-text arrival crosses the kernel as a transient `.markedText(.update)` transaction. The
+  main-actor document owns the short-lived undo group around the native mutation because AppKit
+  registers marked-text edits on the document undo manager, while the WYSIWYG adapter only applies
+  the accepted/refused result. The completed composition is a separate source transaction.
 - Native plain-text paste, spelling, Find, keyboard input, selection, and accessibility remain
   available. There are no UI-test dependencies.
 
@@ -696,9 +694,10 @@ supersession documents. The working tree states current truth; Git records histo
 - Full projection compilation is fast enough off-main but not an acceptable dependency between
   consecutive keystrokes. Complete attributed-storage replacement is likewise forbidden on the
   ordinary local-edit path.
-- Ordinary WYSIWYG planning still reaches a synchronous full-document parse/compile route. COR-70
-  creates the transaction seam; COR-71 then replaces that work with a bounded local transition
-  plus identity-checked asynchronous authority.
+- Ordinary WYSIWYG planning still reaches a synchronous full-document parse/compile route before
+  the pure kernel reduction. COR-70 creates the transaction seam and preserves the originating
+  intent through that plan; COR-71 then replaces the full-document work with a bounded local
+  transition plus identity-checked asynchronous authority.
 - Source highlighting bounds attribute application but still tokenizes the full source and performs
   whole-document fence scans. COR-72 replaces it with per-line state propagation.
 - Native `NSTextTable` currently keeps the WYSIWYG editor on the TextKit 1 compatibility path. A
