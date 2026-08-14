@@ -16,6 +16,13 @@ same change and verified in the Definition of Done.
 > recommendations. The order is research → findings/options/questions → explicit approval →
 > documentation. Approval is specific; silence is not consent.
 
+> An explicit user request to implement an already approved plan, or to repair process/tooling
+> discovered while doing that work, is sufficient authorization for the ordinary in-scope
+> execution: code and tests, required gates, branches, reviews, PRs, merges, cleanup, and reports.
+> Do not interrupt that work for redundant approval requests. Ask only when a new decision would
+> change product or architecture, write a new spec or requirement, or materially expand the
+> requested scope beyond the approved plan or repair.
+
 ## 1. Product
 
 A native macOS Markdown editor: pure Swift, SwiftUI-first with narrow AppKit adapters, local-first,
