@@ -342,7 +342,11 @@ final class EditorSession: ObservableObject {
             assertionFailure("installProjectionForTesting was given an oracle-invalid snapshot")
             return
         }
-        installPresentation(snapshot, tree: tree, provisional: false)
+        // This hook deliberately installs an arbitrary immutable fixture, including a future
+        // source revision, so component tests can exercise stale/new-snapshot application. It is
+        // not the production reconciliation route and therefore does not pass through the live
+        // document identity guard.
+        installPresentation(snapshot, tree: tree, provisional: false, validateReconciliation: false)
     }
 
     /// Test/hook: drop derived projection so pending-selection wait paths can be exercised.
@@ -417,9 +421,10 @@ final class EditorSession: ObservableObject {
         _ snapshot: PresentationSnapshot,
         tree: MarkdownTree?,
         provisional: Bool,
-        intent: IntentContext? = nil
+        intent: IntentContext? = nil,
+        validateReconciliation: Bool = true
     ) {
-        if !provisional, let document {
+        if !provisional, validateReconciliation, let document {
             let input = EditorInput.reconciliation(
                 EditorReconciliationInput(
                     sourceRevision: SourceRevision(value: snapshot.sourceRevision.value),
