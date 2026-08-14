@@ -201,6 +201,10 @@ nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
     case utf16Count
     case windowMillis
     case scope
+    case intentID
+    case orphaned
+    case orphanReason
+    case lateWork
     case documentParses
     case projectionCompiles
     case oracleValidations
@@ -235,6 +239,17 @@ nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
     case maxFileBytesRead
     case sumMainThreadBlockedNanos
     case maxMainThreadBlockedNanos
+
+    var isWorkLedgerMeasurement: Bool {
+        switch self {
+        case .documentParses, .projectionCompiles, .oracleValidations, .attributedBuilds,
+             .attributedCharactersWritten, .storageFullReplacements, .imageDecodes,
+             .fileBytesRead, .mainThreadBlockedNanos:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 /// Closed vocabulary of event names.

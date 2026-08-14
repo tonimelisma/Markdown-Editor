@@ -46,6 +46,7 @@ struct ContentView: View {
         }
         .onAppear {
             placementController.attach(actions: document)
+            placementController.session = session
             placementController.trace = document.trace
             placementController.updateDocumentURL(document.publishedFileURL ?? document.fileURL)
             session.attach(document: document)

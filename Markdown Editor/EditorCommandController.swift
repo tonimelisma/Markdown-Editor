@@ -71,10 +71,14 @@ final class EditorCommandController: ObservableObject {
         guard let document, let session else { return .disabled(.noDocument) }
         switch command {
         case .sourceMode:
+            let intent = session.intentRecorder.begin(.modeTransition)
             session.setMode(.source)
+            intent.recorder.finish(intent)
             return .accepted
         case .wysiwygMode:
+            let intent = session.intentRecorder.begin(.modeTransition)
             session.setMode(.wysiwyg)
+            intent.recorder.finish(intent)
             return .accepted
         case .addImage:
             Task { await session.addImages() }
@@ -111,13 +115,12 @@ final class EditorCommandController: ObservableObject {
         document: MarkdownDocument,
         session: EditorSession
     ) -> EditorCommandResult {
-        let outcome = WorkLedgerRecorder.scope(.semanticCommand) {
-            session.perform(
-                command,
-                selection: currentSelection(in: session),
-                expectedSourceRevision: SourceRevision(value: document.sourceVersion)
-            )
-        }
+        let outcome = session.perform(
+            command,
+            selection: currentSelection(in: session),
+            expectedSourceRevision: SourceRevision(value: document.sourceVersion),
+            intentScope: .semanticCommand
+        )
         if case .accepted = outcome { return .accepted }
         return .refused
     }

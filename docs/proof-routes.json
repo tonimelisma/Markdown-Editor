@@ -48,7 +48,7 @@
     "performanceSummary": {"owner": "PerformanceSampler", "entry": "flush", "expectedRecord": "performanceSummary", "allowedHarness": "component"},
     "budgetExceeded": {"owner": "PerformanceSampler", "entry": "flush", "expectedRecord": "budgetExceeded", "allowedHarness": "component"},
     "sourceHighlightWidened": {"owner": "SourceEditor.Coordinator", "entry": "apply", "expectedRecord": "sourceHighlightWidened", "allowedHarness": "component"},
-    "workLedger": {"owner": "WorkLedgerRecorder", "entry": "recordWorkLedger", "expectedRecord": "workLedger", "allowedHarness": "component"},
+    "workLedger": {"owner": "IntentRecorder", "entry": "report", "expectedRecord": "workLedger", "allowedHarness": "component"},
     "frameStatistics": {"owner": "PerformanceSampler", "entry": "flush", "expectedRecord": "frameStatistics", "allowedHarness": "component"},
     "memoryFootprint": {"owner": "PerformanceSampler", "entry": "flush", "expectedRecord": "memoryFootprint", "allowedHarness": "component"}
   }

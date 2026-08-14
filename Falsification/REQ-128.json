@@ -1,0 +1,15 @@
+{
+  "requirement": "REQ-128",
+  "mutations": [
+    {
+      "rationale": "If zero-progress results are admitted, the malformed-outcome proof must turn red.",
+      "file": "Markdown Editor/BenchmarkDriver.swift",
+      "find": "&& outcome.progress > 0",
+      "replace": "&& outcome.progress >= 0",
+      "expect_red": [
+        "Markdown EditorTests/COR69BenchmarkProofTests/benchmarkRejectsNoProgressAndUnknownActions()",
+        "Markdown EditorTests/COR69BenchmarkProofTests/benchmarkScrollRouteReportsProgress()"
+      ]
+    }
+  ]
+}

@@ -16,6 +16,7 @@ cases=(
     "unknown-metric.jsonl|unknown performance metric"
     "fault.jsonl|faults recorded"
     "no-run-end.jsonl|clean-exit"
+    "late-orphaned-intent.jsonl|faults recorded"
 )
 
 for item in "${cases[@]}"; do
@@ -31,5 +32,8 @@ for item in "${cases[@]}"; do
         exit 1
     fi
 done
+
+python3 "$verifier" "$fixture_dir/orphaned-intent.jsonl" 20 --label orphaned-intent \
+    --allow-orphaned-intents
 
 echo "verify-smoke-log: all fixtures discriminated"

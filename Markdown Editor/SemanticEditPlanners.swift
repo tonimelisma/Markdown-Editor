@@ -16,6 +16,7 @@ nonisolated enum SemanticPlannerGate {
         action: String,
         grouping: MutationGrouping = .discrete,
         selectionBefore: SourceSelection? = nil,
+        intent: IntentContext? = nil,
         selectionAfter: SourceSelection? = nil,
         postcondition: @escaping @Sendable (MarkdownTree, String) -> Bool
     ) -> SemanticEditResult {
@@ -24,10 +25,11 @@ nonisolated enum SemanticPlannerGate {
             return .refused(.invalidRange)
         }
         let newText = ns.replacingCharacters(in: range, with: replacement)
-        let isValid = EditorSemanticWorker.sync {
+        let isValid = EditorSemanticWorker.sync(intent: intent) {
             guard case .success(let tree) = MarkdownParser.parse(
                 newText,
-                sourceVersion: snapshot.sourceVersion &+ 1
+                sourceVersion: snapshot.sourceVersion &+ 1,
+                intent: intent
             ) else {
                 return false
             }
@@ -100,6 +102,7 @@ nonisolated enum InlineEditPlanner {
         action: String,
         grouping: MutationGrouping = .discrete,
         selectionBefore: SourceSelection? = nil,
+        intent: IntentContext? = nil,
         expectsKind: @escaping @Sendable (MarkdownNodeKind) -> Bool
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
@@ -114,7 +117,8 @@ nonisolated enum InlineEditPlanner {
                     replacement: inner,
                     action: action,
                     grouping: grouping,
-                    selectionBefore: selectionBefore
+                    selectionBefore: selectionBefore,
+                    intent: intent
                 ) { _, _ in true }
             }
             let beforeStart = range.location >= open.count
@@ -134,7 +138,8 @@ nonisolated enum InlineEditPlanner {
                             replacement: selected,
                             action: action,
                             grouping: grouping,
-                            selectionBefore: selectionBefore
+                            selectionBefore: selectionBefore,
+                            intent: intent
                         ) { _, _ in true }
                     }
                 }
@@ -149,7 +154,8 @@ nonisolated enum InlineEditPlanner {
             replacement: replacement,
             action: action,
             grouping: grouping,
-            selectionBefore: selectionBefore
+            selectionBefore: selectionBefore,
+            intent: intent
         ) { tree, newText in
             containsKind(tree, source: newText, covering: cover, where: expectsKind)
         }
@@ -159,7 +165,8 @@ nonisolated enum InlineEditPlanner {
         snapshot: SourceSnapshot,
         range: NSRange,
         grouping: MutationGrouping = .discrete,
-        selectionBefore: SourceSelection? = nil
+        selectionBefore: SourceSelection? = nil,
+        intent: IntentContext? = nil
     ) -> SemanticEditResult {
         let selected = (snapshot.text as NSString).substring(with: range)
         var ticks = "`"
@@ -172,7 +179,8 @@ nonisolated enum InlineEditPlanner {
             replacement: replacement,
             action: "Inline Code",
             grouping: grouping,
-            selectionBefore: selectionBefore
+            selectionBefore: selectionBefore,
+            intent: intent
         ) { tree, newText in
             containsKind(tree, source: newText, covering: cover) { kind in
                 if case .code = kind { return true }
@@ -188,7 +196,8 @@ nonisolated enum BlockEditPlanner {
         range: NSRange,
         level: Int,
         grouping: MutationGrouping = .discrete,
-        selectionBefore: SourceSelection? = nil
+        selectionBefore: SourceSelection? = nil,
+        intent: IntentContext? = nil
     ) -> SemanticEditResult {
         let prefix = String(repeating: "#", count: max(1, min(level, 6))) + " "
         return transformLine(
@@ -196,7 +205,8 @@ nonisolated enum BlockEditPlanner {
             range: range,
             action: "Heading",
             grouping: grouping,
-            selectionBefore: selectionBefore
+            selectionBefore: selectionBefore,
+            intent: intent
         ) { content, hadNewline in
             let stripped = stripSameLineBlockChrome(content)
             return prefix + stripped + (hadNewline ? "\n" : "")
@@ -212,14 +222,16 @@ nonisolated enum BlockEditPlanner {
         snapshot: SourceSnapshot,
         range: NSRange,
         grouping: MutationGrouping = .discrete,
-        selectionBefore: SourceSelection? = nil
+        selectionBefore: SourceSelection? = nil,
+        intent: IntentContext? = nil
     ) -> SemanticEditResult {
         transformLine(
             snapshot: snapshot,
             range: range,
             action: "Paragraph",
             grouping: grouping,
-            selectionBefore: selectionBefore
+            selectionBefore: selectionBefore,
+            intent: intent
         ) { content, hadNewline in
             stripSameLineBlockChrome(content) + (hadNewline ? "\n" : "")
         } postcondition: { _, _ in true }
@@ -229,7 +241,8 @@ nonisolated enum BlockEditPlanner {
         snapshot: SourceSnapshot,
         range: NSRange,
         grouping: MutationGrouping = .discrete,
-        selectionBefore: SourceSelection? = nil
+        selectionBefore: SourceSelection? = nil,
+        intent: IntentContext? = nil
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
         let line = ns.lineRange(for: range)
@@ -249,6 +262,7 @@ nonisolated enum BlockEditPlanner {
             action: "Code Block",
             grouping: grouping,
             selectionBefore: selectionBefore,
+            intent: intent,
             // REQ-113; COR-26: the caret belongs at the end of the fenced *content*, not past
             // the closing fence. Both fences are synthetic in WYSIWYG, so a caret after the
             // closing fence has no exact projection preimage just as one past a trailing
@@ -270,6 +284,7 @@ nonisolated enum BlockEditPlanner {
         action: String,
         grouping: MutationGrouping = .discrete,
         selectionBefore: SourceSelection? = nil,
+        intent: IntentContext? = nil,
         transform: (String, Bool) -> String,
         postcondition: @escaping @Sendable (MarkdownTree, String) -> Bool
     ) -> SemanticEditResult {
@@ -286,6 +301,7 @@ nonisolated enum BlockEditPlanner {
             action: action,
             grouping: grouping,
             selectionBefore: selectionBefore,
+            intent: intent,
             // REQ-113; COR-26: a heading's `#` chrome is synthetic in WYSIWYG, and even for a
             // plain paragraph the default caret would land past the line's newline on the block
             // boundary. Both refuse; the content end never does.
@@ -306,7 +322,8 @@ nonisolated enum ListEditPlanner {
         prefix: String,
         action: String,
         grouping: MutationGrouping = .discrete,
-        selectionBefore: SourceSelection? = nil
+        selectionBefore: SourceSelection? = nil,
+        intent: IntentContext? = nil
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
         let line = ns.lineRange(for: range)
@@ -328,6 +345,7 @@ nonisolated enum ListEditPlanner {
             action: action,
             grouping: grouping,
             selectionBefore: selectionBefore,
+            intent: intent,
             // REQ-113; COR-26: the list marker is synthetic in WYSIWYG, so the caret stays at
             // the concrete end of this rewritten line rather than past its newline.
             selectionAfter: SemanticPlannerGate.caretInsideContent(
@@ -342,7 +360,8 @@ nonisolated enum ListEditPlanner {
         snapshot: SourceSnapshot,
         range: NSRange,
         grouping: MutationGrouping = .discrete,
-        selectionBefore: SourceSelection? = nil
+        selectionBefore: SourceSelection? = nil,
+        intent: IntentContext? = nil
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
         let line = ns.lineRange(for: range)
@@ -362,6 +381,7 @@ nonisolated enum ListEditPlanner {
             action: "Quote",
             grouping: grouping,
             selectionBefore: selectionBefore,
+            intent: intent,
             // REQ-113; COR-26: the `> ` marker is synthetic in WYSIWYG, same as a list marker.
             selectionAfter: SemanticPlannerGate.caretInsideContent(
                 lineStart: line.location,
@@ -378,7 +398,8 @@ nonisolated enum LinkEditPlanner {
         range: NSRange,
         destination: String?,
         grouping: MutationGrouping = .discrete,
-        selectionBefore: SourceSelection? = nil
+        selectionBefore: SourceSelection? = nil,
+        intent: IntentContext? = nil
     ) -> SemanticEditResult {
         let ns = snapshot.text as NSString
         let selected = ns.substring(with: range)
@@ -392,7 +413,8 @@ nonisolated enum LinkEditPlanner {
                     replacement: text,
                     action: "Remove Link",
                     grouping: grouping,
-                    selectionBefore: selectionBefore
+                    selectionBefore: selectionBefore,
+                    intent: intent
                 ) { _, _ in true }
             }
             return .refused(.ambiguousSelection)
@@ -406,7 +428,8 @@ nonisolated enum LinkEditPlanner {
             replacement: replacement,
             action: "Link",
             grouping: grouping,
-            selectionBefore: selectionBefore
+            selectionBefore: selectionBefore,
+            intent: intent
         ) { tree, newText in
             containsKind(tree, source: newText, covering: cover) { kind in
                 if case .link = kind { return true }
@@ -423,7 +446,8 @@ nonisolated enum TableCellEditPlanner {
         sourceRange: NSRange,
         text: String,
         grouping: MutationGrouping,
-        selectionBefore: SourceSelection
+        selectionBefore: SourceSelection,
+        intent: IntentContext? = nil
     ) -> SemanticEditResult {
         guard sourceRange.location >= 0,
               NSMaxRange(sourceRange) <= (snapshot.text as NSString).length else {
@@ -435,7 +459,8 @@ nonisolated enum TableCellEditPlanner {
             sourceRange: sourceRange,
             text: text,
             grouping: grouping,
-            selectionBefore: selectionBefore
+            selectionBefore: selectionBefore,
+            intent: intent
         )
     }
 
@@ -445,7 +470,8 @@ nonisolated enum TableCellEditPlanner {
         nodeID: MarkdownNodeID,
         text: String,
         grouping: MutationGrouping = .discrete,
-        selectionBefore: SourceSelection? = nil
+        selectionBefore: SourceSelection? = nil,
+        intent: IntentContext? = nil
     ) -> SemanticEditResult {
         guard let tree, let node = findNode(id: nodeID, in: tree.root) else {
             return .refused(.mappingFailure)
@@ -453,7 +479,7 @@ nonisolated enum TableCellEditPlanner {
         guard case .tableCell = node.kind else {
             return .refused(.unsupportedCommand)
         }
-        let sourceRange: NSRange? = EditorSemanticWorker.sync {
+        let sourceRange: NSRange? = EditorSemanticWorker.sync(intent: intent) {
             let index = MarkdownSourceIndex(
                 source: snapshot.text,
                 sourceVersion: snapshot.sourceVersion
@@ -472,7 +498,8 @@ nonisolated enum TableCellEditPlanner {
             sourceRange: sourceRange,
             text: text,
             grouping: grouping,
-            selectionBefore: selectionBefore
+            selectionBefore: selectionBefore,
+            intent: intent
         )
     }
 
@@ -482,7 +509,8 @@ nonisolated enum TableCellEditPlanner {
         sourceRange: NSRange,
         text: String,
         grouping: MutationGrouping,
-        selectionBefore: SourceSelection?
+        selectionBefore: SourceSelection?,
+        intent: IntentContext?
     ) -> SemanticEditResult {
         // Unescaped pipes / newlines change GFM table structure — refuse rather than accept
         // a vacuous postcondition. Escaped pipes (`\|`) are literal cell content.
@@ -498,7 +526,8 @@ nonisolated enum TableCellEditPlanner {
             replacement: text,
             action: "Edit Cell",
             grouping: grouping,
-            selectionBefore: selectionBefore
+            selectionBefore: selectionBefore,
+            intent: intent
         ) { newTree, newText in
             guard countTables(in: newTree.root) == beforeTables,
                   countTableCells(in: newTree.root) == beforeCells else {

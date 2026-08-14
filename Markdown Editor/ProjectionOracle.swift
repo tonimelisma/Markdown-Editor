@@ -16,9 +16,12 @@ nonisolated enum ProjectionOracle {
 
     static func validate(
         model: MarkdownProjectionModel,
-        sourceUTF16Count: Int
+        sourceUTF16Count: Int,
+        intent: IntentContext? = nil
     ) -> Result<Void, Failure> {
-        WorkLedgerRecorder.add { $0.oracleValidations += 1 }
+        if let intent {
+            intent.recorder.add(intent) { $0.oracleValidations += 1 }
+        }
         let renderedCount = (model.renderedString as NSString).length
         var covered = Array(repeating: 0, count: max(renderedCount, 0))
 
@@ -78,9 +81,9 @@ nonisolated enum ProjectionOracle {
     /// Validate a complete presentation snapshot before it becomes editable.
     ///
     /// // REQ-091/093; ARC-003: rendered length, atom coverage, tables, attachments, map bounds.
-    static func validate(snapshot: PresentationSnapshot) -> Result<Void, Failure> {
+    static func validate(snapshot: PresentationSnapshot, intent: IntentContext? = nil) -> Result<Void, Failure> {
         let model = snapshot.asProjectionModel
-        if case .failure(let failure) = validate(model: model, sourceUTF16Count: snapshot.sourceUTF16Count) {
+        if case .failure(let failure) = validate(model: model, sourceUTF16Count: snapshot.sourceUTF16Count, intent: intent) {
             return .failure(failure)
         }
         let renderedCount = (snapshot.renderedString as NSString).length

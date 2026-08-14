@@ -8,7 +8,7 @@ import Combine
 import Foundation
 import UniformTypeIdentifiers
 
-nonisolated enum EditorMode: String, Sendable, Equatable, CaseIterable {
+nonisolated enum EditorMode: String, Sendable, Equatable, Codable, CaseIterable {
     case wysiwyg
     case source
 }
@@ -45,6 +45,12 @@ final class EditorSession: ObservableObject {
     private(set) var pendingSelectionRestoration: PendingSelectionRestoration?
 
     let imageCache = LocalImageCache()
+    /// Sole owner of intent identities for this editor window.
+    let intentRecorder = IntentRecorder()
+    private var presentationIntents: [PresentationSnapshot.ID: IntentContext] = [:]
+    /// Native source/image mutations stage their owner before the document publishes. The
+    /// publication observer consumes this exact context instead of creating a second owner.
+    private var pendingDocumentMutationIntent: IntentContext?
     let updateOrigin = EditorUpdateOriginScope()
     let snapshotIDs = PresentationSnapshotIDFactory()
 
@@ -61,6 +67,10 @@ final class EditorSession: ObservableObject {
     let parseCoordinator: ParseCoordinator
     private var cancellables = Set<AnyCancellable>()
     private var publicationObserver: AnyCancellable?
+    /// Coalesces the multiple `@Published` emissions produced by one canonical document
+    /// mutation. The mutation's staged intent must be consumed by the one resulting parse,
+    /// rather than allowing the second property emission to create a fresh reconciliation owner.
+    private var pendingDocumentChangeTask: Task<Void, Never>?
 
     // MARK: - View reconciliation scope (REQ-094/096; ARC-015)
 
@@ -128,6 +138,9 @@ final class EditorSession: ObservableObject {
         parseCoordinator.cancel()
         performanceSampler?.invalidate()
         self.document = document
+        if let diagnosticLog = DiagnosticLog.shared {
+            diagnosticLog.installWorkLedgerWriter(on: intentRecorder)
+        }
         document.updateCanonicalAssetReferences(CanonicalAssetReferences(values: []))
         performanceSampler = PerformanceSampler(
             trace: document.trace,
@@ -144,10 +157,9 @@ final class EditorSession: ObservableObject {
                 // old map synchronously so loaded/reverted source is never editable
                 // through a presentation carrying the previous content identity.
                 MainActor.assumeIsolated {
-                    self?.invalidateDerivedState()
-                }
-                Task { @MainActor in
-                    self?.scheduleParse()
+                    guard let self else { return }
+                    self.invalidateDerivedState()
+                    self.scheduleDocumentChangeParse()
                 }
             }
             .store(in: &cancellables)
@@ -156,13 +168,25 @@ final class EditorSession: ObservableObject {
                 self?.requestSelectionRestoration(selection)
             }
             .store(in: &cancellables)
-        scheduleParse()
+        let openIntent = intentRecorder.begin(.documentOpen)
+        scheduleParse(intent: openIntent)
     }
 
     /// Ends the window/session lifetime without retaining the document, sampler, timer, or
     /// Combine subscriptions. Repeated detach is intentionally harmless.
     func detach() {
+        pendingDocumentChangeTask?.cancel()
+        pendingDocumentChangeTask = nil
         parseCoordinator.cancel()
+        if let pendingDocumentMutationIntent {
+            pendingDocumentMutationIntent.recorder.finish(pendingDocumentMutationIntent, orphaned: true)
+            self.pendingDocumentMutationIntent = nil
+        }
+        let pendingIntents = presentationIntents.values
+        presentationIntents.removeAll()
+        for intent in pendingIntents {
+            intent.recorder.finish(intent, orphaned: true)
+        }
         cancellables.removeAll()
         performanceSampler?.invalidate()
         performanceSampler = nil
@@ -175,6 +199,19 @@ final class EditorSession: ObservableObject {
         presentation = nil
         authoritativeTree = nil
         resolvedImages = [:]
+    }
+
+    /// Schedule one reconciliation after the synchronous `@Published` burst for a canonical
+    /// mutation has settled. `MarkdownDocument.applyReplacement` publishes `text` and
+    /// `sourceVersion` separately; both describe one edit and must share its staged intent.
+    private func scheduleDocumentChangeParse() {
+        guard pendingDocumentChangeTask == nil else { return }
+        pendingDocumentChangeTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, !Task.isCancelled else { return }
+            self.pendingDocumentChangeTask = nil
+            self.scheduleParse(intent: self.takePendingDocumentMutationIntent())
+        }
     }
 
     func recordPerformance(_ metric: PerformanceSampler.Metric, durationNanos: UInt64) {
@@ -205,6 +242,29 @@ final class EditorSession: ObservableObject {
         document?.closeTypingUndoGroup()
         mode = newMode
         traceModeToggle(toSource: newMode == .source)
+    }
+
+    /// Retains one downstream parse lease for a native source/image mutation. The initial lease
+    /// remains owned by the caller until the synchronous document operation returns.
+    @discardableResult
+    func stageDocumentMutationIntent(_ intent: IntentContext) -> Bool {
+        if let previous = pendingDocumentMutationIntent {
+            previous.recorder.finish(previous, orphaned: true)
+        }
+        guard intent.recorder.retain(intent) else { return false }
+        pendingDocumentMutationIntent = intent
+        return true
+    }
+
+    func cancelStagedDocumentMutationIntent(_ intent: IntentContext) {
+        guard pendingDocumentMutationIntent == intent else { return }
+        pendingDocumentMutationIntent = nil
+        intent.recorder.finish(intent, orphaned: true)
+    }
+
+    private func takePendingDocumentMutationIntent() -> IntentContext? {
+        defer { pendingDocumentMutationIntent = nil }
+        return pendingDocumentMutationIntent
     }
 
     func updateSourceModeState(_ mutate: (inout SourceModeState) -> Void) {
@@ -279,6 +339,19 @@ final class EditorSession: ObservableObject {
         }
     }
 
+    /// Re-seeds transient selections between process-level benchmark cases so one case cannot
+    /// feed a stale range into the next fixture's ordinary source-command route.
+    func resetBenchmarkTransientState() {
+        updateSourceModeState {
+            $0.selection = SourceSelection(
+                utf16: NSRange(location: 0, length: 0),
+                affinity: .downstream
+            )
+        }
+        wysiwygModeState = WYSIWYGModeState()
+        pendingSelectionRestoration = nil
+    }
+
     /// Test hook for the presentation boundary: image resolution is derived state, and tests
     /// need to prove that a same-text authoritative snapshot refreshes an attachment exactly
     /// when its resolved display image changes.
@@ -326,7 +399,8 @@ final class EditorSession: ObservableObject {
     func installPresentation(
         _ snapshot: PresentationSnapshot,
         tree: MarkdownTree?,
-        provisional: Bool
+        provisional: Bool,
+        intent: IntentContext? = nil
     ) {
         let previous = presentation
         let sourceSelection: SourceSelection? = {
@@ -342,6 +416,18 @@ final class EditorSession: ObservableObject {
             return SourceSelection(utf16: sourceRange, affinity: existing.affinity)
         }()
         presentation = snapshot
+        if let intent {
+            let supersededIntents = presentationIntents.values
+            let alreadyLeasedForPresentation = supersededIntents.contains(intent)
+            presentationIntents.removeAll()
+            for superseded in supersededIntents where superseded != intent {
+                superseded.recorder.finish(superseded, orphaned: true)
+            }
+            if !alreadyLeasedForPresentation {
+                intent.recorder.retain(intent)
+            }
+            presentationIntents[snapshot.id] = intent
+        }
         if !provisional {
             authoritativeTree = tree
         }
@@ -387,9 +473,16 @@ final class EditorSession: ObservableObject {
         )
     }
 
-    func scheduleParse() {
+    /// Transfers the context that installed a snapshot to the host adapter exactly once. The
+    /// lookup is snapshot-bound, so a late host update cannot borrow a newer operation's owner.
+    func takePresentationIntent(for snapshotID: PresentationSnapshot.ID) -> IntentContext? {
+        presentationIntents.removeValue(forKey: snapshotID)
+    }
+
+    func scheduleParse(intent: IntentContext? = nil) {
         guard let document else { return }
-        parseCoordinator.scheduleParse(session: self, document: document)
+        let context = intent ?? intentRecorder.begin(.reconciliation)
+        parseCoordinator.scheduleParse(session: self, document: document, intent: context)
     }
 
     /// Primary edit entry — returns accepted source+presentation transition or refusal.
@@ -398,10 +491,17 @@ final class EditorSession: ObservableObject {
         _ command: SemanticCommand,
         selection: EditorSelection,
         expectedSourceRevision: SourceRevision,
-        grouping groupingOverride: MutationGrouping? = nil
+        grouping groupingOverride: MutationGrouping? = nil,
+        intentScope: WorkScope = .acceptedEdit
     ) -> EditorEditOutcome {
         guard let document else { return .refused(.unavailable) }
-        return WorkLedgerRecorder.scope(.acceptedEdit) {
+        let intent = intentRecorder.begin(intentScope)
+        var handedOffToReconciliation = false
+        defer {
+            if !handedOffToReconciliation {
+                intentRecorder.finish(intent)
+            }
+        }
         let snapshot = document.sourceSnapshot()
         let grouping = groupingOverride ?? SemanticEditEngine.defaultGrouping(for: command)
         let request = EditorEditRequest(
@@ -416,7 +516,8 @@ final class EditorSession: ObservableObject {
             snapshot: snapshot,
             presentation: presentation,
             tree: authoritativeTree,
-            nextSnapshotID: snapshotIDs.make()
+            nextSnapshotID: snapshotIDs.make(),
+            intent: intent
         )
         switch outcome {
         case .accepted(let edit):
@@ -444,7 +545,7 @@ final class EditorSession: ObservableObject {
                 updateSourceModeState { $0.selection = edit.sourceSelectionAfter }
                 if let transition = edit.presentationTransition {
                     updateOrigin.with(.programmaticPresentation) {
-                        installPresentation(transition.nextSnapshot, tree: authoritativeTree, provisional: true)
+                        installPresentation(transition.nextSnapshot, tree: authoritativeTree, provisional: true, intent: edit.intent)
                         updateWYSIWYGModeState {
                             $0.selection = edit.projectionSelectionAfter ?? transition.selectionAfter
                         }
@@ -458,7 +559,8 @@ final class EditorSession: ObservableObject {
                     )
                 }
                 publishSelectionRestoration(edit: edit)
-                scheduleParse()
+                scheduleParse(intent: intent)
+                handedOffToReconciliation = true
                 return .accepted(edit)
             case .refused(let refusal):
                 switch refusal {
@@ -470,7 +572,6 @@ final class EditorSession: ObservableObject {
         case .refused(let refusal):
             document.trace?.record(route: .editRefused, .editRefused(category: .refusal(refusal)))
             return .refused(refusal)
-        }
         }
     }
 
@@ -500,14 +601,28 @@ final class EditorSession: ObservableObject {
 
     func addImages() async {
         // REQ-060/082; ARC-012: capture immutable source-domain intent before async picker work.
-        guard let target = imagePlacementTarget() else { return }
+        let intent = intentRecorder.begin(.acceptedEdit)
+        guard let target = imagePlacementTarget() else {
+            intent.recorder.finish(intent)
+            return
+        }
         actionRouter?.captureImagePlacementTarget(target)
 
-        guard let imagePicker else { return }
+        guard let imagePicker else {
+            intent.recorder.finish(intent)
+            return
+        }
         let urls = await imagePicker.pickImages()
-        guard !urls.isEmpty else { return }
+        guard !urls.isEmpty else {
+            intent.recorder.finish(intent)
+            return
+        }
         let claims = urls.map { ImageClaim.fileURL($0, providerName: $0.lastPathComponent, declaredType: nil) }
-        actionRouter?.handleAddImageClaims(claims)
+        guard let actionRouter else {
+            intent.recorder.finish(intent)
+            return
+        }
+        actionRouter.handleAddImageClaims(claims, intentContext: intent)
     }
 
     private func imagePlacementTarget() -> ImagePlacementTarget? {

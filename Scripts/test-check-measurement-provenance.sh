@@ -8,7 +8,15 @@ root="$(mktemp -d)"
 trap 'rm -rf -- "$root"' EXIT
 mkdir -p "$root/docs/research" "$root/Markdown EditorTests"
 printf 'enum PerformanceCorpus { case structured }\n' >"$root/Markdown EditorTests/PerformanceCorpus.swift"
-digest="$(shasum -a 256 "$root/Markdown EditorTests/PerformanceCorpus.swift" | awk '{print $1}')"
+printf 'enum BenchmarkDriver { case action }\n' >"$root/Markdown EditorTests/BenchmarkDriver.swift"
+digest="$(python3 - "$root/Markdown EditorTests/PerformanceCorpus.swift" "$root/Markdown EditorTests/BenchmarkDriver.swift" <<'PY'
+import hashlib
+import pathlib
+import sys
+data = pathlib.Path(sys.argv[1]).read_bytes() + b"\n-- benchmark action authority --\n" + pathlib.Path(sys.argv[2]).read_bytes()
+print(hashlib.sha256(data).hexdigest())
+PY
+)"
 commit="$(git -C "$repo_root" rev-parse HEAD)"
 
 table='| scenario | corpus | size | p95 |\n| --- | --- | --- | --- |\n| typeProse | structured | 100000 | 1ms |'

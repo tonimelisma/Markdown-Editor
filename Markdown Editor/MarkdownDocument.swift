@@ -475,6 +475,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         canonicalAssetReferences = CanonicalAssetReferences(values: [])
     }
 
+    /// Benchmark-only canonical fixture installation. The process-level driver uses this route
+    /// after opening one empty file so corpus text remains owned by `PerformanceCorpus`.
+    func installTextForBenchmark(_ value: String) {
+        installTextForTesting(value)
+    }
+
     func updateCanonicalAssetReferences(_ references: CanonicalAssetReferences) {
         guard canonicalAssetReferences != references else { return }
         canonicalAssetReferences = references
@@ -491,7 +497,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// // `fileURL` is not reliable either — NSDocument's own opening machinery may already
     /// // have set it before `read(from:ofType:)` runs even on the very first load.
     private func installLoadedText(_ value: String) {
-        WorkLedgerRecorder.scope(.documentOpen) {
         closeTypingGroupIfNeeded()
         let isInitialLoad = !hasCompletedInitialLoad && !isRevertingViaAppKit
         hasCompletedInitialLoad = true
@@ -508,7 +513,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             trace?.record(route: .documentLoaded, .documentLoaded(utf16Count: utf16Count, sourceRevision: sourceVersion))
         } else {
             trace?.record(route: .documentReverted, .documentReverted(sourceRevision: sourceVersion, utf16Count: utf16Count))
-        }
         }
     }
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# REQ-128: run the shipping binary and write an evidence-only performance baseline.
+# REQ-128: run the shipping Release binary through the Swift-owned benchmark matrix.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -8,8 +8,7 @@ derived="${BENCHMARK_DERIVED_DATA:-$repo_root/.benchmark-build}"
 output="${BENCHMARK_OUTPUT:-$repo_root/docs/research/performance-baseline.md}"
 duration="${BENCHMARK_DURATION_SECONDS:-2}"
 interval_ms="${BENCHMARK_INTERVAL_MS:-120}"
-sizes=(10000 100000)
-if [[ -n "${BENCHMARK_SIZES:-}" ]]; then read -r -a sizes <<<"$BENCHMARK_SIZES"; fi
+sizes="${BENCHMARK_SIZES:-10000 100000}"
 
 xcodebuild build \
     -project "Markdown Editor.xcodeproj" \
@@ -23,84 +22,91 @@ binary="$derived/Build/Products/Release/Markdown Editor.app/Contents/MacOS/Markd
 
 run_root="$(mktemp -d "${TMPDIR:-/tmp}/markdown-editor-benchmark.XXXXXX")"
 trap 'rm -rf "$run_root"' EXIT
-metadata="$run_root/runs.tsv"
-: >"$metadata"
+results="$run_root/results"
+logs="$run_root/logs"
+mkdir -p "$results" "$logs" "$run_root/assets"
+cp "$repo_root/Scripts/Fixtures/assets/sample.png" "$run_root/assets/sample.png"
+fixture="$run_root/fixture.md"
+touch "$fixture"
+manifest="$run_root/manifest.json"
 
-make_fixture() {
-    local corpus="$1" target="$2" size="$3" unit
-    case "$corpus" in
-        degenerateParagraph) unit='word ' ;;
-        structuredProse) unit=$'## Heading\n\nParagraph with **strong**, *emphasis*, `code` and [link](https://example.com).\n\n' ;;
-        heavyLists) unit=$'- item\n  - nested\n    - deeper\n- [ ] task\n1. ordered\n\n' ;;
-        tableDense) unit=$'| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n\n' ;;
-        codeHeavy) unit=$'```swift\nlet x = 1\nlet y = 2\nlet z = x + y\n```\n\n' ;;
-        imageHeavy) unit=$'![alt](assets/sample.png)\n\nParagraph.\n\n' ;;
-        *) echo "benchmark: unknown corpus $corpus" >&2; return 1 ;;
-    esac
-    python3 - "$unit" "$target" "$size" <<'PY'
+BENCHMARK_DURATION_SECONDS="$duration" BENCHMARK_INTERVAL_MS="$interval_ms" \
+BENCHMARK_SIZES="$sizes" BENCHMARK_RESULT_DIRECTORY="$results" \
+python3 - "$manifest" <<'PY'
+import json
+import os
 import pathlib
 import sys
 
-unit, target, size = sys.argv[1], pathlib.Path(sys.argv[2]), int(sys.argv[3])
-encoded = unit.encode("utf-8")
-if not encoded:
-    raise SystemExit("benchmark: corpus unit must not be empty")
-repetitions = (size + len(encoded) - 1) // len(encoded)
-payload = encoded * repetitions
-while len(payload) > size and payload.endswith(encoded):
-    payload = payload[:-len(encoded)]
-target.write_bytes(payload)
+sizes = [int(item) for item in os.environ.get("BENCHMARK_SIZES", "10000 100000").split()]
+if not sizes or any(size <= 0 for size in sizes):
+    raise SystemExit("benchmark: BENCHMARK_SIZES must contain positive integers")
+pathlib.Path(sys.argv[1]).write_text(json.dumps({
+    "durationSeconds": float(os.environ.get("BENCHMARK_DURATION_SECONDS", "2")),
+    "intervalMillis": float(os.environ.get("BENCHMARK_INTERVAL_MS", "120")),
+    "sizes": sizes,
+    "resultDirectory": str(pathlib.Path(os.environ["BENCHMARK_RESULT_DIRECTORY"]).resolve()),
+}), encoding="utf-8")
 PY
-}
 
-for scenario in typeProse typeInTable typeAdjacentMarkup applyCommands toggleModes scrollDocument undoRedoStorm openAndIdle soak; do
-    for corpus in degenerateParagraph structuredProse heavyLists tableDense codeHeavy imageHeavy; do
-        for size in "${sizes[@]}"; do
-            run_id="${scenario}-${corpus}-${size}"
-            run_dir="$run_root/$run_id"
-            mkdir -p "$run_dir/logs"
-            fixture="$run_dir/fixture.md"
-            make_fixture "$corpus" "$fixture" "$size"
-            if [[ "$corpus" == imageHeavy ]]; then
-                mkdir -p "$run_dir/assets"
-                cp "$repo_root/Scripts/Fixtures/assets/sample.png" "$run_dir/assets/sample.png"
-            fi
-            MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$run_dir/logs" \
-            MARKDOWN_EDITOR_FRAME_OBSERVER=1 \
-                "$binary" --benchmark "$scenario" --corpus "$corpus" --size "$size" \
-                --duration "$duration" --interval-ms "$interval_ms" \
-                -ApplePersistenceIgnoreState YES "$fixture" >/dev/null 2>&1
-            log="$(find "$run_dir/logs" -name '*.jsonl' -type f -print -quit)"
-            [[ -n "$log" ]] || { echo "benchmark: no diagnostic log for $run_id" >&2; exit 1; }
-            # A driving scenario reconciles once per accepted edit, so it needs both the edit
-            # assertions and a ceiling sized to the edits this run actually drove. The verifier's
-            # default of 4 suits a caller driving a handful; this driver issues one edit every
-            # interval for the whole duration, so a clean run reported "17 applied (ceiling 4)"
-            # and benchmark.sh failed at the first of its 108 runs. The bound below is still a
-            # bound — a self-feeding loop exceeds one-per-edit-plus-slack.
-            edits=()
-            case "$scenario" in
-                typeProse|typeInTable|typeAdjacentMarkup|applyCommands|undoRedoStorm|soak)
-                    driven=$(( duration * 1000 / interval_ms ))
-                    edits=(--expect-edits --reconciliation-ceiling $(( driven + 4 )))
-                    ;;
-            esac
-            # Deliberately not --fail-on-budget-exceeded. This script records where performance
-            # actually is; ROADMAP sequences the measurement substrate before the increments that
-            # make anything faster, so a recorder that refuses to write a baseline until every
-            # budget is already met can never produce the baseline those increments are judged
-            # against. It failed here on a real overrun (parseProjection 183.7 ms against a 100 ms
-            # budget), which is a finding to record rather than a reason to record nothing. The
-            # structural assertions above still run, so a malformed or livelocked run is rejected;
-            # budget enforcement stays with the smoke gate and PerformanceBudgetTests.
-            python3 "$repo_root/Scripts/verify-smoke-log.py" "$log" 100 \
-                --label "benchmark:$run_id" "${edits[@]}" >/dev/null
-            printf '%s\t%s\t%s\t%s\n' "$scenario" "$corpus" "$size" "$log" >>"$metadata"
-        done
-    done
-done
+MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$logs" MARKDOWN_EDITOR_FRAME_OBSERVER=1 MARKDOWN_EDITOR_BENCHMARK=1 \
+    "$binary" --benchmark-manifest "$manifest" \
+    -ApplePersistenceIgnoreState YES "$fixture" >/dev/null 2>&1
 
-python3 - "$metadata" "$output" "$repo_root" <<'PY'
+log="$(find "$logs" -name '*.jsonl' -type f -print -quit)"
+[[ -n "$log" ]] || { echo "benchmark: no diagnostic log" >&2; exit 1; }
+python3 - "$results" "$log" <<'PY'
+import json
+import pathlib
+import sys
+
+result_dir, log_path = map(pathlib.Path, sys.argv[1:3])
+results = sorted(path for path in result_dir.glob("*.json") if path.name != "benchmark-summary.json")
+if not results:
+    raise SystemExit("benchmark: driver emitted no case results")
+seen = set()
+for path in results:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    key = (value["scenario"], value["corpus"], value["size"])
+    if key in seen:
+        raise SystemExit(f"benchmark: duplicate case result {key}")
+    seen.add(key)
+    if not value["passed"] or value["progress"] <= 0:
+        raise SystemExit(f"benchmark: failed case {key}: {value}")
+    if value["timeoutCount"] or value["unknownActionCount"] or value["duplicateSampleCount"]:
+        raise SystemExit(f"benchmark: invalid outcome accounting for {key}")
+    outcomes = value.get("actionOutcomes")
+    if not isinstance(outcomes, list) or len(outcomes) != value["actionAttempts"]:
+        raise SystemExit(f"benchmark: missing per-action outcome contract for {key}: {value}")
+    if value.get("actionContractFailureCount", 0) != 0:
+        raise SystemExit(f"benchmark: unexpected action outcome for {key}: {value}")
+    for outcome in outcomes:
+        if not outcome.get("action") or outcome.get("expected") != outcome.get("observed"):
+            raise SystemExit(f"benchmark: action contract mismatch for {key}: {outcome}")
+    if value["actionAttempts"] < value["expectedActionAttemptsMinimum"]:
+        raise SystemExit(f"benchmark: action contract not exercised for {key}: {value}")
+    if value["progress"] < value["expectedProgressMinimum"]:
+        raise SystemExit(f"benchmark: progress contract not exercised for {key}: {value}")
+summary_path = result_dir / "benchmark-summary.json"
+if not summary_path.is_file():
+    raise SystemExit("benchmark: driver emitted no exact matrix summary")
+summary = json.loads(summary_path.read_text(encoding="utf-8"))
+def key_of(item):
+    return (item["scenario"], item["corpus"], item["size"])
+expected = [key_of(item) for item in summary["expectedCases"]]
+completed = [key_of(item) for item in summary["completedCases"]]
+if len(expected) != 108:
+    raise SystemExit(f"benchmark: Swift driver expected {len(expected)} cases; exact matrix requires 108")
+if sorted(expected) != sorted(completed) or sorted(expected) != sorted(seen):
+    raise SystemExit("benchmark: result set does not exactly match the Swift-owned matrix")
+records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+if not any(record.get("ev") == "runEnd" for record in records):
+    raise SystemExit("benchmark: diagnostic run did not terminate cleanly")
+if not any(record.get("ev") == "workLedger" for record in records):
+    raise SystemExit("benchmark: no intent ledger evidence")
+PY
+
+python3 - "$results" "$log" "$output" "$repo_root" "$duration" "$interval_ms" <<'PY'
 import datetime as dt
 import hashlib
 import json
@@ -109,79 +115,48 @@ import pathlib
 import platform
 import subprocess
 import sys
+import tempfile
 import uuid
 
-metadata = pathlib.Path(sys.argv[1])
-output = pathlib.Path(sys.argv[2])
-repo = pathlib.Path(sys.argv[3])
+results_dir, log_path, output_path, repo = map(pathlib.Path, sys.argv[1:5])
+duration, interval = sys.argv[5:7]
 
-def value(data, key):
-    return data.get("data", {}).get(key)
-
-rows = []
-sample_counts = []
-for line in metadata.read_text().splitlines():
-    scenario, corpus, size, path = line.split("\t")
-    records = [json.loads(item) for item in pathlib.Path(path).read_text().splitlines() if item.strip()]
-    summaries = {
-        value(record, "metric"): value(record, "p95Nanos")
-        for record in records if record.get("ev") == "performanceSummary"
-    }
-    sample_counts.extend(
-        value(record, "count") or 0
-        for record in records if record.get("ev") == "performanceSummary"
-    )
-    ledgers = [record for record in records if record.get("ev") == "workLedger"]
-    frames = next((record for record in records if record.get("ev") == "frameStatistics"), {})
-    memories = [record for record in records if record.get("ev") == "memoryFootprint"]
-    if not records or not any(record.get("ev") == "runEnd" for record in records):
-        raise SystemExit(f"benchmark: unclean run for {scenario}/{corpus}/{size}")
-    parse_count = sum(value(record, "documentParses") or 0 for record in ledgers)
-    bytes_read = sum(value(record, "fileBytesRead") or 0 for record in ledgers)
-    peak = max((value(record, "peakBytes") or 0 for record in memories), default=0)
-    def millis(nanos):
-        return "n/a" if nanos is None else f"{nanos / 1_000_000:.3f} ms"
-    rows.append((scenario, corpus, size, millis(summaries.get("nativeInputCallback")),
-                 millis(summaries.get("mainActorLatency")), value(frames, "hitchMillisPerSecond") or "n/a",
-                 parse_count, bytes_read, f"{peak / 1_048_576:.2f}" if peak else "n/a"))
-
-corpus_source = repo / "Markdown Editor/PerformanceCorpus.swift"
-digest = hashlib.sha256(corpus_source.read_bytes()).hexdigest()
-now = dt.date.today().isoformat()
 def command(*args, fallback="unavailable"):
     try:
         return subprocess.check_output(args, text=True, stderr=subprocess.DEVNULL).strip() or fallback
     except (OSError, subprocess.CalledProcessError):
         return fallback
-os_version = command("sw_vers", "-productVersion")
-os_build = command("sw_vers", "-buildVersion")
-xcode = command("xcodebuild", "-version").replace("\n", "; ")
-commit = command("git", "rev-parse", "HEAD")
-run_id = str(uuid.uuid4())
-sample_count = sum(sample_counts)
+
+rows = []
+for path in sorted(path for path in results_dir.glob("*.json") if path.name != "benchmark-summary.json"):
+    value = json.loads(path.read_text(encoding="utf-8"))
+    parse = next((item for item in value["metrics"] if item["name"] == "parseProjection"), {})
+    rows.append((value["scenario"], value["corpus"], value["size"], parse.get("p95Nanos", "n/a"),
+                 value["actionAttempts"], value["accepted"], value["refused"], value["progress"]))
+records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+frame = next((record.get("data", {}) for record in records if record.get("ev") == "frameStatistics"), {})
+digest_input = (repo / "Markdown Editor/PerformanceCorpus.swift").read_bytes() + b"\n-- benchmark action authority --\n" + (repo / "Markdown Editor/BenchmarkDriver.swift").read_bytes()
+digest = hashlib.sha256(digest_input).hexdigest()
+now = dt.date.today().isoformat()
+text = ["# Performance baseline\n\n", "- **Authority:** Evidence only\n", f"- **First researched:** {now}\n",
+        f"- **Last verified:** {now}\n", "- **Refresh when:** app, OS, architecture, corpus, scenario, or benchmark-driver changes.\n",
+        f"Host: {platform.node()}\n", f"OS: macOS {command('sw_vers', '-productVersion')}\n",
+        f"OS build: {command('sw_vers', '-buildVersion')}\n", f"Architecture: {platform.machine()}\n",
+        "Configuration: Release\n", f"Xcode: {command('xcodebuild', '-version').replace(chr(10), '; ')}\n",
+        f"Corpus digest: {digest}\n", "Corpus/action authority: PerformanceCorpus.swift and BenchmarkDriver.swift\n",
+        "Method: Scripts/benchmark.sh builds the Release binary, passes a parameter-only manifest, and verifies the exact Swift-owned 6 x 2 x 9 matrix plus per-case action contracts.\n",
+        "Warmup: 1.5 s per case\n", f"Duration: {duration} s per case\n", f"Interval: {interval} ms\n",
+        f"Samples: {len(rows)} case results\n", f"Frame hitch ms/s: {frame.get('hitchMillisPerSecond', 'n/a')}\n",
+        f"Commit: {command('git', 'rev-parse', 'HEAD')}\n", f"Run ID: {uuid.uuid4()}\n\n",
+        "| scenario | corpus | size | parseProjection p95 ns | actions | accepted | refused | progress |\n",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |\n"]
+text.extend("| %s | %s | %s | %s | %s | %s | %s | %s |\n" % row for row in rows)
+output = pathlib.Path(output_path)
 output.parent.mkdir(parents=True, exist_ok=True)
-with output.open("w", encoding="utf-8") as handle:
-    handle.write("# Performance baseline\n\n")
-    handle.write("- **Authority:** Evidence only\n")
-    handle.write("- **First researched:** %s\n" % now)
-    handle.write("- **Last verified:** %s\n" % now)
-    handle.write("- **Refresh when:** app, OS, architecture, corpus, scenario, or benchmark-driver changes.\n")
-    handle.write("Host: %s\n" % platform.node())
-    handle.write("OS: macOS %s\n" % os_version)
-    handle.write("OS build: %s\n" % os_build)
-    handle.write("Architecture: %s\n" % platform.machine())
-    handle.write("Configuration: Release\n")
-    handle.write("Xcode: %s\n" % xcode)
-    handle.write("Corpus digest: %s\n" % digest)
-    handle.write("Warmup: 1 s\n")
-    handle.write("Samples: %s\n" % sample_count)
-    handle.write("Interval: 120 ms\n")
-    handle.write("Commit: %s\n" % commit)
-    handle.write("Run ID: %s\n\n" % run_id)
-    handle.write("| scenario | corpus | size | nativeInput p95 | mainActorLatency p95 | hitch ms/s | parses | bytes read | peak MB |\n")
-    handle.write("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
-    for row in rows:
-        handle.write("| %s | %s | %s | %s | %s | %s | %s | %s | %s |\n" % row)
+with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=output.parent, delete=False) as handle:
+    handle.write("".join(text))
+    temporary = pathlib.Path(handle.name)
+os.replace(temporary, output)
 PY
 
 echo "benchmark: wrote $output"

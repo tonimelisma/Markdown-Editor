@@ -164,7 +164,14 @@ final class DiagnosticLog {
 
     static let directoryName = "Markdown Editor"
     static let maximumRetainedRuns = 20
-    static let maximumFileBytes = 8 * 1024 * 1024
+    static var maximumFileBytes: Int {
+        // A complete COR-69 matrix intentionally emits more structured route evidence than an
+        // ordinary user run. Keep normal retention bounded at 8 MiB, while allowing the explicit
+        // process benchmark to retain its terminal runEnd and all case ledgers.
+        ProcessInfo.processInfo.environment["MARKDOWN_EDITOR_BENCHMARK"] == "1"
+            ? 64 * 1024 * 1024
+            : 8 * 1024 * 1024
+    }
     static let flushRecordThreshold = 64
     static let flushInterval: Duration = .milliseconds(250)
     /// Above this count within one second, an identical event collapses into a summary.
@@ -328,6 +335,13 @@ final class DiagnosticLog {
             route: route,
             data: data
         )
+    }
+
+    /// Binds the intent recorder directly to the serialized writer. The binding reserves ledger
+    /// records synchronously off-main, so termination cannot close the stream before late work is
+    /// durable and no function-closure ownership cycle can recurse through the recorder.
+    func installWorkLedgerWriter(on recorder: IntentRecorder) {
+        recorder.setDurableWriter(writeCoordinator, startUptimeNanos: startUptimeNanos)
     }
 
     private func recordInternal(
@@ -501,6 +515,7 @@ final class DiagnosticLog {
             window.suppressed += 1
             if event == .workLedger {
                 for item in data {
+                    guard item.key.isWorkLedgerMeasurement else { continue }
                     guard let value = item.value.uintValue else { continue }
                     window.sums[item.key, default: 0] &+= value
                     window.maxima[item.key] = max(window.maxima[item.key] ?? 0, value)
@@ -627,6 +642,11 @@ final class DiagnosticLog {
             gate.signal()
         }
         _ = gate.wait(timeout: .now() + timeoutSeconds)
+        // `finish()` schedules this balance on the main actor, but this method is itself used
+        // from the main actor immediately before process termination. Waiting for durability
+        // without releasing the disable-sudden-termination token leaves the app alive forever:
+        // the main actor cannot run the scheduled callback while the caller is blocked here.
+        allowSuddenTermination()
     }
 
     /// Keeps the newest `keeping` run files; removes the rest oldest-first.

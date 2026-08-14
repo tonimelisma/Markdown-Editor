@@ -74,12 +74,21 @@ if problems:
     sys.exit(1)
 
 done = set()
+correction = set()
+status_by_requirement = {}
 implemented_by_requirement = {}
 for line in requirements_path.read_text().splitlines():
     columns = [column.strip() for column in line.split("|")]
-    if len(columns) >= 6 and re.fullmatch(r"REQ-\d{3}", columns[1]) and columns[4] == "Done":
-        done.add(columns[1])
-        implemented_by_requirement[columns[1]] = columns[5]
+    if len(columns) >= 6 and re.fullmatch(r"REQ-\d{3}", columns[1]):
+        requirement = columns[1]
+        status = columns[4]
+        if status in {"Done", "Correction"}:
+            status_by_requirement[requirement] = status
+            implemented_by_requirement[requirement] = columns[5]
+        if status == "Done":
+            done.add(requirement)
+        elif status == "Correction":
+            correction.add(requirement)
 
 manifest_paths = sorted(manifest_dir.glob("REQ-*.json"))
 manifest_ids = set()
@@ -89,7 +98,12 @@ for path in manifest_paths:
     else:
         manifest_ids.add(path.stem)
 
-selected = done
+# A manifest on a Correction row is pending delivery evidence: it is allowed to run so the
+# correction can be discriminated, but it does not make the requirement delivered. Done rows
+# remain mandatory manifest owners. This keeps the gate useful while a plan is still honestly
+# marked Correction instead of forcing a premature Done claim just to execute its mutation.
+manifest_owners = done | correction
+selected = done | (correction & manifest_ids)
 git_root = root if fixture and (root / ".git").exists() else repo
 if mode == "changed" and (not fixture or (root / ".git").exists()):
     dirty = subprocess.run(
@@ -140,7 +154,7 @@ if mode == "changed" and (not fixture or (root / ".git").exists()):
         return False
 
     selected = set()
-    for requirement in done:
+    for requirement in done | (correction & manifest_ids):
         if implementation_intersects(requirement):
             selected.add(requirement)
 
@@ -148,7 +162,8 @@ validated_manifests = {}
 for requirement in sorted(selected):
     path = manifest_dir / f"{requirement}.json"
     if not path.is_file():
-        problems.append(f"{requirement}: Done requirement has no falsification manifest")
+        if status_by_requirement.get(requirement) == "Done":
+            problems.append(f"{requirement}: Done requirement has no falsification manifest")
         continue
     try:
         data = json.loads(path.read_text())
@@ -233,8 +248,8 @@ for requirement in sorted(selected):
     if not any(problem.startswith(f"{path}:") for problem in problems):
         validated_manifests[requirement] = data
 
-for manifest_id in sorted(manifest_ids - done):
-    problems.append(f"{manifest_id}: manifest has no current Done requirement")
+for manifest_id in sorted(manifest_ids - manifest_owners):
+    problems.append(f"{manifest_id}: manifest has no current Done or Correction requirement")
 
 if problems:
     for problem in problems:

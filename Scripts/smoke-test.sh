@@ -119,4 +119,4 @@ echo "smoke: launch→exit took $((launch_end - launch_start))s"
 # edits, each of which legitimately produces further host updates.
 host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-8}"
 python3 "$repo_root/Scripts/verify-smoke-log.py" \
-    "$run_file" "$host_update_threshold" --label smoke --expect-edits
+    "$run_file" "$host_update_threshold" --label smoke --expect-edits --allow-orphaned-intents

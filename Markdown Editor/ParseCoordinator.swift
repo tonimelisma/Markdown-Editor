@@ -16,6 +16,7 @@ final class ParseCoordinator {
     private var parseTask: Task<Void, Never>?
     private let parseScheduler = LatestParseScheduler()
     private var operationGeneration: UInt64 = 0
+    private var pendingIntent: IntentContext?
     private let snapshotIDs: PresentationSnapshotIDFactory
 
     init(snapshotIDs: PresentationSnapshotIDFactory) {
@@ -25,6 +26,10 @@ final class ParseCoordinator {
     func cancel() {
         parseTask?.cancel()
         parseTask = nil
+        if let pendingIntent {
+            pendingIntent.recorder.finish(pendingIntent, orphaned: true)
+            self.pendingIntent = nil
+        }
         parseScheduler.cancel()
     }
 
@@ -44,12 +49,13 @@ final class ParseCoordinator {
 
     /// Schedule parse/projection reconciliation for document's current snapshot.
     /// Extracted verbatim from EditorSession.scheduleParse — no behavior change.
-    func scheduleParse(session: EditorSession, document: MarkdownDocument) {
+    func scheduleParse(session: EditorSession, document: MarkdownDocument, intent: IntentContext? = nil) {
         let snapshot = document.sourceSnapshot()
         operationGeneration &+= 1
         let generation = operationGeneration
         let currentPresentation = session.presentation
         let cachedImageIdentities = session.imageCache.currentIdentities()
+        let intent = intent ?? session.intentRecorder.begin(.reconciliation)
 
         if currentPresentation?.sourceRevision.value != snapshot.sourceVersion
             || currentPresentation?.locationGeneration != snapshot.locationGeneration {
@@ -63,14 +69,23 @@ final class ParseCoordinator {
 
         parseTask?.cancel()
         let request = LatestParseRequest(source: snapshot, operationGeneration: generation)
-        guard parseScheduler.submit(request) else { return }
+        guard parseScheduler.submit(request) else {
+            if let replaced = pendingIntent {
+                replaced.recorder.finish(replaced, orphaned: true)
+            }
+            pendingIntent = intent
+            return
+        }
         document.trace?.record(route: .reconciliationScheduled, .reconciliationScheduled(sourceRevision: snapshot.sourceVersion, generation: generation)
         )
         document.trace?.record(route: .parseStarted, .parseStarted(sourceVersion: snapshot.sourceVersion, utf16Count: (snapshot.text as NSString).length)
         )
         let parseProjectionStart = DispatchTime.now().uptimeNanoseconds
         let task = Task.detached(priority: .userInitiated) { [weak session, weak document] in
-            await WorkLedgerRecorder.scope(.reconciliation) {
+            // The owning session explicitly retains this context through every async boundary.
+            // Any cancelled or stale operation that reaches this defer is a typed orphan.
+            var completed = false
+            defer { intent.recorder.finish(intent, orphaned: !completed) }
             if Task.isCancelled {
                 await MainActor.run {
                     document?.trace?.record(route: .parseCancelled, .parseCancelled(sourceVersion: snapshot.sourceVersion))
@@ -81,6 +96,7 @@ final class ParseCoordinator {
             let parseResult = MarkdownParser.parse(
                 snapshot.text,
                 sourceVersion: snapshot.sourceVersion,
+                intent: intent,
                 isCancelled: { Task.isCancelled }
             )
             if Task.isCancelled {
@@ -114,8 +130,8 @@ final class ParseCoordinator {
             await MainActor.run {
                 document?.trace?.record(route: .parseCompleted, .parseCompleted(sourceVersion: snapshot.sourceVersion))
             }
-            let model = MarkdownProjectionModel.build(tree: tree, index: index)
-            if case .failure = ProjectionOracle.validate(model: model, sourceUTF16Count: (snapshot.text as NSString).length) {
+            let model = MarkdownProjectionModel.build(tree: tree, index: index, intent: intent)
+            if case .failure = ProjectionOracle.validate(model: model, sourceUTF16Count: (snapshot.text as NSString).length, intent: intent) {
                 await MainActor.run {
                     document?.trace?.record(route: .reconciliationDiscarded, .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .oracleModel)
                     )
@@ -148,7 +164,8 @@ final class ParseCoordinator {
                             documentURL: snapshot.fileURL,
                             nodeID: attachment.nodeID,
                             sourceVersion: snapshot.sourceVersion,
-                            locationGeneration: snapshot.locationGeneration
+                            locationGeneration: snapshot.locationGeneration,
+                            intent: intent
                         ) {
                         case .success(let desc): descriptors.append(desc)
                         case .failure(let reason): resolveFailures.append(reason)
@@ -202,10 +219,10 @@ final class ParseCoordinator {
                 let applicationStart = DispatchTime.now().uptimeNanoseconds
                 if session.presentation?.sourceRevision.value == authoritative.sourceRevision.value {
                     session.updateOrigin.with(.programmaticPresentation) {
-                        session.installPresentation(authoritative, tree: tree, provisional: false)
+                        session.installPresentation(authoritative, tree: tree, provisional: false, intent: intent)
                     }
                 } else {
-                    session.installPresentation(authoritative, tree: tree, provisional: false)
+                    session.installPresentation(authoritative, tree: tree, provisional: false, intent: intent)
                 }
                 let authoritativeApplicationDuration = DispatchTime.now().uptimeNanoseconds &- applicationStart
                 session.performanceSampler?.record(.parseProjection, durationNanos: parseProjectionDuration)
@@ -218,7 +235,7 @@ final class ParseCoordinator {
                         durationNanos: DispatchTime.now().uptimeNanoseconds &- parseProjectionStart
                     )
                 )
-            }
+                completed = true
             }
         }
         parseTask = task
@@ -226,7 +243,9 @@ final class ParseCoordinator {
             await task.value
             guard let session, let self else { return }
             if self.parseScheduler.finish(request), let document {
-                self.scheduleParse(session: session, document: document)
+                let nextIntent = self.pendingIntent
+                self.pendingIntent = nil
+                self.scheduleParse(session: session, document: document, intent: nextIntent)
             }
         }
     }

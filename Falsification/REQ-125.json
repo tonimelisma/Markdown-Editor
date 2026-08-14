@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-125",
+  "mutations": [
+    {
+      "rationale": "If frame statistics ignore main-actor acknowledgement delay, the queued-stall proof must turn red.",
+      "file": "Markdown Editor/FrameObserver.swift",
+      "find": "let effectiveFrame = max(callbackInterval, acknowledgementDelay)",
+      "replace": "let effectiveFrame = callbackInterval",
+      "expect_red": ["Markdown EditorTests/COR69IntentMeasurementTests/frameObserverProductionRouteRetainsAcknowledgementDelay()"]
+    }
+  ]
+}

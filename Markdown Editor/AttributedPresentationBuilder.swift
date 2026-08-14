@@ -26,7 +26,8 @@ enum AttributedPresentationBuilder {
         model: MarkdownProjectionModel,
         theme: MarkdownTypography,
         images: [MarkdownNodeID: NSImage] = [:],
-        onTaskPress: ((MarkdownNodeID) -> Void)? = nil
+        onTaskPress: ((MarkdownNodeID) -> Void)? = nil,
+        intent: IntentContext? = nil
     ) -> AttributedPresentation {
         let whole = NSRange(location: 0, length: (model.renderedString as NSString).length)
         let scoped = buildScoped(
@@ -34,7 +35,8 @@ enum AttributedPresentationBuilder {
             theme: theme,
             images: images,
             onTaskPress: onTaskPress,
-            scope: whole
+            scope: whole,
+            intent: intent
         )
         return AttributedPresentation(
             attributed: scoped.attributed,
@@ -66,9 +68,15 @@ enum AttributedPresentationBuilder {
         theme: MarkdownTypography,
         images: [MarkdownNodeID: NSImage] = [:],
         onTaskPress: ((MarkdownNodeID) -> Void)? = nil,
-        scope: NSRange
+        scope: NSRange,
+        intent: IntentContext? = nil
     ) -> Scoped {
-        WorkLedgerRecorder.add { $0.attributedBuilds += 1; $0.attributedCharactersWritten += scope.length }
+        if let intent {
+            intent.recorder.add(intent) {
+                $0.attributedBuilds += 1
+                $0.attributedCharactersWritten += scope.length
+            }
+        }
         let typography = theme
         let rendered = model.renderedString as NSString
         let scope = NSRange(

@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Testing
 @testable import Markdown_Editor
 
@@ -29,6 +30,19 @@ struct PerformanceCorpusProofTests {
         #expect(config?.size == 12345)
         #expect(config?.duration == .seconds(7))
         #expect(config?.interval == .milliseconds(80))
+    }
+
+    // Verifies: REQ-128 — the manifest expands to every closed corpus/scenario combination.
+    @Test func benchmarkManifestEnumeratesTheClosedMatrix() {
+        let manifest = BenchmarkDriver.Manifest(
+            durationSeconds: 1,
+            intervalMillis: 50,
+            sizes: [10_000, 100_000],
+            resultDirectory: URL(fileURLWithPath: "/tmp/benchmark-results")
+        )
+        let configurations = BenchmarkDriver.configurations(from: manifest)
+        #expect(configurations.count == PerformanceCorpus.allCases.count * BenchmarkDriver.Scenario.allCases.count * 2)
+        #expect(Set(configurations.map { "\($0.scenario.rawValue)/\($0.corpus.rawValue)/\($0.size)" }).count == configurations.count)
     }
 }
 
@@ -77,6 +91,128 @@ func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
     let source = try! String(contentsOf: root.appendingPathComponent("Markdown Editor/BenchmarkDriver.swift"), encoding: .utf8)
     #expect(!source.contains("accessibility"))
     #expect(!source.contains("synthetic"))
+}
+
+// Verifies: REQ-128 — the shell passes a parameter-only manifest and never owns corpus text or
+// the action matrix.
+@Test func benchmarkShellUsesSwiftAuthority() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+    let source = try String(contentsOf: root.appendingPathComponent("Scripts/benchmark.sh"), encoding: .utf8)
+    #expect(source.contains("--benchmark-manifest"))
+    #expect(source.contains("os.replace"))
+    #expect(!source.contains("make_fixture"))
+    #expect(!source.contains("degenerateParagraph"))
+    #expect(!source.contains("typeProse typeInTable"))
+}
+
+// Verifies: REQ-128 — malformed benchmark outcomes cannot be admitted as evidence.
+@Test func benchmarkRejectsNoProgressAndUnknownActionsLegacy() {
+    #expect(BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+        progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 0, duplicateSampleCount: 0
+    )))
+    #expect(!BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+        progress: 0, errors: 0, timeoutCount: 0, unknownActionCount: 0, duplicateSampleCount: 0
+    )))
+    #expect(!BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+        progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 1, duplicateSampleCount: 0
+    )))
+}
+
+/// Named for direct mutation selection by the falsification gate.
+@MainActor
+struct COR69BenchmarkProofTests {
+    // Verifies: REQ-128 — the benchmark's real scroll action reaches a constructed AppKit
+    // document view and reports progress, so a positive aggregate cannot hide actions = 0.
+    @Test func benchmarkScrollRouteReportsProgress() {
+        let document = MarkdownDocument()
+        document.installTextForTesting(String(repeating: "scroll line\n", count: 400))
+        let session = EditorSession()
+        session.attach(document: document)
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 320, height: 160))
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 4_000))
+        textView.string = String(repeating: "scroll line\n", count: 400)
+        scrollView.documentView = textView
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 160),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        window.contentView = scrollView
+        let controller = EditorCommandController()
+        controller.bind(
+            document: document,
+            session: session,
+            actionRouter: EditorActionRouter(),
+            window: window
+        )
+
+        let counters = BenchmarkDriver.runOnce(
+            .scrollDocument,
+            controller: controller,
+            session: session,
+            document: document,
+            corpus: .structuredProse,
+            size: 100_000
+        )
+        #expect(counters.actionAttempts == 1)
+        #expect(counters.progress > 0)
+        #expect(counters.errors == 0)
+        session.detach()
+    }
+
+    // Verifies: REQ-128
+    @Test func benchmarkRejectsNoProgressAndUnknownActions() {
+        #expect(BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+            progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 0, duplicateSampleCount: 0
+        )))
+        #expect(!BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+            progress: 0, errors: 0, timeoutCount: 0, unknownActionCount: 0, duplicateSampleCount: 0
+        )))
+        #expect(!BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+            progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 1, duplicateSampleCount: 0
+        )))
+        #expect(!BenchmarkDriver.accepts(BenchmarkCaseOutcome(
+            progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 0,
+            duplicateSampleCount: 0, actionContractFailureCount: 1
+        )))
+    }
+
+    // Verifies: REQ-128 — the closed command matrix records and validates every expected
+    // outcome, rather than proving only aggregate progress.
+    @Test func benchmarkCommandRouteRecordsEveryActionContract() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("benchmark selection\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 160),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        let controller = EditorCommandController()
+        controller.bind(
+            document: document,
+            session: session,
+            actionRouter: EditorActionRouter(),
+            window: window
+        )
+
+        let counters = BenchmarkDriver.runOnce(
+            .applyCommands,
+            controller: controller,
+            session: session,
+            document: document,
+            corpus: .structuredProse,
+            size: 100_000
+        )
+        #expect(counters.actionAttempts == EditorCommand.allCases.count * 2)
+        #expect(counters.actionContractFailures == 0, "unexpected action contracts: \(counters.actionOutcomes)")
+        #expect(counters.actionOutcomes.count == counters.actionAttempts)
+        #expect(counters.actionOutcomes.allSatisfy { $0.expected == $0.observed }, "action outcomes: \(counters.actionOutcomes)")
+        session.detach()
+    }
 }
 
 // Verifies: REQ-128

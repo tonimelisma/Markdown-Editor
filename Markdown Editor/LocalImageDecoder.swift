@@ -85,7 +85,8 @@ nonisolated enum LocalImageDecoder {
         destination: String,
         documentURL: URL?,
         identity suppliedIdentity: ImageFileIdentity? = nil,
-        locationGeneration: UInt64 = 0
+        locationGeneration: UInt64 = 0,
+        intent: IntentContext? = nil
     ) -> Result<DecodedImage, LocalImageResolveFailure> {
         let fileIdentity: ImageFileIdentity
         switch suppliedIdentity.map(Result.success) ?? identity(destination: destination, documentURL: documentURL, locationGeneration: locationGeneration) {
@@ -97,7 +98,12 @@ nonisolated enum LocalImageDecoder {
         guard let fileData = try? Data(contentsOf: resolved, options: [.mappedIfSafe]) else {
             return .failure(.missingFile)
         }
-        WorkLedgerRecorder.add { $0.imageDecodes += 1; $0.fileBytesRead += fileData.count }
+        if let intent {
+            intent.recorder.add(intent) {
+                $0.imageDecodes += 1
+                $0.fileBytesRead += fileData.count
+            }
+        }
         let contentDigest = ImageAssetPolicy.sha256Hex(fileData)
 
         guard let source = CGImageSourceCreateWithData(

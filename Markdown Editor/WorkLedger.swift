@@ -1,6 +1,14 @@
 import Foundation
 import Synchronization
 
+/// Stable identity for one user-invoked operation and all of its downstream work.
+///
+/// The raw value is intentionally opaque and is only emitted as a numeric diagnostic field.
+/// // REQ-123; ARC-026.
+nonisolated struct IntentID: RawRepresentable, Hashable, Sendable, Equatable {
+    let rawValue: UInt64
+}
+
 /// Counts of work performed per unit of user intent.
 ///
 /// // REQ-123; ARC-026.
@@ -42,97 +50,155 @@ nonisolated enum WorkScope: String, Sendable, CaseIterable {
     case semanticCommand
 }
 
-/// Lock-guarded recorder. Scopes nest; inner work counts toward enclosing.
-nonisolated enum WorkLedgerRecorder {
-    private final class Frame: @unchecked Sendable {
-        let scope: WorkScope
-        let parent: Frame?
-        private let ledger = Mutex(WorkLedger())
+/// Explicit, sendable context retained by every downstream operation.
+nonisolated struct IntentContext: Sendable, Equatable {
+    let id: IntentID
+    let scope: WorkScope
+    let recorder: IntentRecorder
 
-        init(scope: WorkScope, parent: Frame?) {
-            self.scope = scope
-            self.parent = parent
+    static func == (lhs: IntentContext, rhs: IntentContext) -> Bool {
+        lhs.id == rhs.id && lhs.scope == rhs.scope
+    }
+}
+
+/// Lock-guarded, session-owned recorder. It has no task-local or process-global current owner:
+/// callers must pass the context through every actor, task, and GCD boundary.
+nonisolated final class IntentRecorder: @unchecked Sendable {
+    typealias Reporter = @Sendable (IntentContext, WorkLedger, Bool, DiagnosticSymbol?) -> Void
+    private struct State {
+        var nextID: UInt64 = 0
+        var ledgers: [IntentID: WorkLedger] = [:]
+        var leases: [IntentID: Int] = [:]
+        var orphaned: Set<IntentID> = []
+    }
+
+    private let state = Mutex(State())
+    private let durableWriter = Mutex<(writer: DiagnosticWriteCoordinator?, startUptimeNanos: UInt64)>((nil, 0))
+    private let reporterState = Mutex<Reporter?>(nil)
+
+    func setReporter(_ reporter: @escaping Reporter) {
+        reporterState.withLock { $0 = reporter }
+    }
+
+    func setDurableWriter(_ writer: DiagnosticWriteCoordinator, startUptimeNanos: UInt64) {
+        durableWriter.withLock { $0 = (writer, startUptimeNanos) }
+    }
+
+    func begin(_ scope: WorkScope) -> IntentContext {
+        state.withLock { state in
+            state.nextID &+= 1
+            let id = IntentID(rawValue: state.nextID)
+            state.ledgers[id] = WorkLedger()
+            state.leases[id] = 1
+            return IntentContext(id: id, scope: scope, recorder: self)
         }
-
-        func add(_ mutate: (inout WorkLedger) -> Void) {
-            ledger.withLock { mutate(&$0) }
-        }
-
-        func snapshot() -> WorkLedger {
-            ledger.withLock { $0 }
-        }
     }
 
-    @TaskLocal private static var currentFrame: Frame?
-
-    static func scope<T>(
-        _ scope: WorkScope,
-        _ body: () throws -> T
-    ) rethrows -> T {
-        let frame = Frame(scope: scope, parent: currentFrame)
-        return try $currentFrame.withValue(frame) {
-            defer { finish(frame) }
-            return try body()
+    /// Retains ownership for a downstream adapter that will finish work after the current
+    /// actor/task boundary returns. The lease prevents a normal parse completion from closing an
+    /// intent before its presentation host has recorded attributed work.
+    @discardableResult
+    func retain(_ context: IntentContext) -> Bool {
+        state.withLock { state in
+            guard state.ledgers[context.id] != nil else { return false }
+            state.leases[context.id, default: 0] += 1
+            return true
         }
     }
 
-    static func scope<T>(
-        _ scope: WorkScope,
-        _ body: () async throws -> T
-    ) async rethrows -> T {
-        let frame = Frame(scope: scope, parent: currentFrame)
-        return try await $currentFrame.withValue(frame) {
-            defer { finish(frame) }
-            return try await body()
+    func add(_ context: IntentContext, _ mutate: (inout WorkLedger) -> Void) {
+        let accepted = state.withLock { state in
+            guard state.ledgers[context.id] != nil else { return false }
+            mutate(&state.ledgers[context.id]!)
+            return true
         }
+        guard !accepted else { return }
+        report(context: context, ledger: WorkLedger(), orphaned: true, reason: .lateWork)
     }
 
-    static func add(_ mutate: (inout WorkLedger) -> Void) {
-        currentFrame?.add(mutate)
+    func snapshot(_ context: IntentContext) -> WorkLedger? {
+        state.withLock { $0.ledgers[context.id] }
     }
 
-    static func currentForTesting() -> WorkLedger? {
-        currentFrame?.snapshot()
+    /// Completes an intent exactly once. A late/cancelled operation is terminally classified as
+    /// an orphan instead of silently losing the work it performed.
+    @discardableResult
+    func finish(_ context: IntentContext, orphaned: Bool = false) -> Bool {
+        let result: (ledger: WorkLedger, orphaned: Bool)? = state.withLock { state in
+            guard state.ledgers[context.id] != nil else { return nil }
+            if orphaned { state.orphaned.insert(context.id) }
+            let remaining = state.leases[context.id, default: 1] - 1
+            if remaining > 0 {
+                state.leases[context.id] = remaining
+                return nil
+            }
+            let ledger = state.ledgers.removeValue(forKey: context.id)!
+            state.leases.removeValue(forKey: context.id)
+            let wasOrphaned = state.orphaned.remove(context.id) != nil
+            return (ledger, wasOrphaned)
+        }
+        guard let result else {
+            // A live downstream lease makes this a normal release rather than a terminal report.
+            // A missing ledger is the only genuinely late completion and remains typed below.
+            let stillLive = state.withLock { $0.ledgers[context.id] != nil }
+            if stillLive { return true }
+            return false
+        }
+        report(context: context, ledger: result.ledger, orphaned: result.orphaned, reason: result.orphaned ? .cancelled : nil)
+        return true
     }
 
-    // Test helper to clear state between tests.
-    static func resetForTesting() {
-        // Task-local state is scoped to the calling task and cannot leak between tests.
-    }
-
-    private static func finish(_ frame: Frame) {
-        let finished = frame.snapshot()
-        frame.parent?.add { $0 = $0 + finished }
-        recordWorkLedger(scope: frame.scope, ledger: finished)
-    }
-
-    private static func recordWorkLedger(
-        scope: WorkScope,
-        ledger: WorkLedger
-    ) {
-        // Write through the shared serialized log so detached work cannot cross an actor-isolated
-        // editor sink. The mapped event remains the same closed diagnostic vocabulary.
+    private func report(context: IntentContext, ledger: WorkLedger, orphaned: Bool, reason: DiagnosticSymbol?) {
+        let destination = durableWriter.withLock { $0 }
+        if let writer = destination.writer {
+            let start = destination.startUptimeNanos
+            let timestamp = Date()
+            _ = writer.appendRecord { sequence in
+                DiagnosticRecord(
+                    wallClock: timestamp,
+                    uptimeSeconds: Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000_000,
+                    sequence: sequence,
+                    level: orphaned ? .fault : .debug,
+                    category: .diagnostics,
+                    event: .workLedger,
+                    origin: .productionRoute,
+                    productionRoute: .workLedger,
+                    data: Self.data(context: context, ledger: ledger, orphaned: orphaned, reason: reason)
+                ).jsonLine
+            }
+            return
+        }
+        if let reporter = reporterState.withLock({ $0 }) {
+            reporter(context, ledger, orphaned, reason)
+            return
+        }
         Task { @MainActor in
             guard let log = DiagnosticLog.shared else { return }
-            log.recordProduction(
-                .workLedger,
-                level: .debug,
-                category: .diagnostics,
-                route: .workLedger,
-                data: [
-                    (.scope, .symbol(scope.symbol)),
-                    (.documentParses, .int(ledger.documentParses)),
-                    (.projectionCompiles, .int(ledger.projectionCompiles)),
-                    (.oracleValidations, .int(ledger.oracleValidations)),
-                    (.attributedBuilds, .int(ledger.attributedBuilds)),
-                    (.attributedCharactersWritten, .int(ledger.attributedCharactersWritten)),
-                    (.storageFullReplacements, .int(ledger.storageFullReplacements)),
-                    (.imageDecodes, .int(ledger.imageDecodes)),
-                    (.fileBytesRead, .int(ledger.fileBytesRead)),
-                    (.mainThreadBlockedNanos, .uint(ledger.mainThreadBlockedNanos)),
-                ]
-            )
+            log.recordProduction(.workLedger, level: orphaned ? .fault : .debug, category: .diagnostics, route: .workLedger,
+                data: Self.data(context: context, ledger: ledger, orphaned: orphaned, reason: reason))
         }
+    }
+
+    static func data(context: IntentContext, ledger: WorkLedger, orphaned: Bool, reason: DiagnosticSymbol?) -> [(key: DiagnosticField, value: DiagnosticValue)] {
+        var data: [(key: DiagnosticField, value: DiagnosticValue)] = [
+            (.scope, .symbol(context.scope.symbol)),
+            (.intentID, .uint(context.id.rawValue)),
+            (.orphaned, .bool(orphaned)),
+            (.documentParses, .int(ledger.documentParses)),
+            (.projectionCompiles, .int(ledger.projectionCompiles)),
+            (.oracleValidations, .int(ledger.oracleValidations)),
+            (.attributedBuilds, .int(ledger.attributedBuilds)),
+            (.attributedCharactersWritten, .int(ledger.attributedCharactersWritten)),
+            (.storageFullReplacements, .int(ledger.storageFullReplacements)),
+            (.imageDecodes, .int(ledger.imageDecodes)),
+            (.fileBytesRead, .int(ledger.fileBytesRead)),
+            (.mainThreadBlockedNanos, .uint(ledger.mainThreadBlockedNanos)),
+        ]
+        if let reason {
+            data.append((.orphanReason, .symbol(reason)))
+            data.append((.lateWork, .bool(reason == .lateWork)))
+        }
+        return data
     }
 }
 

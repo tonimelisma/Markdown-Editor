@@ -100,6 +100,12 @@ enum WYSIWYGEditor {
                 textView.isEditable = false
                 return
             }
+            let intent = session.takePresentationIntent(for: presentation.id)
+            defer {
+                if let intent {
+                    intent.recorder.finish(intent)
+                }
+            }
             let editable: Bool
             if case .editable(let id) = session.wysiwygModeState.availability, id == presentation.id {
                 editable = true
@@ -120,13 +126,14 @@ enum WYSIWYGEditor {
                     if let reason = incrementalRecoveryReason(
                         from: applied,
                         to: presentation,
-                        in: textView
+                        in: textView,
+                        intent: intent
                     ) {
                         // An unprovable newer snapshot is exceptional, never an ordinary
                         // fallback. This route records the typed fault and takes WYSIWYG out of
                         // service until authoritative reconciliation can establish a new current
                         // snapshot.
-                        recoverFullPresentation(to: presentation, in: textView, reason: reason)
+                        recoverFullPresentation(to: presentation, in: textView, reason: reason, intent: intent)
                     } else {
                         return
                     }
@@ -139,14 +146,15 @@ enum WYSIWYGEditor {
                 recoverFullPresentation(
                     to: presentation,
                     in: textView,
-                    reason: .appliedStorageMismatch
+                    reason: .appliedStorageMismatch,
+                    intent: intent
                 )
                 return
             }
 
             session.updateOrigin.with(.programmaticPresentation) {
-                let built = buildPresentation(presentation)
-                textStorageApplier.applyInitialPresentation(built, to: textView)
+                let built = buildPresentation(presentation, intent: intent)
+                textStorageApplier.applyInitialPresentation(built, to: textView, intent: intent)
                 appliedSnapshot = presentation
                 appliedImageIdentities = imageIdentities(for: presentation)
                 restoreSelection(for: presentation, in: textView, limit: built.attributed.length)
@@ -158,7 +166,8 @@ enum WYSIWYGEditor {
         private func incrementalRecoveryReason(
             from applied: PresentationSnapshot,
             to presentation: PresentationSnapshot,
-            in textView: MarkdownWYSIWYGTextView
+            in textView: MarkdownWYSIWYGTextView,
+            intent: IntentContext?
         ) -> PresentationRecoveryReason? {
             // Same text, new identity — an authoritative snapshot replacing a provisional one.
             // Attributes may differ; characters do not. Refreshing attributes is not a
@@ -179,7 +188,8 @@ enum WYSIWYGEditor {
                             theme: MarkdownTypography(),
                             images: session.resolvedImages,
                             onTaskPress: { [weak self] nodeID in self?.performTaskToggle(nodeID: nodeID) },
-                            scope: scope
+                            scope: scope,
+                            intent: intent
                         ),
                         to: textView,
                         expectedCurrent: applied
@@ -206,7 +216,8 @@ enum WYSIWYGEditor {
                         theme: MarkdownTypography(),
                         images: self?.session.resolvedImages ?? [:],
                         onTaskPress: { nodeID in self?.performTaskToggle(nodeID: nodeID) },
-                        scope: scope
+                        scope: scope,
+                        intent: intent
                     )
                 }
             ) else {
@@ -231,14 +242,15 @@ enum WYSIWYGEditor {
             return nil
         }
 
-        private func buildPresentation(_ snapshot: PresentationSnapshot) -> AttributedPresentation {
+        private func buildPresentation(_ snapshot: PresentationSnapshot, intent: IntentContext?) -> AttributedPresentation {
             AttributedPresentationBuilder.build(
                 model: snapshot.asProjectionModel,
                 theme: MarkdownTypography(),
                 images: session.resolvedImages,
                 onTaskPress: { [weak self] nodeID in
                     self?.performTaskToggle(nodeID: nodeID)
-                }
+                },
+                intent: intent
             )
         }
 
@@ -369,14 +381,16 @@ enum WYSIWYGEditor {
                         theme: MarkdownTypography(),
                         images: self?.session.resolvedImages ?? [:],
                         onTaskPress: { nodeID in self?.performTaskToggle(nodeID: nodeID) },
-                        scope: scope
+                        scope: scope,
+                        intent: edit.intent
                     )
                 }
             ) else {
                 recoverFullPresentation(
                     to: transition.nextSnapshot,
                     in: textView,
-                    reason: .patchUnprovable
+                    reason: .patchUnprovable,
+                    intent: edit.intent
                 )
                 return
             }
@@ -387,7 +401,8 @@ enum WYSIWYGEditor {
                     recoverFullPresentation(
                         to: transition.nextSnapshot,
                         in: textView,
-                        reason: .appliedStorageMismatch
+                        reason: .appliedStorageMismatch,
+                        intent: edit.intent
                     )
                     return
                 }
@@ -402,7 +417,8 @@ enum WYSIWYGEditor {
         private func recoverFullPresentation(
             to snapshot: PresentationSnapshot,
             in textView: NSTextView,
-            reason: PresentationRecoveryReason
+            reason: PresentationRecoveryReason,
+            intent: IntentContext?
         ) {
             document.trace?.record(route: .presentationRecovered, .presentationRecovered(
                     snapshotID: snapshot.id.value,
@@ -423,10 +439,11 @@ enum WYSIWYGEditor {
                 images: session.resolvedImages,
                 onTaskPress: { [weak self] nodeID in
                     self?.performTaskToggle(nodeID: nodeID)
-                }
+                },
+                intent: intent
             )
             session.updateOrigin.with(.programmaticPresentation) {
-                textStorageApplier.applyRecoveryPresentation(built, to: textView)
+                textStorageApplier.applyRecoveryPresentation(built, to: textView, intent: intent)
             }
             appliedSnapshot = snapshot
             appliedImageIdentities = imageIdentities(for: snapshot)

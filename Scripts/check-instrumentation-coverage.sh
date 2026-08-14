@@ -162,7 +162,7 @@ for name, route in routes.items():
         raise SystemExit(f"instrumentation-coverage: route for {name} names an absent production owner")
     entry_pattern = re.compile(rf"\bfunc\s+{re.escape(route['entry'])}\s*\(")
     if name == "workLedger":
-        route_pattern = re.compile(r"\brecordProduction\s*\(.*?\broute:\s*\.workLedger\b", re.S)
+        route_pattern = re.compile(r"\bevent:\s*\.workLedger\b.*?\bproductionRoute:\s*\.workLedger\b", re.S)
     else:
         route_pattern = re.compile(
             rf"\brecord\s*\(\s*route:\s*\.{re.escape(name)}\s*,\s*\.{re.escape(name)}\b"

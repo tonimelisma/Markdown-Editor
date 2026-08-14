@@ -137,15 +137,17 @@ unreachable commit identities are not WIP and are not used as delivery evidence.
 
 A whole-codebase review on 2026-08-12 re-read the current implementation, tests, gates, plans, and
 recent commit history against VISION, ENGINEERING, and REQUIREMENTS. Existing green gates remain
-useful regression evidence, but they did not establish all claims they admitted. Eight requirements
-are therefore back in Correction: REQ-032, REQ-123, REQ-125, REQ-128. Their rows contain the reproduced
-counterexample; no implementation was removed. COR-68 has closed REQ-099, REQ-117, REQ-118, REQ-135,
-and REQ-138 with observed production evidence and falsifying mutations.
+useful regression evidence, but they did not establish all claims they admitted. REQ-032 remains in
+Correction with its reproduced counterexample; no implementation was removed. COR-68 has closed
+REQ-099, REQ-117, REQ-118, REQ-135, and REQ-138 with observed production evidence and falsifying
+mutations. COR-69 has now closed REQ-123, REQ-125, and REQ-128 with the same evidence floor.
 
-The review also found partially implemented or obsolete plans. Those plan files are removed as stale
+The review also found partially implemented or obsolete plans. Those plan files were removed as stale
 documentation, not as evidence of delivery. Correct parts already in main—including the
 squash-integrated semantic-presentation, shortcut, window, printing, and host-state checkpoint
-work—are characterized and retained by the replacement plans. No historical patch is replayed.
+work—are characterized and retained by the replacement plans. COR-69's plan is removed only after its
+requirements, proofs, and falsifying mutations passed; the remaining pending plans are the active
+backlog. No historical patch is replayed.
 
 ### Target shape
 
@@ -181,10 +183,11 @@ return to discovery; do not improvise an architecture change.
    falsification against production behavior, and gives refactor-only plans derived completion
    evidence. Full gate observed passing: 437 tests, 50 emitted routes, 40 Done rows, 29/29 changed-
    scope falsifications.
-2. ⚪ **COR-69 — Intent measurement and honest benchmark.** (Delivers: REQ-123, REQ-125, REQ-128)
-   ([plan](plans/COR-69-intent-measurement-and-benchmark.md)) Carries explicit intent identity across
-   concurrency boundaries, observes main-actor stalls with controlled clocks, and makes the shipping
-   benchmark produce its provenance-bound baseline.
+2. ✅ **COR-69 — Intent measurement and honest benchmark.** (Delivers: REQ-123, REQ-125, REQ-128)
+   Carries explicit intent identity across concurrency boundaries, observes main-actor stalls with
+   controlled clocks, and makes the shipping benchmark produce its provenance-bound baseline. The
+   final full gate observed 454 passing tests, 50 production trace routes, 35/35 falsifying mutations,
+   and a 108-case Release baseline; process smoke diagnostics also passed.
 3. ⚪ **COR-70 — Editor transaction kernel.** (Delivers: none)
    ([plan](plans/COR-70-editor-transaction-kernel.md)) Extracts one pure input-to-transaction/refusal
    seam and thins AppKit adapters without changing product behavior.

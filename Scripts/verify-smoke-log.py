@@ -33,6 +33,28 @@ BUDGET_NANOS = {
     "sourceHighlightApplication": 8_000_000,
 }
 
+WORK_SCOPES = {"acceptedEdit", "reconciliation", "documentOpen", "modeTransition", "semanticCommand"}
+WORK_LEDGER_FIELDS = {
+    "documentParses", "projectionCompiles", "oracleValidations", "attributedBuilds",
+    "attributedCharactersWritten", "storageFullReplacements", "imageDecodes",
+    "fileBytesRead", "mainThreadBlockedNanos",
+}
+
+
+def is_bounded_cancelled_orphan(record: dict) -> bool:
+    data = record.get("data", {})
+    if record.get("lvl") != "fault" or record.get("ev") != "workLedger":
+        return False
+    if data.get("orphaned") is not True or data.get("orphanReason") != "cancelled":
+        return False
+    if data.get("lateWork") is not False:
+        return False
+    if not isinstance(data.get("intentID"), int) or data["intentID"] <= 0:
+        return False
+    if data.get("scope") not in WORK_SCOPES:
+        return False
+    return all(isinstance(data.get(field), int) and data[field] >= 0 for field in WORK_LEDGER_FIELDS)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -63,6 +85,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--allow-orphaned-intents",
+        action="store_true",
+        help=(
+            "Allow only workLedger fault records whose structured data marks the intent as "
+            "orphaned; ordinary faults remain fatal during intentional process shutdown."
+        ),
+    )
+    parser.add_argument(
         "--fail-on-budget-exceeded",
         action="store_true",
         help="Fail when a performance summary exceeds its declared p95 budget.",
@@ -88,6 +118,7 @@ def verify(
     run_file: Path,
     host_update_threshold: int,
     allowed_faults: frozenset[str] = frozenset(),
+    allow_orphaned_intents: bool = False,
     expect_edits: bool = False,
     fail_on_budget_exceeded: bool = False,
     reconciliation_ceiling: int | None = None,
@@ -239,6 +270,10 @@ def verify(
         record for record in events
         if record.get("lvl") in ("error", "fault")
         and record.get("ev") not in allowed_faults
+        and not (
+            allow_orphaned_intents
+            and is_bounded_cancelled_orphan(record)
+        )
     ]
     assert not faults, f"faults recorded: {[record['ev'] for record in faults]}"
     # REQ-104: the screenshot is not valid evidence unless its companion process run closes cleanly.
@@ -254,6 +289,7 @@ def main() -> int:
             args.run_file,
             args.host_update_threshold,
             frozenset(args.allow_fault),
+            args.allow_orphaned_intents,
             args.expect_edits,
             args.fail_on_budget_exceeded,
             args.reconciliation_ceiling,
