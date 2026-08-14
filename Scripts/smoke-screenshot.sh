@@ -85,6 +85,18 @@ workdir="$(mktemp -d)"
 cp -R "$repo_root/Scripts/Fixtures/." "$workdir/"
 fixture="$workdir/smoke-rich.md"
 
+# The app's self-termination delay is configurable for slow machines. Wait at least that long
+# plus a bounded margin before declaring a lifecycle failure; a fixed ten-second poll made the
+# documented override fail by killing a healthy verifier before it could emit runEnd.
+smoke_exit_seconds="${SMOKE_EXIT_SECONDS:-12}"
+smoke_wait_loops="$(awk -v seconds="$smoke_exit_seconds" 'BEGIN {
+    if (seconds !~ /^[0-9]+([.][0-9]+)?$/ || seconds <= 0) seconds = 2
+    loops = int((seconds + 10) * 10 + 0.999)
+    if (loops < 100) loops = 100
+    if (loops > 700) loops = 700
+    print loops
+}')"
+
 if [[ ! -x "$binary" ]]; then
     echo "smoke-screenshot: built binary not found at $binary" >&2
     exit 1
@@ -110,13 +122,13 @@ echo "smoke-screenshot: launching…"
 # races the application's own exit and loses.
 LLVM_PROFILE_FILE="$logdir/smoke-%p.profraw" \
 MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$logdir" \
-MARKDOWN_EDITOR_SMOKE_EXIT_SECONDS="${SMOKE_EXIT_SECONDS:-12}" \
+MARKDOWN_EDITOR_SMOKE_EXIT_SECONDS="$smoke_exit_seconds" \
 MARKDOWN_EDITOR_SMOKE_WINDOW_HEIGHT="${SMOKE_WINDOW_HEIGHT:-980}" \
     "$binary" -ApplePersistenceIgnoreState YES --diagnostic-smoke-exit "$fixture" &
 app_pid=$!
 
 run_file=""
-for _ in $(seq 1 100); do
+for _ in $(seq 1 "$smoke_wait_loops"); do
     candidate="$(find "$logdir" -name 'run-*.jsonl' -print -quit 2>/dev/null)"
     if [[ -n "$candidate" ]]; then run_file="$candidate"; break; fi
     sleep 0.05

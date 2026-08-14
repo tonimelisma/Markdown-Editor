@@ -68,8 +68,20 @@ workdir="$(mktemp -d)"
 cp -R "$repo_root/Scripts/Fixtures/." "$workdir/"
 fixture="$workdir/$(basename "$fixture")"
 
+# The app's self-termination delay is configurable for slow machines. Wait at least that long
+# plus a bounded margin before declaring a lifecycle failure; a fixed ten-second poll made the
+# documented override fail by killing a healthy verifier before it could emit runEnd.
+smoke_exit_seconds="${SMOKE_EXIT_SECONDS:-6}"
+smoke_wait_loops="$(awk -v seconds="$smoke_exit_seconds" 'BEGIN {
+    if (seconds !~ /^[0-9]+([.][0-9]+)?$/ || seconds <= 0) seconds = 2
+    loops = int((seconds + 10) * 10 + 0.999)
+    if (loops < 100) loops = 100
+    if (loops > 700) loops = 700
+    print loops
+}')"
+
 LLVM_PROFILE_FILE="$logdir/smoke-%p.profraw" \
-MARKDOWN_EDITOR_SMOKE_EXIT_SECONDS="${SMOKE_EXIT_SECONDS:-6}" \
+MARKDOWN_EDITOR_SMOKE_EXIT_SECONDS="$smoke_exit_seconds" \
 MARKDOWN_EDITOR_SMOKE_EXERCISE_EDITS=1 \
 MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$logdir" \
     "$binary" -ApplePersistenceIgnoreState YES --diagnostic-smoke-exit "$fixture" &
@@ -92,7 +104,7 @@ if [[ -z "$run_file" ]]; then
 fi
 
 # Wait for the process to exit (bounded) so the terminating record is durable before we read it.
-for _ in $(seq 1 100); do
+for _ in $(seq 1 "$smoke_wait_loops"); do
     kill -0 "$app_pid" 2>/dev/null || break
     sleep 0.1
 done

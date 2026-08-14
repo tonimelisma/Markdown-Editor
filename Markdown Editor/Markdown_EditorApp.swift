@@ -216,9 +216,15 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
                     Self.exerciseSmokeEdits()
                 }
                 try? await Task.sleep(for: .seconds(Self.smokeExitSeconds))
-                DiagnosticRunCoordinator.shared.flushAndInvalidateAll()
+                // NSDocument can keep NSApp.terminate(nil) pending when this verifier has
+                // intentionally exercised an unsaved edit. Perform the same cleanup that
+                // applicationWillTerminate would have performed before closing the log, then
+                // leave the throwaway verifier process directly. Waiting for AppKit's document
+                // close negotiation here otherwise leaves the process alive until the script's
+                // timeout and loses the performance summaries that cleanup emits.
+                self.stopRuntimeDiagnostics()
                 DiagnosticLog.shared?.finishSynchronously()
-                NSApp.terminate(nil)
+                Foundation.exit(EXIT_SUCCESS)
             }
         }
     }
@@ -268,6 +274,15 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        stopRuntimeDiagnostics()
+        DiagnosticLog.shared?.finishSynchronously()
+    }
+
+    /// Stops process-wide diagnostic producers and flushes every live editor sampler. Smoke
+    /// verification calls this explicitly because its fixture may be dirty and AppKit's normal
+    /// document-close negotiation can therefore refuse or defer `NSApp.terminate(nil)`.
+    @MainActor
+    private func stopRuntimeDiagnostics() {
         DiagnosticRunCoordinator.shared.flushAndInvalidateAll()
         responsivenessProbe?.stop()
         frameObserver?.stop()
@@ -276,8 +291,6 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         frameObserver = nil
         applicationSampler = nil
         watchdog?.stop()
-        // REQ-095: the terminating record distinguishes a clean exit from a crash.
-        DiagnosticLog.shared?.finishSynchronously()
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {

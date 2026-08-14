@@ -228,7 +228,7 @@ for line_number, status, increment, delivers, block in roadmap_rows:
                 ["git", "-C", str(git_root), "rev-parse", "--verify", "origin/main"],
                 capture_output=True, text=True, check=False,
             )
-            if remote_main.returncode == 0 and not git_root_override:
+            if remote_main.returncode == 0:
                 base_ref = subprocess.run(
                     ["git", "-C", str(git_root), "merge-base", "origin/main", "HEAD"],
                     capture_output=True, text=True, check=False,
@@ -238,16 +238,18 @@ for line_number, status, increment, delivers, block in roadmap_rows:
                 capture_output=True, text=True, check=False
             ).stdout.splitlines()
             deleted_plans = [p for p in changed if p.startswith(f"docs/plans/{increment}-") and p.endswith(".md")]
-            if not deleted_plans and base_ref != "HEAD^":
+            branch_changed = changed
+            if base_ref != "HEAD^":
                 candidate = f"docs/plans/{increment}-"
                 branch_changed = subprocess.run(
                     ["git", "-C", str(git_root), "diff", "--name-only", f"{base_ref}..HEAD"],
                     capture_output=True, text=True, check=False,
                 ).stdout.splitlines()
-                deleted_plans = [p for p in branch_changed if p.startswith(candidate) and p.endswith(".md")]
+                if not deleted_plans:
+                    deleted_plans = [p for p in branch_changed if p.startswith(candidate) and p.endswith(".md")]
             if deleted_plans:
                 plan_source_ref = f"{head}^"
-                if base_ref != "HEAD^":
+                if base_ref not in {"HEAD^", head}:
                     plan_source_ref = base_ref
                 original = subprocess.run(
                     ["git", "-C", str(git_root), "show", f"{plan_source_ref}:{deleted_plans[0]}"],
@@ -294,8 +296,13 @@ for line_number, status, increment, delivers, block in roadmap_rows:
                                             problems.append(f"{increment}: completion proof `{proof}` was not observed passing in the closing result bundle")
                                 except (subprocess.CalledProcessError, OSError, ValueError) as error:
                                     problems.append(f"{increment}: could not inspect completion proofs: {error}")
+                # On a squash-merged main, origin/main is HEAD, so merge-base is the
+                # delivery commit itself and cannot contain the deleted plan. Read its
+                # parent for the plan and use the commit's direct diff. On an unmerged
+                # topic branch, the merge-base remains the branch base and the broader
+                # range is the correct delivery scope.
                 changed_for_delivery = changed
-                if base_ref != "HEAD^":
+                if base_ref != head:
                     changed_for_delivery = branch_changed
                 production = [p for p in changed_for_delivery if p and not p.startswith("docs/") and p not in {"CLAUDE.md", "AGENTS.md"}]
                 if not production:
