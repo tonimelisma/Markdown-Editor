@@ -355,14 +355,13 @@ struct AcceptedEditTransactionTests {
             ProjectionSelection(utf16: NSRange(location: caret, length: 0), revision: try #require(session.presentation?.projectionRevision))
         ))
 
+        let selection = ProjectionSelection(
+            utf16: NSRange(location: caret, length: 0),
+            revision: try #require(session.presentation?.projectionRevision)
+        )
         let outcome = session.perform(
             .deleteBackward,
-            selection: .projection(
-                ProjectionSelection(
-                    utf16: NSRange(location: caret, length: 0),
-                    revision: try #require(session.presentation?.projectionRevision)
-                )
-            ),
+            selection: .projection(selection),
             expectedSourceRevision: SourceRevision(value: doc.sourceVersion)
         )
 
@@ -831,6 +830,7 @@ struct DocumentSerializedIOTests {
             actionName: "Edit",
             grouping: .discrete
         )
+        document.captureSourceSelection(mutation.selectionBefore)
         guard case .committed = document.commitSourceMutation(mutation) else {
             Issue.record("controller-opened document refused an exact mutation")
             document.close()

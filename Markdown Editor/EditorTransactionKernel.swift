@@ -575,8 +575,15 @@ nonisolated enum EditorTransactionKernel {
                         return .ambiguousSelection
                     }
                 }
+                var deletionRange = selection.range.utf16
+                if deletionRange.length == 0 {
+                    guard deletionRange.location > 0 else { return .invalidRange }
+                    deletionRange = rendered.rangeOfComposedCharacterSequence(
+                        at: deletionRange.location - 1
+                    )
+                }
                 let expected = (presentation.renderedString as NSString).replacingCharacters(
-                    in: selection.range.utf16,
+                    in: deletionRange,
                     with: ""
                 )
                 if transition.projectionReplacementRange == selection.range.utf16 {

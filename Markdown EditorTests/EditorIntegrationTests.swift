@@ -596,6 +596,7 @@ struct EditorIntegrationTests {
             actionName: "Edit",
             grouping: .discrete
         )
+        doc.captureSourceSelection(mutation.selectionBefore)
         _ = doc.commitSourceMutation(mutation)
         #expect(doc.text == "edited")
         let data = try doc.data(ofType: "net.daringfireball.markdown")

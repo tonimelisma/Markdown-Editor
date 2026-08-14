@@ -93,7 +93,10 @@ enum WYSIWYGEditor {
             case reapplyIfDrift
         }
 
-        func applyProjectionIfNeeded(reason: ApplyReason) {
+        func applyProjectionIfNeeded(
+            reason: ApplyReason,
+            nativeTextAlreadyApplied: Bool = false
+        ) {
             let force = (reason == .reapplyIfDrift)
             guard let textView else { return }
             guard let presentation = session.presentation else {
@@ -127,7 +130,8 @@ enum WYSIWYGEditor {
                         from: applied,
                         to: presentation,
                         in: textView,
-                        intent: intent
+                        intent: intent,
+                        nativeTextAlreadyApplied: nativeTextAlreadyApplied
                     ) {
                         // An unprovable newer snapshot is exceptional, never an ordinary
                         // fallback. This route records the typed fault and takes WYSIWYG out of
@@ -167,7 +171,8 @@ enum WYSIWYGEditor {
             from applied: PresentationSnapshot,
             to presentation: PresentationSnapshot,
             in textView: MarkdownWYSIWYGTextView,
-            intent: IntentContext?
+            intent: IntentContext?,
+            nativeTextAlreadyApplied: Bool
         ) -> PresentationRecoveryReason? {
             // Same text, new identity — an authoritative snapshot replacing a provisional one.
             // Attributes may differ; characters do not. Refreshing attributes is not a
@@ -205,6 +210,40 @@ enum WYSIWYGEditor {
 
             let selection = session.wysiwygModeState.selection.flatMap {
                 $0.range.revision.snapshotID == presentation.id ? $0 : nil
+            }
+            if nativeTextAlreadyApplied,
+               textView.string == presentation.renderedString,
+               let patch = PresentationPatch.between(
+                   current: applied,
+                   next: presentation,
+                   selectionAfter: selection,
+                   buildScope: { [weak self] model, scope in
+                       AttributedPresentationBuilder.buildScoped(
+                           model: model,
+                           theme: MarkdownTypography(),
+                           images: self?.session.resolvedImages ?? [:],
+                           onTaskPress: { nodeID in self?.captureAndPerformTaskToggle(nodeID: nodeID) },
+                           scope: scope,
+                           intent: intent
+                       )
+                   }
+               ) {
+                textView.beginLayoutApplication(for: patch.nextRange)
+                var refreshed = false
+                session.updateOrigin.with(.programmaticPresentation) {
+                    refreshed = textStorageApplier.applyAlreadyAppliedPatch(
+                        patch,
+                        to: textView,
+                        expectedNext: presentation
+                    )
+                }
+                guard refreshed else {
+                    textView.cancelLayoutApplication()
+                    return .appliedStorageMismatch
+                }
+                appliedSnapshot = presentation
+                appliedImageIdentities = imageIdentities(for: presentation)
+                return nil
             }
             guard let patch = PresentationPatch.between(
                 current: applied,
@@ -789,15 +828,18 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
             return false
         }
-        let selection = ProjectionSelection(
-            utf16: captured.range,
-            revision: presentation.projectionRevision
-        )
-        guard session.wysiwygModeState.selection == selection else {
+        guard let ownerSelection = session.wysiwygModeState.selection,
+              ownerSelection.range.utf16 == captured.range,
+              ownerSelection.range.revision.snapshotID == presentation.id else {
             guard cancelMarkedTextForInput() else { return false }
             (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
             return false
         }
+        let selection = ProjectionSelection(
+            utf16: captured.range,
+            revision: presentation.projectionRevision,
+            affinity: ownerSelection.affinity
+        )
         let result = session.perform(
             .insertText(text),
             selection: .projection(selection),
@@ -813,7 +855,10 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             performNativeUnmark()
             input.allowingMarkedText = false
             input.committingComposition = false
-            adapterCoordinator?.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+            adapterCoordinator?.applyProjectionIfNeeded(
+                reason: .reapplyIfDrift,
+                nativeTextAlreadyApplied: true
+            )
             return true
         case .refused:
             guard cancelMarkedTextForInput() else { return false }
