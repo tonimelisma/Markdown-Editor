@@ -6,7 +6,7 @@
     "mutationRefused": {"owner": "MarkdownDocument", "entry": "commitEditorInput", "expectedRecord": "mutationRefused", "allowedHarness": "component"},
     "undoRegistered": {"owner": "MarkdownDocument", "entry": "registerHistoryUndo", "expectedRecord": "undoRegistered", "allowedHarness": "component"},
     "historyApplied": {"owner": "MarkdownDocument", "entry": "applyHistoryPatchAfterReduction", "expectedRecord": "historyApplied", "allowedHarness": "component"},
-    "historyRefused": {"owner": "MarkdownDocument", "entry": "applyHistoryPatch", "expectedRecord": "historyRefused", "allowedHarness": "component"},
+    "historyRefused": {"owner": "MarkdownDocument", "entry": "commitEditorInput", "expectedRecord": "historyRefused", "allowedHarness": "component"},
     "parseStarted": {"owner": "ParseCoordinator", "entry": "scheduleParse", "expectedRecord": "parseStarted", "allowedHarness": "component"},
     "parseCompleted": {"owner": "ParseCoordinator", "entry": "scheduleParse", "expectedRecord": "parseCompleted", "allowedHarness": "component"},
     "parseCancelled": {"owner": "ParseCoordinator", "entry": "scheduleParse", "expectedRecord": "parseCancelled", "allowedHarness": "component"},
