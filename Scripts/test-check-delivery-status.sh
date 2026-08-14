@@ -132,6 +132,13 @@ git -C "$git_fixture" add -A
 git -C "$git_fixture" commit -qm delivered
 "$checker" --fixture-root "$git_fixture" --git-root "$git_fixture" --fixture-proof-status pass >/dev/null
 
+# A squash merge leaves the delivery commit as origin/main itself. The checker must then
+# inspect that commit's parent for the deleted plan and the squash commit's direct production
+# diff, rather than treating HEAD as the plan source and falsely rejecting the delivery.
+git -C "$git_fixture" update-ref refs/remotes/origin/main "$(git -C "$git_fixture" rev-parse HEAD)"
+"$checker" --fixture-root "$git_fixture" --git-root "$git_fixture" --fixture-proof-status pass >/dev/null
+git -C "$git_fixture" update-ref -d refs/remotes/origin/main
+
 # The same real-history proof must reject a deleted parent plan whose Delivers set does not match
 # the final ROADMAP row. This is separate from the production-change check so removing either
 # comparison would make this fixture pass.
