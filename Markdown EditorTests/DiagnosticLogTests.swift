@@ -332,15 +332,9 @@ struct DiagnosticLogTests {
         document.installTextForTesting(source)
         let session = EditorSession()
         session.attach(document: document)
-        for _ in 0..<500 where !trace.events.contains(where: {
-            if case .parseCompleted = $0 { return true }
-            return false
-        }) {
-            await Task.yield()
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        // Deliver the already-parsed result against a newer generation so the real coordinator
-        // stale-result guard runs; cancellation would exercise only parseCancelled instead.
+        // Invalidate synchronously after the real parse is scheduled, before its detached task
+        // can deliver the result back to this main actor. Cancellation would exercise only
+        // parseCancelled; leaving the task alive proves the stale-result guard itself.
         session.parseCoordinator.bumpGenerationWithoutCancellationForTesting()
         for _ in 0..<500 {
             if trace.events.contains(where: {
