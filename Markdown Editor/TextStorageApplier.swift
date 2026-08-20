@@ -73,6 +73,45 @@ final class TextStorageApplier {
         return true
     }
 
+    /// Completes a native marked-text commit whose characters are already in TextKit storage.
+    /// AppKit owns that character replacement, so applying the ordinary patch would correctly
+    /// reject the old snapshot's text. This path still proves the committed snapshot and applies
+    /// only the patch's bounded attributed scope; it never replaces characters or rebuilds the
+    /// document.
+    @discardableResult
+    func applyAlreadyAppliedPatch(
+        _ patch: PresentationPatch,
+        to textView: NSTextView,
+        expectedNext: PresentationSnapshot
+    ) -> Bool {
+        guard let storage = textView.textStorage,
+              storage.string == expectedNext.renderedString,
+              patch.nextRange.location >= 0,
+              NSMaxRange(patch.nextRange) <= storage.length,
+              patch.replacement.string == (expectedNext.renderedString as NSString)
+                .substring(with: patch.nextRange) else {
+            return false
+        }
+        storage.beginEditing()
+        patch.replacement.enumerateAttributes(
+            in: NSRange(location: 0, length: patch.replacement.length)
+        ) { attributes, localRange, _ in
+            storage.setAttributes(
+                attributes,
+                range: NSRange(
+                    location: patch.nextRange.location + localRange.location,
+                    length: localRange.length
+                )
+            )
+        }
+        storage.endEditing()
+        attachmentNodes = splicedAttachmentNodes(for: patch)
+        if let selection = patch.selectionAfter {
+            textView.setSelectedRange(selection.range.utf16)
+        }
+        return true
+    }
+
     /// Rebuilds everything after an invariant violation. Architecturally exceptional: callers
     /// record a typed reason so a recovery can never pass for an ordinary edit.
     func applyRecoveryPresentation(_ built: AttributedPresentation, to textView: NSTextView, intent: IntentContext? = nil) {

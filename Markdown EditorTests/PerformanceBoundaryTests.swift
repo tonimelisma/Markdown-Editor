@@ -81,6 +81,7 @@ struct PerformanceBoundaryTests {
         let insertTrace = InMemoryEditorTrace()
         let insertHarness = try EditorHarness(source: "ab\n\nTrailing paragraph.\n", trace: insertTrace)
         insertHarness.textView.setSelectedRange(NSRange(location: 2, length: 0))
+        insertHarness.captureNativeSelection(at: NSRange(location: 2, length: 0))
         insertHarness.textView.setMarkedText(
             "日",
             selectedRange: NSRange(location: 1, length: 0),
@@ -91,6 +92,7 @@ struct PerformanceBoundaryTests {
         let unmarkTrace = InMemoryEditorTrace()
         let unmarkHarness = try EditorHarness(source: "ab\n\nTrailing paragraph.\n", trace: unmarkTrace)
         unmarkHarness.textView.setSelectedRange(NSRange(location: 2, length: 0))
+        unmarkHarness.captureNativeSelection(at: NSRange(location: 2, length: 0))
         unmarkHarness.textView.setMarkedText(
             "日",
             selectedRange: NSRange(location: 1, length: 0),
@@ -102,7 +104,10 @@ struct PerformanceBoundaryTests {
         let unmarkEvents = compositionEvents(in: unmarkTrace)
         #expect(insertEvents == unmarkEvents)
         #expect(insertHarness.document.text == unmarkHarness.document.text)
-        #expect(insertHarness.document.text.hasPrefix("ab日"))
+        #expect(
+            insertHarness.document.text.hasPrefix("ab日"),
+            "insert events: \(insertTrace.events)"
+        )
     }
 
     // Verifies: REQ-103 — ordinary edits feed the sampler and emit no per-keystroke record.
@@ -435,6 +440,12 @@ struct PerformanceBoundaryTests {
         await harness.settle()
         let attachment = try #require(harness.session.presentation?.attachments.first)
         harness.storage.resetSpy()
+        harness.captureNativeSelection(
+            ProjectionSelection(
+                utf16: NSRange(location: attachment.utf16Location, length: 1),
+                revision: try #require(harness.session.presentation?.projectionRevision)
+            )
+        )
 
         harness.coordinator.performTaskToggle(nodeID: attachment.nodeID)
 
@@ -500,8 +511,10 @@ struct PerformanceBoundaryTests {
     // shown in the native storage first (REQ-084 keeps composition transient but visible), then
     // the commit replaces it; every storage edit stays inside the document and never rebuilds it.
     @Test func committedCompositionUsesBoundedPatch() throws {
-        let harness = try EditorHarness(source: "ab\n\nTrailing paragraph.\n")
+        let trace = InMemoryEditorTrace()
+        let harness = try EditorHarness(source: "ab\n\nTrailing paragraph.\n", trace: trace)
         harness.textView.setSelectedRange(NSRange(location: 2, length: 0))
+        harness.captureNativeSelection(at: NSRange(location: 2, length: 0))
         harness.storage.resetSpy()
 
         harness.textView.setMarkedText(
@@ -511,8 +524,14 @@ struct PerformanceBoundaryTests {
         )
         harness.textView.insertText("日", replacementRange: NSRange(location: NSNotFound, length: 0))
 
-        #expect(harness.document.text.hasPrefix("ab日"))
-        #expect(harness.storage.fullReplacements == 0)
+        #expect(
+            harness.document.text.hasPrefix("ab日"),
+            "events: \(trace.events)"
+        )
+        #expect(
+            harness.storage.fullReplacements == 0,
+            "events: \(trace.events)"
+        )
         #expect(!harness.storage.characterReplacements.isEmpty)
         #expect(harness.storage.characterReplacements.allSatisfy {
             $0.length < (harness.textView.string as NSString).length
@@ -711,8 +730,27 @@ struct PerformanceBoundaryTests {
             }
         }
 
+        /// Models the native selection/action callback that precedes a transaction seam.
+        /// Production adapters capture this identity at AppKit event boundaries; direct harness
+        /// calls must not let the proposed mutation establish owner state.
+        func captureNativeSelection(at range: NSRange) {
+            guard let presentation = session.presentation else { return }
+            session.captureSelection(.projection(
+                ProjectionSelection(
+                    utf16: range,
+                    revision: presentation.projectionRevision,
+                    affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
+                )
+            ))
+        }
+
+        func captureNativeSelection(_ selection: ProjectionSelection) {
+            session.captureSelection(.projection(selection))
+        }
+
         /// Drives the real native delegate callback, the one whose latency the budget describes.
         func typeCharacter(_ text: String, at range: NSRange) {
+            captureNativeSelection(at: range)
             session.updateOrigin.with(.nativeUserInput) {
                 _ = coordinator.textView(
                     textView,

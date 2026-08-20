@@ -91,6 +91,13 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     /// Open typing undo group (MutationGrouping.typing coalescing).
     private var typingGroupOpen = false
+    /// Last source-domain selection committed through the document seam. It is used only to
+    /// close a typing group when the next input was captured after a caret move, keeping that
+    /// boundary in the document owner rather than in either AppKit adapter.
+    private var lastCommittedSourceSelection: SourceSelection?
+    /// AppKit records marked-text changes on the document undo manager. The document owns the
+    /// short-lived group opened for that native transient route.
+    private var markedTextGroupOpen = false
     private var undoCheckpointObserver: NSObjectProtocol?
 
     /// Notification center seam for observer lifecycle tests.
@@ -362,9 +369,131 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     var documentUndoManager: UndoManager? { undoManager }
 
-    // REQ-016: validate revision, range, and expected content; one private apply path.
+    /// Main-actor application seam for every canonical document input. Reduction is pure; this
+    /// method alone performs source replacement, history registration, and diagnostic emission.
     @discardableResult
-    func commitSourceMutation(_ mutation: SourceMutation) -> SourceEditResult {
+    func commitEditorInput(_ input: EditorInput) -> EditorTransactionCommitResult {
+        let state = EditorStateSnapshot(
+            source: sourceSnapshot(),
+            sourceSelection: SourceSelection(utf16: NSRange(location: 0, length: 0)),
+            intentID: input.intentID
+        )
+        return commitEditorInput(input, state: state)
+    }
+
+    /// Applies a reduction against the caller's immutable session snapshot. The overload is the
+    /// production route: a document never reconstructs selection or presentation identity from
+    /// the proposed mutation, so a stale adapter cannot make its own input appear current.
+    @discardableResult
+    func commitEditorInput(
+        _ input: EditorInput,
+        state: EditorStateSnapshot
+    ) -> EditorTransactionCommitResult {
+        // The reducer consumes an immutable snapshot, but the document is the live canonical
+        // owner. A caller cannot make a stale snapshot current by supplying matching input data.
+        let liveSource = sourceSnapshot()
+        guard liveSource.text == state.source.text,
+              liveSource.sourceVersion == state.source.sourceVersion,
+              liveSource.locationGeneration == state.source.locationGeneration,
+              liveSource.fileURL == state.source.fileURL else {
+            trace?.record(route: .editRefused, .editRefused(category: .refusal(.staleVersion)))
+            return .refused(.staleVersion)
+        }
+        var audit = EditorTransactionReductionAudit()
+        switch EditorTransactionKernel.reduce(input, state: state, audit: &audit) {
+        case .refused(let refusal):
+            var recorded = false
+            if case .sourceReplacement(let value) = input {
+                trace?.record(route: .mutationRefused, .mutationRefused(id: value.mutation.id, reason: refusal.asSourceRefusal))
+                recorded = true
+            } else if case .imageReference(let value) = input {
+                trace?.record(route: .mutationRefused, .mutationRefused(id: value.mutation.id, reason: refusal.asSourceRefusal))
+                recorded = true
+            }
+            if case .undoRedo(let history) = input {
+                trace?.record(route: .historyRefused, .historyRefused(direction: history.direction, reason: refusal.asSourceRefusal))
+                recorded = true
+            }
+            if !recorded {
+                trace?.record(route: .editRefused, .editRefused(category: .refusal(refusal.asEditRefusal)))
+            }
+            return .refused(refusal)
+        case .accepted(let transaction):
+            return commitEditorTransaction(transaction, state: state, audit: audit)
+        }
+    }
+
+    /// Applies a transaction already reduced against the supplied immutable state. Session-owned
+    /// semantic routes use this overload so planning and application share exactly one kernel
+    /// reduction; the document still revalidates the live source identity before mutation.
+    @discardableResult
+    func commitEditorTransaction(
+        _ transaction: AcceptedEditorTransaction,
+        state: EditorStateSnapshot,
+        audit: EditorTransactionReductionAudit? = nil
+    ) -> EditorTransactionCommitResult {
+        let liveSource = sourceSnapshot()
+        guard liveSource.text == state.source.text,
+              liveSource.sourceVersion == state.source.sourceVersion,
+              liveSource.locationGeneration == state.source.locationGeneration,
+              liveSource.fileURL == state.source.fileURL else {
+            trace?.record(route: .editRefused, .editRefused(category: .refusal(.staleVersion)))
+            return .refused(.staleVersion)
+        }
+        guard audit?.count ?? 1 == 1 else {
+            trace?.record(route: .editRefused, .editRefused(category: .refusal(.ambiguousSelection)))
+            return .refused(.invalidIdentity)
+        }
+        if let refusal = EditorTransactionKernel.validateAcceptedTransaction(transaction, state: state) {
+            switch transaction.effect {
+            case .edit(let edit):
+                trace?.record(route: .mutationRefused, .mutationRefused(
+                    id: edit.sourceMutation.id,
+                    reason: refusal.asSourceRefusal
+                ))
+            case .history(let history):
+                trace?.record(route: .historyRefused, .historyRefused(
+                    direction: history.direction,
+                    reason: refusal.asSourceRefusal
+                ))
+            default:
+                trace?.record(route: .editRefused, .editRefused(
+                    category: .refusal(refusal.asEditRefusal)
+                ))
+            }
+            return .refused(refusal)
+        }
+        switch transaction.effect {
+            case .edit(let edit):
+                closeMarkedTextGroupIfNeeded()
+                if lastCommittedSourceSelection != edit.sourceMutation.selectionBefore {
+                    closeTypingGroupIfNeeded()
+                }
+                lastCommittedSourceSelection = edit.sourceSelectionAfter
+                applyCommittedMutation(edit.sourceMutation)
+                return .committed(transaction)
+            case .history(let history):
+                return applyHistoryPatchAfterReduction(history.patch, direction: history.direction, transaction: transaction)
+            case .markedText(let phase):
+                switch phase {
+                case .update:
+                    beginMarkedTextGroupIfNeeded()
+                case .cancel:
+                    closeMarkedTextGroupIfNeeded()
+                case .commit:
+                    closeMarkedTextGroupIfNeeded()
+                }
+                return .committed(transaction)
+            case .modeChange:
+                closeMarkedTextGroupIfNeeded()
+                closeTypingGroupIfNeeded()
+                return .committed(transaction)
+            case .reconciliation:
+                return .committed(transaction)
+        }
+    }
+
+    private func applyCommittedMutation(_ mutation: SourceMutation) {
         trace?.record(route: .mutationRequested, .mutationRequested(
                 id: mutation.id,
                 revision: mutation.expectedRevision,
@@ -374,32 +503,8 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             )
         )
 
-        guard mutation.expectedRevision == sourceVersion else {
-            trace?.record(route: .mutationRefused, .mutationRefused(id: mutation.id, reason: .staleVersion))
-            return .refused(.staleVersion)
-        }
-
-        let ns = text as NSString
-        let length = ns.length
-        let range = mutation.range
-        guard range.location >= 0,
-              range.length >= 0,
-              NSMaxRange(range) <= length else {
-            trace?.record(route: .mutationRefused, .mutationRefused(id: mutation.id, reason: .invalidRange))
-            return .refused(.invalidRange)
-        }
-
-        let actual = ns.substring(with: range)
-        guard actual == mutation.expectedText else {
-            trace?.record(route: .mutationRefused, .mutationRefused(id: mutation.id, reason: .contentMismatch))
-            return .refused(.contentMismatch)
-        }
-
         let replacementUTF16 = (mutation.replacement as NSString).length
-        applyReplacement(
-            range: range,
-            replacement: mutation.replacement
-        )
+        applyReplacement(range: mutation.range, replacement: mutation.replacement)
 
         let patch = HistoryPatch.fromCommitted(mutation)
         registerHistoryUndo(for: patch, grouping: mutation.grouping)
@@ -407,12 +512,11 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         trace?.record(route: .mutationCommitted, .mutationCommitted(
                 id: mutation.id,
                 newRevision: sourceVersion,
-                location: range.location,
-                length: range.length,
+                location: mutation.range.location,
+                length: mutation.range.length,
                 replacementLength: replacementUTF16
             )
         )
-        return .committed(mutation.selectionAfter)
     }
 
     /// Test / history seam: apply a patch with content validation (no revision gate).
@@ -467,9 +571,11 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     func installTextForTesting(_ value: String) {
         undoManager?.groupsByEvent = false
         attachUndoCheckpointObserverIfNeeded()
+        closeMarkedTextGroupIfNeeded()
         closeTypingGroupIfNeeded()
         text = value
         sourceVersion = 0
+        lastCommittedSourceSelection = nil
         updateChangeCount(.changeCleared)
         undoManager?.removeAllActions()
         canonicalAssetReferences = CanonicalAssetReferences(values: [])
@@ -537,15 +643,29 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         _ patch: HistoryPatch,
         direction: HistoryDirection
     ) -> SourceEditResult {
-        guard patch.matchesCurrentContent(in: text) else {
-            trace?.record(route: .historyRefused, .historyRefused(direction: direction, reason: .contentMismatch))
-            return .refused(.contentMismatch)
+        let input = EditorInput.undoRedo(
+            EditorHistoryInput(patch: patch, direction: direction)
+        )
+        switch commitEditorInput(input) {
+        case .refused(let refusal):
+            return .refused(refusal.asSourceRefusal)
+        case .committed(let transaction):
+            guard case .history = transaction.effect else { return .refused(.conflict) }
+            return .committed(patch.selectionBefore)
         }
+    }
+
+    private func applyHistoryPatchAfterReduction(
+        _ patch: HistoryPatch,
+        direction: HistoryDirection,
+        transaction: AcceptedEditorTransaction
+    ) -> EditorTransactionCommitResult {
 
         applyReplacement(
             range: patch.range,
             replacement: patch.before
         )
+        lastCommittedSourceSelection = patch.selectionBefore
         requestSelectionRestoration(patch.selectionBefore)
 
         // Register the inverse dynamically — never call the version-gated public API.
@@ -569,7 +689,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
                 length: patch.range.length
             )
         )
-        return .committed(patch.selectionBefore)
+        return .committed(transaction)
     }
 
     private func registerHistoryUndo(for patch: HistoryPatch, grouping: MutationGrouping) {
@@ -613,6 +733,19 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         typingGroupOpen = false
         // Only end a group we actually opened — AppKit/checkpoint churn can leave
         // groupingLevel 0 while our flag was still set.
+        guard let undoManager, undoManager.groupingLevel > 0 else { return }
+        undoManager.endUndoGrouping()
+    }
+
+    private func beginMarkedTextGroupIfNeeded() {
+        guard !markedTextGroupOpen, let undoManager, undoManager.groupingLevel == 0 else { return }
+        undoManager.beginUndoGrouping()
+        markedTextGroupOpen = true
+    }
+
+    private func closeMarkedTextGroupIfNeeded() {
+        guard markedTextGroupOpen else { return }
+        markedTextGroupOpen = false
         guard let undoManager, undoManager.groupingLevel > 0 else { return }
         undoManager.endUndoGrouping()
     }

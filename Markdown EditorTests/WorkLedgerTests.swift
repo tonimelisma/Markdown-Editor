@@ -418,6 +418,7 @@ struct COR69IntentMeasurementTests {
             actionName: "Typing",
             grouping: .typing
         )
+        session.captureSelection(.source(mutation.selectionBefore))
         #expect({
             if case .committed = coordinator.commitNativeMutation(mutation) { return true }
             return false

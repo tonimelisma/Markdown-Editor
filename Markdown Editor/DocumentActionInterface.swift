@@ -24,9 +24,10 @@ protocol DocumentActionInterface: AnyObject {
     @MainActor func trackedPlacement(for generation: Int) -> InsertionRangeTracker?
     @MainActor func noteTrackedEdit(edited: NSRange, changeInLength: Int)
 
-    /// Content-validated mutation entry (REQ-016). Sole commit path.
+    /// Kernel-owned input entry for adapter routes. Adapters must submit typed input rather than
+    /// calling the document's mutation implementation directly.
     @MainActor @discardableResult
-    func commitSourceMutation(_ mutation: SourceMutation) -> SourceEditResult
+    func commitEditorInput(_ input: EditorInput) -> EditorTransactionCommitResult
 
     /// Publish a source-domain selection restoration event to the attached editor session.
     @MainActor func requestSelectionRestoration(_ selection: SourceSelection)

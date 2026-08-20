@@ -15,15 +15,27 @@ private nonisolated final class SemanticWorkerResultBox<Value: Sendable>: @unche
 /// synchronous boundary; it advances through local presentation transitions.
 /// // REQ-085; ARC-Q06
 nonisolated enum EditorSemanticWorker {
-    private static let queue = DispatchQueue(
-        label: "net.tonimelisma.Markdown-Editor.semantic-worker",
-        qos: .userInitiated
-    )
+    private static let queueKey = DispatchSpecificKey<UInt8>()
+    private static let queue: DispatchQueue = {
+        let queue = DispatchQueue(
+            label: "net.tonimelisma.Markdown-Editor.semantic-worker",
+            qos: .userInitiated
+        )
+        queue.setSpecific(key: queueKey, value: 1)
+        return queue
+    }()
 
     static func sync<Value: Sendable>(
         intent: IntentContext? = nil,
         _ work: @escaping @Sendable () -> Value
     ) -> Value {
+        // Semantic planner gates may share this boundary while already executing on the worker.
+        // Re-enqueueing onto this serial queue would wait for itself forever and leave the test
+        // process without a result bundle. Nested work is already off-main, so execute it
+        // directly while retaining the outer intent's worker ownership.
+        if DispatchQueue.getSpecific(key: queueKey) != nil {
+            return work()
+        }
         let isMain = Thread.isMainThread
         let t0 = isMain ? DispatchTime.now().uptimeNanoseconds : 0
         let completion = DispatchSemaphore(value: 0)

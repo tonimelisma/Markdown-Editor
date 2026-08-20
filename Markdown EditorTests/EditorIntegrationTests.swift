@@ -318,7 +318,7 @@ struct EditorIntegrationTests {
         )
         // Re-install to get undo manager + observer on default, then swap.
         doc.installTextForTesting("x")
-        _ = doc.commitSourceMutation(
+        _ = commitSourceMutationForTest(doc,
             SourceMutation(
                 expectedRevision: 0,
                 range: NSRange(location: 0, length: 0),
@@ -519,7 +519,7 @@ struct EditorIntegrationTests {
             actionName: "Typing",
             grouping: .typing
         )
-        _ = doc.commitSourceMutation(mutation)
+        _ = commitSourceMutationForTest(doc, mutation)
         #expect(doc.text.hasPrefix("a"))
         doc.closeTypingUndoGroup()
         // After close, a discrete commit must not nest into the prior typing group forever.
@@ -533,7 +533,7 @@ struct EditorIntegrationTests {
             actionName: "Paste",
             grouping: .discrete
         )
-        _ = doc.commitSourceMutation(discrete)
+        _ = commitSourceMutationForTest(doc, discrete)
         #expect(doc.text.contains("a"))
         #expect(doc.text.contains("!"))
     }
@@ -596,7 +596,7 @@ struct EditorIntegrationTests {
             actionName: "Edit",
             grouping: .discrete
         )
-        _ = doc.commitSourceMutation(mutation)
+        _ = commitSourceMutationForTest(doc, mutation)
         #expect(doc.text == "edited")
         let data = try doc.data(ofType: "net.daringfireball.markdown")
         #expect(String(data: data, encoding: .utf8) == "edited")

@@ -121,6 +121,9 @@ struct AcceptedEditTransactionTests {
         session.installProjectionForTesting(model, tree: tree)
 
         let presentation = session.presentation!
+        session.captureSelection(.projection(
+            ProjectionSelection(utf16: NSRange(location: 2, length: 0), revision: presentation.projectionRevision)
+        ))
         let outcome = session.perform(
             .insertText("日"),
             selection: .projection(
@@ -193,6 +196,9 @@ struct AcceptedEditTransactionTests {
 
         for location in [2, 0] {
             let current = session.presentation!
+            session.captureSelection(.projection(
+                ProjectionSelection(utf16: NSRange(location: location, length: 0), revision: current.projectionRevision)
+            ))
             let result = session.perform(
                 .insertText("*"),
                 selection: .projection(
@@ -305,6 +311,9 @@ struct AcceptedEditTransactionTests {
         session.installProjectionForTesting(model, tree: tree)
         let cell = try #require(session.presentation?.tables.first?.cells.first)
         let caret = cell.utf16Range.location + 1
+        session.captureSelection(.projection(
+            ProjectionSelection(utf16: NSRange(location: caret, length: 0), revision: try #require(session.presentation?.projectionRevision))
+        ))
 
         let outcome = session.perform(
             .insertText("*"),
@@ -342,15 +351,17 @@ struct AcceptedEditTransactionTests {
         session.installProjectionForTesting(model, tree: tree)
         let cell = try #require(session.presentation?.tables.first?.cells.first)
         let caret = cell.utf16Range.location + 2
+        session.captureSelection(.projection(
+            ProjectionSelection(utf16: NSRange(location: caret, length: 0), revision: try #require(session.presentation?.projectionRevision))
+        ))
 
+        let selection = ProjectionSelection(
+            utf16: NSRange(location: caret, length: 0),
+            revision: try #require(session.presentation?.projectionRevision)
+        )
         let outcome = session.perform(
             .deleteBackward,
-            selection: .projection(
-                ProjectionSelection(
-                    utf16: NSRange(location: caret, length: 0),
-                    revision: try #require(session.presentation?.projectionRevision)
-                )
-            ),
+            selection: .projection(selection),
             expectedSourceRevision: SourceRevision(value: doc.sourceVersion)
         )
 
@@ -366,6 +377,8 @@ struct AcceptedEditTransactionTests {
     @Test func adapterStorageMatchesCommittedPresentationBeforeCallbackReturns() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
+        let trace = InMemoryEditorTrace()
+        doc.trace = trace
         let session = EditorSession()
         session.attach(document: doc)
         let tree = MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get()!
@@ -387,6 +400,10 @@ struct AcceptedEditTransactionTests {
         textView.documentActions = doc
         coordinator.textView = textView
         coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+        let beforeCommitCount = trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count
 
         let allowNative = coordinator.textView(
             textView,
@@ -398,6 +415,10 @@ struct AcceptedEditTransactionTests {
         #expect(doc.text == "ahi\n")
         #expect(textView.string == "ahi\n")
         #expect(textView.string == session.presentation?.renderedString)
+        #expect(trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count - beforeCommitCount == 1)
     }
 
     // Verifies: REQ-016/059/091; ARC-005 — paste advances source, session, and
@@ -405,6 +426,8 @@ struct AcceptedEditTransactionTests {
     @Test func plainTextPasteAppliesAcceptedTransitionSynchronously() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
+        let trace = InMemoryEditorTrace()
+        doc.trace = trace
         let session = EditorSession()
         session.attach(document: doc)
         let tree = MarkdownParser.parse(doc.text, sourceVersion: doc.sourceVersion).get()!
@@ -427,6 +450,10 @@ struct AcceptedEditTransactionTests {
         coordinator.textView = textView
         coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
         textView.setSelectedRange(NSRange(location: 0, length: 0))
+        let beforeCommitCount = trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count
 
         let applied = textView.pastePlainText("*")
 
@@ -435,6 +462,10 @@ struct AcceptedEditTransactionTests {
         #expect(session.presentation?.renderedString == "*hi\n")
         #expect(textView.string == "*hi\n")
         #expect(textView.selectedRange() == NSRange(location: 1, length: 0))
+        #expect(trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count - beforeCommitCount == 1)
     }
 
     // Verifies: REQ-091; ARC-005 — refused edit changes neither source nor presentation.
@@ -451,6 +482,9 @@ struct AcceptedEditTransactionTests {
         session.installProjectionForTesting(model, tree: tree)
         let beforeText = doc.text
         let beforeID = session.presentation!.id
+        session.captureSelection(.projection(
+            ProjectionSelection(utf16: NSRange(location: 0, length: 0), revision: ProjectionRevision(value: 999_999))
+        ))
 
         let outcome = session.perform(
             .insertText("z"),
@@ -726,7 +760,7 @@ struct NativeUpdateOriginTests {
             actionName: "Typing",
             grouping: .typing
         )
-        _ = doc.commitSourceMutation(mutation)
+        _ = commitSourceMutationForTest(doc, mutation)
         session.updateOrigin.with(.programmaticPresentation) {
             #expect(session.updateOrigin.current == .programmaticPresentation)
         }
@@ -744,7 +778,7 @@ struct NativeUpdateOriginTests {
             actionName: "Typing",
             grouping: .typing
         )
-        _ = doc.commitSourceMutation(second)
+        _ = commitSourceMutationForTest(doc, second)
         #expect(doc.text.hasPrefix("ab"))
     }
 }
@@ -796,7 +830,7 @@ struct DocumentSerializedIOTests {
             actionName: "Edit",
             grouping: .discrete
         )
-        guard case .committed = document.commitSourceMutation(mutation) else {
+        guard case .committed = commitSourceMutationForTest(document, mutation) else {
             Issue.record("controller-opened document refused an exact mutation")
             document.close()
             return

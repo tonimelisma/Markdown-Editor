@@ -21,7 +21,7 @@ struct SourceIntegrityCharacterizationTests {
 
         // Edit 1: insert "A" at 0
         expectCommitted(
-            doc.commitSourceMutation(mutation(
+            commitSourceMutationForTest(doc, mutation(
                 doc,
                 range: NSRange(location: 0, length: 0),
                 expected: "",
@@ -35,7 +35,7 @@ struct SourceIntegrityCharacterizationTests {
 
         // Edit 2: insert "B" at end of A
         expectCommitted(
-            doc.commitSourceMutation(mutation(
+            commitSourceMutationForTest(doc, mutation(
                 doc,
                 range: NSRange(location: 1, length: 0),
                 expected: "",
@@ -49,7 +49,7 @@ struct SourceIntegrityCharacterizationTests {
 
         // Edit 3: insert "C"
         expectCommitted(
-            doc.commitSourceMutation(mutation(
+            commitSourceMutationForTest(doc, mutation(
                 doc,
                 range: NSRange(location: 2, length: 0),
                 expected: "",
@@ -81,7 +81,7 @@ struct SourceIntegrityCharacterizationTests {
         let doc = MarkdownDocument()
         doc.installTextForTesting("xy")
         expectCommitted(
-            doc.commitSourceMutation(mutation(
+            commitSourceMutationForTest(doc, mutation(
                 doc,
                 range: NSRange(location: 0, length: 1),
                 expected: "x",
@@ -128,7 +128,7 @@ struct SourceIntegrityCharacterizationTests {
         doc.undoManager?.groupsByEvent = false
 
         expectCommitted(
-            doc.commitSourceMutation(mutation(
+            commitSourceMutationForTest(doc, mutation(
                 doc,
                 range: NSRange(location: 0, length: 0),
                 expected: "",
@@ -138,7 +138,7 @@ struct SourceIntegrityCharacterizationTests {
             ))
         )
         expectCommitted(
-            doc.commitSourceMutation(mutation(
+            commitSourceMutationForTest(doc, mutation(
                 doc,
                 range: NSRange(location: 1, length: 0),
                 expected: "",
@@ -148,7 +148,7 @@ struct SourceIntegrityCharacterizationTests {
             ))
         )
         expectCommitted(
-            doc.commitSourceMutation(mutation(
+            commitSourceMutationForTest(doc, mutation(
                 doc,
                 range: NSRange(location: 2, length: 0),
                 expected: "",
@@ -165,7 +165,7 @@ struct SourceIntegrityCharacterizationTests {
 
         // Discrete toolbar-style actions each undo separately.
         expectCommitted(
-            doc.commitSourceMutation(mutation(
+            commitSourceMutationForTest(doc, mutation(
                 doc,
                 range: NSRange(location: 0, length: 0),
                 expected: "",
@@ -175,7 +175,7 @@ struct SourceIntegrityCharacterizationTests {
             ))
         )
         expectCommitted(
-            doc.commitSourceMutation(mutation(
+            commitSourceMutationForTest(doc, mutation(
                 doc,
                 range: NSRange(location: 2, length: 0),
                 expected: "",
@@ -201,9 +201,7 @@ struct SourceIntegrityCharacterizationTests {
         let cancellable = doc.selectionRestorations.sink { restorations.append($0) }
         defer { cancellable.cancel() }
 
-        expectCommitted(
-            doc.commitSourceMutation(
-                SourceMutation(
+        let upper = SourceMutation(
                     expectedRevision: doc.sourceVersion,
                     range: NSRange(location: 0, length: 5),
                     expectedText: "hello",
@@ -212,9 +210,8 @@ struct SourceIntegrityCharacterizationTests {
                     selectionAfter: after,
                     actionName: "Upper",
                     grouping: .discrete
-                )
-            )
         )
+        expectCommitted(commitSourceMutationForTest(doc, upper))
         #expect(restorations.isEmpty)
 
         doc.undoManager?.undo()
@@ -233,7 +230,7 @@ struct SourceIntegrityCharacterizationTests {
         #expect(doc.isDocumentEdited == false)
 
         expectCommitted(
-            doc.commitSourceMutation(mutation(
+            commitSourceMutationForTest(doc, mutation(
                 doc,
                 range: NSRange(location: 4, length: 0),
                 expected: "",
@@ -272,7 +269,7 @@ struct SourceIntegrityCharacterizationTests {
         doc.trace = trace
         doc.installTextForTesting("secret-path-/Users/private/doc.md")
         expectCommitted(
-            doc.commitSourceMutation(mutation(
+            commitSourceMutationForTest(doc, mutation(
                 doc,
                 range: NSRange(location: 0, length: 6),
                 expected: "secret",
@@ -303,7 +300,7 @@ struct SourceIntegrityCharacterizationTests {
         grouping: MutationGrouping
     ) -> SourceMutation {
         let afterLoc = range.location + (replacement as NSString).length
-        return SourceMutation(
+        let value = SourceMutation(
             expectedRevision: doc.sourceVersion,
             range: range,
             expectedText: expected,
@@ -313,6 +310,7 @@ struct SourceIntegrityCharacterizationTests {
             actionName: name,
             grouping: grouping
         )
+        return value
     }
 
     private func expectCommitted(_ result: SourceEditResult) {

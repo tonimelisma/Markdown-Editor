@@ -45,7 +45,7 @@ struct SourceTransactionTests {
             actionName: mutation.actionName,
             grouping: mutation.grouping
         )
-        return doc.commitSourceMutation(forced)
+        return commitSourceMutationForTest(doc, forced)
     }
 
     // Verifies: REQ-016

@@ -108,9 +108,11 @@ as an independently authoritative partial snapshot.
 ### Source edit
 
 1. The source `NSTextView` asks its delegate whether a native replacement may occur.
-2. The adapter forms an exact `SourceEditRequest`.
-3. The session validates the request against the current document revision.
-4. The document commits one `SourceMutation`, advances once, and registers undo.
+2. The adapter captures the native source selection into the session-owned mode state, forms an
+   exact `SourceMutation`, and submits a typed `EditorInput`.
+3. `EditorTransactionKernel.reduce` validates the immutable source/session snapshot and returns
+   one accepted transaction or one typed refusal.
+4. The main-actor document commit applies one `SourceMutation`, advances once, and registers undo.
 5. Native source storage and the session's source selection are updated with explicit
    programmatic origin.
 6. Asynchronous parse/projection reconciliation is scheduled.
@@ -119,9 +121,13 @@ as an independently authoritative partial snapshot.
 
 An accepted WYSIWYG edit is a synchronous atomic transition:
 
-1. The view submits an immutable native replacement and current `ProjectionSelection`.
-2. The session classifies the entire selection against the exact presented snapshot.
-3. The semantic engine returns either:
+1. The view captures its current `ProjectionSelection` into session-owned mode state and submits
+   an immutable native replacement.
+2. The session captures an `EditorStateSnapshot`; the transaction kernel classifies the entire
+   submitted selection against the exact presented snapshot and never replaces that snapshot with
+   input-provided identity.
+3. The session plans the request off-main with the originating `IntentID`, then supplies that
+   immutable outcome to the pure kernel. The kernel validates and returns either:
    - `AcceptedEdit { sourceMutation, presentationTransition, selectionAfter }`, or
    - a typed refusal with no mutation.
 4. For an accepted edit, the document commits the source mutation once.
@@ -303,13 +309,10 @@ Rules:
 - Selection restoration is a one-shot session instruction consumed by the relevant adapter.
 - `NSTextView` owns marked text. Canonical source receives one completed composition transaction;
   projection replacement never occurs through active marked text.
-- Marked-text arrival opens the document's undo group around the native mutation. AppKit registers
-  marked-text edits on the undo manager, and `NSTextView.setMarkedText` raises "must begin a group
-  before registering undo" when the document's undo manager has `groupsByEvent = false` (REQ-011:
-  the app drives typing groups explicitly) and no group is open — which is exactly the state at the
-  start of a composition. The WYSIWYG text view therefore opens the group when none is open,
-  mutates marked text inside it, and closes it afterwards; the composition commit then opens its
-  own group when it reaches source.
+- Marked-text arrival crosses the kernel as a transient `.markedText(.update)` transaction. The
+  main-actor document owns the short-lived undo group around the native mutation because AppKit
+  registers marked-text edits on the document undo manager, while the WYSIWYG adapter only applies
+  the accepted/refused result. The completed composition is a separate source transaction.
 - Native plain-text paste, spelling, Find, keyboard input, selection, and accessibility remain
   available. There are no UI-test dependencies.
 
@@ -624,16 +627,16 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 
 | ID | Invariant | Required proof |
 | --- | --- | --- |
-| ARC-001 | One canonical source, revision, URL generation, and undo owner: `MarkdownDocument`. | type/API inspection; document transaction tests |
+| ARC-001 | One canonical source, revision, URL generation, and undo owner: `MarkdownDocument`; all editor inputs cross `EditorTransactionKernel` before the document commit. | type/API inspection; `EditorTransactionKernelTests`; document transaction tests |
 | ARC-002 | One session-owned typed state per editor mode; no parallel compatibility state. | compiler types; documentation/source conformance check |
 | ARC-003 | Presented string, attributes, structure, coordinate map, and revision form one snapshot. | snapshot construction API; oracle |
-| ARC-004 | Editable WYSIWYG always matches current canonical source/location identity. | state-machine tests and traces |
-| ARC-005 | Accepted WYSIWYG edits advance source and presentation synchronously and exactly once. | reducer/adapter integration tests; rapid-input property tests |
+| ARC-004 | Editable WYSIWYG always matches current canonical source/location identity. | state-machine tests and traces; `EditorTransactionKernelTests` |
+| ARC-005 | Accepted WYSIWYG edits advance source and presentation synchronously and exactly once. | `acceptedEditAdvancesSourcePresentationSelectionAndUndoOnce`; rapid-input property tests |
 | ARC-006 | Background reconciliation cannot overwrite newer state. | adversarial generation tests and traces |
 | ARC-007 | Coordinate conversion is exact or refused; never guessed or clamped. | typed APIs; projection oracle; generated fixtures |
 | ARC-008 | Literal typing and semantic formatting are separate commands. | punctuation/context fixtures; toolbar tests |
 | ARC-009 | Content mutation (insertText/deleteBackward/replaceTableCell) that is unsupported, mixed, cross-cell, or unprovable refuses atomically; `reshapesWholeLine` block identification is total via enclosing `PresentationBlock` (`caretLocation ∈ projectionRange`; `tableCell` stays exact). | exhaustive selection-classification tests + block-identification totality tests |
-| ARC-010 | All text changes and history use one document-owned source mutation path. | API restriction; history tests |
+| ARC-010 | All text changes and history use one document-owned source mutation path behind the transaction kernel. | `everyInputRouteUsesEditorTransactionKernel`; API restriction; history tests |
 | ARC-011 | Mutable document/AppKit state remains main-actor-owned; background work uses immutable values. | Swift 6 complete-concurrency clean build |
 | ARC-012 | Image entry points share one exact-copy, contained, non-destructive transaction. | route tests; filesystem adversarial suite |
 | ARC-013 | Programmatic view updates cannot masquerade as user input or alter undo grouping. | explicit origin type; callback tests |
@@ -694,9 +697,10 @@ supersession documents. The working tree states current truth; Git records histo
 - Full projection compilation is fast enough off-main but not an acceptable dependency between
   consecutive keystrokes. Complete attributed-storage replacement is likewise forbidden on the
   ordinary local-edit path.
-- Ordinary WYSIWYG planning still reaches a synchronous full-document parse/compile route. COR-70
-  first creates one transaction seam; COR-71 then replaces that work with a bounded local transition
-  plus identity-checked asynchronous authority.
+- Ordinary WYSIWYG planning still reaches a synchronous full-document parse/compile route before
+  the pure kernel reduction. COR-70 creates the transaction seam and preserves the originating
+  intent through that plan; COR-71 then replaces the full-document work with a bounded local
+  transition plus identity-checked asynchronous authority.
 - Source highlighting bounds attribute application but still tokenizes the full source and performs
   whole-document fence scans. COR-72 replaces it with per-line state propagation.
 - Native `NSTextTable` currently keeps the WYSIWYG editor on the TextKit 1 compatibility path. A

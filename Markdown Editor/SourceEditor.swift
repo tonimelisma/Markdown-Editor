@@ -60,7 +60,35 @@ enum SourceEditor {
             } else {
                 false
             }
-            let result = document.commitSourceMutation(mutation)
+            let result: SourceEditResult = {
+                let input = EditorInput.sourceReplacement(
+                    EditorReplacementInput(
+                        mutation: mutation,
+                        selectionIdentity: .source(mutation.selectionBefore),
+                        intentID: intent?.id ?? IntentID(rawValue: 0)
+                    )
+                )
+                let committed: EditorTransactionCommitResult
+                if let session {
+                    committed = session.commitEditorInput(input)
+                } else {
+                    committed = document.commitEditorInput(
+                        input,
+                    state: EditorStateSnapshot(
+                        source: document.sourceSnapshot(),
+                        sourceSelection: mutation.selectionBefore,
+                        intentID: input.intentID
+                    )
+                    )
+                }
+                switch committed {
+                case .committed(let transaction):
+                    guard case .edit(let edit) = transaction.effect else { return .refused(.conflict) }
+                    return .committed(edit.sourceSelectionAfter)
+                case .refused(let refusal):
+                    return .refused(refusal.asSourceRefusal)
+                }
+            }()
             if let intent {
                 if case .committed = result, staged {
                     intent.recorder.finish(intent)
@@ -147,10 +175,6 @@ enum SourceEditor {
             // already holds. Writing it back makes reconciliation a state change.
             guard currentOrigin == .nativeUserInput else { return }
             let range = textView.selectedRange()
-            // Close typing groups on caret moves; skip selection churn from in-flight typing.
-            if nativeStorageState == .idle {
-                document.closeTypingUndoGroup()
-            }
             session?.updateSourceModeState { state in
                 state.selection = SourceSelection(
                     utf16: range,
@@ -345,7 +369,32 @@ final class MarkdownSourceTextView: NSTextView {
         if let sourceCoordinator {
             result = sourceCoordinator.commitNativeMutation(mutation)
         } else {
-            result = actions.commitSourceMutation(mutation)
+            let input = EditorInput.imageReference(
+                EditorReplacementInput(mutation: mutation)
+            )
+            let committed: EditorTransactionCommitResult
+            if let document = actions as? MarkdownDocument {
+                committed = document.commitEditorInput(
+                    input,
+                    state: EditorStateSnapshot(
+                        source: snapshot,
+                        sourceSelection: selectionBefore,
+                        intentID: input.intentID
+                    )
+                )
+            } else {
+                committed = actions.commitEditorInput(input)
+            }
+            switch committed {
+            case .committed(let transaction):
+                if case .edit(let edit) = transaction.effect {
+                    result = .committed(edit.sourceSelectionAfter)
+                } else {
+                    result = .refused(.conflict)
+                }
+            case .refused(let refusal):
+                result = .refused(refusal.asSourceRefusal)
+            }
         }
         switch result {
         case .committed:

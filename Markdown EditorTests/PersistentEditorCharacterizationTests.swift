@@ -222,6 +222,9 @@ struct PersistentEditorCharacterizationTests {
         textView.session = session
         coord.textView = textView
         coord.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+        session.captureSelection(.projection(
+            ProjectionSelection(utf16: NSRange(location: 2, length: 0), revision: session.presentation!.projectionRevision)
+        ))
 
         // Drive composition state without relying on system IME panels.
         coord.input.beginMarkedText(
@@ -278,6 +281,9 @@ struct PersistentEditorCharacterizationTests {
         textView.session = session
         coordinator.textView = textView
         coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+        session.captureSelection(.projection(
+            ProjectionSelection(utf16: NSRange(location: 2, length: 0), revision: session.presentation!.projectionRevision)
+        ))
 
         coordinator.input.beginMarkedText(
             sourceVersion: document.sourceVersion,
@@ -295,7 +301,7 @@ struct PersistentEditorCharacterizationTests {
             actionName: "Test",
             grouping: .discrete
         )
-        _ = document.commitSourceMutation(mutation)
+        _ = commitSourceMutationForTest(document, mutation)
         let version = document.sourceVersion
         textView.insertText("日", replacementRange: NSRange(location: NSNotFound, length: 0))
 
@@ -303,6 +309,82 @@ struct PersistentEditorCharacterizationTests {
         #expect(document.text == "ab!")
         #expect(!coordinator.input.composition.isComposing)
         #expect(trace.events.contains(.compositionRefusedStale))
+    }
+
+    // Verifies: COR-70/REQ-084 — a real native marked-text commit that becomes stale cancels
+    // atomically, leaves no native marked range, and never publishes a composition commit.
+    @Test func nativeMarkedTextStaleCommitCancelsNativeStateAndUndoGroup() throws {
+        let document = MarkdownDocument()
+        document.installTextForTesting("ab\n")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let session = EditorSession()
+        session.attach(document: document)
+        let tree = try #require(MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion).get())
+        session.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: tree,
+                index: MarkdownSourceIndex(source: document.text, sourceVersion: document.sourceVersion)
+            ),
+            tree: tree
+        )
+        let coordinator = WYSIWYGEditor.Coordinator(
+            document: document,
+            session: session,
+            placementController: ImagePlacementController()
+        )
+        let textView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
+        textView.delegate = coordinator
+        textView.inputCoordinator = coordinator.input
+        textView.adapterCoordinator = coordinator
+        textView.documentActions = document
+        textView.session = session
+        coordinator.textView = textView
+        coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
+        textView.setMarkedText(
+            "日",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: 2, length: 0)
+        )
+        #expect(textView.hasMarkedText())
+        let markedBefore = textView.markedRange()
+        #expect(markedBefore.location != NSNotFound)
+        #expect((document.documentUndoManager?.groupingLevel ?? 0) > 0)
+
+        let external = SourceMutation(
+            expectedRevision: document.sourceVersion,
+            range: NSRange(location: 0, length: 0),
+            expectedText: "",
+            replacement: "X",
+            selectionBefore: SourceSelection(utf16: NSRange(location: 0, length: 0)),
+            selectionAfter: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+            actionName: "External",
+            grouping: .discrete
+        )
+        guard case .committed = commitSourceMutationForTest(document, external) else {
+            Issue.record("external edit failed to make the composition stale")
+            return
+        }
+        let committedCompositionsBefore = trace.events.filter {
+            if case .compositionCommitted = $0 { return true }
+            return false
+        }.count
+
+        textView.insertText("日", replacementRange: NSRange(location: NSNotFound, length: 0))
+
+        #expect(document.text == "Xab\n")
+        #expect(!textView.hasMarkedText())
+        #expect(textView.markedRange().location == NSNotFound)
+        #expect(!coordinator.input.composition.isComposing)
+        #expect((document.documentUndoManager?.groupingLevel ?? 0) == 0)
+        #expect(trace.events.filter {
+            if case .compositionCommitted = $0 { return true }
+            return false
+        }.count == committedCompositionsBefore)
+        #expect(trace.events.contains(.compositionCancelled))
+        session.detach()
     }
 
     // Verifies: REQ-086 — a one-shot session restoration is applied by the persistent host.
@@ -618,6 +700,8 @@ struct PersistentEditorCharacterizationTests {
     @Test func taskToggleSharedAcrossInteractionPaths() async throws {
         let document = MarkdownDocument()
         document.installTextForTesting("- [ ] Task\n")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
         let session = EditorSession()
         session.attach(document: document)
         // Wait for parse/projection.
@@ -648,7 +732,21 @@ struct PersistentEditorCharacterizationTests {
             return
         }
         textView.setSelectedRange(NSRange(location: attachment.utf16Location, length: 1))
+        session.captureSelection(.projection(
+            ProjectionSelection(
+                utf16: NSRange(location: attachment.utf16Location, length: 1),
+                revision: session.presentation!.projectionRevision
+            )
+        ))
+        let beforeCommitCount = trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count
         #expect(textView.toggleTaskAtSelection())
+        #expect(trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count - beforeCommitCount == 1)
         // Accessibility press path on cell.
         if let attr = textView.textStorage?.attribute(.attachment, at: attachment.utf16Location, effectiveRange: nil) as? NSTextAttachment,
            let cell = attr.attachmentCell as? TaskCheckboxAttachmentCell {

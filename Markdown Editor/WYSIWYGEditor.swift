@@ -93,7 +93,10 @@ enum WYSIWYGEditor {
             case reapplyIfDrift
         }
 
-        func applyProjectionIfNeeded(reason: ApplyReason) {
+        func applyProjectionIfNeeded(
+            reason: ApplyReason,
+            nativeTextAlreadyApplied: Bool = false
+        ) {
             let force = (reason == .reapplyIfDrift)
             guard let textView else { return }
             guard let presentation = session.presentation else {
@@ -127,7 +130,8 @@ enum WYSIWYGEditor {
                         from: applied,
                         to: presentation,
                         in: textView,
-                        intent: intent
+                        intent: intent,
+                        nativeTextAlreadyApplied: nativeTextAlreadyApplied
                     ) {
                         // An unprovable newer snapshot is exceptional, never an ordinary
                         // fallback. This route records the typed fault and takes WYSIWYG out of
@@ -167,7 +171,8 @@ enum WYSIWYGEditor {
             from applied: PresentationSnapshot,
             to presentation: PresentationSnapshot,
             in textView: MarkdownWYSIWYGTextView,
-            intent: IntentContext?
+            intent: IntentContext?,
+            nativeTextAlreadyApplied: Bool
         ) -> PresentationRecoveryReason? {
             // Same text, new identity — an authoritative snapshot replacing a provisional one.
             // Attributes may differ; characters do not. Refreshing attributes is not a
@@ -187,7 +192,7 @@ enum WYSIWYGEditor {
                             model: presentation.asProjectionModel,
                             theme: MarkdownTypography(),
                             images: session.resolvedImages,
-                            onTaskPress: { [weak self] nodeID in self?.performTaskToggle(nodeID: nodeID) },
+                            onTaskPress: { [weak self] nodeID in self?.captureAndPerformTaskToggle(nodeID: nodeID) },
                             scope: scope,
                             intent: intent
                         ),
@@ -206,6 +211,40 @@ enum WYSIWYGEditor {
             let selection = session.wysiwygModeState.selection.flatMap {
                 $0.range.revision.snapshotID == presentation.id ? $0 : nil
             }
+            if nativeTextAlreadyApplied,
+               textView.string == presentation.renderedString,
+               let patch = PresentationPatch.between(
+                   current: applied,
+                   next: presentation,
+                   selectionAfter: selection,
+                   buildScope: { [weak self] model, scope in
+                       AttributedPresentationBuilder.buildScoped(
+                           model: model,
+                           theme: MarkdownTypography(),
+                           images: self?.session.resolvedImages ?? [:],
+                           onTaskPress: { nodeID in self?.captureAndPerformTaskToggle(nodeID: nodeID) },
+                           scope: scope,
+                           intent: intent
+                       )
+                   }
+               ) {
+                textView.beginLayoutApplication(for: patch.nextRange)
+                var refreshed = false
+                session.updateOrigin.with(.programmaticPresentation) {
+                    refreshed = textStorageApplier.applyAlreadyAppliedPatch(
+                        patch,
+                        to: textView,
+                        expectedNext: presentation
+                    )
+                }
+                guard refreshed else {
+                    textView.cancelLayoutApplication()
+                    return .appliedStorageMismatch
+                }
+                appliedSnapshot = presentation
+                appliedImageIdentities = imageIdentities(for: presentation)
+                return nil
+            }
             guard let patch = PresentationPatch.between(
                 current: applied,
                 next: presentation,
@@ -215,7 +254,7 @@ enum WYSIWYGEditor {
                         model: model,
                         theme: MarkdownTypography(),
                         images: self?.session.resolvedImages ?? [:],
-                        onTaskPress: { nodeID in self?.performTaskToggle(nodeID: nodeID) },
+                        onTaskPress: { nodeID in self?.captureAndPerformTaskToggle(nodeID: nodeID) },
                         scope: scope,
                         intent: intent
                     )
@@ -248,7 +287,7 @@ enum WYSIWYGEditor {
                 theme: MarkdownTypography(),
                 images: session.resolvedImages,
                 onTaskPress: { [weak self] nodeID in
-                    self?.performTaskToggle(nodeID: nodeID)
+                    self?.captureAndPerformTaskToggle(nodeID: nodeID)
                 },
                 intent: intent
             )
@@ -336,6 +375,12 @@ enum WYSIWYGEditor {
                 revision: presentation.projectionRevision,
                 affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
             )
+            guard session.wysiwygModeState.selection == projectionSelection else {
+                // The native selection callback is the owner-state capture point. A mutation
+                // callback cannot promote its affected range into current state after the fact.
+                applyProjectionIfNeeded(reason: .reapplyIfDrift)
+                return false
+            }
             let command: SemanticCommand
             if replacement.isEmpty && affectedCharRange.length > 0 {
                 command = .insertText("")
@@ -347,7 +392,8 @@ enum WYSIWYGEditor {
             let outcome = session.perform(
                 command,
                 selection: .projection(projectionSelection),
-                expectedSourceRevision: SourceRevision(value: document.sourceVersion)
+                expectedSourceRevision: SourceRevision(value: document.sourceVersion),
+                inputRoute: .wysiwygReplacement
             )
             switch outcome {
             case .accepted(let edit):
@@ -380,7 +426,7 @@ enum WYSIWYGEditor {
                         model: model,
                         theme: MarkdownTypography(),
                         images: self?.session.resolvedImages ?? [:],
-                        onTaskPress: { nodeID in self?.performTaskToggle(nodeID: nodeID) },
+                        onTaskPress: { nodeID in self?.captureAndPerformTaskToggle(nodeID: nodeID) },
                         scope: scope,
                         intent: edit.intent
                     )
@@ -438,7 +484,7 @@ enum WYSIWYGEditor {
                 theme: MarkdownTypography(),
                 images: session.resolvedImages,
                 onTaskPress: { [weak self] nodeID in
-                    self?.performTaskToggle(nodeID: nodeID)
+                    self?.captureAndPerformTaskToggle(nodeID: nodeID)
                 },
                 intent: intent
             )
@@ -471,8 +517,23 @@ enum WYSIWYGEditor {
                     )
                 }
             }
-            // Close typing groups on real native caret moves.
-            document.closeTypingUndoGroup()
+        }
+
+        /// Task attachment presses are native action events, so their identity is captured at
+        /// this callback boundary before the semantic command is planned. The mutation produced
+        /// by that command cannot write this state back into the owner.
+        private func captureAndPerformTaskToggle(nodeID: MarkdownNodeID) {
+            guard let presentation = session.presentation,
+                  let attachment = presentation.attachments.first(where: { $0.nodeID == nodeID }) else {
+                return
+            }
+            session.captureSelection(.projection(
+                ProjectionSelection(
+                    utf16: NSRange(location: attachment.utf16Location, length: 1),
+                    revision: presentation.projectionRevision
+                )
+            ))
+            performTaskToggle(nodeID: nodeID)
         }
 
         func performTaskToggle(nodeID: MarkdownNodeID) {
@@ -484,10 +545,12 @@ enum WYSIWYGEditor {
                 utf16: NSRange(location: attachment.utf16Location, length: 1),
                 revision: presentation.projectionRevision
             )
+            guard session.wysiwygModeState.selection == selection else { return }
             _ = session.perform(
                 .toggleTask(nodeID: nodeID),
                 selection: .projection(selection),
-                expectedSourceRevision: presentation.sourceRevision
+                expectedSourceRevision: presentation.sourceRevision,
+                inputRoute: .checkbox
             )
             applyProjectionIfNeeded(reason: .reapplyIfDrift)
         }
@@ -521,6 +584,22 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
     /// completed-layout callback. Caret repaints call `draw(_:)` too, but do not apply a pending
     /// range and therefore cannot create a layout sample.
     private var pendingLayoutApplication: (range: NSRange, started: UInt64)?
+
+    /// AppKit can retain a stale marked range after `unmarkText()` in a headless component test.
+    /// The coordinator's composition state is the authoritative native-input identity, so expose
+    /// its cleared state consistently through both NSTextInputClient queries.
+    override func hasMarkedText() -> Bool {
+        if let inputCoordinator { return inputCoordinator.composition.isComposing }
+        return super.hasMarkedText()
+    }
+
+    override func markedRange() -> NSRange {
+        if let inputCoordinator {
+            return inputCoordinator.composition.markedRange
+                ?? NSRange(location: NSNotFound, length: 0)
+        }
+        return super.markedRange()
+    }
 
     func beginLayoutApplication(for range: NSRange) {
         guard range.location >= 0 else { return }
@@ -592,6 +671,37 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
         } else {
             markedLength = 0
         }
+        guard let documentActions else {
+            super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+            return
+        }
+        // This is the native IME event boundary. Capture the pre-composition caret before the
+        // transient update is reduced; the later source commit must validate against this state,
+        // never against its proposed replacement range.
+        if let session, let presentation = session.presentation {
+            session.captureSelection(.projection(
+                ProjectionSelection(
+                    utf16: self.selectedRange(),
+                    revision: presentation.projectionRevision,
+                    affinity: selectionAffinity == .upstream ? .upstream : .downstream
+                )
+            ))
+        }
+        let updateInput = EditorInput.markedText(
+            EditorMarkedTextInput(
+                phase: .update,
+                sourceRevision: SourceRevision(value: version),
+                projectionID: session?.presentation?.id
+            )
+        )
+        let updateResult = session?.commitEditorInput(updateInput)
+            ?? documentActions.commitEditorInput(updateInput)
+        guard case .committed = updateResult else {
+            if cancelMarkedTextForInput() {
+                (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
+            }
+            return
+        }
         inputCoordinator?.beginMarkedText(
             sourceVersion: version,
             sourceRange: sourceRange,
@@ -599,24 +709,6 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             snapshotID: session?.presentation?.id
         )
         inputCoordinator?.allowingMarkedText = true
-        // REQ-084: NSTextView registers marked-text edits on its undo manager, and AppKit
-        // requires an open group before registering. The document's undo manager disables
-        // event grouping (`groupsByEvent = false`, REQ-011) because the app drives typing
-        // groups explicitly, so a marked-text update that arrives before any explicit group
-        // is open would raise "must begin a group before registering undo". Open the group
-        // around the native marked-text mutation and close it afterwards; the composition
-        // commit itself opens its own group when it reaches source.
-        let undoManager = documentActions?.documentUndoManager
-        let opensUndoGroup = undoManager?.groupingLevel == 0
-        if opensUndoGroup { undoManager?.beginUndoGrouping() }
-        defer {
-            // Mirror MarkdownDocument.closeTypingGroupIfNeeded: never end a group at level 0.
-            // A checkpoint could in principle have closed the group mid-call; ending at level 0
-            // would raise the same "invalid state" exception the fix exists to prevent.
-            if opensUndoGroup, undoManager?.groupingLevel ?? 0 > 0 {
-                undoManager?.endUndoGrouping()
-            }
-        }
         if let session {
             session.updateOrigin.with(.composition) {
                 super.setMarkedText(
@@ -645,8 +737,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             let text: String
             if marked.location != NSNotFound, let storage = textStorage {
                 guard marked.location >= 0, NSMaxRange(marked) <= storage.length else {
-                    input.cancel()
-                    performNativeUnmark()
+                    guard cancelMarkedTextForInput() else { return }
                     (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
                     return
                 }
@@ -655,17 +746,40 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
                 text = ""
             }
             if text.isEmpty {
-                input.cancel()
-                performNativeUnmark()
+                guard cancelMarkedTextForInput() else { return }
                 (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
                 return
             }
             _ = commitComposition(text: text)
             return
         }
+        guard cancelMarkedTextForInput() else { return }
+        (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
+    }
+
+    /// Reduces cancellation before touching native marked-text state. A refusal leaves both the
+    /// document-owned undo group and AppKit composition state untouched for the caller to recover.
+    private func cancelMarkedTextForInput() -> Bool {
+        guard reduceMarkedTextPhase(.cancel) else { return false }
         inputCoordinator?.cancel()
         performNativeUnmark()
-        (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
+        return true
+    }
+
+    @discardableResult
+    private func reduceMarkedTextPhase(_ phase: EditorMarkedTextInput.Phase) -> Bool {
+        let snapshot = documentActions?.sourceSnapshot()
+        let input = EditorInput.markedText(
+            EditorMarkedTextInput(
+                phase: phase,
+                sourceRevision: snapshot.map { SourceRevision(value: $0.sourceVersion) },
+                projectionID: session?.presentation?.id
+            )
+        )
+        let result = session?.commitEditorInput(input)
+            ?? documentActions?.commitEditorInput(input)
+        if case .committed = result { return true }
+        return false
     }
 
     override func insertText(_ insertString: Any, replacementRange: NSRange) {
@@ -701,8 +815,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
         let currentVersion = documentActions?.sourceSnapshot().sourceVersion ?? 0
         guard input.prepareCommit(currentVersion: currentVersion),
               let captured = input.complete() else {
-            input.cancel()
-            performNativeUnmark()
+            guard cancelMarkedTextForInput() else { return false }
             (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionRefusedStale, .compositionRefusedStale)
             return false
         }
@@ -711,34 +824,44 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
               let capturedSnapshotID = captured.snapshotID,
               presentation.id == capturedSnapshotID,
               adapterCoordinator?.hasAppliedSnapshot(capturedSnapshotID) == true else {
-            input.cancel()
-            performNativeUnmark()
+            guard cancelMarkedTextForInput() else { return false }
+            (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
+            return false
+        }
+        guard let ownerSelection = session.wysiwygModeState.selection,
+              ownerSelection.range.utf16 == captured.range,
+              ownerSelection.range.revision.snapshotID == presentation.id else {
+            guard cancelMarkedTextForInput() else { return false }
             (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
             return false
         }
         let selection = ProjectionSelection(
             utf16: captured.range,
-            revision: presentation.projectionRevision
+            revision: presentation.projectionRevision,
+            affinity: ownerSelection.affinity
         )
         let result = session.perform(
             .insertText(text),
             selection: .projection(selection),
-            expectedSourceRevision: SourceRevision(value: captured.version)
-        )
-        (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCommitted, .compositionCommitted(sourceVersion: captured.version, replacementLength: (text as NSString).length)
+            expectedSourceRevision: SourceRevision(value: captured.version),
+            inputRoute: .markedText
         )
         switch result {
         case .accepted:
+            (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCommitted, .compositionCommitted(sourceVersion: captured.version, replacementLength: (text as NSString).length)
+            )
             input.committingComposition = true
             input.allowingMarkedText = true
             performNativeUnmark()
             input.allowingMarkedText = false
             input.committingComposition = false
-            adapterCoordinator?.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+            adapterCoordinator?.applyProjectionIfNeeded(
+                reason: .reapplyIfDrift,
+                nativeTextAlreadyApplied: true
+            )
             return true
         case .refused:
-            input.cancel()
-            performNativeUnmark()
+            guard cancelMarkedTextForInput() else { return false }
             (documentActions as? MarkdownDocument)?.trace?.record(route: .compositionCancelled, .compositionCancelled)
             return false
         }
@@ -758,8 +881,17 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if let index = characterIndexForAttachment(at: point), toggleTask(atUTF16: index) {
-            return
+        if let index = characterIndexForAttachment(at: point) {
+            if let session,
+               let presentation = session.presentation {
+                session.captureSelection(.projection(
+                    ProjectionSelection(
+                        utf16: NSRange(location: index, length: 1),
+                        revision: presentation.projectionRevision
+                    )
+                ))
+            }
+            if toggleTask(atUTF16: index) { return }
         }
         super.mouseDown(with: event)
     }
@@ -804,10 +936,12 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             utf16: NSRange(location: index, length: 1),
             revision: presentation.projectionRevision
         )
+        guard session.wysiwygModeState.selection == selection else { return false }
         let result = session.perform(
             .toggleTask(nodeID: attachment.nodeID),
             selection: .projection(selection),
-            expectedSourceRevision: presentation.sourceRevision
+            expectedSourceRevision: presentation.sourceRevision,
+            inputRoute: .checkbox
         )
         if case .accepted = result { return true }
         return false
@@ -898,12 +1032,14 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             revision: presentation.projectionRevision,
             affinity: selectionAffinity == .upstream ? .upstream : .downstream
         )
+        guard session.wysiwygModeState.selection == selection else { return false }
         // Paste must not coalesce into an open typing undo group (REQ-016).
         let outcome = session.perform(
             .insertText(plain),
             selection: .projection(selection),
             expectedSourceRevision: SourceRevision(value: snapshot.sourceVersion),
-            grouping: .discrete
+            grouping: .discrete,
+            inputRoute: .wysiwygReplacement
         )
         guard case .accepted(let edit) = outcome else { return false }
         adapterCoordinator.applyAcceptedEdit(edit, from: appliedPresentation, in: self)

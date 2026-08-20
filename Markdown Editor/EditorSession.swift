@@ -239,7 +239,22 @@ final class EditorSession: ObservableObject {
 
     func setMode(_ newMode: EditorMode) {
         guard newMode != mode else { return }
-        document?.closeTypingUndoGroup()
+        if let document {
+            let intent = intentRecorder.begin(.modeTransition)
+            let input = EditorInput.modeChange(
+                EditorModeInput(mode: newMode, intentID: intent.id)
+            )
+            let state = editorStateSnapshot(intentID: intent.id)
+            guard case .committed(let transaction) = document.commitEditorInput(input, state: state),
+                  case .modeChange(let acceptedMode) = transaction.effect else {
+                intent.recorder.finish(intent, orphaned: true)
+                return
+            }
+            mode = acceptedMode
+            traceModeToggle(toSource: acceptedMode == .source)
+            intent.recorder.finish(intent)
+            return
+        }
         mode = newMode
         traceModeToggle(toSource: newMode == .source)
     }
@@ -299,6 +314,19 @@ final class EditorSession: ObservableObject {
         }
     }
 
+    /// Captures a native selection or native action identity before a transaction is planned.
+    /// This is input capture, not transaction validation: the kernel validates the submitted
+    /// selection against this owner state after the capture has completed. Transaction adapters
+    /// never call this with a proposed mutation range.
+    func captureSelection(_ selection: EditorSelection) {
+        switch selection {
+        case .source(let value):
+            updateSourceModeState { $0.selection = value }
+        case .projection(let value):
+            updateWYSIWYGModeState { $0.selection = value }
+        }
+    }
+
     /// // REQ-094; ARC-015: mode state records real editor events, never reconciliation.
     private func noteModeStateMutation() {
         modeStateMutationCount &+= 1
@@ -325,7 +353,16 @@ final class EditorSession: ObservableObject {
             assertionFailure("installProjectionForTesting was given an oracle-invalid snapshot")
             return
         }
-        installPresentation(snapshot, tree: tree, provisional: false)
+        // This hook deliberately installs an arbitrary immutable fixture, including a future
+        // source revision, so component tests can exercise stale/new-snapshot application. It is
+        // not the production reconciliation route and therefore does not pass through the live
+        // document identity guard.
+        installPresentation(snapshot, tree: tree, provisional: false, validateReconciliation: false)
+        if wysiwygModeState.selection == nil {
+            captureSelection(.projection(
+                ProjectionSelection(utf16: NSRange(location: 0, length: 0), revision: snapshot.projectionRevision)
+            ))
+        }
     }
 
     /// Test/hook: drop derived projection so pending-selection wait paths can be exercised.
@@ -400,8 +437,26 @@ final class EditorSession: ObservableObject {
         _ snapshot: PresentationSnapshot,
         tree: MarkdownTree?,
         provisional: Bool,
-        intent: IntentContext? = nil
+        intent: IntentContext? = nil,
+        validateReconciliation: Bool = true
     ) {
+        if !provisional, validateReconciliation, let document {
+            let input = EditorInput.reconciliation(
+                EditorReconciliationInput(
+                    sourceRevision: SourceRevision(value: snapshot.sourceRevision.value),
+                    locationGeneration: snapshot.locationGeneration,
+                    projectionID: snapshot.id,
+                    expectedProjectionID: presentation?.id,
+                    intentID: intent?.id ?? IntentID(rawValue: 0)
+                )
+            )
+            guard case .accepted = EditorTransactionKernel.reduce(
+                input,
+                state: editorStateSnapshot(intentID: intent?.id ?? IntentID(rawValue: 0))
+            ), document.sourceVersion == snapshot.sourceRevision.value else {
+                return
+            }
+        }
         let previous = presentation
         let sourceSelection: SourceSelection? = {
             guard let previous,
@@ -485,6 +540,47 @@ final class EditorSession: ObservableObject {
         parseCoordinator.scheduleParse(session: self, document: document, intent: context)
     }
 
+    /// Captures the immutable session/document state consumed by the pure transaction reducer.
+    func editorStateSnapshot(
+        intentID: IntentID = IntentID(rawValue: 0)
+    ) -> EditorStateSnapshot {
+        let source = document?.sourceSnapshot() ?? SourceSnapshot(
+            text: "",
+            sourceVersion: 0,
+            locationGeneration: 0,
+            fileURL: nil
+        )
+        return EditorStateSnapshot(
+            source: source,
+            mode: mode,
+            origin: updateOrigin.current,
+            sourceSelection: sourceModeState.selection,
+            projectionSelection: wysiwygModeState.selection,
+            presentation: presentation,
+            tree: authoritativeTree,
+            intentID: intentID,
+            nextPresentationID: snapshotIDs.make()
+        )
+    }
+
+    /// Adapter-facing source/image commit. The document remains the sole mutable owner.
+    @discardableResult
+    func commitEditorInput(
+        _ input: EditorInput
+    ) -> EditorTransactionCommitResult {
+        guard let document else { return .refused(.unavailable) }
+        return document.commitEditorInput(
+            input,
+            state: editorStateSnapshot(intentID: input.intentID)
+        )
+    }
+
+    /// Reduces a transient callback such as marked-text update/cancel without mutating source.
+    @discardableResult
+    func reduceTransientEditorInput(_ input: EditorInput) -> EditorTransactionReduction {
+        EditorTransactionKernel.reduce(input, state: editorStateSnapshot())
+    }
+
     /// Primary edit entry — returns accepted source+presentation transition or refusal.
     @discardableResult
     func perform(
@@ -492,7 +588,8 @@ final class EditorSession: ObservableObject {
         selection: EditorSelection,
         expectedSourceRevision: SourceRevision,
         grouping groupingOverride: MutationGrouping? = nil,
-        intentScope: WorkScope = .acceptedEdit
+        intentScope: WorkScope = .acceptedEdit,
+        inputRoute: EditorInputRoute = .semanticCommand
     ) -> EditorEditOutcome {
         guard let document else { return .refused(.unavailable) }
         let intent = intentRecorder.begin(intentScope)
@@ -511,16 +608,54 @@ final class EditorSession: ObservableObject {
             grouping: grouping
         )
         let editStart = DispatchTime.now().uptimeNanoseconds
-        let outcome = SemanticEditEngine.plan(
-            request,
-            snapshot: snapshot,
-            presentation: presentation,
-            tree: authoritativeTree,
-            nextSnapshotID: snapshotIDs.make(),
-            intent: intent
+        let state = editorStateSnapshot(intentID: intent.id)
+        let plannedOutcome = EditorSemanticWorker.sync(intent: intent) {
+            SemanticEditEngine.plan(
+                request,
+                snapshot: state.source,
+                presentation: state.presentation,
+                tree: state.tree,
+                nextSnapshotID: state.nextPresentationID,
+                intent: intent
+            )
+        }
+        let semanticInput = EditorSemanticInput(
+            request: request,
+            plannedOutcome: plannedOutcome,
+            intentID: intent.id
         )
-        switch outcome {
-        case .accepted(let edit):
+        let input: EditorInput
+        switch inputRoute {
+        case .wysiwygReplacement:
+            input = .wysiwygReplacement(semanticInput)
+        case .markedText:
+            input = .markedText(
+                EditorMarkedTextInput(
+                    phase: .commit,
+                    request: request,
+                    sourceRevision: expectedSourceRevision,
+                    projectionID: state.presentation?.id,
+                    plannedOutcome: plannedOutcome,
+                    intentID: intent.id
+                )
+            )
+        case .checkbox:
+            input = .checkbox(semanticInput)
+        default:
+            input = .semanticCommand(semanticInput)
+        }
+        var reductionAudit = EditorTransactionReductionAudit()
+        let reduction = EditorTransactionKernel.reduce(
+            input,
+            state: state,
+            audit: &reductionAudit
+        )
+        switch reduction {
+        case .accepted(let transaction):
+            guard case .edit(let plannedEdit) = transaction.effect else {
+                return .refused(.unavailable)
+            }
+            let edit = plannedEdit.withIntent(intent)
             if case .projection = selection {
                 guard let current = presentation,
                       let transition = edit.presentationTransition,
@@ -540,7 +675,18 @@ final class EditorSession: ObservableObject {
                     planner: PlannerKind(command)
                 )
             )
-            switch document.commitSourceMutation(edit.sourceMutation) {
+            let commitTransaction = AcceptedEditorTransaction(
+                route: transaction.route,
+                intentID: transaction.intentID,
+                request: transaction.request,
+                checkboxNodeID: transaction.checkboxNodeID,
+                effect: .edit(edit)
+            )
+            switch document.commitEditorTransaction(
+                commitTransaction,
+                state: state,
+                audit: reductionAudit
+            ) {
             case .committed:
                 updateSourceModeState { $0.selection = edit.sourceSelectionAfter }
                 if let transition = edit.presentationTransition {
@@ -563,15 +709,12 @@ final class EditorSession: ObservableObject {
                 handedOffToReconciliation = true
                 return .accepted(edit)
             case .refused(let refusal):
-                switch refusal {
-                case .staleVersion: return .refused(.staleVersion)
-                case .invalidRange: return .refused(.invalidRange)
-                case .conflict, .contentMismatch: return .refused(.ambiguousSelection)
-                }
+                document.trace?.record(route: .editRefused, .editRefused(category: .refusal(refusal.asEditRefusal)))
+                return .refused(refusal.asEditRefusal)
             }
         case .refused(let refusal):
-            document.trace?.record(route: .editRefused, .editRefused(category: .refusal(refusal)))
-            return .refused(refusal)
+            document.trace?.record(route: .editRefused, .editRefused(category: .refusal(refusal.asEditRefusal)))
+            return .refused(refusal.asEditRefusal)
         }
     }
 
