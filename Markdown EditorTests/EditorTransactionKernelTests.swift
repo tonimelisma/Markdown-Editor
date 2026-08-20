@@ -359,11 +359,26 @@ struct EditorTransactionKernelTests {
                     )
                 )
             }
-            if route == .undoRedo {
-                document.undoManager?.beginUndoGrouping()
-                defer { document.undoManager?.endUndoGrouping() }
-            }
             let state = EditorStateSnapshot(source: source, sourceSelection: selection)
+            if route == .undoRedo {
+                let trace = InMemoryEditorTrace()
+                document.trace = trace
+                let setup = document.commitEditorInput(
+                    .sourceReplacement(EditorReplacementInput(mutation: mutation)),
+                    state: state
+                )
+                #expect({
+                    if case .committed = setup { return true }
+                    return false
+                }())
+                document.undoManager?.undo()
+                #expect(document.text == "a")
+                #expect(trace.events.contains {
+                    if case .historyApplied = $0 { return true }
+                    return false
+                })
+                continue
+            }
             let result = document.commitEditorInput(input, state: state)
             switch result {
             case .committed(let transaction):
