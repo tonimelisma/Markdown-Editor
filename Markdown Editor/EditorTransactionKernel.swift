@@ -357,10 +357,6 @@ nonisolated enum EditorTransactionKernel {
               mutation.selectionAfter.range.utf16.length >= 0,
               NSMaxRange(mutation.selectionAfter.range.utf16) <= nextLength else { return .invalidIdentity }
 
-        if allowSyntheticControl {
-            return nil
-        }
-
         if requiresSourceSelection || state.projectionSelection == nil {
             guard mutation.selectionBefore == state.sourceSelection,
                   edit.presentationTransition == nil,
@@ -376,33 +372,20 @@ nonisolated enum EditorTransactionKernel {
               mutation.selectionBefore.affinity == currentSelection.affinity else {
             return .invalidIdentity
         }
-        guard let transition = edit.presentationTransition else {
-            // Some semantic routes (notably task toggles) commit a source-only marker patch and
-            // deliberately wait for reconciliation to rebuild presentation. The live projection
-            // selection still has to map exactly to that source mutation.
-            guard edit.projectionSelectionAfter == nil else { return .invalidIdentity }
-            let attachment = presentation.attachments.first {
-                $0.utf16Location == currentSelection.range.utf16.location
-            }
-            if let attachment, case .task = attachment.kind {
-                // Task markers are synthetic projection controls. Their source span may be
-                // unavailable on a provisional model, but the live attachment identity still
-                // binds this source-only marker patch to the current checkbox control.
-                return nil
-            }
-            let mappedSourceMatches = presentation.coordinateMap.sourceRange(
-                forProjection: currentSelection.range.utf16,
-                affinity: currentSelection.affinity
-            ) == .exact(mutation.range)
-            guard mappedSourceMatches else {
+
+        if allowSyntheticControl {
+            guard edit.presentationTransition == nil,
+                  edit.projectionSelectionAfter == nil,
+                  let attachment = presentation.attachments.first(where: {
+                      $0.utf16Location == currentSelection.range.utf16.location
+                  }),
+                  case .task = attachment.kind else {
                 return .invalidIdentity
             }
             return nil
         }
-        guard case .exact(let sourceRange) = presentation.coordinateMap.sourceRange(
-            forProjection: currentSelection.range.utf16,
-            affinity: currentSelection.affinity
-        ), sourceRange == mutation.range else {
+
+        guard let transition = edit.presentationTransition else {
             return .invalidIdentity
         }
         guard transition.fromSnapshotID == presentation.id,
@@ -425,6 +408,35 @@ nonisolated enum EditorTransactionKernel {
                 <= (transition.nextSnapshot.renderedString as NSString).length else {
             return .invalidRange
         }
+
+        // A literal replacement uses the selected projection range directly. Structural
+        // commands intentionally replace a larger semantic block, so their source mutation can
+        // include delimiters outside the selection. In both cases the live snapshot identity
+        // and affinity are bound above; exact coordinate mapping is required whenever the
+        // transition claims to replace exactly what the caller selected, while a structural
+        // transition must at least cover that selection (including a caret at either boundary).
+        if transition.projectionReplacementRange == currentSelection.range.utf16 {
+            guard case .exact(let sourceRange) = presentation.coordinateMap.sourceRange(
+                forProjection: currentSelection.range.utf16,
+                affinity: currentSelection.affinity
+            ), sourceRange == mutation.range else {
+                return .invalidIdentity
+            }
+        } else {
+            let selected = currentSelection.range.utf16
+            let replacement = transition.projectionReplacementRange
+            let selectedStart = selected.location
+            let selectedEnd = NSMaxRange(selected)
+            let replacementStart = replacement.location
+            let replacementEnd = NSMaxRange(replacement)
+            guard selectedStart >= replacementStart,
+                  selectedEnd <= replacementEnd
+                    || (selected.length == 0
+                        && (selectedStart == replacementStart || selectedStart == replacementEnd)) else {
+                return .invalidIdentity
+            }
+        }
+
         let projected = rendered.replacingCharacters(
             in: transition.projectionReplacementRange,
             with: transition.projectionReplacement
