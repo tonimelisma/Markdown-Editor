@@ -845,6 +845,21 @@ nonisolated enum EditorTransactionKernel {
                 break
             }
 
+            let requiresAuthoritativeSourceResult: Bool
+            switch request.command {
+            case .insertText, .deleteBackward:
+                // These commands may use a proven identity splice.  When their planner needs a
+                // structural rebuild it still supplies sourceAfter below.
+                requiresAuthoritativeSourceResult = false
+            default:
+                // Every formatting, block, task, table, and image command changes semantic
+                // structure.  Its owner-boundary proof must therefore bind the source result to
+                // the next presentation snapshot; a nil optional is not an accepted shortcut.
+                requiresAuthoritativeSourceResult = true
+            }
+            guard !requiresAuthoritativeSourceResult || transition.sourceAfter != nil else {
+                return .invalidIdentity
+            }
             if let sourceAfter = transition.sourceAfter {
                 let expectedSourceAfter = (state.source.text as NSString).replacingCharacters(
                     in: mutation.range,

@@ -261,6 +261,30 @@ struct EditorTransactionKernelTests {
         )
         #expect(document.commitEditorTransaction(forgedStructural, state: state, audit: audit) == .refused(.invalidIdentity))
         #expect(document.text == "hello\n")
+
+        let missingSourceResultTransition = PresentationTransition(
+            fromSnapshotID: acceptedEdit.presentationTransition!.fromSnapshotID,
+            nextSnapshot: acceptedEdit.presentationTransition!.nextSnapshot,
+            projectionReplacementRange: acceptedEdit.presentationTransition!.projectionReplacementRange,
+            projectionReplacement: acceptedEdit.presentationTransition!.projectionReplacement,
+            selectionAfter: acceptedEdit.presentationTransition!.selectionAfter
+        )
+        let missingSourceResult = AcceptedEditorTransaction(
+            route: transaction.route,
+            intentID: transaction.intentID,
+            request: transaction.request,
+            effect: .edit(
+                AcceptedEdit(
+                    sourceMutation: acceptedEdit.sourceMutation,
+                    presentationTransition: missingSourceResultTransition,
+                    sourceSelectionAfter: acceptedEdit.sourceSelectionAfter,
+                    projectionSelectionAfter: acceptedEdit.projectionSelectionAfter,
+                    intent: acceptedEdit.intent
+                )
+            )
+        )
+        #expect(document.commitEditorTransaction(missingSourceResult, state: state, audit: audit) == .refused(.invalidIdentity))
+        #expect(document.text == "hello\n")
         session.detach()
 
         let taskDocument = MarkdownDocument()
