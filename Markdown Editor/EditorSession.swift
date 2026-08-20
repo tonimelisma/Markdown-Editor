@@ -673,14 +673,12 @@ final class EditorSession: ObservableObject {
                     planner: PlannerKind(command)
                 )
             )
-            let commitInput = EditorInput.sourceReplacement(
-                EditorReplacementInput(
-                    mutation: edit.sourceMutation,
-                    selectionIdentity: selection,
-                    intentID: intent.id
-                )
+            let commitTransaction = AcceptedEditorTransaction(
+                route: transaction.route,
+                intentID: transaction.intentID,
+                effect: .edit(edit)
             )
-            switch document.commitEditorInput(commitInput, state: state) {
+            switch document.commitEditorTransaction(commitTransaction, state: state) {
             case .committed:
                 updateSourceModeState { $0.selection = edit.sourceSelectionAfter }
                 if let transition = edit.presentationTransition {

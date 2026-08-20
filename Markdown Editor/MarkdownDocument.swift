@@ -409,7 +409,26 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             }
             return .refused(refusal)
         case .accepted(let transaction):
-            switch transaction.effect {
+            return commitEditorTransaction(transaction, state: state)
+        }
+    }
+
+    /// Applies a transaction already reduced against the supplied immutable state. Session-owned
+    /// semantic routes use this overload so planning and application share exactly one kernel
+    /// reduction; the document still revalidates the live source identity before mutation.
+    @discardableResult
+    func commitEditorTransaction(
+        _ transaction: AcceptedEditorTransaction,
+        state: EditorStateSnapshot
+    ) -> EditorTransactionCommitResult {
+        let liveSource = sourceSnapshot()
+        guard liveSource.text == state.source.text,
+              liveSource.sourceVersion == state.source.sourceVersion,
+              liveSource.locationGeneration == state.source.locationGeneration,
+              liveSource.fileURL == state.source.fileURL else {
+            return .refused(.staleVersion)
+        }
+        switch transaction.effect {
             case .edit(let edit):
                 closeMarkedTextGroupIfNeeded()
                 if lastCommittedSourceSelection != edit.sourceMutation.selectionBefore {
@@ -436,7 +455,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
                 return .committed(transaction)
             case .reconciliation:
                 return .committed(transaction)
-            }
         }
     }
 
