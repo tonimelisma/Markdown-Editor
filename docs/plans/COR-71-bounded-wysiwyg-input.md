@@ -6,6 +6,25 @@ Architecture impact: none; preserves synchronous ARC-005 while removing full par
 Blockers: COR-69, COR-70
 Executor: A junior developer may execute the Stage 0 table and implement only the mechanically selected branch. Obtain senior review of the local-transition class table before production code.
 
+## Stage 0 findings and selected branches
+
+The throwaway probe recorded in
+`docs/research/COR-71-stage0-local-transition-probe.md` selected every branch in the decision
+table. The production class table is now closed as follows:
+
+| Class | Branch |
+| --- | --- |
+| punctuation, delimiter edits, line-start markers, escapes | local transition |
+| raw HTML literal spans, code spans, fenced code content, IME commit | local transition |
+| nested quote/list | bounded enclosing-block oracle |
+| soft/hard breaks, list continuation, table cells, and any unlisted class | synchronous refusal |
+
+The local branch is intentionally conservative: it accepts only the exact identity/atomic spans
+returned by the existing coordinate map and literal encoder. The bounded branch reparses only the
+declared enclosing block and compares its complete result with the current authoritative snapshot.
+The refusal branch leaves canonical source unchanged and keeps Source available. A class added to
+the enum or probe matrix without one of these assignments fails the structural matrix.
+
 ## Outcome
 
 An ordinary WYSIWYG keystroke performs a bounded local source/encoder transition and applies one
