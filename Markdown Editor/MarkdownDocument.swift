@@ -395,17 +395,25 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
               liveSource.sourceVersion == state.source.sourceVersion,
               liveSource.locationGeneration == state.source.locationGeneration,
               liveSource.fileURL == state.source.fileURL else {
+            trace?.record(route: .editRefused, .editRefused(category: .refusal(.staleVersion)))
             return .refused(.staleVersion)
         }
         switch EditorTransactionKernel.reduce(input, state: state) {
         case .refused(let refusal):
+            var recorded = false
             if case .sourceReplacement(let value) = input {
                 trace?.record(route: .mutationRefused, .mutationRefused(id: value.mutation.id, reason: refusal.asSourceRefusal))
+                recorded = true
             } else if case .imageReference(let value) = input {
                 trace?.record(route: .mutationRefused, .mutationRefused(id: value.mutation.id, reason: refusal.asSourceRefusal))
+                recorded = true
             }
             if case .undoRedo(let history) = input {
                 trace?.record(route: .historyRefused, .historyRefused(direction: history.direction, reason: refusal.asSourceRefusal))
+                recorded = true
+            }
+            if !recorded {
+                trace?.record(route: .editRefused, .editRefused(category: .refusal(refusal.asEditRefusal)))
             }
             return .refused(refusal)
         case .accepted(let transaction):
@@ -426,7 +434,27 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
               liveSource.sourceVersion == state.source.sourceVersion,
               liveSource.locationGeneration == state.source.locationGeneration,
               liveSource.fileURL == state.source.fileURL else {
+            trace?.record(route: .editRefused, .editRefused(category: .refusal(.staleVersion)))
             return .refused(.staleVersion)
+        }
+        if let refusal = EditorTransactionKernel.validateAcceptedTransaction(transaction, state: state) {
+            switch transaction.effect {
+            case .edit(let edit):
+                trace?.record(route: .mutationRefused, .mutationRefused(
+                    id: edit.sourceMutation.id,
+                    reason: refusal.asSourceRefusal
+                ))
+            case .history(let history):
+                trace?.record(route: .historyRefused, .historyRefused(
+                    direction: history.direction,
+                    reason: refusal.asSourceRefusal
+                ))
+            default:
+                trace?.record(route: .editRefused, .editRefused(
+                    category: .refusal(refusal.asEditRefusal)
+                ))
+            }
+            return .refused(refusal)
         }
         switch transaction.effect {
             case .edit(let edit):

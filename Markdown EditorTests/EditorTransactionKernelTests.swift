@@ -92,6 +92,60 @@ struct EditorTransactionKernelTests {
         #expect(document.documentUndoManager?.canUndo == false)
     }
 
+    // Verifies: COR-70 — the main-actor owner revalidates an accepted transaction rather than
+    // trusting a caller that forges a different mutation after kernel reduction.
+    @Test func ownerRejectsForgedAcceptedTransactionBeforeMutation() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("abc")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let state = EditorStateSnapshot(
+            source: document.sourceSnapshot(),
+            sourceSelection: SourceSelection(utf16: NSRange(location: 0, length: 0))
+        )
+        let mutation = SourceMutation(
+            expectedRevision: state.source.sourceVersion,
+            range: NSRange(location: 0, length: 0),
+            expectedText: "",
+            replacement: "X",
+            selectionBefore: state.sourceSelection,
+            selectionAfter: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+            actionName: "Typing",
+            grouping: .typing
+        )
+        let forged = SourceMutation(
+            expectedRevision: mutation.expectedRevision,
+            range: mutation.range,
+            expectedText: "not-current",
+            replacement: mutation.replacement,
+            selectionBefore: mutation.selectionBefore,
+            selectionAfter: mutation.selectionAfter,
+            actionName: mutation.actionName,
+            grouping: mutation.grouping
+        )
+        let transaction = AcceptedEditorTransaction(
+            route: .sourceReplacement,
+            intentID: IntentID(rawValue: 0),
+            effect: .edit(
+                AcceptedEdit(
+                    sourceMutation: forged,
+                    presentationTransition: nil,
+                    sourceSelectionAfter: forged.selectionAfter,
+                    projectionSelectionAfter: nil,
+                    intent: nil
+                )
+            )
+        )
+        #expect(document.commitEditorTransaction(transaction, state: state) == .refused(.contentMismatch))
+        #expect(document.text == "abc")
+        #expect(document.sourceVersion == state.source.sourceVersion)
+        #expect(document.documentUndoManager?.canUndo == false)
+        #expect(trace.events.contains {
+            if case .mutationRefused = $0 { return true }
+            return false
+        })
+    }
+
     // Verifies: COR-70 kernelRejectsMismatchedPlansAndSelectionIdentities.
     @Test func kernelRejectsMismatchedPlansAndSelectionIdentities() {
         let document = MarkdownDocument()
@@ -288,6 +342,113 @@ struct EditorTransactionKernelTests {
             if case .mutationCommitted = $0 { return true }
             return false
         }.count - before == 1)
+        session.detach()
+    }
+
+    // Verifies: COR-70 — the real projection, marked-text, image, mode, reconciliation, and
+    // history entry points all use the owner transaction seam; the adapter never applies a
+    // second source mutation of its own.
+    @Test func realAdapterRoutesUseTheKernelOwnerSeam() throws {
+        let document = MarkdownDocument()
+        document.installTextForTesting("hi\n")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let session = EditorSession()
+        session.attach(document: document)
+        let tree = try #require(MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion).get())
+        session.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: tree,
+                index: MarkdownSourceIndex(source: document.text, sourceVersion: document.sourceVersion)
+            ),
+            tree: tree
+        )
+        let coordinator = WYSIWYGEditor.Coordinator(
+            document: document,
+            session: session,
+            placementController: ImagePlacementController()
+        )
+        let textView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
+        textView.delegate = coordinator
+        textView.session = session
+        textView.documentActions = document
+        textView.inputCoordinator = coordinator.input
+        textView.adapterCoordinator = coordinator
+        coordinator.textView = textView
+        coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+        let firstPresentation = try #require(session.presentation)
+        let firstSelection = ProjectionSelection(
+            utf16: NSRange(location: 0, length: 0),
+            revision: firstPresentation.projectionRevision
+        )
+        textView.setSelectedRange(firstSelection.range.utf16)
+        session.captureSelection(.projection(firstSelection))
+        let beforeProjection = trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count
+        #expect(coordinator.textView(textView, shouldChangeTextIn: firstSelection.range.utf16, replacementString: "X") == false)
+        #expect(document.text == "Xhi\n")
+        #expect(trace.events.filter {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        }.count - beforeProjection == 1)
+
+        // The native marked-text callback enters the transient route before it can commit.
+        textView.setSelectedRange(NSRange(location: 1, length: 0))
+        textView.setMarkedText(
+            "日",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: 1, length: 0)
+        )
+        #expect(trace.events.contains {
+            if case .compositionBegan = $0 { return true }
+            return false
+        })
+        textView.unmarkText()
+        textView.unmarkText()
+        #expect(trace.events.contains {
+            if case .compositionCancelled = $0 { return true }
+            return false
+        })
+
+        // The source image adapter is a production entry point, not a test-only document helper.
+        let imageDocument = MarkdownDocument()
+        imageDocument.installTextForTesting("x")
+        let imageTrace = InMemoryEditorTrace()
+        imageDocument.trace = imageTrace
+        let imageView = MarkdownSourceTextView(usingTextLayoutManager: false)
+        imageView.documentActions = imageDocument
+        imageView.string = imageDocument.text
+        imageView.setSelectedRange(NSRange(location: 1, length: 0))
+        imageView.insertImageMarkdown("![](a.png)", at: NSRange(location: 1, length: 0), selectEmptyDescription: false)
+        #expect(imageDocument.text == "x![](a.png)")
+        #expect(imageTrace.events.contains {
+            if case .mutationCommitted = $0 { return true }
+            return false
+        })
+
+        // Mode and reconciliation are also owner-approved transactions, not direct state writes.
+        session.setMode(.source)
+        session.setMode(.wysiwyg)
+        if let presentation = session.presentation {
+            session.installPresentation(
+                presentation,
+                tree: session.authoritativeTree,
+                provisional: false
+            )
+        }
+        #expect(trace.events.contains {
+            if case .modeToggle = $0 { return true }
+            return false
+        })
+
+        imageDocument.undoManager?.undo()
+        #expect(imageDocument.text == "x")
+        #expect(imageTrace.events.contains {
+            if case .historyApplied = $0 { return true }
+            return false
+        })
         session.detach()
     }
 
@@ -535,6 +696,8 @@ struct EditorTransactionKernelTests {
             let document = MarkdownDocument()
             defer { document.close() }
             document.installTextForTesting(source.text)
+            let trace = InMemoryEditorTrace()
+            document.trace = trace
             let result = document.commitEditorInput(
                 input,
                 state: EditorStateSnapshot(
@@ -547,7 +710,43 @@ struct EditorTransactionKernelTests {
             #expect(document.text == source.text)
             #expect(document.sourceVersion == source.sourceVersion)
             #expect(document.documentUndoManager?.canUndo == false)
+            #expect(trace.events.contains {
+                if case .editRefused = $0 { return true }
+                if case .mutationRefused = $0 { return true }
+                if case .historyRefused = $0 { return true }
+                return false
+            })
         }
+    }
+
+    // Verifies: COR-70 — refusal leaves the owning session's presentation, selections, intent
+    // route, and diagnostic refusal observable unchanged together with canonical source.
+    @Test func sessionRefusalLeavesAllOwnerStateUnchanged() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("abc")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        let session = EditorSession()
+        session.attach(document: document)
+        let sourceSelection = SourceSelection(utf16: NSRange(location: 1, length: 0))
+        session.captureSelection(.source(sourceSelection))
+        let sourceBefore = document.sourceSnapshot()
+        let sourceStateBefore = session.sourceModeState
+        let wysiwygStateBefore = session.wysiwygModeState
+        let result = session.perform(
+            .insertText("x"),
+            selection: .source(sourceSelection),
+            expectedSourceRevision: SourceRevision(value: sourceBefore.sourceVersion &+ 1)
+        )
+        #expect(result == .refused(.staleVersion))
+        #expect(document.sourceSnapshot() == sourceBefore)
+        #expect(session.sourceModeState == sourceStateBefore)
+        #expect(session.wysiwygModeState == wysiwygStateBefore)
+        #expect(trace.events.contains {
+            if case .editRefused = $0 { return true }
+            return false
+        })
+        session.detach()
     }
 
     // Verifies: COR-70 — native source/image replacements cannot install an out-of-bounds caret.

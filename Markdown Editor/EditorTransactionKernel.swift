@@ -280,6 +280,102 @@ nonisolated enum EditorTransactionCommitResult: Sendable, Equatable {
 /// Pure input-to-transaction reducer. AppKit, mutable documents, diagnostics, I/O, and clocks
 /// are deliberately absent from this type.
 nonisolated enum EditorTransactionKernel {
+    /// Revalidates a reduced transaction at the mutable owner boundary. Reduction validates the
+    /// caller's immutable snapshot; this second validation prevents a forged or stale accepted
+    /// value from becoming a document mutation merely because its source snapshot still matches.
+    static func validateAcceptedTransaction(
+        _ transaction: AcceptedEditorTransaction,
+        state: EditorStateSnapshot
+    ) -> EditorRefusal? {
+        switch (transaction.route, transaction.effect) {
+        case (.sourceReplacement, .edit(let edit)), (.imageReference, .edit(let edit)):
+            return validateSourceEdit(edit, state: state, requiresSourceSelection: true)
+        case (.wysiwygReplacement, .edit(let edit)),
+             (.semanticCommand, .edit(let edit)),
+             (.checkbox, .edit(let edit)),
+             (.markedText, .edit(let edit)):
+            return validateSourceEdit(edit, state: state, requiresSourceSelection: false)
+        case (.markedText, .markedText):
+            return nil
+        case (.undoRedo, .history(let input)):
+            guard input.patch.matchesCurrentContent(in: state.source.text),
+                  input.patch.range.location >= 0,
+                  input.patch.range.length >= 0,
+                  NSMaxRange(input.patch.range) <= (state.source.text as NSString).length else {
+                return .contentMismatch
+            }
+            return nil
+        case (.modeChange, .modeChange):
+            return nil
+        case (.reconciliation, .reconciliation(let input)):
+            guard input.sourceRevision.value == state.source.sourceVersion,
+                  input.locationGeneration == state.source.locationGeneration,
+                  input.expectedProjectionID == nil || input.expectedProjectionID == state.presentation?.id else {
+                return .staleVersion
+            }
+            return nil
+        default:
+            return .invalidIdentity
+        }
+    }
+
+    private static func validateSourceEdit(
+        _ edit: AcceptedEdit,
+        state: EditorStateSnapshot,
+        requiresSourceSelection: Bool
+    ) -> EditorRefusal? {
+        let mutation = edit.sourceMutation
+        let source = state.source.text as NSString
+        guard mutation.expectedRevision == state.source.sourceVersion else { return .staleVersion }
+        guard mutation.range.location >= 0,
+              mutation.range.length >= 0,
+              NSMaxRange(mutation.range) <= source.length else { return .invalidRange }
+        guard source.substring(with: mutation.range) == mutation.expectedText else { return .contentMismatch }
+        guard mutation.selectionAfter == edit.sourceSelectionAfter else { return .invalidIdentity }
+        let nextLength = source.length - mutation.range.length + (mutation.replacement as NSString).length
+        guard mutation.selectionAfter.range.utf16.location >= 0,
+              mutation.selectionAfter.range.utf16.length >= 0,
+              NSMaxRange(mutation.selectionAfter.range.utf16) <= nextLength else { return .invalidIdentity }
+
+        if requiresSourceSelection || edit.presentationTransition == nil {
+            guard mutation.selectionBefore == state.sourceSelection,
+                  edit.presentationTransition == nil,
+                  edit.projectionSelectionAfter == nil else {
+                return .invalidIdentity
+            }
+            return nil
+        }
+
+        guard let presentation = state.presentation,
+              let transition = edit.presentationTransition,
+              transition.fromSnapshotID == presentation.id,
+              transition.nextSnapshot.id == state.nextPresentationID,
+              transition.nextSnapshot.sourceRevision.value == state.source.sourceVersion &+ 1,
+              transition.nextSnapshot.locationGeneration == state.source.locationGeneration,
+              transition.nextSnapshot.sourceUTF16Count == nextLength,
+              transition.nextSnapshot.isOracleValid,
+              let projectionSelectionAfter = edit.projectionSelectionAfter,
+              projectionSelectionAfter == transition.selectionAfter,
+              projectionSelectionAfter.range.revision.snapshotID == transition.nextSnapshot.id,
+              transition.selectionAfter.range.revision.snapshotID == transition.nextSnapshot.id else {
+            return .invalidIdentity
+        }
+        let rendered = presentation.renderedString as NSString
+        guard transition.projectionReplacementRange.location >= 0,
+              transition.projectionReplacementRange.length >= 0,
+              NSMaxRange(transition.projectionReplacementRange) <= rendered.length,
+              NSMaxRange(projectionSelectionAfter.range.utf16)
+                <= (transition.nextSnapshot.renderedString as NSString).length else {
+            return .invalidRange
+        }
+        let projected = rendered.replacingCharacters(
+            in: transition.projectionReplacementRange,
+            with: transition.projectionReplacement
+        )
+        guard projected == transition.nextSnapshot.renderedString else { return .invalidIdentity }
+        return nil
+    }
+
     static func reduce(
         _ input: EditorInput,
         state: EditorStateSnapshot
