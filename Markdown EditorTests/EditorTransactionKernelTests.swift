@@ -219,6 +219,9 @@ struct EditorTransactionKernelTests {
             placementController: ImagePlacementController(),
             session: session
         )
+        let textView = MarkdownSourceTextView(usingTextLayoutManager: false)
+        textView.documentActions = document
+        coordinator.textView = textView
         let mutation = SourceMutation(
             expectedRevision: document.sourceVersion,
             range: NSRange(location: 0, length: 1),
@@ -235,9 +238,14 @@ struct EditorTransactionKernelTests {
         }.count
         // The native selection callback owns the pre-edit identity; the mutation cannot invent it.
         session.captureSelection(.source(mutation.selectionBefore))
-        let result = coordinator.commitNativeMutation(mutation)
-        guard case .committed = result else {
-            Issue.record("real source route refused: \(result)")
+        textView.setSelectedRange(mutation.selectionBefore.range.utf16)
+        let accepted = coordinator.textView(
+            textView,
+            shouldChangeTextIn: mutation.range,
+            replacementString: mutation.replacement
+        )
+        guard accepted else {
+            Issue.record("real source delegate route refused the exact mutation")
             return
         }
         #expect(document.text == "Abc")
@@ -430,6 +438,116 @@ struct EditorTransactionKernelTests {
         #expect(result == .refused(.staleVersion))
         #expect(document.text == "new")
         #expect(document.sourceVersion == 0)
+    }
+
+    // Verifies: COR-70 — the refusal matrix is typed and leaves the canonical owner untouched.
+    @Test func refusalMatrixLeavesOwnerUnchanged() {
+        let selection = SourceSelection(utf16: NSRange(location: 0, length: 0))
+        let source = SourceSnapshot(text: "abc", sourceVersion: 0, locationGeneration: 0, fileURL: nil)
+        func makeMutation(
+            expectedRevision: UInt64 = 0,
+            range: NSRange = NSRange(location: 0, length: 0),
+            expectedText: String = "",
+            selectionBefore: SourceSelection = selection
+        ) -> SourceMutation {
+            SourceMutation(
+                expectedRevision: expectedRevision,
+                range: range,
+                expectedText: expectedText,
+                replacement: "x",
+                selectionBefore: selectionBefore,
+                selectionAfter: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+                actionName: "Refusal",
+                grouping: .discrete
+            )
+        }
+        let request = EditorEditRequest(
+            command: .insertText("x"),
+            selection: .source(selection),
+            expectedSourceRevision: SourceRevision(value: 0),
+            grouping: .discrete
+        )
+        let cases: [(EditorInput, EditorRefusal, EditorUpdateOrigin)] = [
+            (
+                .sourceReplacement(
+                    EditorReplacementInput(
+                        mutation: makeMutation(expectedRevision: 1)
+                    )
+                ),
+                .staleVersion,
+                .nativeUserInput
+            ),
+            (
+                .sourceReplacement(
+                    EditorReplacementInput(
+                        mutation: makeMutation(expectedText: "z")
+                    )
+                ),
+                .contentMismatch,
+                .nativeUserInput
+            ),
+            (
+                .sourceReplacement(
+                    EditorReplacementInput(
+                        mutation: makeMutation(range: NSRange(location: 99, length: 0))
+                    )
+                ),
+                .invalidRange,
+                .nativeUserInput
+            ),
+            (
+                .sourceReplacement(
+                    EditorReplacementInput(
+                        mutation: makeMutation(
+                            selectionBefore: SourceSelection(utf16: NSRange(location: 1, length: 0))
+                        ),
+                        selectionIdentity: .source(SourceSelection(utf16: NSRange(location: 1, length: 0)))
+                    )
+                ),
+                .ambiguousSelection,
+                .nativeUserInput
+            ),
+            (
+                .markedText(EditorMarkedTextInput(phase: .update)),
+                .invalidIdentity,
+                .programmaticPresentation
+            ),
+            (
+                .markedText(EditorMarkedTextInput(phase: .update, projectionID: PresentationSnapshot.ID(value: 1))),
+                .stalePresentation,
+                .nativeUserInput
+            ),
+            (
+                .semanticCommand(EditorSemanticInput(request: request)),
+                .unavailable,
+                .nativeUserInput
+            ),
+            (
+                .semanticCommand(
+                    EditorSemanticInput(request: request, plannedOutcome: .refused(.mixedDomain))
+                ),
+                .mixedDomain,
+                .nativeUserInput
+            ),
+        ]
+
+        for (input, expected, origin) in cases {
+            let document = MarkdownDocument()
+            defer { document.close() }
+            document.installTextForTesting(source.text)
+            let result = document.commitEditorInput(
+                input,
+                state: EditorStateSnapshot(
+                    source: source,
+                    origin: origin,
+                    sourceSelection: selection
+                )
+            )
+            #expect(result == .refused(expected))
+            #expect(document.text == source.text)
+            #expect(document.sourceVersion == source.sourceVersion)
+            #expect(document.documentUndoManager?.canUndo == false)
+        }
     }
 
     // Verifies: COR-70 — native source/image replacements cannot install an out-of-bounds caret.
