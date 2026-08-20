@@ -9,7 +9,6 @@ import Testing
 @testable import Markdown_Editor
 
 @MainActor
-@Suite(.serialized)
 struct EditorTransactionKernelTests {
     // Verifies: COR-70 acceptedEditAdvancesSourcePresentationSelectionAndUndoOnce.
     @Test func acceptedEditAdvancesSourcePresentationSelectionAndUndoOnce() {
@@ -289,6 +288,7 @@ struct EditorTransactionKernelTests {
     @Test func everyInputRouteUsesEditorTransactionKernel() {
         for route in EditorInputRoute.allCases {
             let document = MarkdownDocument()
+            defer { document.close() }
             document.installTextForTesting("a")
             let source = document.sourceSnapshot()
             let selection = SourceSelection(utf16: NSRange(location: 0, length: 0))
@@ -359,6 +359,10 @@ struct EditorTransactionKernelTests {
                     )
                 )
             }
+            if route == .undoRedo {
+                document.undoManager?.beginUndoGrouping()
+                defer { document.undoManager?.endUndoGrouping() }
+            }
             let state = EditorStateSnapshot(source: source, sourceSelection: selection)
             let result = document.commitEditorInput(input, state: state)
             switch result {
@@ -382,6 +386,7 @@ struct EditorTransactionKernelTests {
     // Verifies: COR-70 — a stale immutable state cannot make a live document accept an old edit.
     @Test func staleStateRefusesBeforeApplyingTheMutation() {
         let document = MarkdownDocument()
+        defer { document.close() }
         document.installTextForTesting("a")
         let stale = EditorStateSnapshot(
             source: document.sourceSnapshot(),
@@ -416,6 +421,7 @@ struct EditorTransactionKernelTests {
     @Test func replacementRejectsOutOfBoundsSelection() {
         for route in [EditorInputRoute.sourceReplacement, .imageReference] {
             let document = MarkdownDocument()
+            defer { document.close() }
             document.installTextForTesting("a")
             let source = document.sourceSnapshot()
             let before = SourceSelection(utf16: NSRange(location: 0, length: 0))
