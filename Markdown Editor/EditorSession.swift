@@ -609,15 +609,42 @@ final class EditorSession: ObservableObject {
         )
         let editStart = DispatchTime.now().uptimeNanoseconds
         let state = editorStateSnapshot(intentID: intent.id)
-        let plannedOutcome = EditorSemanticWorker.sync(intent: intent) {
-            SemanticEditEngine.plan(
+        let plannedOutcome: EditorEditOutcome
+        let isOrdinaryNativeReplacement = inputRoute == .wysiwygReplacement
+            || inputRoute == .markedText
+        let isTypingCommand: Bool
+        switch command {
+        case .insertText, .deleteBackward:
+            isTypingCommand = true
+        default:
+            isTypingCommand = false
+        }
+        if isOrdinaryNativeReplacement,
+           case .projection = selection,
+           isTypingCommand,
+           let presentation = state.presentation {
+            // COR-71: this route is deliberately synchronous but parser-free. The closed local
+            // domain either produces a complete identity transition or refuses before owner
+            // mutation; authoritative reconciliation is scheduled only after an accepted edit.
+            plannedOutcome = LocalTransitionDomain.plan(
                 request,
                 snapshot: state.source,
-                presentation: state.presentation,
+                presentation: presentation,
                 tree: state.tree,
                 nextSnapshotID: state.nextPresentationID,
                 intent: intent
             )
+        } else {
+            plannedOutcome = EditorSemanticWorker.sync(intent: intent) {
+                SemanticEditEngine.plan(
+                    request,
+                    snapshot: state.source,
+                    presentation: state.presentation,
+                    tree: state.tree,
+                    nextSnapshotID: state.nextPresentationID,
+                    intent: intent
+                )
+            }
         }
         let semanticInput = EditorSemanticInput(
             request: request,
