@@ -374,15 +374,11 @@ nonisolated enum EditorTransactionKernel {
         }
 
         if allowSyntheticControl {
-            guard edit.presentationTransition == nil,
-                  edit.projectionSelectionAfter == nil,
-                  let attachment = presentation.attachments.first(where: {
-                      $0.utf16Location == currentSelection.range.utf16.location
-                  }),
-                  case .task = attachment.kind else {
+            guard let attachment = presentation.attachments.first(where: {
+                $0.utf16Location == currentSelection.range.utf16.location
+            }), case .task = attachment.kind else {
                 return .invalidIdentity
             }
-            return nil
         }
 
         guard let transition = edit.presentationTransition else {
@@ -415,7 +411,12 @@ nonisolated enum EditorTransactionKernel {
         // and affinity are bound above; exact coordinate mapping is required whenever the
         // transition claims to replace exactly what the caller selected, while a structural
         // transition must at least cover that selection (including a caret at either boundary).
-        if transition.projectionReplacementRange == currentSelection.range.utf16 {
+        if allowSyntheticControl {
+            // Checkbox presentation is a synthetic control replacement: the planner rebuilds the
+            // authoritative document projection, so the control's one-character selection is
+            // intentionally not an exact source-coordinate range.
+            return nil
+        } else if transition.projectionReplacementRange == currentSelection.range.utf16 {
             guard case .exact(let sourceRange) = presentation.coordinateMap.sourceRange(
                 forProjection: currentSelection.range.utf16,
                 affinity: currentSelection.affinity
