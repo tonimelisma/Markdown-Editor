@@ -400,6 +400,13 @@ nonisolated enum EditorTransactionKernel {
         guard source.substring(with: mutation.range) == mutation.expectedText else {
             return .refused(.contentMismatch)
         }
+        let nextSourceLength = source.length - mutation.range.length
+            + (mutation.replacement as NSString).length
+        guard mutation.selectionAfter.range.utf16.location >= 0,
+              mutation.selectionAfter.range.utf16.length >= 0,
+              NSMaxRange(mutation.selectionAfter.range.utf16) <= nextSourceLength else {
+            return .refused(.invalidIdentity)
+        }
         let edit = AcceptedEdit(
             sourceMutation: mutation,
             presentationTransition: nil,

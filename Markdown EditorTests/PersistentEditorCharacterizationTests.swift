@@ -301,8 +301,7 @@ struct PersistentEditorCharacterizationTests {
             actionName: "Test",
             grouping: .discrete
         )
-        document.captureSourceSelection(mutation.selectionBefore)
-        _ = document.commitSourceMutation(mutation)
+        _ = commitSourceMutationForTest(document, mutation)
         let version = document.sourceVersion
         textView.insertText("日", replacementRange: NSRange(location: NSNotFound, length: 0))
 
@@ -364,8 +363,7 @@ struct PersistentEditorCharacterizationTests {
             actionName: "External",
             grouping: .discrete
         )
-        document.captureSourceSelection(external.selectionBefore)
-        guard case .committed = document.commitSourceMutation(external) else {
+        guard case .committed = commitSourceMutationForTest(document, external) else {
             Issue.record("external edit failed to make the composition stale")
             return
         }

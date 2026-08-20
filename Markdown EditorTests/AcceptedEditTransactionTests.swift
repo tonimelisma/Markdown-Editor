@@ -760,7 +760,7 @@ struct NativeUpdateOriginTests {
             actionName: "Typing",
             grouping: .typing
         )
-        _ = doc.commitSourceMutation(mutation)
+        _ = commitSourceMutationForTest(doc, mutation)
         session.updateOrigin.with(.programmaticPresentation) {
             #expect(session.updateOrigin.current == .programmaticPresentation)
         }
@@ -778,7 +778,7 @@ struct NativeUpdateOriginTests {
             actionName: "Typing",
             grouping: .typing
         )
-        _ = doc.commitSourceMutation(second)
+        _ = commitSourceMutationForTest(doc, second)
         #expect(doc.text.hasPrefix("ab"))
     }
 }
@@ -830,8 +830,7 @@ struct DocumentSerializedIOTests {
             actionName: "Edit",
             grouping: .discrete
         )
-        document.captureSourceSelection(mutation.selectionBefore)
-        guard case .committed = document.commitSourceMutation(mutation) else {
+        guard case .committed = commitSourceMutationForTest(document, mutation) else {
             Issue.record("controller-opened document refused an exact mutation")
             document.close()
             return

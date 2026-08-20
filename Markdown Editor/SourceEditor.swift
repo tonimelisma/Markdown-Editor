@@ -72,8 +72,13 @@ enum SourceEditor {
                 if let session {
                     committed = session.commitEditorInput(input)
                 } else {
-                    document.captureSourceSelection(mutation.selectionBefore)
-                    committed = document.commitEditorInput(input)
+                    committed = document.commitEditorInput(
+                        input,
+                        state: EditorStateSnapshot(
+                            source: document.sourceSnapshot(),
+                            sourceSelection: mutation.selectionBefore
+                        )
+                    )
                 }
                 switch committed {
                 case .committed(let transaction):
@@ -349,11 +354,6 @@ final class MarkdownSourceTextView: NSTextView {
             utf16: selectedRange(),
             affinity: selectionAffinity == .upstream ? .upstream : .downstream
         )
-        if let document = actions as? MarkdownDocument {
-            // This adapter has no session owner, so preserve the native selection at the event
-            // boundary before the direct document commit. The mutation remains untrusted input.
-            document.captureSourceSelection(selectionBefore)
-        }
         guard let mutation = SourceMutation.exact(
             snapshot: snapshot,
             range: range,
@@ -371,7 +371,19 @@ final class MarkdownSourceTextView: NSTextView {
             let input = EditorInput.imageReference(
                 EditorReplacementInput(mutation: mutation)
             )
-            switch actions.commitEditorInput(input) {
+            let committed: EditorTransactionCommitResult
+            if let document = actions as? MarkdownDocument {
+                committed = document.commitEditorInput(
+                    input,
+                    state: EditorStateSnapshot(
+                        source: snapshot,
+                        sourceSelection: selectionBefore
+                    )
+                )
+            } else {
+                committed = actions.commitEditorInput(input)
+            }
+            switch committed {
             case .committed(let transaction):
                 if case .edit(let edit) = transaction.effect {
                     result = .committed(edit.sourceSelectionAfter)

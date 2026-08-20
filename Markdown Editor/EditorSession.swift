@@ -563,8 +563,7 @@ final class EditorSession: ObservableObject {
         )
     }
 
-    /// Adapter-facing source/image commit. The document remains the sole mutable owner; this
-    /// method exists so coordinators never call `commitSourceMutation` directly.
+    /// Adapter-facing source/image commit. The document remains the sole mutable owner.
     @discardableResult
     func commitEditorInput(
         _ input: EditorInput

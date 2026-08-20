@@ -21,6 +21,36 @@ extension Result {
     }
 }
 
+@MainActor
+@discardableResult
+func commitSourceMutationForTest(
+    _ document: MarkdownDocument,
+    _ mutation: SourceMutation
+) -> SourceEditResult {
+    let input = EditorInput.sourceReplacement(
+        EditorReplacementInput(
+            mutation: mutation,
+            selectionIdentity: .source(mutation.selectionBefore)
+        )
+    )
+    let result = document.commitEditorInput(
+        input,
+        state: EditorStateSnapshot(
+            source: document.sourceSnapshot(),
+            sourceSelection: mutation.selectionBefore
+        )
+    )
+    switch result {
+    case .committed(let transaction):
+        guard case .edit(let edit) = transaction.effect else {
+            return .refused(.conflict)
+        }
+        return .committed(edit.sourceSelectionAfter)
+    case .refused(let refusal):
+        return .refused(refusal.asSourceRefusal)
+    }
+}
+
 /// Production Swift sources, for structural gates that prove a displaced route is gone rather
 /// than merely unused. Source inspection is the only available proof of an *absence*.
 func productionSourceFiles() throws -> [URL] {

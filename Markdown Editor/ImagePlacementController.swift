@@ -447,8 +447,20 @@ final class ImagePlacementController: ObservableObject {
                     intentID: snapshot.intent?.id ?? IntentID(rawValue: 0)
                 )
             )
-            let commitResult: EditorTransactionCommitResult = session?.commitEditorInput(imageInput)
-                ?? actions.commitEditorInput(imageInput)
+            let commitResult: EditorTransactionCommitResult
+            if let session {
+                commitResult = session.commitEditorInput(imageInput)
+            } else if let document = actions as? MarkdownDocument {
+                commitResult = document.commitEditorInput(
+                    imageInput,
+                    state: EditorStateSnapshot(
+                        source: actions.sourceSnapshot(),
+                        sourceSelection: mutation.selectionBefore
+                    )
+                )
+            } else {
+                commitResult = actions.commitEditorInput(imageInput)
+            }
             switch commitResult {
             case .committed(let transaction):
                 guard case .edit = transaction.effect else {

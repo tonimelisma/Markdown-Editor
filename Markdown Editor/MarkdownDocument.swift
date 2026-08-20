@@ -95,9 +95,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// close a typing group when the next input was captured after a caret move, keeping that
     /// boundary in the document owner rather than in either AppKit adapter.
     private var lastCommittedSourceSelection: SourceSelection?
-    /// Native selection captured by a legacy direct-document adapter before it submits a source
-    /// mutation. The proposed mutation is never allowed to establish this identity.
-    private var capturedSourceSelection = SourceSelection(utf16: NSRange(location: 0, length: 0))
     /// AppKit records marked-text changes on the document undo manager. The document owns the
     /// short-lived group opened for that native transient route.
     private var markedTextGroupOpen = false
@@ -372,39 +369,13 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     var documentUndoManager: UndoManager? { undoManager }
 
-    /// Captures the native source selection before a legacy direct-document adapter submits its
-    /// mutation. This is an event-boundary input capture; `commitSourceMutation` never derives
-    /// owner identity from the mutation it is asked to validate.
-    func captureSourceSelection(_ selection: SourceSelection) {
-        capturedSourceSelection = selection
-    }
-
-    // REQ-016; ARC-001/010: all canonical source writes reduce through the transaction kernel.
-    @discardableResult
-    func commitSourceMutation(_ mutation: SourceMutation) -> SourceEditResult {
-        let input = EditorInput.sourceReplacement(EditorReplacementInput(mutation: mutation))
-        let state = EditorStateSnapshot(
-            source: sourceSnapshot(),
-            sourceSelection: capturedSourceSelection
-        )
-        switch commitEditorInput(input, state: state) {
-        case .committed(let transaction):
-            guard case .edit(let edit) = transaction.effect else {
-                return .refused(.conflict)
-            }
-            return .committed(edit.sourceSelectionAfter)
-        case .refused(let refusal):
-            return .refused(refusal.asSourceRefusal)
-        }
-    }
-
     /// Main-actor application seam for every canonical document input. Reduction is pure; this
     /// method alone performs source replacement, history registration, and diagnostic emission.
     @discardableResult
     func commitEditorInput(_ input: EditorInput) -> EditorTransactionCommitResult {
         let state = EditorStateSnapshot(
             source: sourceSnapshot(),
-            sourceSelection: capturedSourceSelection
+            sourceSelection: SourceSelection(utf16: NSRange(location: 0, length: 0))
         )
         return commitEditorInput(input, state: state)
     }
@@ -417,6 +388,15 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         _ input: EditorInput,
         state: EditorStateSnapshot
     ) -> EditorTransactionCommitResult {
+        // The reducer consumes an immutable snapshot, but the document is the live canonical
+        // owner. A caller cannot make a stale snapshot current by supplying matching input data.
+        let liveSource = sourceSnapshot()
+        guard liveSource.text == state.source.text,
+              liveSource.sourceVersion == state.source.sourceVersion,
+              liveSource.locationGeneration == state.source.locationGeneration,
+              liveSource.fileURL == state.source.fileURL else {
+            return .refused(.staleVersion)
+        }
         switch EditorTransactionKernel.reduce(input, state: state) {
         case .refused(let refusal):
             if case .sourceReplacement(let value) = input {
@@ -436,7 +416,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
                     closeTypingGroupIfNeeded()
                 }
                 lastCommittedSourceSelection = edit.sourceSelectionAfter
-                capturedSourceSelection = edit.sourceSelectionAfter
                 applyCommittedMutation(edit.sourceMutation)
                 return .committed(transaction)
             case .history(let history):
@@ -544,7 +523,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         text = value
         sourceVersion = 0
         lastCommittedSourceSelection = nil
-        capturedSourceSelection = SourceSelection(utf16: NSRange(location: 0, length: 0))
         updateChangeCount(.changeCleared)
         undoManager?.removeAllActions()
         canonicalAssetReferences = CanonicalAssetReferences(values: [])
@@ -635,7 +613,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             replacement: patch.before
         )
         lastCommittedSourceSelection = patch.selectionBefore
-        capturedSourceSelection = patch.selectionBefore
         requestSelectionRestoration(patch.selectionBefore)
 
         // Register the inverse dynamically — never call the version-gated public API.
