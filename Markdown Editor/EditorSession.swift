@@ -678,6 +678,8 @@ final class EditorSession: ObservableObject {
             let commitTransaction = AcceptedEditorTransaction(
                 route: transaction.route,
                 intentID: transaction.intentID,
+                request: transaction.request,
+                checkboxNodeID: transaction.checkboxNodeID,
                 effect: .edit(edit)
             )
             switch document.commitEditorTransaction(

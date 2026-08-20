@@ -183,6 +183,144 @@ struct EditorTransactionKernelTests {
         #expect(document.commitEditorTransaction(validTransaction, state: state, audit: repeatedAudit) == .refused(.invalidIdentity))
     }
 
+    // Verifies: COR-70 — a forged structural transition cannot pair one source result with a
+    // different authoritative projection, and a checkbox transaction remains bound to its node.
+    @Test(.serialized) func ownerRejectsForgedStructuralAndCheckboxTransactions() throws {
+        let document = MarkdownDocument()
+        document.installTextForTesting("hello\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        session.setMode(.wysiwyg)
+        let tree = try #require(MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion).get())
+        session.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: tree,
+                index: MarkdownSourceIndex(source: document.text, sourceVersion: document.sourceVersion)
+            ),
+            tree: tree
+        )
+        let presentation = try #require(session.presentation)
+        let selection = ProjectionSelection(
+            utf16: NSRange(location: 0, length: 5),
+            revision: presentation.projectionRevision
+        )
+        session.captureSelection(.projection(selection))
+        let state = session.editorStateSnapshot()
+        let request = EditorEditRequest(
+            command: .setHeading(level: 2),
+            selection: .projection(selection),
+            expectedSourceRevision: SourceRevision(value: document.sourceVersion),
+            grouping: .discrete
+        )
+        let planned = SemanticEditEngine.plan(
+            request,
+            snapshot: state.source,
+            presentation: state.presentation,
+            tree: state.tree,
+            nextSnapshotID: state.nextPresentationID
+        )
+        guard case .accepted(let acceptedEdit) = planned else {
+            Issue.record("heading fixture did not produce an accepted transition: \(planned)")
+            return
+        }
+        let input = EditorInput.semanticCommand(
+            EditorSemanticInput(request: request, plannedOutcome: planned)
+        )
+        var audit = EditorTransactionReductionAudit()
+        guard case .accepted(let transaction) = EditorTransactionKernel.reduce(
+            input,
+            state: state,
+            audit: &audit
+        ) else {
+            Issue.record("heading fixture was refused by the kernel")
+            return
+        }
+        let forgedMutation = SourceMutation(
+            expectedRevision: acceptedEdit.sourceMutation.expectedRevision,
+            range: acceptedEdit.sourceMutation.range,
+            expectedText: acceptedEdit.sourceMutation.expectedText,
+            replacement: "forged",
+            selectionBefore: acceptedEdit.sourceMutation.selectionBefore,
+            selectionAfter: acceptedEdit.sourceMutation.selectionAfter,
+            actionName: acceptedEdit.sourceMutation.actionName,
+            grouping: acceptedEdit.sourceMutation.grouping
+        )
+        let forgedStructural = AcceptedEditorTransaction(
+            route: transaction.route,
+            intentID: transaction.intentID,
+            request: transaction.request,
+            effect: .edit(
+                AcceptedEdit(
+                    sourceMutation: forgedMutation,
+                    presentationTransition: acceptedEdit.presentationTransition,
+                    sourceSelectionAfter: acceptedEdit.sourceSelectionAfter,
+                    projectionSelectionAfter: acceptedEdit.projectionSelectionAfter,
+                    intent: acceptedEdit.intent
+                )
+            )
+        )
+        #expect(document.commitEditorTransaction(forgedStructural, state: state, audit: audit) == .refused(.invalidIdentity))
+        #expect(document.text == "hello\n")
+        session.detach()
+
+        let taskDocument = MarkdownDocument()
+        taskDocument.installTextForTesting("- [ ] task\n")
+        let taskSession = EditorSession()
+        taskSession.attach(document: taskDocument)
+        taskSession.setMode(.wysiwyg)
+        let taskTree = try #require(MarkdownParser.parse(taskDocument.text, sourceVersion: taskDocument.sourceVersion).get())
+        taskSession.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: taskTree,
+                index: MarkdownSourceIndex(source: taskDocument.text, sourceVersion: taskDocument.sourceVersion)
+            ),
+            tree: taskTree
+        )
+        let taskPresentation = try #require(taskSession.presentation)
+        let taskAttachment = try #require(taskPresentation.attachments.first)
+        let taskSelection = ProjectionSelection(
+            utf16: NSRange(location: taskAttachment.utf16Location, length: 1),
+            revision: taskPresentation.projectionRevision
+        )
+        taskSession.captureSelection(.projection(taskSelection))
+        let taskState = taskSession.editorStateSnapshot()
+        let taskRequest = EditorEditRequest(
+            command: .toggleTask(nodeID: taskAttachment.nodeID),
+            selection: .projection(taskSelection),
+            expectedSourceRevision: SourceRevision(value: taskDocument.sourceVersion),
+            grouping: .discrete
+        )
+        let taskPlanned = SemanticEditEngine.plan(
+            taskRequest,
+            snapshot: taskState.source,
+            presentation: taskState.presentation,
+            tree: taskState.tree,
+            nextSnapshotID: taskState.nextPresentationID
+        )
+        let taskInput = EditorInput.checkbox(
+            EditorSemanticInput(request: taskRequest, plannedOutcome: taskPlanned)
+        )
+        var taskAudit = EditorTransactionReductionAudit()
+        guard case .accepted(let taskTransaction) = EditorTransactionKernel.reduce(
+            taskInput,
+            state: taskState,
+            audit: &taskAudit
+        ) else {
+            Issue.record("checkbox fixture was refused by the kernel")
+            return
+        }
+        let forgedCheckbox = AcceptedEditorTransaction(
+            route: taskTransaction.route,
+            intentID: taskTransaction.intentID,
+            request: taskTransaction.request,
+            checkboxNodeID: MarkdownNodeID(rawValue: taskAttachment.nodeID.rawValue &+ 1),
+            effect: taskTransaction.effect
+        )
+        #expect(taskDocument.commitEditorTransaction(forgedCheckbox, state: taskState, audit: taskAudit) == .refused(.invalidIdentity))
+        #expect(taskDocument.text == "- [ ] task\n")
+        taskSession.detach()
+    }
+
     // Verifies: COR-70 kernelRejectsMismatchedPlansAndSelectionIdentities.
     @Test func kernelRejectsMismatchedPlansAndSelectionIdentities() {
         let document = MarkdownDocument()
@@ -454,16 +592,35 @@ struct EditorTransactionKernelTests {
         imageDocument.installTextForTesting("x")
         let imageTrace = InMemoryEditorTrace()
         imageDocument.trace = imageTrace
+        let imageSession = EditorSession()
+        imageSession.attach(document: imageDocument)
+        imageSession.captureSelection(.source(SourceSelection(utf16: NSRange(location: 1, length: 0))))
+        let imagePlacement = ImagePlacementController()
+        imagePlacement.attach(actions: imageDocument)
+        let imageCoordinator = SourceEditor.Coordinator(
+            document: imageDocument,
+            placementController: imagePlacement,
+            session: imageSession
+        )
         let imageView = MarkdownSourceTextView(usingTextLayoutManager: false)
         imageView.documentActions = imageDocument
+        imageView.sourceCoordinator = imageCoordinator
+        imageCoordinator.textView = imageView
         imageView.string = imageDocument.text
         imageView.setSelectedRange(NSRange(location: 1, length: 0))
+        imageSession.captureSelection(.source(
+            SourceSelection(
+                utf16: imageView.selectedRange(),
+                affinity: imageView.selectionAffinity == .upstream ? .upstream : .downstream
+            )
+        ))
         imageView.insertImageMarkdown("![](a.png)", at: NSRange(location: 1, length: 0), selectEmptyDescription: false)
-        #expect(imageDocument.text == "x![](a.png)")
+        #expect(imageDocument.text == "x![](a.png)", "wired image route events: \(imageTrace.events)")
         #expect(imageTrace.events.contains {
             if case .mutationCommitted = $0 { return true }
             return false
         })
+        imageSession.detach()
 
         // Mode and reconciliation are also owner-approved transactions, not direct state writes.
         session.setMode(.source)
@@ -485,7 +642,7 @@ struct EditorTransactionKernelTests {
         #expect(imageTrace.events.contains {
             if case .historyApplied = $0 { return true }
             return false
-        })
+        }, "wired image undo events: \(imageTrace.events)")
         session.detach()
     }
 
@@ -531,6 +688,66 @@ struct EditorTransactionKernelTests {
     // merely searched for in production source text.
     @Test func everyInputRouteUsesEditorTransactionKernel() {
         for route in EditorInputRoute.allCases {
+            if route == .checkbox {
+                let taskDocument = MarkdownDocument()
+                taskDocument.installTextForTesting("- [ ] task\n")
+                let taskSession = EditorSession()
+                taskSession.attach(document: taskDocument)
+                taskSession.setMode(.wysiwyg)
+                let taskTree = MarkdownParser.parse(
+                    taskDocument.text,
+                    sourceVersion: taskDocument.sourceVersion
+                ).get()!
+                taskSession.installProjectionForTesting(
+                    MarkdownProjectionModel.build(
+                        tree: taskTree,
+                        index: MarkdownSourceIndex(
+                            source: taskDocument.text,
+                            sourceVersion: taskDocument.sourceVersion
+                        )
+                    ),
+                    tree: taskTree
+                )
+                let taskPresentation = taskSession.presentation!
+                let taskAttachment = taskPresentation.attachments.first {
+                    if case .task = $0.kind { return true }
+                    return false
+                }!
+                let taskSelection = ProjectionSelection(
+                    utf16: NSRange(location: taskAttachment.utf16Location, length: 1),
+                    revision: taskPresentation.projectionRevision
+                )
+                taskSession.captureSelection(.projection(taskSelection))
+                let taskState = taskSession.editorStateSnapshot()
+                let taskRequest = EditorEditRequest(
+                    command: .toggleTask(nodeID: taskAttachment.nodeID),
+                    selection: .projection(taskSelection),
+                    expectedSourceRevision: SourceRevision(value: taskDocument.sourceVersion),
+                    grouping: .discrete
+                )
+                let taskInput = EditorInput.checkbox(
+                    EditorSemanticInput(
+                        request: taskRequest,
+                        plannedOutcome: SemanticEditEngine.plan(
+                            taskRequest,
+                            snapshot: taskDocument.sourceSnapshot(),
+                            presentation: taskPresentation,
+                            tree: taskTree,
+                            nextSnapshotID: taskState.nextPresentationID
+                        )
+                    )
+                )
+                switch taskDocument.commitEditorInput(taskInput, state: taskState) {
+                case .committed(let transaction):
+                    #expect(transaction.route == route)
+                case .refused(let refusal):
+                    Issue.record("closed input route \(route) unexpectedly refused: \(refusal)")
+                }
+                #expect(taskDocument.text == "- [x] task\n")
+                taskSession.detach()
+                taskDocument.close()
+                continue
+            }
             let document = MarkdownDocument()
             defer { document.close() }
             document.installTextForTesting("a")

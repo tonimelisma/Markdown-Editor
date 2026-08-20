@@ -375,7 +375,8 @@ nonisolated enum SemanticEditEngine {
             nextSnapshot: nextFixed,
             projectionReplacementRange: NSRange(location: 0, length: (presentation.renderedString as NSString).length),
             projectionReplacement: nextFixed.renderedString,
-            selectionAfter: projSel
+            selectionAfter: projSel,
+            sourceAfter: usableSource
         )
         return .accepted(
             AcceptedEdit(

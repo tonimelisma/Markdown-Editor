@@ -191,7 +191,7 @@ return to discovery; do not improvise an architecture change.
 3. ✅ **COR-70 — Editor transaction kernel.** (Delivers: none)
    Extracts one pure input-to-transaction/refusal seam and thins AppKit adapters without changing
    product behavior. Delivered with owner-state validation, atomic refusal behavior, and real
-   source/WYSIWYG route proofs; the full gate observed 474 passing tests and zero failures.
+   source/WYSIWYG route proofs; the full gate observed 475 passing tests and zero failures.
 4. ⚪ **COR-71 — Bounded WYSIWYG input.** (Delivers: REQ-090, REQ-091, REQ-092)
    ([plan](plans/COR-71-bounded-wysiwyg-input.md)) Removes whole-document parse/compile work from
    ordinary input while retaining synchronous source/presentation correctness.

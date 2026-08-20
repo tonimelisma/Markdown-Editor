@@ -14,6 +14,25 @@ nonisolated struct PresentationTransition: Sendable, Equatable {
     let projectionReplacementRange: NSRange
     let projectionReplacement: String
     let selectionAfter: ProjectionSelection
+    /// Canonical source produced by an authoritative structural rebuild. Local identity patches
+    /// leave this nil because their existing atom splice is the proof of the next projection.
+    let sourceAfter: String?
+
+    init(
+        fromSnapshotID: PresentationSnapshot.ID,
+        nextSnapshot: PresentationSnapshot,
+        projectionReplacementRange: NSRange,
+        projectionReplacement: String,
+        selectionAfter: ProjectionSelection,
+        sourceAfter: String? = nil
+    ) {
+        self.fromSnapshotID = fromSnapshotID
+        self.nextSnapshot = nextSnapshot
+        self.projectionReplacementRange = projectionReplacementRange
+        self.projectionReplacement = projectionReplacement
+        self.selectionAfter = selectionAfter
+        self.sourceAfter = sourceAfter
+    }
 }
 
 /// Outcome of classifying/planning an edit against current session state.

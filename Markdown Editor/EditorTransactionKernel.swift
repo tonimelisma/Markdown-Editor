@@ -219,7 +219,23 @@ nonisolated enum EditorTransactionEffect: Sendable, Equatable {
 nonisolated struct AcceptedEditorTransaction: Sendable, Equatable {
     let route: EditorInputRoute
     let intentID: IntentID
+    let request: EditorEditRequest?
+    let checkboxNodeID: MarkdownNodeID?
     let effect: EditorTransactionEffect
+
+    init(
+        route: EditorInputRoute,
+        intentID: IntentID,
+        request: EditorEditRequest? = nil,
+        checkboxNodeID: MarkdownNodeID? = nil,
+        effect: EditorTransactionEffect
+    ) {
+        self.route = route
+        self.intentID = intentID
+        self.request = request
+        self.checkboxNodeID = checkboxNodeID
+        self.effect = effect
+    }
 }
 
 nonisolated enum EditorRefusal: Error, Sendable, Equatable, CaseIterable {
@@ -304,9 +320,22 @@ nonisolated enum EditorTransactionKernel {
         case (.wysiwygReplacement, .edit(let edit)),
              (.semanticCommand, .edit(let edit)),
              (.markedText, .edit(let edit)):
-            return validateSourceEdit(edit, state: state, requiresSourceSelection: false)
+            guard let request = transaction.request,
+                  requestSelectionMatchesOwner(request.selection, state: state) else {
+                return .invalidIdentity
+            }
+            return validateAcceptedEdit(edit, request: request, state: state)
         case (.checkbox, .edit(let edit)):
-            return validateSourceEdit(edit, state: state, requiresSourceSelection: false, allowSyntheticControl: true)
+            guard let request = transaction.request,
+                  requestSelectionMatchesOwner(request.selection, state: state),
+                  let nodeID = transaction.checkboxNodeID,
+                  case .toggleTask = request.command else {
+                return .invalidIdentity
+            }
+            if let refusal = validateAcceptedEdit(edit, request: request, state: state) {
+                return refusal
+            }
+            return validateCheckboxEdit(edit, nodeID: nodeID, state: state)
         case (.markedText, .markedText(let phase)):
             guard state.origin == .composition || state.origin == .nativeUserInput else {
                 return .invalidIdentity
@@ -341,8 +370,7 @@ nonisolated enum EditorTransactionKernel {
     private static func validateSourceEdit(
         _ edit: AcceptedEdit,
         state: EditorStateSnapshot,
-        requiresSourceSelection: Bool,
-        allowSyntheticControl: Bool = false
+        requiresSourceSelection: Bool
     ) -> EditorRefusal? {
         let mutation = edit.sourceMutation
         let source = state.source.text as NSString
@@ -371,14 +399,6 @@ nonisolated enum EditorTransactionKernel {
               currentSelection.range.revision.snapshotID == presentation.id,
               mutation.selectionBefore.affinity == currentSelection.affinity else {
             return .invalidIdentity
-        }
-
-        if allowSyntheticControl {
-            guard let attachment = presentation.attachments.first(where: {
-                $0.utf16Location == currentSelection.range.utf16.location
-            }), case .task = attachment.kind else {
-                return .invalidIdentity
-            }
         }
 
         guard let transition = edit.presentationTransition else {
@@ -411,12 +431,7 @@ nonisolated enum EditorTransactionKernel {
         // and affinity are bound above; exact coordinate mapping is required whenever the
         // transition claims to replace exactly what the caller selected, while a structural
         // transition must at least cover that selection (including a caret at either boundary).
-        if allowSyntheticControl {
-            // Checkbox presentation is a synthetic control replacement: the planner rebuilds the
-            // authoritative document projection, so the control's one-character selection is
-            // intentionally not an exact source-coordinate range.
-            return nil
-        } else if transition.projectionReplacementRange == currentSelection.range.utf16 {
+        if transition.projectionReplacementRange == currentSelection.range.utf16 {
             guard case .exact(let sourceRange) = presentation.coordinateMap.sourceRange(
                 forProjection: currentSelection.range.utf16,
                 affinity: currentSelection.affinity
@@ -443,6 +458,45 @@ nonisolated enum EditorTransactionKernel {
             with: transition.projectionReplacement
         )
         guard projected == transition.nextSnapshot.renderedString else { return .invalidIdentity }
+        return nil
+    }
+
+    private static func validateCheckboxEdit(
+        _ edit: AcceptedEdit,
+        nodeID: MarkdownNodeID,
+        state: EditorStateSnapshot
+    ) -> EditorRefusal? {
+        guard let presentation = state.presentation,
+              let selection = state.projectionSelection,
+              selection.range.revision.snapshotID == presentation.id,
+              selection.range.utf16.length == 1,
+              let attachment = presentation.attachments.first(where: {
+                  $0.utf16Location == selection.range.utf16.location
+              }), attachment.nodeID == nodeID,
+              case .task(let checked, _) = attachment.kind,
+              let itemSource = attachment.sourceUTF16Range,
+              let markerRange = StructuralSourceSpans.taskMarkerRange(
+                  itemSource: itemSource,
+                  source: state.source.text,
+                  currentlyChecked: checked
+              ) else {
+            return .invalidIdentity
+        }
+        let mutation = edit.sourceMutation
+        guard mutation.range == markerRange,
+              mutation.expectedText == (state.source.text as NSString).substring(with: markerRange),
+              mutation.replacement == (checked ? "[ ]" : "[x]") else {
+            return .invalidIdentity
+        }
+        guard let transition = edit.presentationTransition,
+              let nextAttachment = transition.nextSnapshot.attachments.first(where: {
+                  $0.nodeID == nodeID
+              }),
+              nextAttachment.sourceUTF16Range == itemSource,
+              case .task(let nextChecked, _) = nextAttachment.kind,
+              nextChecked != checked else {
+            return .invalidIdentity
+        }
         return nil
     }
 
@@ -622,13 +676,19 @@ nonisolated enum EditorTransactionKernel {
         switch outcome {
         case .accepted(let edit):
             guard let refusal = validateAcceptedEdit(edit, request: value.request, state: state) else {
-                return .accepted(
-                    AcceptedEditorTransaction(
-                        route: input.route,
-                        intentID: value.intentID,
-                        effect: .edit(edit)
-                    )
-                )
+            return .accepted(
+            AcceptedEditorTransaction(
+                route: input.route,
+                intentID: value.intentID,
+                request: value.request,
+                checkboxNodeID: {
+                    guard input.route == .checkbox,
+                          case .toggleTask(let nodeID) = value.request.command else { return nil }
+                    return nodeID
+                }(),
+                effect: .edit(edit)
+            )
+        )
             }
             return .refused(refusal)
         case .refused(let refusal):
@@ -779,10 +839,27 @@ nonisolated enum EditorTransactionKernel {
                 if transition.projectionReplacementRange == selection.range.utf16 {
                     guard transition.projectionReplacement.isEmpty else { return .contentMismatch }
                 } else {
-                    guard transition.nextSnapshot.renderedString == expected else { return .contentMismatch }
+            guard transition.nextSnapshot.renderedString == expected else { return .contentMismatch }
                 }
             default:
                 break
+            }
+
+            if let sourceAfter = transition.sourceAfter {
+                let expectedSourceAfter = (state.source.text as NSString).replacingCharacters(
+                    in: mutation.range,
+                    with: mutation.replacement
+                )
+                guard sourceAfter == expectedSourceAfter,
+                      let rebuilt = AuthoritativePresentationBuilder.build(
+                          source: sourceAfter,
+                          sourceRevision: transition.nextSnapshot.sourceRevision.value,
+                          snapshotID: transition.nextSnapshot.id,
+                          locationGeneration: transition.nextSnapshot.locationGeneration,
+                          intent: edit.intent
+                      ), rebuilt == transition.nextSnapshot else {
+                    return .invalidIdentity
+                }
             }
         }
         return nil
