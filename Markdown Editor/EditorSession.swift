@@ -620,9 +620,16 @@ final class EditorSession: ObservableObject {
             isTypingCommand = false
         }
         if isOrdinaryNativeReplacement,
-           case .projection = selection,
+           case .projection(let projectionSelection) = selection,
            isTypingCommand,
-           let presentation = state.presentation {
+           let presentation = state.presentation,
+           LocalTransitionDomain.classify(
+               ProjectionSelectionClassifier.classify(
+                   selection: projectionSelection.range.utf16,
+                   affinity: projectionSelection.affinity,
+                   snapshot: presentation
+               )
+           ) != .tableCell {
             // COR-71: this route is deliberately synchronous but parser-free. The closed local
             // domain either produces a complete identity transition or refuses before owner
             // mutation; authoritative reconciliation is scheduled only after an accepted edit.
