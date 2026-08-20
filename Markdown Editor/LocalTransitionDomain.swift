@@ -70,7 +70,7 @@ nonisolated enum LocalTransitionDomain {
             snapshot: presentation
         )
         switch classify(classification) {
-        case .identityText, .atomicText:
+        case .identityText, .atomicText, .syntheticInsertion:
             let planned = SemanticEditEngine.plan(
                 request,
                 snapshot: snapshot,
@@ -85,8 +85,6 @@ nonisolated enum LocalTransitionDomain {
                 return .refused(.unprovable)
             }
             return .accepted(edit)
-        case .syntheticInsertion:
-            return .refused(.unprovable)
         case .tableCell, .taskMarker, .uneditable:
             return .refused(.unsupportedCommand)
         case .mixed, .crossCell, .ambiguous:
