@@ -74,10 +74,11 @@ enum SourceEditor {
                 } else {
                     committed = document.commitEditorInput(
                         input,
-                        state: EditorStateSnapshot(
-                            source: document.sourceSnapshot(),
-                            sourceSelection: mutation.selectionBefore
-                        )
+                    state: EditorStateSnapshot(
+                        source: document.sourceSnapshot(),
+                        sourceSelection: mutation.selectionBefore,
+                        intentID: input.intentID
+                    )
                     )
                 }
                 switch committed {
@@ -377,7 +378,8 @@ final class MarkdownSourceTextView: NSTextView {
                     input,
                     state: EditorStateSnapshot(
                         source: snapshot,
-                        sourceSelection: selectionBefore
+                        sourceSelection: selectionBefore,
+                        intentID: input.intentID
                     )
                 )
             } else {

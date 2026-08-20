@@ -271,6 +271,16 @@ nonisolated enum EditorTransactionReduction: Sendable, Equatable {
     case refused(EditorRefusal)
 }
 
+/// Caller-owned proof that a route performed one reduction before handing its result to the
+/// document owner. The kernel remains free of diagnostics, clocks, and mutable document state.
+nonisolated struct EditorTransactionReductionAudit: Sendable, Equatable {
+    private(set) var count = 0
+
+    mutating func recordReduction() {
+        count &+= 1
+    }
+}
+
 /// Main-actor application result returned by a document/session owner after reduction.
 nonisolated enum EditorTransactionCommitResult: Sendable, Equatable {
     case committed(AcceptedEditorTransaction)
@@ -287,16 +297,24 @@ nonisolated enum EditorTransactionKernel {
         _ transaction: AcceptedEditorTransaction,
         state: EditorStateSnapshot
     ) -> EditorRefusal? {
+        guard transaction.intentID == state.intentID else { return .invalidIdentity }
         switch (transaction.route, transaction.effect) {
         case (.sourceReplacement, .edit(let edit)), (.imageReference, .edit(let edit)):
             return validateSourceEdit(edit, state: state, requiresSourceSelection: true)
         case (.wysiwygReplacement, .edit(let edit)),
              (.semanticCommand, .edit(let edit)),
-             (.checkbox, .edit(let edit)),
              (.markedText, .edit(let edit)):
             return validateSourceEdit(edit, state: state, requiresSourceSelection: false)
-        case (.markedText, .markedText):
-            return nil
+        case (.checkbox, .edit(let edit)):
+            return validateSourceEdit(edit, state: state, requiresSourceSelection: false, allowSyntheticControl: true)
+        case (.markedText, .markedText(let phase)):
+            guard state.origin == .composition || state.origin == .nativeUserInput else {
+                return .invalidIdentity
+            }
+            switch phase {
+            case .update, .commit, .cancel:
+                return nil
+            }
         case (.undoRedo, .history(let input)):
             guard input.patch.matchesCurrentContent(in: state.source.text),
                   input.patch.range.location >= 0,
@@ -305,7 +323,8 @@ nonisolated enum EditorTransactionKernel {
                 return .contentMismatch
             }
             return nil
-        case (.modeChange, .modeChange):
+        case (.modeChange, .modeChange(let mode)):
+            guard mode == .source || mode == .wysiwyg else { return .invalidIdentity }
             return nil
         case (.reconciliation, .reconciliation(let input)):
             guard input.sourceRevision.value == state.source.sourceVersion,
@@ -322,7 +341,8 @@ nonisolated enum EditorTransactionKernel {
     private static func validateSourceEdit(
         _ edit: AcceptedEdit,
         state: EditorStateSnapshot,
-        requiresSourceSelection: Bool
+        requiresSourceSelection: Bool,
+        allowSyntheticControl: Bool = false
     ) -> EditorRefusal? {
         let mutation = edit.sourceMutation
         let source = state.source.text as NSString
@@ -337,7 +357,11 @@ nonisolated enum EditorTransactionKernel {
               mutation.selectionAfter.range.utf16.length >= 0,
               NSMaxRange(mutation.selectionAfter.range.utf16) <= nextLength else { return .invalidIdentity }
 
-        if requiresSourceSelection || edit.presentationTransition == nil {
+        if allowSyntheticControl {
+            return nil
+        }
+
+        if requiresSourceSelection || state.projectionSelection == nil {
             guard mutation.selectionBefore == state.sourceSelection,
                   edit.presentationTransition == nil,
                   edit.projectionSelectionAfter == nil else {
@@ -347,8 +371,41 @@ nonisolated enum EditorTransactionKernel {
         }
 
         guard let presentation = state.presentation,
-              let transition = edit.presentationTransition,
-              transition.fromSnapshotID == presentation.id,
+              let currentSelection = state.projectionSelection,
+              currentSelection.range.revision.snapshotID == presentation.id,
+              mutation.selectionBefore.affinity == currentSelection.affinity else {
+            return .invalidIdentity
+        }
+        guard let transition = edit.presentationTransition else {
+            // Some semantic routes (notably task toggles) commit a source-only marker patch and
+            // deliberately wait for reconciliation to rebuild presentation. The live projection
+            // selection still has to map exactly to that source mutation.
+            guard edit.projectionSelectionAfter == nil else { return .invalidIdentity }
+            let attachment = presentation.attachments.first {
+                $0.utf16Location == currentSelection.range.utf16.location
+            }
+            if let attachment, case .task = attachment.kind {
+                // Task markers are synthetic projection controls. Their source span may be
+                // unavailable on a provisional model, but the live attachment identity still
+                // binds this source-only marker patch to the current checkbox control.
+                return nil
+            }
+            let mappedSourceMatches = presentation.coordinateMap.sourceRange(
+                forProjection: currentSelection.range.utf16,
+                affinity: currentSelection.affinity
+            ) == .exact(mutation.range)
+            guard mappedSourceMatches else {
+                return .invalidIdentity
+            }
+            return nil
+        }
+        guard case .exact(let sourceRange) = presentation.coordinateMap.sourceRange(
+            forProjection: currentSelection.range.utf16,
+            affinity: currentSelection.affinity
+        ), sourceRange == mutation.range else {
+            return .invalidIdentity
+        }
+        guard transition.fromSnapshotID == presentation.id,
               transition.nextSnapshot.id == state.nextPresentationID,
               transition.nextSnapshot.sourceRevision.value == state.source.sourceVersion &+ 1,
               transition.nextSnapshot.locationGeneration == state.source.locationGeneration,
@@ -377,6 +434,23 @@ nonisolated enum EditorTransactionKernel {
     }
 
     static func reduce(
+        _ input: EditorInput,
+        state: EditorStateSnapshot
+    ) -> EditorTransactionReduction {
+        var audit = EditorTransactionReductionAudit()
+        return reduce(input, state: state, audit: &audit)
+    }
+
+    static func reduce(
+        _ input: EditorInput,
+        state: EditorStateSnapshot,
+        audit: inout EditorTransactionReductionAudit
+    ) -> EditorTransactionReduction {
+        audit.recordReduction()
+        return reduceCore(input, state: state)
+    }
+
+    private static func reduceCore(
         _ input: EditorInput,
         state: EditorStateSnapshot
     ) -> EditorTransactionReduction {

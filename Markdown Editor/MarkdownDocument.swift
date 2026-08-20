@@ -375,7 +375,8 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     func commitEditorInput(_ input: EditorInput) -> EditorTransactionCommitResult {
         let state = EditorStateSnapshot(
             source: sourceSnapshot(),
-            sourceSelection: SourceSelection(utf16: NSRange(location: 0, length: 0))
+            sourceSelection: SourceSelection(utf16: NSRange(location: 0, length: 0)),
+            intentID: input.intentID
         )
         return commitEditorInput(input, state: state)
     }
@@ -398,7 +399,8 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             trace?.record(route: .editRefused, .editRefused(category: .refusal(.staleVersion)))
             return .refused(.staleVersion)
         }
-        switch EditorTransactionKernel.reduce(input, state: state) {
+        var audit = EditorTransactionReductionAudit()
+        switch EditorTransactionKernel.reduce(input, state: state, audit: &audit) {
         case .refused(let refusal):
             var recorded = false
             if case .sourceReplacement(let value) = input {
@@ -417,7 +419,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             }
             return .refused(refusal)
         case .accepted(let transaction):
-            return commitEditorTransaction(transaction, state: state)
+            return commitEditorTransaction(transaction, state: state, audit: audit)
         }
     }
 
@@ -427,7 +429,8 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     @discardableResult
     func commitEditorTransaction(
         _ transaction: AcceptedEditorTransaction,
-        state: EditorStateSnapshot
+        state: EditorStateSnapshot,
+        audit: EditorTransactionReductionAudit? = nil
     ) -> EditorTransactionCommitResult {
         let liveSource = sourceSnapshot()
         guard liveSource.text == state.source.text,
@@ -436,6 +439,10 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
               liveSource.fileURL == state.source.fileURL else {
             trace?.record(route: .editRefused, .editRefused(category: .refusal(.staleVersion)))
             return .refused(.staleVersion)
+        }
+        guard audit?.count ?? 1 == 1 else {
+            trace?.record(route: .editRefused, .editRefused(category: .refusal(.ambiguousSelection)))
+            return .refused(.invalidIdentity)
         }
         if let refusal = EditorTransactionKernel.validateAcceptedTransaction(transaction, state: state) {
             switch transaction.effect {

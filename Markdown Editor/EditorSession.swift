@@ -644,9 +644,11 @@ final class EditorSession: ObservableObject {
         default:
             input = .semanticCommand(semanticInput)
         }
+        var reductionAudit = EditorTransactionReductionAudit()
         let reduction = EditorTransactionKernel.reduce(
             input,
-            state: state
+            state: state,
+            audit: &reductionAudit
         )
         switch reduction {
         case .accepted(let transaction):
@@ -678,7 +680,11 @@ final class EditorSession: ObservableObject {
                 intentID: transaction.intentID,
                 effect: .edit(edit)
             )
-            switch document.commitEditorTransaction(commitTransaction, state: state) {
+            switch document.commitEditorTransaction(
+                commitTransaction,
+                state: state,
+                audit: reductionAudit
+            ) {
             case .committed:
                 updateSourceModeState { $0.selection = edit.sourceSelectionAfter }
                 if let transition = edit.presentationTransition {

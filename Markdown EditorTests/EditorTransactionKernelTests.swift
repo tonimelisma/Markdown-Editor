@@ -144,6 +144,43 @@ struct EditorTransactionKernelTests {
             if case .mutationRefused = $0 { return true }
             return false
         })
+
+        let markedState = EditorStateSnapshot(
+            source: document.sourceSnapshot(),
+            origin: .programmaticPresentation
+        )
+        let markedTransaction = AcceptedEditorTransaction(
+            route: .markedText,
+            intentID: markedState.intentID,
+            effect: .markedText(.update)
+        )
+        #expect(document.commitEditorTransaction(markedTransaction, state: markedState) == .refused(.invalidIdentity))
+
+        let modeState = EditorStateSnapshot(source: document.sourceSnapshot())
+        let forgedMode = AcceptedEditorTransaction(
+            route: .modeChange,
+            intentID: IntentID(rawValue: 1),
+            effect: .modeChange(.wysiwyg)
+        )
+        #expect(document.commitEditorTransaction(forgedMode, state: modeState) == .refused(.invalidIdentity))
+
+        var repeatedAudit = EditorTransactionReductionAudit()
+        repeatedAudit.recordReduction()
+        repeatedAudit.recordReduction()
+        let validTransaction = AcceptedEditorTransaction(
+            route: .sourceReplacement,
+            intentID: state.intentID,
+            effect: .edit(
+                AcceptedEdit(
+                    sourceMutation: mutation,
+                    presentationTransition: nil,
+                    sourceSelectionAfter: mutation.selectionAfter,
+                    projectionSelectionAfter: nil,
+                    intent: nil
+                )
+            )
+        )
+        #expect(document.commitEditorTransaction(validTransaction, state: state, audit: repeatedAudit) == .refused(.invalidIdentity))
     }
 
     // Verifies: COR-70 kernelRejectsMismatchedPlansAndSelectionIdentities.
@@ -348,7 +385,7 @@ struct EditorTransactionKernelTests {
     // Verifies: COR-70 — the real projection, marked-text, image, mode, reconciliation, and
     // history entry points all use the owner transaction seam; the adapter never applies a
     // second source mutation of its own.
-    @Test func realAdapterRoutesUseTheKernelOwnerSeam() throws {
+    @Test(.serialized) func realAdapterRoutesUseTheKernelOwnerSeam() throws {
         let document = MarkdownDocument()
         document.installTextForTesting("hi\n")
         let trace = InMemoryEditorTrace()
@@ -428,37 +465,6 @@ struct EditorTransactionKernelTests {
             return false
         })
 
-        // A checkbox press is a WYSIWYG adapter route, not a formatting shortcut that may
-        // bypass the transaction owner.
-        let taskDocument = MarkdownDocument()
-        taskDocument.installTextForTesting("- [ ] task\n")
-        let taskSession = EditorSession()
-        taskSession.attach(document: taskDocument)
-        let taskTree = try #require(MarkdownParser.parse(taskDocument.text, sourceVersion: taskDocument.sourceVersion).get())
-        taskSession.installProjectionForTesting(
-            MarkdownProjectionModel.build(
-                tree: taskTree,
-                index: MarkdownSourceIndex(source: taskDocument.text, sourceVersion: taskDocument.sourceVersion)
-            ),
-            tree: taskTree
-        )
-        let taskView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
-        taskView.session = taskSession
-        taskView.documentActions = taskDocument
-        let taskAttachment = try #require(taskSession.presentation?.attachments.first {
-            if case .task = $0.kind { return true }
-            return false
-        })
-        let taskSelection = ProjectionSelection(
-            utf16: NSRange(location: taskAttachment.utf16Location, length: 1),
-            revision: try #require(taskSession.presentation).projectionRevision
-        )
-        taskView.setSelectedRange(taskSelection.range.utf16)
-        taskSession.captureSelection(.projection(taskSelection))
-        #expect(taskView.toggleTask(atUTF16: taskAttachment.utf16Location))
-        #expect(taskDocument.text == "- [x] task\n")
-        taskSession.detach()
-
         // Mode and reconciliation are also owner-approved transactions, not direct state writes.
         session.setMode(.source)
         session.setMode(.wysiwyg)
@@ -481,6 +487,44 @@ struct EditorTransactionKernelTests {
             return false
         })
         session.detach()
+    }
+
+    // Verifies: COR-70 — the WYSIWYG checkbox callback performs one owner transaction on its
+    // own fixture, without composition or projection edits sharing AppKit transient state.
+    @Test(.serialized) func realCheckboxAdapterRouteUsesKernelOwnerSeam() throws {
+        let taskDocument = MarkdownDocument()
+        taskDocument.installTextForTesting("- [ ] task\n")
+        let taskTrace = InMemoryEditorTrace()
+        taskDocument.trace = taskTrace
+        let taskSession = EditorSession()
+        taskSession.attach(document: taskDocument)
+        taskSession.setMode(.wysiwyg)
+        let taskTree = try #require(MarkdownParser.parse(taskDocument.text, sourceVersion: taskDocument.sourceVersion).get())
+        taskSession.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: taskTree,
+                index: MarkdownSourceIndex(source: taskDocument.text, sourceVersion: taskDocument.sourceVersion)
+            ),
+            tree: taskTree
+        )
+        let taskView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
+        taskView.session = taskSession
+        taskView.documentActions = taskDocument
+        let taskAttachment = try #require(taskSession.presentation?.attachments.first {
+            if case .task = $0.kind { return true }
+            return false
+        })
+        let taskSelection = ProjectionSelection(
+            utf16: NSRange(location: taskAttachment.utf16Location, length: 1),
+            revision: try #require(taskSession.presentation).projectionRevision
+        )
+        taskView.setSelectedRange(taskSelection.range.utf16)
+        taskSession.captureSelection(.projection(taskSelection))
+        #expect(taskSession.wysiwygModeState.selection == taskSelection)
+        let toggled = taskView.toggleTask(atUTF16: taskAttachment.utf16Location)
+        #expect(toggled, "task route refused; text=\(taskDocument.text), events=\(taskTrace.events)")
+        #expect(taskDocument.text == "- [x] task\n")
+        taskSession.detach()
     }
 
     // Verifies: COR-70 — the closed input matrix is executed through the document owner, not
@@ -524,10 +568,35 @@ struct EditorTransactionKernelTests {
             case .wysiwygReplacement:
                 input = .wysiwygReplacement(EditorSemanticInput(request: request, plannedOutcome: plannedOutcome))
             case .markedText:
-                input = .markedText(EditorMarkedTextInput(
-                    phase: .update,
-                    sourceRevision: SourceRevision(value: source.sourceVersion)
-                ))
+                for phase in EditorMarkedTextInput.Phase.allCases {
+                    let phaseDocument = MarkdownDocument()
+                    phaseDocument.installTextForTesting("a")
+                    defer { phaseDocument.close() }
+                    let phaseSource = phaseDocument.sourceSnapshot()
+                    let markedInput = EditorInput.markedText(EditorMarkedTextInput(
+                        phase: phase,
+                        request: phase == .commit ? request : nil,
+                        sourceRevision: SourceRevision(value: phaseSource.sourceVersion),
+                        plannedOutcome: phase == .commit ? plannedOutcome : nil
+                    ))
+                    let markedResult = phaseDocument.commitEditorInput(
+                        markedInput,
+                        state: EditorStateSnapshot(
+                            source: phaseSource,
+                            sourceSelection: selection
+                        )
+                    )
+                    switch phase {
+                    case .update, .cancel, .commit:
+                        switch markedResult {
+                        case .committed:
+                            break
+                        case .refused(let refusal):
+                            Issue.record("marked-text phase \(phase) unexpectedly refused: \(refusal)")
+                        }
+                    }
+                }
+                continue
             case .semanticCommand:
                 input = .semanticCommand(EditorSemanticInput(request: request, plannedOutcome: plannedOutcome))
             case .checkbox:

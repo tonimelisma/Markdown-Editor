@@ -455,7 +455,8 @@ final class ImagePlacementController: ObservableObject {
                     imageInput,
                     state: EditorStateSnapshot(
                         source: actions.sourceSnapshot(),
-                        sourceSelection: mutation.selectionBefore
+                        sourceSelection: mutation.selectionBefore,
+                        intentID: imageInput.intentID
                     )
                 )
             } else {
