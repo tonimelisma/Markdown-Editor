@@ -32,11 +32,16 @@ architecture or requirements.
 | hard break | refusal (`unprovable`) | Refuse synchronously until a separately proven bounded transition exists. |
 | list continuation | refusal (`mappingFailure`) | Refuse synchronously; Source remains available. |
 | nested quote/list | bounded-oracle-required | Use an explicit bounded enclosing-block oracle route. |
-| table cell | refusal (`unprovable`) | Refuse synchronously; table-cell editing remains on its established command route. |
+| table cell | bounded-oracle-required (corrected follow-up) | Preserve the established cell-owned planner until a bounded cell oracle replaces its full-source authority. |
 | raw HTML | local | Add to the local domain only for literal text that remains an uneditable/raw span. |
 | code span | local | Add to the local domain only for literal code-span content. |
 | code fence | local | Add to the local domain only for literal fenced content. |
 | IME commit | local | Add the commit path to the local domain; composition updates/cancel remain transient. |
 
-No observed outcome fell outside the plan's decision table. The implementation must retain the
-refusal branch as a closed fallback for classes not represented above.
+The first throwaway probe used a guessed table location and reported `unprovable`; that location
+was outside the real editable cell. The follow-up used the cell's actual `utf16Range.location`
+from the production presentation and the existing `PerformanceBoundaryTests/tableCellEditUsesOneBoundedPatch`
+route, which accepted and applied one bounded storage patch. The table-cell row above records the
+corrected outcome. No other observed outcome fell outside the plan's decision table. The
+implementation must retain the refusal branch as a closed fallback for classes not represented
+above.

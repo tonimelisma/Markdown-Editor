@@ -16,8 +16,8 @@ table. The production class table is now closed as follows:
 | --- | --- |
 | punctuation, delimiter edits, line-start markers, escapes | local transition |
 | raw HTML literal spans, code spans, fenced code content, IME commit | local transition |
-| nested quote/list | bounded enclosing-block oracle |
-| soft/hard breaks, list continuation, table cells, and any unlisted class | synchronous refusal |
+| nested quote/list, table cells | bounded enclosing-block oracle |
+| soft/hard breaks, list continuation, and any unlisted class | synchronous refusal |
 
 The local branch is intentionally conservative: it accepts only the exact identity/atomic spans
 returned by the existing coordinate map and literal encoder. The bounded branch reparses only the
