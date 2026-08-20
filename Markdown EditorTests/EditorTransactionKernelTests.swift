@@ -428,6 +428,37 @@ struct EditorTransactionKernelTests {
             return false
         })
 
+        // A checkbox press is a WYSIWYG adapter route, not a formatting shortcut that may
+        // bypass the transaction owner.
+        let taskDocument = MarkdownDocument()
+        taskDocument.installTextForTesting("- [ ] task\n")
+        let taskSession = EditorSession()
+        taskSession.attach(document: taskDocument)
+        let taskTree = try #require(MarkdownParser.parse(taskDocument.text, sourceVersion: taskDocument.sourceVersion).get())
+        taskSession.installProjectionForTesting(
+            MarkdownProjectionModel.build(
+                tree: taskTree,
+                index: MarkdownSourceIndex(source: taskDocument.text, sourceVersion: taskDocument.sourceVersion)
+            ),
+            tree: taskTree
+        )
+        let taskView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
+        taskView.session = taskSession
+        taskView.documentActions = taskDocument
+        let taskAttachment = try #require(taskSession.presentation?.attachments.first {
+            if case .task = $0.kind { return true }
+            return false
+        })
+        let taskSelection = ProjectionSelection(
+            utf16: NSRange(location: taskAttachment.utf16Location, length: 1),
+            revision: try #require(taskSession.presentation).projectionRevision
+        )
+        taskView.setSelectedRange(taskSelection.range.utf16)
+        taskSession.captureSelection(.projection(taskSelection))
+        #expect(taskView.toggleTask(atUTF16: taskAttachment.utf16Location))
+        #expect(taskDocument.text == "- [x] task\n")
+        taskSession.detach()
+
         // Mode and reconciliation are also owner-approved transactions, not direct state writes.
         session.setMode(.source)
         session.setMode(.wysiwyg)
