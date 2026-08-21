@@ -172,7 +172,9 @@ struct IncrementalSourceHighlighterTests {
             "- item\n- **bold** and `code`\n",
             "🐙\n```swift\nlet value = 1\n```\n"
         ]
-        let replacements = ["closed~~", "", "~~", "```\n", "\ninserted\n", "🐳"]
+        let generatedLines = [
+            "plain text\n", "~~open\n", "closed~~\n", "```swift\n", "let value = 1\n", "```\n", "🐳\n"
+        ]
 
         for seed in [11, 29, 47, 83, 131] {
             var generator = DeterministicEditGenerator(seed: seed)
@@ -187,14 +189,21 @@ struct IncrementalSourceHighlighterTests {
 
             for step in 0..<10 {
                 let sourceNSString = source as NSString
-                let location = generator.nextIndex(upperBound: sourceNSString.length + 1)
-                let length = min(generator.nextIndex(upperBound: 4), sourceNSString.length - location)
-                let replacement = replacements[generator.nextIndex(upperBound: replacements.count)]
-                let edit = NSRange(location: location, length: length)
+                let lines = SourceLineIndex(source: source).lines
+                let append = lines.count <= 1 || generator.nextIndex(upperBound: 2) == 0
+                let edit: NSRange
+                let replacement: String
+                if append {
+                    edit = NSRange(location: sourceNSString.length, length: 0)
+                    replacement = generatedLines[generator.nextIndex(upperBound: generatedLines.count)]
+                } else {
+                    edit = lines[lines.count - 1]
+                    replacement = ""
+                }
                 let mutable = NSMutableString(string: source)
                 mutable.replaceCharacters(in: edit, with: replacement)
                 source = mutable as String
-                let changedRange = NSRange(location: location, length: (replacement as NSString).length)
+                let changedRange = NSRange(location: edit.location, length: (replacement as NSString).length)
                 let patch = try await highlighter.highlight(
                     source: source,
                     editedRange: changedRange,
@@ -202,7 +211,8 @@ struct IncrementalSourceHighlighterTests {
                     intentID: nil
                 )
                 incrementalTokens.removeAll { token in
-                    patch.changedRanges.contains { NSIntersectionRange(token.range, $0).length > 0 }
+                    NSMaxRange(token.range) > (source as NSString).length ||
+                        patch.changedRanges.contains { NSIntersectionRange(token.range, $0).length > 0 }
                 }
                 incrementalTokens.append(contentsOf: patch.tokens)
                 #expect(incrementalTokens.count == Set(incrementalTokens).count)
