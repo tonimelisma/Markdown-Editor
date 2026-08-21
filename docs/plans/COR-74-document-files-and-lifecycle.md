@@ -2,7 +2,7 @@
 
 - **Status:** Approved; not implemented
 
-Delivers REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-013, REQ-014, REQ-015, REQ-017, REQ-019, REQ-020, REQ-021
+- **Delivers:** REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-013, REQ-014, REQ-015, REQ-017, REQ-019, REQ-020, REQ-021
 
 Architecture impact none; verifies/corrects NSDocument ownership ARC-001/ARC-Q04.
 
