@@ -72,31 +72,44 @@ struct DocumentLifecycleContractTests {
         #expect(document.text == "before!")
         #expect(document.isDocumentEdited == true)
 
+        let sourceVersionBeforeSave = document.sourceVersion
+        let locationGenerationBeforeSave = document.locationGeneration
+        let canUndoBeforeSave = document.undoManager?.canUndo == true
         document.saveExecutorOverride = SaveOutcome(.failed)
         let outcome = await document.saveDocument()
 
         #expect(outcome == .failed)
         #expect(document.text == "before!")
         #expect(document.fileURL == nil)
-
-        let sourceVersionAfterFailure = document.sourceVersion
-        let locationGenerationAfterFailure = document.locationGeneration
-        let canUndoAfterFailure = document.undoManager?.canUndo == true
+        #expect(document.sourceVersion == sourceVersionBeforeSave)
+        #expect(document.locationGeneration == locationGenerationBeforeSave)
+        #expect(document.undoManager?.canUndo == canUndoBeforeSave)
 
         document.saveExecutorOverride = SaveOutcome(.cancelled)
         let cancelled = await document.saveDocument()
 
         #expect(cancelled == .cancelled)
         #expect(document.text == "before!")
-        #expect(document.sourceVersion == sourceVersionAfterFailure)
-        #expect(document.locationGeneration == locationGenerationAfterFailure)
-        #expect(document.undoManager?.canUndo == canUndoAfterFailure)
+        #expect(document.sourceVersion == sourceVersionBeforeSave)
+        #expect(document.locationGeneration == locationGenerationBeforeSave)
+        #expect(document.undoManager?.canUndo == canUndoBeforeSave)
     }
 
     // Verifies: REQ-005 — a canonical edit hands off to NSDocument's autosave contract and
     // completes without a custom timer or shadow persistence service.
     @Test func autosaveHandoffCompletesAfterCanonicalEdit() async throws {
         let document = MarkdownDocument()
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cor74-autosave-" + UUID().uuidString + ".md")
+        var autosavedURLToRemove: URL?
+        defer {
+            if let autosavedURLToRemove {
+                try? FileManager.default.removeItem(at: autosavedURLToRemove)
+            }
+            try? FileManager.default.removeItem(at: url)
+        }
+        try Data("before".utf8).write(to: url)
+        document.fileURL = url
         document.installTextForTesting("before")
         let snapshot = document.sourceSnapshot()
         let mutation = try #require(SourceMutation.exact(
@@ -131,6 +144,12 @@ struct DocumentLifecycleContractTests {
 
         #expect(error == nil)
         #expect(document.hasUnautosavedChanges == false)
+        let autosavedURL = document.autosavedContentsFileURL
+        #expect(autosavedURL != nil)
+        if let autosavedURL {
+            autosavedURLToRemove = autosavedURL
+            #expect(String(data: try Data(contentsOf: autosavedURL), encoding: .utf8) == "before!")
+        }
     }
 
     // Verifies: REQ-006/014/020 — Versions/revert and tabs stay AppKit-owned. The app configures
