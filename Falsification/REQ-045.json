@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-045",
+  "mutations": [
+    {
+      "rationale": "Disabling lexical stabilization forces the ordinary edit to scan the complete document tail.",
+      "file": "Markdown Editor/IncrementalSourceHighlighter.swift",
+      "find": "            if !oldCache.isEmpty,",
+      "replace": "            if false,",
+      "expect_red": ["ordinaryEditStopsAtStableTail"]
+    }
+  ]
+}

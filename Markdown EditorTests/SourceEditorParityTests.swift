@@ -10,6 +10,24 @@ import Testing
 
 @MainActor
 struct SourceEditorParityTests {
+    // Verifies: REQ-040 — the production incremental patch applies display attributes without
+    // changing source text.
+    @Test func productionIncrementalPatchAppliesStyleWithoutSourceMutation() async throws {
+        let source = "# Heading\nplain text\n"
+        let fixture = try makeFixture(source: source)
+        let patch = try await IncrementalSourceHighlighter().highlight(
+            source: source,
+            editedRange: nil,
+            sourceRevision: fixture.document.sourceVersion,
+            intentID: nil
+        )
+        fixture.coordinator.apply(patch, expectedVersion: 0, expectedText: source)
+        let actual = fixture.storage.attributes(at: 0, effectiveRange: nil)[.font] as? NSFont
+        let expected = fixture.coordinator.theme.attributes(for: .heading(level: 1))[.font] as? NSFont
+        #expect(actual == expected)
+        #expect(fixture.storage.string == source)
+    }
+
     // Verifies: REQ-045 — ordinary source edits reset and restyle only their changed line.
     @Test func sourceHighlightAppliesOnlyToTheChangedWindow() async throws {
         let source = (0..<80).map { "ordinary source line \($0) with enough text to measure" }.joined(separator: "\n") + "\n"
@@ -92,6 +110,7 @@ struct SourceEditorParityTests {
     private struct Fixture {
         let coordinator: SourceEditor.Coordinator
         let storage: SpyTextStorage
+        let document: MarkdownDocument
         let session: EditorSession
         let trace: InMemoryEditorTrace
         // `coordinator.textView` is `weak` (production mirrors AppKit's normal top-down
@@ -156,6 +175,6 @@ struct SourceEditorParityTests {
         // execution, never under serial or isolated execution. `coordinator.textView` still needs
         // to be set: `apply()` reads `textView.string`/`textView.textStorage` directly.
         coordinator.textView = textView
-        return Fixture(coordinator: coordinator, storage: storage, session: session, trace: trace, textView: textView)
+        return Fixture(coordinator: coordinator, storage: storage, document: document, session: session, trace: trace, textView: textView)
     }
 }

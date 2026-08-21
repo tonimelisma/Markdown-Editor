@@ -32,7 +32,11 @@ The app is a native Swift 6 macOS document application:
 - SwiftUI owns document-content composition. A window-scoped native AppKit command surface owns
   the menu and `NSToolbar` presentation.
 - Narrow AppKit adapters host two persistent TextKit 1 `NSTextView` editors.
-- Source mode uses literal Markdown plus an independent lexical highlighter.
+- Source mode uses literal Markdown plus an independent incremental lexical highlighter. The
+  highlighter owns UTF-16 line boundaries and carries a closed `SourceLexState` from the first
+  invalidated line until incoming/outgoing state and tokens stabilize; only changed line ranges
+  receive attributes. The line lexer runs off-main, is revision/cancellation guarded, and never
+  changes source, selection, undo, or scroll.
 - WYSIWYG uses attributed rendered content compiled from pinned direct cmark-gfm semantics and
   exact concrete-source coordinates.
 - Image placement is one editor-neutral transaction used by paste, drag-and-drop, and Add Image.

@@ -23,7 +23,7 @@ enum SourceEditor {
         var session: EditorSession?
         let theme = MarkdownTypography()
         let placementController: ImagePlacementController
-        private let highlighter = MarkdownHighlighter()
+        private let incrementalHighlighter = IncrementalSourceHighlighter()
         weak var textView: MarkdownSourceTextView? {
             didSet { textView?.sourceCoordinator = self }
         }
@@ -33,6 +33,8 @@ enum SourceEditor {
         private var lastStyledText: String?
         private var version = 0
         private var task: Task<Void, Never>?
+        private var pendingHighlightIntent: IntentContext?
+        private var activeHighlightIntent: IntentContext?
 
         init(document: MarkdownDocument, placementController: ImagePlacementController, session: EditorSession?) {
             self.document = document
@@ -89,6 +91,9 @@ enum SourceEditor {
                     return .refused(refusal.asSourceRefusal)
                 }
             }()
+            if case .committed = result, let intent {
+                holdHighlightIntent(intent)
+            }
             if let intent {
                 if case .committed = result, staged {
                     intent.recorder.finish(intent)
@@ -166,7 +171,9 @@ enum SourceEditor {
                     affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
                 )
             }
-            highlight(debounced: true)
+            let intent = pendingHighlightIntent
+            pendingHighlightIntent = nil
+            highlight(debounced: true, intent: intent)
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -184,34 +191,94 @@ enum SourceEditor {
         }
 
         // REQ-045: debounce + off-main highlight; no document-size styling suspension.
-        func highlight(debounced: Bool = false) {
+        func highlight(debounced: Bool = false, intent: IntentContext? = nil) {
             guard let textView else { return }
             version &+= 1
             let expectedVersion = version
             let snapshot = textView.string
             let editedRange = pendingStyleRange
+            let sourceRevision = document.sourceVersion
             task?.cancel()
+            if let activeHighlightIntent {
+                activeHighlightIntent.recorder.finish(activeHighlightIntent, orphaned: true)
+                self.activeHighlightIntent = nil
+            }
+            if let intent {
+                activeHighlightIntent = intent
+            }
 
             task = Task { [weak self] in
+                defer {
+                    if let intent {
+                        intent.recorder.finish(intent, orphaned: Task.isCancelled)
+                    }
+                    if let self, self.activeHighlightIntent == intent {
+                        self.activeHighlightIntent = nil
+                    }
+                }
                 if debounced {
                     try? await Task.sleep(for: .milliseconds(120))
                     if Task.isCancelled { return }
                 }
                 guard let self else { return }
-                let tokens: [Token]
+                let patch: SourceHighlightPatch
                 do {
-                    tokens = try await self.highlighter.tokens(for: snapshot)
+                    patch = try await self.incrementalHighlighter.highlight(
+                        source: snapshot,
+                        editedRange: editedRange,
+                        sourceRevision: sourceRevision,
+                        intentID: intent?.id
+                    )
                 } catch {
                     return
                 }
                 if Task.isCancelled { return }
                 self.apply(
-                    tokens,
+                    patch,
                     expectedVersion: expectedVersion,
-                    expectedText: snapshot,
-                    editedRange: editedRange
+                    expectedText: snapshot
                 )
             }
+        }
+
+        /// Applies only the lines whose incoming state, outgoing state, or tokens changed.
+        /// Clearing those exact ranges first is what removes stale attributes when a fence opens
+        /// or closes; unchanged tail lines are never touched.
+        func apply(
+            _ patch: SourceHighlightPatch,
+            expectedVersion: Int,
+            expectedText: String
+        ) {
+            let started = DispatchTime.now().uptimeNanoseconds
+            guard expectedVersion == version,
+                  patch.sourceRevision == document.sourceVersion,
+                  let textView,
+                  textView.string == expectedText,
+                  let storage = textView.textStorage else {
+                return
+            }
+            let full = NSRange(location: 0, length: storage.length)
+            storage.beginEditing()
+            for range in patch.changedRanges {
+                let clipped = NSIntersectionRange(range, full)
+                guard clipped.length > 0 else { continue }
+                storage.setAttributes(theme.baseAttributes, range: clipped)
+            }
+            for token in patch.tokens {
+                let clipped = NSIntersectionRange(token.range, full)
+                guard clipped.length > 0 else { continue }
+                for range in patch.changedRanges where NSIntersectionRange(clipped, range).length > 0 {
+                    storage.addAttributes(theme.attributes(for: token.style), range: clipped)
+                    break
+                }
+            }
+            storage.endEditing()
+            session?.recordPerformance(
+                .sourceHighlightApplication,
+                durationNanos: DispatchTime.now().uptimeNanoseconds &- started
+            )
+            lastStyledText = expectedText
+            pendingStyleRange = nil
         }
 
         // REQ-040/041/043/047–051: style via NSTextStorage attributes — display only.
@@ -326,6 +393,14 @@ enum SourceEditor {
         private func union(_ lhs: NSRange?, _ rhs: NSRange) -> NSRange {
             guard let lhs else { return rhs }
             return NSUnionRange(lhs, rhs)
+        }
+
+        private func holdHighlightIntent(_ intent: IntentContext) {
+            if let pendingHighlightIntent {
+                pendingHighlightIntent.recorder.finish(pendingHighlightIntent, orphaned: true)
+            }
+            guard intent.recorder.retain(intent) else { return }
+            pendingHighlightIntent = intent
         }
     }
 }
