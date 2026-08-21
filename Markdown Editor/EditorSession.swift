@@ -631,7 +631,7 @@ final class EditorSession: ObservableObject {
             )
         }()
         if isOrdinaryNativeReplacement,
-           case .projection(let projectionSelection) = selection,
+           case .projection(_) = selection,
            isTypingCommand,
            let presentation = state.presentation,
            let classification = nativeClassification,

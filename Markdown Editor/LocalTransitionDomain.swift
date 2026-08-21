@@ -22,6 +22,12 @@ nonisolated enum LocalTransitionClass: String, CaseIterable, Sendable {
     case ambiguous
 }
 
+nonisolated enum LocalTransitionRoute: Sendable, Equatable {
+    case local
+    case bounded
+    case refusal
+}
+
 nonisolated enum LocalTransitionDomain {
     /// Maps every classifier outcome into the closed class set. Associated identity is retained
     /// by the classifier and re-derived by the existing semantic planner; this enum owns only
@@ -37,6 +43,23 @@ nonisolated enum LocalTransitionDomain {
         case .mixed: return .mixed
         case .crossCell: return .crossCell
         case .ambiguous: return .ambiguous
+        }
+    }
+
+    /// The route decision is explicit for every associated classifier outcome. Synthetic
+    /// insertion at source boundaries is the list-marker case selected by Stage 0; paragraph,
+    /// soft/hard-break, image, and other source-location synthetic units remain refusal cases.
+    static func route(for selection: ProjectionSelectionClass) -> LocalTransitionRoute {
+        switch selection {
+        case .identityText, .atomicText:
+            return .local
+        case .syntheticInsertion(let policy):
+            if case .atSourceBoundaries = policy { return .local }
+            return .refusal
+        case .tableCell:
+            return .bounded
+        case .taskMarker, .uneditable, .mixed, .crossCell, .ambiguous:
+            return .refusal
         }
     }
 
@@ -69,8 +92,26 @@ nonisolated enum LocalTransitionDomain {
             affinity: projectionSelection.affinity,
             snapshot: presentation
         )
-        switch classify(classification) {
-        case .identityText, .atomicText, .syntheticInsertion:
+        let transitionRange: NSRange
+        let planningClassification: ProjectionSelectionClass
+        if case .deleteBackward = request.command, projectionSelection.range.utf16.length == 0 {
+            guard projectionSelection.range.utf16.location > 0 else {
+                return .refused(.unsupportedCommand)
+            }
+            transitionRange = (presentation.renderedString as NSString).rangeOfComposedCharacterSequence(
+                at: projectionSelection.range.utf16.location - 1
+            )
+            planningClassification = ProjectionSelectionClassifier.classify(
+                selection: transitionRange,
+                affinity: projectionSelection.affinity,
+                snapshot: presentation
+            )
+        } else {
+            transitionRange = projectionSelection.range.utf16
+            planningClassification = classification
+        }
+        switch route(for: planningClassification) {
+        case .local:
             guard case .mutation(let mutation) = WYSIWYGPlanningDomain.applyWYSIWYG(
                 command: request.command,
                 selection: projectionSelection,
@@ -79,7 +120,7 @@ nonisolated enum LocalTransitionDomain {
                 tree: tree,
                 grouping: request.grouping,
                 intent: intent,
-                classification: classification
+                classification: planningClassification
             ) else {
                 return .refused(.unprovable)
             }
@@ -100,10 +141,18 @@ nonisolated enum LocalTransitionDomain {
                         snapshot: snapshot,
                         location: mutation.range.location
                     ),
-                    container: SemanticEditEngine.container(for: classification),
+                    container: SemanticEditEngine.container(for: planningClassification),
                     dialect: .formalGFM
                 )
                 guard case .encoded(let sourceSpelling) = MarkdownLiteralEncoder.encode(context),
+                      localLiteralIsSafe(
+                          visible: text,
+                          encoded: sourceSpelling,
+                          context: context,
+                          snapshot: snapshot,
+                          range: mutation.range,
+                          classification: planningClassification
+                      ),
                       let remade = SourceMutation.exact(
                           snapshot: snapshot,
                           range: mutation.range,
@@ -121,7 +170,7 @@ nonisolated enum LocalTransitionDomain {
             let planned = SemanticEditEngine.finishIdentityTransition(
                 mutation: encodedMutation,
                 presentation: presentation,
-                projectionRange: projectionSelection.range.utf16,
+                projectionRange: transitionRange,
                 visibleReplacement: {
                     if case .insertText(let text) = request.command { return text }
                     return ""
@@ -137,26 +186,50 @@ nonisolated enum LocalTransitionDomain {
                 return .refused(.unprovable)
             }
             return .accepted(edit)
-        case .tableCell:
-            guard case .tableCell(let nodeID, _, let body) = classification else {
+        case .bounded:
+            guard case .tableCell(_, let cellSource, let body) = planningClassification else {
                 return .refused(.unprovable)
             }
             return planBoundedTableCell(
                 request,
                 selection: projectionSelection,
-                nodeID: nodeID,
+                cellSource: cellSource,
                 body: body,
                 snapshot: snapshot,
                 presentation: presentation,
-                tree: tree,
                 nextSnapshotID: nextSnapshotID,
                 intent: intent
             )
-        case .taskMarker, .uneditable:
+        case .refusal:
             return .refused(.unsupportedCommand)
-        case .mixed, .crossCell, .ambiguous:
-            return .refused(.ambiguousSelection)
         }
+    }
+
+    private static func localLiteralIsSafe(
+        visible: String,
+        encoded: String,
+        context: LiteralEncodeContext,
+        snapshot: SourceSnapshot,
+        range: NSRange,
+        classification: ProjectionSelectionClass
+    ) -> Bool {
+        // Existing atomic spans already carry a concrete inverse. The local identity route has
+        // no parser oracle, so refuse a candidate whose neighboring source punctuation could join
+        // the new characters into a different entity or delimiter construct.
+        if case .atomicText = classification { return true }
+        if context.precedingSourceCharacter == "&" || context.followingSourceCharacter == ";" {
+            return false
+        }
+        let ns = snapshot.text as NSString
+        let neighboring = [
+            context.precedingSourceCharacter,
+            context.followingSourceCharacter
+        ].compactMap { $0 }
+        if neighboring.contains(where: { "\\[]`*_~!<>|".contains($0) }) && encoded == visible {
+            return false
+        }
+        guard range.location >= 0, NSMaxRange(range) <= ns.length else { return false }
+        return !visible.contains(where: { $0 == "\n" || $0 == "\r" })
     }
 
     /// Table cells are a bounded structural domain: the cell's raw source is the only source
@@ -165,11 +238,10 @@ nonisolated enum LocalTransitionDomain {
     private static func planBoundedTableCell(
         _ request: EditorEditRequest,
         selection: ProjectionSelection,
-        nodeID: MarkdownNodeID,
+        cellSource: NSRange,
         body: NSRange,
         snapshot: SourceSnapshot,
         presentation: PresentationSnapshot,
-        tree: MarkdownTree?,
         nextSnapshotID: PresentationSnapshot.ID,
         intent: IntentContext?
     ) -> EditorEditOutcome {
@@ -235,9 +307,8 @@ nonisolated enum LocalTransitionDomain {
             grouping: request.grouping
         ), boundedCellOracle(
             mutation: mutation,
-            nodeID: nodeID,
-            snapshot: snapshot,
-            tree: tree
+            cellSource: cellSource,
+            snapshot: snapshot
         ) else {
             return .refused(.unprovable)
         }
@@ -294,28 +365,21 @@ nonisolated enum LocalTransitionDomain {
 
     private static func boundedCellOracle(
         mutation: SourceMutation,
-        nodeID: MarkdownNodeID,
+        cellSource: NSRange,
         snapshot: SourceSnapshot,
-        tree: MarkdownTree?
     ) -> Bool {
-        guard let tree,
-              let cell = findNode(id: nodeID, in: tree.root),
-              case .tableCell = cell.kind,
-              case .success(let range) = MarkdownSourceIndex(
-                  source: snapshot.text,
-                  sourceVersion: snapshot.sourceVersion
-              ).utf16Range(for: cell.position) else {
-            return false
-        }
-        let candidate = (snapshot.text as NSString).replacingCharacters(
-            in: mutation.range,
-            with: mutation.replacement
-        ) as NSString
-        guard NSMaxRange(range) <= candidate.length else { return false }
-        let delta = (mutation.replacement as NSString).length - mutation.range.length
-        let nextRange = NSRange(location: range.location, length: range.length + delta)
-        guard nextRange.length >= 0, NSMaxRange(nextRange) <= candidate.length else { return false }
-        let cellText = candidate.substring(with: nextRange)
+        let source = snapshot.text as NSString
+        guard cellSource.location >= 0,
+              cellSource.length >= 0,
+              NSMaxRange(cellSource) <= source.length,
+              mutation.range.location >= cellSource.location,
+              NSMaxRange(mutation.range) <= NSMaxRange(cellSource) else { return false }
+        let local = NSRange(
+            location: mutation.range.location - cellSource.location,
+            length: mutation.range.length
+        )
+        let cellText = (source.substring(with: cellSource) as NSString)
+            .replacingCharacters(in: local, with: mutation.replacement)
         guard !cellText.contains("\n"), !cellText.contains("\r") else { return false }
         var escaped = false
         for character in cellText {
@@ -327,13 +391,5 @@ nonisolated enum LocalTransitionDomain {
             }
         }
         return true
-    }
-
-    private static func findNode(id: MarkdownNodeID, in node: MarkdownNode) -> MarkdownNode? {
-        if node.id == id { return node }
-        for child in node.children {
-            if let match = findNode(id: id, in: child) { return match }
-        }
-        return nil
     }
 }

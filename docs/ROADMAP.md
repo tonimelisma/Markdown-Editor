@@ -195,8 +195,9 @@ return to discovery; do not improvise an architecture change.
 4. ✅ **COR-71 — Bounded WYSIWYG input.** (Delivers: REQ-090, REQ-091, REQ-092)
    Removes whole-document parse/compile work from ordinary input while retaining synchronous
    source/presentation correctness. The closed local-transition matrix accepts only proven
-   identity/atomic/synthetic/task-marker edits, uses one bounded enclosing-block path for table
-   cells, and refuses ambiguous classes. Concrete Release corpus evidence observed callback p95
+   identity/atomic edits and source-boundary synthetic insertions, uses one bounded enclosing-block
+   path for table cells, and keeps source-location synthetic/task-marker/ambiguous classes on their
+   semantic or refusal routes. Concrete Release corpus evidence observed callback p95
    below 8 ms for every approved corpus case; all three requirement proofs and falsifying mutations
    passed.
 5. ⚪ **COR-72 — Incremental Source pipeline.** (Delivers: REQ-040, REQ-041, REQ-043, REQ-045)

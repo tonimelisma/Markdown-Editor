@@ -60,15 +60,18 @@ struct PresentationPatch {
         // The declared range is not trusted as the patch scope for authoritative transitions. A
         // local identity transition carries an exact change proof, so rescanning the complete
         // rendered string would violate the bounded callback contract.
-        let knownChange: (current: NSRange, next: NSRange)? = transition.proof == .localIdentity
-            ? (
+        let knownChange: (current: NSRange, next: NSRange)? = {
+            guard transition.proof == .localIdentity || transition.proof == .boundedLocalScope else {
+                return nil
+            }
+            return (
                 current: transition.projectionReplacementRange,
                 next: NSRange(
                     location: transition.projectionReplacementRange.location,
                     length: (transition.projectionReplacement as NSString).length
                 )
             )
-            : nil
+        }()
         return between(
             current: current,
             next: next,

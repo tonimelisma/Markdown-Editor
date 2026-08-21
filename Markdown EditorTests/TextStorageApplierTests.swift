@@ -102,6 +102,7 @@ struct PatchFixture {
         source: String,
         insert: String,
         at location: Int,
+        sourceAt sourceLocation: Int? = nil,
         proof: PresentationSnapshot.ConstructionProof = .authoritative
     ) throws {
         let index = MarkdownSourceIndex(source: source, sourceVersion: 1)
@@ -119,7 +120,7 @@ struct PatchFixture {
                 snapshot: current,
                 projectionRange: NSRange(location: location, length: 0),
                 visibleReplacement: insert,
-                sourceRange: NSRange(location: location, length: 0),
+                sourceRange: NSRange(location: sourceLocation ?? location, length: 0),
                 sourceReplacement: insert,
                 nextSourceRevision: SourceRevision(value: 2),
                 nextSourceUTF16Count: sourceLength + (insert as NSString).length,
@@ -168,6 +169,27 @@ struct TextStorageApplierTests {
         #expect(patch.currentRange == NSRange(location: location, length: 0))
         #expect(patch.nextRange == NSRange(location: location, length: 1))
         #expect(patch.expansion == nil)
+    }
+
+    // Verifies: REQ-090/091; ARC-018 — a local transition retains the complete block metadata
+    // needed by the immediate attributed patch instead of waiting for reconciliation to restore
+    // heading/list/quote/code styling.
+    @Test func locallyProvenTransitionPreservesBlockMetadata() throws {
+        let fixture = try PatchFixture(
+            source: "# Heading\n",
+            insert: "!",
+            at: 2,
+            sourceAt: 4,
+            proof: .locallyProven
+        )
+
+        #expect(fixture.next.blocks.count == fixture.current.blocks.count)
+        #expect(fixture.next.blocks.first?.kind == .heading(level: 1))
+        #expect(fixture.next.blocks.first?.projectionRange.location == fixture.current.blocks.first?.projectionRange.location)
+        #expect(
+            fixture.next.blocks.first?.projectionRange.length
+                == (fixture.current.blocks.first?.projectionRange.length ?? 0) + 1
+        )
     }
 
     // Verifies: REQ-109; ARC-Q16 — one bounded range edit, zero full replacements.

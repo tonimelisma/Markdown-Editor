@@ -143,12 +143,15 @@ It is forbidden to commit source and leave the old projection editable while wai
 The synchronous planning boundary is deliberately closed and conservative. `LocalTransitionDomain`
 classifies the complete selection into identity text, atomic text, synthetic insertion, one table
 cell, task-marker, uneditable, mixed, cross-cell, or ambiguous input. Identity/atomic/synthetic
-and task-marker edits use the exact local encoder/decoder transition; table-cell edits use the
-declared enclosing-block bounded transition; mixed, cross-cell, ambiguous, and every unassigned
-class refuse without mutation. The local and bounded proof paths construct the complete next
+identity/atomic edits and synthetic insertions proven to occur at source boundaries use the exact
+local encoder/decoder transition; table-cell edits use the declared enclosing-block bounded
+transition; source-location synthetic edits, task-marker edits, mixed, cross-cell, ambiguous, and
+every unassigned class remain on their semantic/refusal routes without mutation in the parser-free
+path. The local and bounded proof paths construct the complete next
 `PresentationSnapshot` from the accepted source mutation, then apply one exact or bounded patch.
 They do not invoke synchronous whole-document cmark parsing, source indexing, or projection
-compilation. Full cmark remains the asynchronous authority and may replace the provisional
+compilation. Task-marker commands remain on their existing semantic route; they are not silently
+classified as parser-free typing. Full cmark remains the asynchronous authority and may replace the provisional
 snapshot only after source revision, location generation, projection identity, and active-session
 checks. Storage drift is generation-tracked; an externally committed composition is accepted only
 when the concrete storage matches the expected rendered snapshot.

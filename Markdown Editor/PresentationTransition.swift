@@ -167,6 +167,15 @@ nonisolated enum PresentationTransitionPlanner {
             sourceDelta: sourceDelta
         )
         let nextMarkers = shiftListMarkers(snapshot.listMarkers, edited: projectionRange, delta: projectionDelta)
+        guard let nextBlocks = shiftBlocks(
+            snapshot.blocks,
+            editedProjection: projectionRange,
+            projectionDelta: projectionDelta,
+            editedSource: sourceRange,
+            sourceDelta: sourceDelta
+        ) else {
+            return nil
+        }
 
         let next = PresentationSnapshot.make(
             id: nextSnapshotID,
@@ -176,6 +185,7 @@ nonisolated enum PresentationTransitionPlanner {
             runs: nextRuns,
             attachments: nextAttachments,
             tables: nextTables,
+            blocks: nextBlocks,
             listMarkers: nextMarkers,
             atoms: nextAtoms,
             sourceUTF16Count: nextSourceUTF16Count,
@@ -532,6 +542,48 @@ nonisolated enum PresentationTransitionPlanner {
                 )
             }
             return nil
+        }
+    }
+
+    private static func shiftBlocks(
+        _ blocks: [PresentationBlock],
+        editedProjection: NSRange,
+        projectionDelta: Int,
+        editedSource: NSRange,
+        sourceDelta: Int
+    ) -> [PresentationBlock]? {
+        blocks.compactMap { block in
+            let range = block.projectionRange
+            if NSMaxRange(range) <= editedProjection.location {
+                return block
+            }
+            if range.location >= NSMaxRange(editedProjection) {
+                return PresentationBlock(
+                    nodeID: block.nodeID,
+                    projectionRange: NSRange(
+                        location: range.location + projectionDelta,
+                        length: range.length
+                    ),
+                    sourceRange: block.sourceRange.map {
+                        shiftSourceRange($0, edited: editedSource, delta: sourceDelta)
+                    },
+                    kind: block.kind
+                )
+            }
+            guard range.location <= editedProjection.location,
+                  NSMaxRange(range) >= NSMaxRange(editedProjection) else {
+                return nil
+            }
+            let newLength = range.length + projectionDelta
+            guard newLength >= 0 else { return nil }
+            return PresentationBlock(
+                nodeID: block.nodeID,
+                projectionRange: NSRange(location: range.location, length: newLength),
+                sourceRange: block.sourceRange.map {
+                    shiftSourceRange($0, edited: editedSource, delta: sourceDelta)
+                },
+                kind: block.kind
+            )
         }
     }
 

@@ -4,9 +4,9 @@
     {
       "rationale": "Refusing the local production route makes the complete native callback unable to accept its ordinary corpus input.",
       "file": "Markdown Editor/LocalTransitionDomain.swift",
-      "find": "            return .accepted(edit)\n        case .tableCell:",
-      "replace": "            return .refused(.unprovable)\n        case .tableCell:",
-      "expect_red": ["ordinaryLiteralInsertionUsesLocalTransition"]
+      "find": "            return .accepted(edit)\n        case .bounded:",
+      "replace": "            return .refused(.unprovable)\n        case .bounded:",
+      "expect_red": ["ordinaryNativeInsertionUsesCompleteLocalRoute"]
     }
   ]
 }
