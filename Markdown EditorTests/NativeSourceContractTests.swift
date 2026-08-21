@@ -51,6 +51,14 @@ struct NativeSourceContractTests {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         defer { pasteboard.clearContents() }
+        let rich = try NSAttributedString(
+            string: "RICH",
+            attributes: [.foregroundColor: NSColor.systemRed]
+        ).data(
+            from: NSRange(location: 0, length: 4),
+            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+        )
+        #expect(pasteboard.setData(rich, forType: .rtf))
         #expect(pasteboard.setString("é 🐙\n", forType: .string))
         let insertion = NSRange(location: (fixture.textView.string as NSString).length, length: 0)
         fixture.session.updateSourceModeState { $0.selection = SourceSelection(utf16: insertion) }
@@ -68,7 +76,9 @@ struct NativeSourceContractTests {
     // and standard find-bar/incremental-search routing without an app-owned substitute.
     @Test func productionSourceEditorUsesNativeSpellAndFindServices() throws {
         let document = MarkdownDocument()
+        document.installTextForTesting("needle needle")
         let session = EditorSession()
+        session.attach(document: document)
         let placement = ImagePlacementController()
         let router = EditorActionRouter()
         let host = EditorHostView.HostCoordinator(
@@ -87,13 +97,26 @@ struct NativeSourceContractTests {
         #expect(source.isIncrementalSearchingEnabled == true)
         #expect(source.responds(to: #selector(NSTextView.performFindPanelAction(_:))))
 
-        let before = document.text
+        let findPasteboard = NSPasteboard(name: .find)
+        findPasteboard.clearContents()
+        defer { findPasteboard.clearContents() }
+        #expect(findPasteboard.setString("needle", forType: .string))
+        source.setSelectedRange(NSRange(location: 0, length: 0))
+        let findNext = NSMenuItem()
+        findNext.tag = 2 // NSFindPanelActionNext
+        source.performFindPanelAction(findNext)
+
         let beforeRevision = document.sourceVersion
-        let showFindPanel = NSMenuItem()
-        showFindPanel.tag = 1 // NSFindPanelActionShowFindPanel
-        source.performFindPanelAction(showFindPanel)
-        #expect(document.text == before)
-        #expect(document.sourceVersion == beforeRevision)
+        let replacementRange = NSRange(location: 0, length: 6)
+        session.updateSourceModeState { $0.selection = SourceSelection(utf16: replacementRange) }
+        source.setSelectedRange(replacementRange)
+        #expect(source.performValidatedReplacement(
+            in: source.selectedRange(),
+            with: NSAttributedString(string: "found")
+        ))
+        #expect(document.text == "found needle")
+        #expect(document.sourceVersion == beforeRevision + 1)
+        #expect(source.string == "found needle")
     }
 
     // Verifies: REQ-022 — semantic typography resolves under both system appearances and never
@@ -131,6 +154,9 @@ struct NativeSourceContractTests {
         let contentView = try String(contentsOf: sourceURL("Markdown Editor/ContentView.swift"), encoding: .utf8)
         #expect(contentView.contains(".task(id: document.sourceVersion)"))
         #expect(contentView.contains("guard let next = await statsComputer.counts(for: snapshot), !Task.isCancelled else { return }"))
+        #expect(contentView.contains("counts = next"))
+        #expect(contentView.contains("Text(counts.displayLabel)"))
+        #expect(TextStats.Counts(words: 3, characters: 11).displayLabel == "3 words · 11 characters")
         #expect(!contentView.contains("TextStats.wordCount"))
     }
 
@@ -190,4 +216,5 @@ struct NativeSourceContractTests {
     private func sourceURL(_ relativePath: String) -> URL {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(relativePath)
     }
+
 }

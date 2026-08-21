@@ -10,6 +10,10 @@ nonisolated enum TextStats {
     struct Counts: Sendable, Equatable {
         let words: Int
         let characters: Int
+
+        var displayLabel: String {
+            "\(words) words · \(characters) characters"
+        }
     }
 
     /// The single counting implementation.

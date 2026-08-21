@@ -28,7 +28,7 @@ struct ContentView: View {
             HStack {
                 Spacer()
                 // REQ-044: live word / character count.
-                Text("\(counts.words) words · \(counts.characters) characters")
+                Text(counts.displayLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)

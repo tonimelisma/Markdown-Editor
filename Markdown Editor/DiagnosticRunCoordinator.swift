@@ -47,6 +47,22 @@ final class DiagnosticWriteCoordinator: Sendable {
         }
     }
 
+    func appendTerminalRecord(_ makeLine: @Sendable (UInt64) -> String) -> Task<Bool, Never>? {
+        state.withLock { state in
+            guard !state.closed else { return nil }
+            state.nextSequence &+= 1
+            let line = makeLine(state.nextSequence)
+            let previous = state.tail
+            let sink = self.sink
+            let task = Task.detached {
+                _ = await previous?.value
+                return await sink.appendTerminal([line])
+            }
+            state.tail = task
+            return task
+        }
+    }
+
     func drain() async {
         let tail = state.withLock { $0.tail }
         _ = await tail?.value

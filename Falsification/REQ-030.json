@@ -2,10 +2,10 @@
   "requirement": "REQ-030",
   "mutations": [
     {
-      "rationale": "Introducing a URL-session symbol into production source must fail the structural offline boundary gate.",
+      "rationale": "Introducing a compilable Network capability into production source must fail the structural offline boundary gate.",
       "file": "Markdown Editor/Markdown_EditorApp.swift",
       "find": "import AppKit\n",
-      "replace": "import AppKit\n// FORBIDDEN_PRIVACY_FIXTURE: URLSession\n",
+      "replace": "import AppKit\nimport Network\n",
       "expect_red": ["productionBoundaryRejectsNetworkAccountAndAnalyticsCapabilities"]
     }
   ]

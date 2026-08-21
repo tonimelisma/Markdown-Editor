@@ -15,6 +15,7 @@ struct PrivacyBoundaryTests {
         let productionFiles = (FileManager.default.enumerator(at: root.appendingPathComponent("Markdown Editor"), includingPropertiesForKeys: nil)?
             .compactMap { $0 as? URL } ?? []).filter { $0.pathExtension == "swift" || $0.pathExtension == "plist" }
         let forbidden = [
+            "import Network", "import AuthenticationServices", "import CloudKit", "import WebKit",
             "URLSession", "URLSessionWebSocketTask", "NWConnection", "NWPathMonitor",
             "ASAuthorization", "AuthenticationServices", "OAuth", "Firebase", "Mixpanel",
             "Sentry", "CKContainer", "CloudKit", "SecItem", "Keychain", "TelemetryClient",
