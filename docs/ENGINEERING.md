@@ -564,6 +564,8 @@ median, p95, and failures for both `parseProjection` and `sourceHighlightCompute
 compute matrix has at least one real production-route sample for every corpus/size shape, while
 the complete 6 x 2 x 9 case matrix remains the authority for scenario/action coverage. Zero
 executed samples for a required shape is a failing proof, never a skipped success.
+The benchmark drains the initial source-cache seed before measuring typing actions, so its source
+compute values describe the ordinary incremental-edit route rather than document-open work.
 Terminal diagnostic close signals durability immediately after the sink closes; re-enabling
 sudden termination on the main actor is not part of the synchronous durability wait.
 

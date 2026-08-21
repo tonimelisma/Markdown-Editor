@@ -344,6 +344,10 @@ enum BenchmarkDriver {
                     fatalError("benchmark: source coordinator could not schedule highlighting")
                 }
                 await highlightTask.value
+                // The initial cache seed measures document-open styling, not ordinary typing.
+                // Drain it before scenario actions so sourceHighlightCompute evidence describes
+                // the incremental edit route promised by COR-72.
+                session.performanceSampler?.drainSummaries()
             }
             var counters = Counters()
             let deadline = ContinuousClock.now + configuration.duration
