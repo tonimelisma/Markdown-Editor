@@ -569,8 +569,10 @@ struct DiagnosticLogTests {
     // well-formed record rather than a hand-written fragment that would break the schema.
     @Test func fileSizeCapIsBoundedAndRecorded() async {
         let directory = makeTemporaryDirectory()
-        let log = DiagnosticLog(directory: directory, hostKind: .unitTest)
-        let sink = DiagnosticFileSink(url: log.fileURL, byteLimit: 200)
+        // Use a sink-owned fixture file. DiagnosticLog writes its run header asynchronously;
+        // sharing that URL would make this test race a second writer and could split a JSON line.
+        let sinkURL = directory.appendingPathComponent("cap.jsonl")
+        let sink = DiagnosticFileSink(url: sinkURL, byteLimit: 200)
         // Fill past a deliberately tiny cap.
         var reachedCap = false
         for index in 0..<50 where !reachedCap {
@@ -578,7 +580,7 @@ struct DiagnosticLogTests {
         }
         #expect(reachedCap)
 
-        let written = (try? String(contentsOf: log.fileURL, encoding: .utf8)) ?? ""
+        let written = (try? String(contentsOf: sinkURL, encoding: .utf8)) ?? ""
         #expect(written.utf8.count <= 200)
         for line in written.split(separator: "\n") {
             #expect(object(String(line)) != nil)
