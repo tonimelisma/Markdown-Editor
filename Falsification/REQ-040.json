@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-040",
+  "mutations": [
+    {
+      "rationale": "Removing the token style application leaves the production incremental patch at base attributes instead of displaying the heading style.",
+      "file": "Markdown Editor/SourceEditor.swift",
+      "find": "                    storage.addAttributes(theme.attributes(for: token.style), range: clipped)\n                    break",
+      "replace": "                    storage.addAttributes(theme.baseAttributes, range: clipped)\n                    break",
+      "expect_red": ["productionIncrementalPatchAppliesStyleWithoutSourceMutation"]
+    }
+  ]
+}

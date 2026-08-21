@@ -1,0 +1,26 @@
+{
+  "requirement": "REQ-041",
+  "mutations": [
+    {
+      "rationale": "Removing the mapped line-local lexical tokens prevents the incremental lexer from styling ordinary inline Markdown after a fenced block.",
+      "file": "Markdown Editor/IncrementalSourceHighlighter.swift",
+      "find": "        let tokens = resolvedTokens.map { Token(range: NSRange(location: range.location + $0.range.location, length: $0.range.length), style: $0.style) }",
+      "replace": "        let tokens: [Token] = []",
+      "expect_red": ["fenceStatePropagatesAndClosesOnMatchingFence"]
+    },
+    {
+      "rationale": "Removing the carried multiline strikethrough state leaves the second line unstyled.",
+      "file": "Markdown Editor/IncrementalSourceHighlighter.swift",
+      "find": "        let crossLineStrike = Self.crossLineStrikethrough(in: local, contentEnd: contentEnd, incomingStart: incoming.strikethroughStart, range: range)",
+      "replace": "        let crossLineStrike: (outgoingStart: Int?, tokens: [Token]) = (nil, [])",
+      "expect_red": ["ordinaryEditCarriesMultilineStrikethroughState"]
+    },
+    {
+      "rationale": "Appending the raw cross-line token list instead of the filtered list reintroduces a duplicate same-line strikethrough token.",
+      "file": "Markdown Editor/IncrementalSourceHighlighter.swift",
+      "find": "        let mergedTokens = tokens + additionalCrossLineTokens\n",
+      "replace": "        let mergedTokens = tokens + crossLineStrike.tokens\n",
+      "expect_red": ["sameLineStrikethroughDoesNotDuplicateTokens"]
+    }
+  ]
+}

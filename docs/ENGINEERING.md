@@ -32,7 +32,11 @@ The app is a native Swift 6 macOS document application:
 - SwiftUI owns document-content composition. A window-scoped native AppKit command surface owns
   the menu and `NSToolbar` presentation.
 - Narrow AppKit adapters host two persistent TextKit 1 `NSTextView` editors.
-- Source mode uses literal Markdown plus an independent lexical highlighter.
+- Source mode uses literal Markdown plus an independent incremental lexical highlighter. The
+  highlighter owns UTF-16 line boundaries and carries a closed `SourceLexState` from the first
+  invalidated line until incoming/outgoing state and tokens stabilize; only changed line ranges
+  receive attributes. The line lexer runs off-main, is revision/cancellation guarded, and never
+  changes source, selection, undo, or scroll.
 - WYSIWYG uses attributed rendered content compiled from pinned direct cmark-gfm semantics and
   exact concrete-source coordinates.
 - Image placement is one editor-neutral transaction used by paste, drag-and-drop, and Add Image.
@@ -541,6 +545,10 @@ Metric names describe their actual boundaries:
 - `parseProjection`: parser, source index, and semantic projection only;
 - `imageResolution`: inspection, hashing, thumbnail decode, and cache lookup; and
 - `authoritativeApplication`: main-actor application of a completed authoritative result; and
+- `sourceHighlightCompute`: off-main incremental source lexing for the captured document/session;
+  its duration starts at incremental-lexer actor entry, excluding time queued behind a superseded
+  demand, and includes the lexer's own rule-engine work;
+- `sourceHighlightApplication`: main-actor application of matching bounded source attributes; and
 - `layoutApplication`: TextKit layout for the range an applied patch changed. The
   `nativeInputCallback` boundary ends when the input delegate returns — after
   `storage.endEditing()` but before glyph generation, layout, and drawing — so without this
@@ -552,7 +560,14 @@ against the values REQ-090 states. The budgets previously existed twice — as p
 literals inside `flush()` — with nothing tying them.
 
 Every Release performance proof records configuration, corpus identity, warmups, sample count,
-median, p95, and failures. Zero executed samples is a failing proof, never a skipped success.
+median, p95, and failures for both `parseProjection` and `sourceHighlightCompute`; the source
+compute matrix has at least one real production-route sample for every corpus/size shape, while
+the complete 6 x 2 x 9 case matrix remains the authority for scenario/action coverage. Zero
+executed samples for a required shape is a failing proof, never a skipped success.
+The benchmark drains the initial source-cache seed before measuring typing actions, so its source
+compute values describe the ordinary incremental-edit route rather than document-open work.
+Each committed baseline also records a digest of the production benchmark and source-highlighting
+implementation files, and each metric row records whether its declared p95 budget was exceeded.
 Terminal diagnostic close signals durability immediately after the sink closes; re-enabling
 sudden termination on the main actor is not part of the synchronous durability wait.
 
@@ -719,8 +734,11 @@ supersession documents. The working tree states current truth; Git records histo
   the pure kernel reduction. COR-70 creates the transaction seam and preserves the originating
   intent through that plan; COR-71 then replaces the full-document work with a bounded local
   transition plus identity-checked asynchronous authority.
-- Source highlighting bounds attribute application but still tokenizes the full source and performs
-  whole-document fence scans. COR-72 replaces it with per-line state propagation.
+- Source highlighting uses a cached UTF-16 line index and per-line lexical state. COR-72 propagates
+  fence and multiline-strikethrough state only until the cached tail is lexically stable; the
+  production route never performs whole-source tokenization for an ordinary edit. Initial cache
+  seeding batches line-local Markdown rules under one `MarkdownHighlighter` actor hop, while
+  ordinary edits still lex only invalidated lines.
 - Native `NSTextTable` currently keeps the WYSIWYG editor on the TextKit 1 compatibility path. A
   TextKit 2 migration requires a separate table, attachment, selection, IME, and performance POC.
 - Dense semantic typography makes patch boundaries more demanding: a local source edit can change

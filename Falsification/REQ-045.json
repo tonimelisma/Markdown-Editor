@@ -1,0 +1,33 @@
+{
+  "requirement": "REQ-045",
+  "mutations": [
+    {
+      "rationale": "Disabling lexical stabilization forces the ordinary edit to scan the complete document tail.",
+      "file": "Markdown Editor/IncrementalSourceHighlighter.swift",
+      "find": "            if !oldCache.isEmpty,",
+      "replace": "            if false,",
+      "expect_red": ["ordinaryEditStopsAtStableTail"]
+    },
+    {
+      "rationale": "Removing exact UTF-16 code-unit equality allows a same-length but different storage value to receive stale attributes.",
+      "file": "Markdown Editor/SourceEditor.swift",
+      "find": "                  Self.utf16Equal(textView.string, expectedText),",
+      "replace": "                  true,",
+      "expect_red": ["productionIncrementalPatchRejectsDifferentUTF16Snapshot"]
+    },
+    {
+      "rationale": "Removing the document identity guard allows an outstanding task for the replaced document to apply to the new binding.",
+      "file": "Markdown Editor/SourceEditor.swift",
+      "find": "                  (expectedDocument == nil || document === expectedDocument),",
+      "replace": "                  true,",
+      "expect_red": ["coordinatorHighlightRejectsReplacedDocumentIdentity"]
+    },
+    {
+      "rationale": "Recording compute work through the rebound session misattributes discarded work to the replacement session.",
+      "file": "Markdown Editor/SourceEditor.swift",
+      "find": "                expectedSession?.recordPerformance(.sourceHighlightCompute, durationNanos: patch.computeDurationNanos)\n",
+      "replace": "                self.session?.recordPerformance(.sourceHighlightCompute, durationNanos: patch.computeDurationNanos)\n",
+      "expect_red": ["coordinatorHighlightAttributesComputeToCapturedSession"]
+    }
+  ]
+}

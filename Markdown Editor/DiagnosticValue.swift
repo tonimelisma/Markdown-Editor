@@ -163,6 +163,7 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case fenceParity
     case mainActorLatency
     case sourceHighlightApplication
+    case sourceHighlightCompute
     case workLedger
     case frameStatistics
     case memoryFootprint

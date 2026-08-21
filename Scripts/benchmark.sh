@@ -99,6 +99,18 @@ if len(expected) != 108:
     raise SystemExit(f"benchmark: Swift driver expected {len(expected)} cases; exact matrix requires 108")
 if sorted(expected) != sorted(completed) or sorted(expected) != sorted(seen):
     raise SystemExit("benchmark: result set does not exactly match the Swift-owned matrix")
+source_shapes = {}
+for path in results:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    shape = (value["corpus"], value["size"])
+    metrics = {item["name"]: item for item in value.get("metrics", [])}
+    source = metrics.get("sourceHighlightCompute")
+    if source and source.get("count", 0) >= 1 and source.get("p95Nanos", 0) > 0:
+        source_shapes[shape] = source
+expected_shapes = {(corpus, size) for corpus in {item["corpus"] for item in summary["expectedCases"]} for size in {item["size"] for item in summary["expectedCases"]}}
+missing_shapes = sorted(expected_shapes - source_shapes.keys())
+if missing_shapes:
+    raise SystemExit(f"benchmark: missing sourceHighlightCompute evidence for corpus shapes {missing_shapes}")
 records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
 if not any(record.get("ev") == "runEnd" for record in records):
     raise SystemExit("benchmark: diagnostic run did not terminate cleanly")
@@ -130,13 +142,28 @@ def command(*args, fallback="unavailable"):
 rows = []
 for path in sorted(path for path in results_dir.glob("*.json") if path.name != "benchmark-summary.json"):
     value = json.loads(path.read_text(encoding="utf-8"))
-    parse = next((item for item in value["metrics"] if item["name"] == "parseProjection"), {})
+    metrics = {item["name"]: item for item in value.get("metrics", [])}
+    parse = metrics.get("parseProjection", {})
+    source = metrics.get("sourceHighlightCompute", {})
     rows.append((value["scenario"], value["corpus"], value["size"], parse.get("p95Nanos", "n/a"),
+                 source.get("p95Nanos", "n/a"),
+                 parse.get("budgetExceeded", "n/a"), source.get("budgetExceeded", "n/a"),
                  value["actionAttempts"], value["accepted"], value["refused"], value["progress"]))
 records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
 frame = next((record.get("data", {}) for record in records if record.get("ev") == "frameStatistics"), {})
 digest_input = (repo / "Markdown Editor/PerformanceCorpus.swift").read_bytes() + b"\n-- benchmark action authority --\n" + (repo / "Markdown Editor/BenchmarkDriver.swift").read_bytes()
 digest = hashlib.sha256(digest_input).hexdigest()
+implementation_paths = [
+    "Markdown Editor/PerformanceCorpus.swift",
+    "Markdown Editor/BenchmarkDriver.swift",
+    "Markdown Editor/IncrementalSourceHighlighter.swift",
+    "Markdown Editor/SourceEditor.swift",
+    "Markdown Editor/PerformanceSampler.swift",
+]
+implementation_input = b""
+for relative in implementation_paths:
+    implementation_input += relative.encode() + b"\n" + (repo / relative).read_bytes() + b"\n-- source implementation authority --\n"
+implementation_digest = hashlib.sha256(implementation_input).hexdigest()
 now = dt.date.today().isoformat()
 text = ["# Performance baseline\n\n", "- **Authority:** Evidence only\n", f"- **First researched:** {now}\n",
         f"- **Last verified:** {now}\n", "- **Refresh when:** app, OS, architecture, corpus, scenario, or benchmark-driver changes.\n",
@@ -144,13 +171,14 @@ text = ["# Performance baseline\n\n", "- **Authority:** Evidence only\n", f"- **
         f"OS build: {command('sw_vers', '-buildVersion')}\n", f"Architecture: {platform.machine()}\n",
         "Configuration: Release\n", f"Xcode: {command('xcodebuild', '-version').replace(chr(10), '; ')}\n",
         f"Corpus digest: {digest}\n", "Corpus/action authority: PerformanceCorpus.swift and BenchmarkDriver.swift\n",
+        f"Source implementation digest: {implementation_digest}\n", "Source implementation authority: PerformanceCorpus.swift, BenchmarkDriver.swift, IncrementalSourceHighlighter.swift, SourceEditor.swift, and PerformanceSampler.swift\n",
         "Method: Scripts/benchmark.sh builds the Release binary, passes a parameter-only manifest, and verifies the exact Swift-owned 6 x 2 x 9 matrix plus per-case action contracts.\n",
         "Warmup: 1.5 s per case\n", f"Duration: {duration} s per case\n", f"Interval: {interval} ms\n",
         f"Samples: {len(rows)} case results\n", f"Frame hitch ms/s: {frame.get('hitchMillisPerSecond', 'n/a')}\n",
         f"Commit: {command('git', 'rev-parse', 'HEAD')}\n", f"Run ID: {uuid.uuid4()}\n\n",
-        "| scenario | corpus | size | parseProjection p95 ns | actions | accepted | refused | progress |\n",
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |\n"]
-text.extend("| %s | %s | %s | %s | %s | %s | %s | %s |\n" % row for row in rows)
+        "| scenario | corpus | size | parseProjection p95 ns | sourceHighlightCompute p95 ns | parse budget exceeded | source budget exceeded | actions | accepted | refused | progress |\n",
+        "| --- | --- | ---: | ---: | ---: | --- | --- | ---: | ---: | ---: | ---: |\n"]
+text.extend("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n" % row for row in rows)
 output = pathlib.Path(output_path)
 output.parent.mkdir(parents=True, exist_ok=True)
 with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=output.parent, delete=False) as handle:

@@ -79,6 +79,7 @@ enum BenchmarkDriver {
         let p50Nanos: UInt64
         let p95Nanos: UInt64
         let maxNanos: UInt64
+        let budgetExceeded: Bool
     }
 
     private struct CaseResult: Codable, Sendable {
@@ -333,7 +334,24 @@ enum BenchmarkDriver {
             session.resetBenchmarkTransientState()
             try? await Task.sleep(for: .milliseconds(500))
             await waitForBenchmarkPresentation(session: session, document: document)
+            // Discard work caused by installing the next fixture or by the preceding case. A
+            // case's metrics must describe its own scenario, not cross-case reconciliation.
             session.performanceSampler?.drainSummaries()
+            if configuration.scenario == .typeProse {
+                guard let sourceCoordinator = sourceCoordinator(in: controller.presentingWindow?.contentView) else {
+                    fatalError("benchmark: source coordinator is not attached to the editor window")
+                }
+                session.setMode(.source)
+                await waitForBenchmarkSource(sourceCoordinator, document: document)
+                guard let highlightTask = sourceCoordinator.highlight(debounced: false) else {
+                    fatalError("benchmark: source coordinator could not schedule highlighting")
+                }
+                await highlightTask.value
+                // The initial cache seed measures document-open styling, not ordinary typing.
+                // Drain it before scenario actions so sourceHighlightCompute evidence describes
+                // the incremental edit route promised by COR-72.
+                session.performanceSampler?.drainSummaries()
+            }
             var counters = Counters()
             let deadline = ContinuousClock.now + configuration.duration
             repeat {
@@ -344,7 +362,8 @@ enum BenchmarkDriver {
             let metrics = session.performanceSampler?.drainSummaries().map {
                 MetricResult(
                     name: metricName($0.metric), count: $0.count,
-                    p50Nanos: $0.p50, p95Nanos: $0.p95, maxNanos: $0.max
+                    p50Nanos: $0.p50, p95Nanos: $0.p95, maxNanos: $0.max,
+                    budgetExceeded: $0.p95 > (PerformanceSampler.budgetNanos[$0.metric] ?? .max)
                 )
             } ?? []
             let result = CaseResult(
@@ -587,6 +606,14 @@ enum BenchmarkDriver {
         NSApp.windows.compactMap { ($0.toolbar?.delegate as? EditorToolbarController)?.commandController }.first
     }
 
+    private static func sourceCoordinator(in view: NSView?) -> SourceEditor.Coordinator? {
+        guard let view else { return nil }
+        if let sourceText = view as? MarkdownSourceTextView {
+            return sourceText.sourceCoordinator
+        }
+        return view.subviews.lazy.compactMap { sourceCoordinator(in: $0) }.first
+    }
+
     private static func metricName(_ metric: PerformanceSampler.Metric) -> String {
         switch metric {
         case .nativeInputCallback: return "nativeInputCallback"
@@ -597,6 +624,7 @@ enum BenchmarkDriver {
         case .layoutApplication: return "layoutApplication"
         case .mainActorLatency: return "mainActorLatency"
         case .sourceHighlightApplication: return "sourceHighlightApplication"
+        case .sourceHighlightCompute: return "sourceHighlightCompute"
         }
     }
 
@@ -642,6 +670,17 @@ enum BenchmarkDriver {
             if session.presentation?.sourceRevision.value == document.sourceVersion { return }
             try? await Task.sleep(for: .milliseconds(25))
         }
+    }
+
+    private static func waitForBenchmarkSource(
+        _ coordinator: SourceEditor.Coordinator,
+        document: MarkdownDocument
+    ) async {
+        for _ in 0..<200 {
+            if coordinator.textView?.string == document.text { return }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        fatalError("benchmark: source editor did not receive the benchmark document")
     }
 
     private static func measuredMaxScrollY(in scrollView: NSScrollView) -> CGFloat {

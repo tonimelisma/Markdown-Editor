@@ -201,9 +201,10 @@ return to discovery; do not improvise an architecture change.
    captured block-end anchor maps exactly to a zero-length source insertion. Concrete Release corpus evidence observed callback p95
    below 8 ms for every approved corpus case; all three requirement proofs and falsifying mutations
    passed.
-5. ⚪ **COR-72 — Incremental Source pipeline.** (Delivers: REQ-040, REQ-041, REQ-043, REQ-045)
-   ([plan](plans/COR-72-incremental-source-pipeline.md)) Relexes invalidated lines until lexical state
-   stabilizes and applies only matching bounded attribute patches.
+5. ✅ **COR-72 — Incremental Source pipeline.** (Delivers: REQ-040, REQ-041, REQ-043, REQ-045)
+   Relexes invalidated lines until lexical state stabilizes and applies only matching bounded
+   attribute patches. `SourceLexState` carries fenced-code state across CRLF/Unicode-safe
+   `SourceLineIndex` ranges; superseded tasks are cancelled and stale patches apply nothing.
 6. ⚪ **COR-73 — Image identity and decode service.** (Delivers: REQ-085)
    ([plan](plans/COR-73-image-display-service.md)) Makes metadata identity the cache gate, decode a
    miss-only operation, and backing scale part of immutable request identity.

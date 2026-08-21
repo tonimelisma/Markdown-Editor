@@ -38,6 +38,7 @@ struct PerformanceBudgetTests {
         // budget rather than the off-main allowance.
         #expect(PerformanceSampler.budgetNanos[.layoutApplication] == 16_000_000)
         #expect(PerformanceSampler.budgetNanos[.sourceHighlightApplication] == 8_000_000)
+        #expect(PerformanceSampler.budgetNanos[.sourceHighlightCompute] == 100_000_000)
     }
 
     /// Every metric maps to a distinct closed symbol, so a run log can name it (ARC-016).

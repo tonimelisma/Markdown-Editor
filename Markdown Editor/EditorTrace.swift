@@ -381,6 +381,7 @@ extension PerformanceSampler.Metric {
         case .layoutApplication: return .layoutApplication
         case .mainActorLatency: return .mainActorLatency
         case .sourceHighlightApplication: return .sourceHighlightApplication
+        case .sourceHighlightCompute: return .sourceHighlightCompute
         }
     }
 }

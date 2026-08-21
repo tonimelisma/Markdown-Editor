@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-043",
+  "mutations": [
+    {
+      "rationale": "Dropping the outgoing fence state causes fenced content to receive inline Markdown styles instead of code-block styling.",
+      "file": "Markdown Editor/IncrementalSourceHighlighter.swift",
+      "find": "                outgoing: closes ? .initial : incoming,",
+      "replace": "                outgoing: .initial,",
+      "expect_red": ["fenceStatePropagatesAndClosesOnMatchingFence"]
+    }
+  ]
+}

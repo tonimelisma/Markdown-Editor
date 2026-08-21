@@ -10,6 +10,111 @@ import Testing
 
 @MainActor
 struct SourceEditorParityTests {
+    // Verifies: REQ-040 — the production incremental patch applies display attributes without
+    // changing source text.
+    @Test func productionIncrementalPatchAppliesStyleWithoutSourceMutation() async throws {
+        let source = "# Heading\nplain text\n"
+        let fixture = try makeFixture(source: source)
+        let patch = try await IncrementalSourceHighlighter().highlight(
+            source: source,
+            editedRange: nil,
+            sourceRevision: fixture.document.sourceVersion,
+            intentID: nil
+        )
+        fixture.coordinator.apply(patch, expectedVersion: 0, expectedText: source)
+        let actual = fixture.storage.attributes(at: 0, effectiveRange: nil)[.font] as? NSFont
+        let expected = fixture.coordinator.theme.attributes(for: .heading(level: 1))[.font] as? NSFont
+        #expect(actual == expected)
+        #expect(fixture.storage.string == source)
+    }
+
+    // Verifies: REQ-040/045 — a patch with a different UTF-16 source snapshot cannot style a
+    // canonically equivalent but range-distinct storage value.
+    @Test func productionIncrementalPatchRejectsDifferentUTF16Snapshot() async throws {
+        let source = "# A\n"
+        let fixture = try makeFixture(source: "# a\n")
+        let patch = try await IncrementalSourceHighlighter().highlight(
+            source: source,
+            editedRange: nil,
+            sourceRevision: fixture.document.sourceVersion,
+            intentID: nil
+        )
+        fixture.storage.resetSpy()
+        fixture.coordinator.apply(patch, expectedVersion: 0, expectedText: source)
+        #expect(fixture.storage.attributeReplacements.isEmpty)
+        #expect(fixture.storage.string == "# a\n")
+    }
+
+    // Verifies: REQ-045 — the coordinator's production route computes off-main, applies the
+    // incremental patch, and records both compute and application phases.
+    @Test func coordinatorHighlightUsesIncrementalProductionRoute() async throws {
+        let fixture = try makeFixture(source: "# Heading\nplain\n")
+        if let task = fixture.coordinator.highlight(debounced: false) {
+            await task.value
+        }
+        let font = fixture.storage.attributes(at: 0, effectiveRange: nil)[.font] as? NSFont
+        let expected = fixture.coordinator.theme.attributes(for: .heading(level: 1))[.font] as? NSFont
+        #expect(font == expected)
+        let metrics = fixture.session.drainPerformanceSummaries()
+        #expect(metrics.contains { $0.metric == .sourceHighlightCompute })
+        #expect(metrics.contains { $0.metric == .sourceHighlightApplication })
+    }
+
+    // Verifies: REQ-045 — replacing the document while a real debounced coordinator task is
+    // outstanding rejects the old patch even when the replacement has the same text and revision.
+    @Test func coordinatorHighlightRejectsReplacedDocumentIdentity() async throws {
+        let fixture = try makeFixture(source: "# Heading\n")
+        let replacement = MarkdownDocument()
+        replacement.installTextForTesting(fixture.storage.string)
+        let task = try #require(fixture.coordinator.highlight(debounced: true))
+        fixture.coordinator.document = replacement
+        fixture.storage.resetSpy()
+        await task.value
+        #expect(fixture.storage.attributeReplacements.isEmpty)
+    }
+
+    // Verifies: REQ-045 — rebinding a persistent source host replaces the incremental cache so
+    // a replacement document that shares its first line cannot inherit stale tail styling.
+    @Test func coordinatorRehighlightUsesReplacementDocumentCache() async throws {
+        let fixture = try makeFixture(source: "# Heading\nplain\n")
+        if let task = fixture.coordinator.highlight(debounced: false) {
+            await task.value
+        }
+        let replacement = MarkdownDocument()
+        let replacementSource = "# Heading\n**bold**\n"
+        replacement.installTextForTesting(replacementSource)
+        fixture.coordinator.document = replacement
+        fixture.storage.replaceCharacters(
+            in: NSRange(location: 0, length: fixture.storage.length),
+            with: replacementSource
+        )
+        fixture.storage.resetSpy()
+        if let task = fixture.coordinator.highlight(debounced: false) {
+            await task.value
+        }
+        let boldLocation = (replacementSource as NSString).range(of: "**bold**").location
+        let expected = fixture.coordinator.theme.attributes(for: .bold)[.font] as? NSFont
+        let actual = fixture.storage.attributes(at: boldLocation, effectiveRange: nil)[.font] as? NSFont
+        #expect(actual == expected)
+    }
+
+    // Verifies: REQ-045 — compute work belongs to the captured session even if the coordinator
+    // is rebound before the debounced task completes; discarded work must not contaminate the new
+    // session's measurements.
+    @Test func coordinatorHighlightAttributesComputeToCapturedSession() async throws {
+        let fixture = try makeFixture(source: "# Heading\n")
+        let replacement = MarkdownDocument()
+        replacement.installTextForTesting(fixture.storage.string)
+        let replacementSession = EditorSession(performanceSamplerCoordinator: DiagnosticRunCoordinator())
+        replacementSession.attach(document: replacement)
+        let task = try #require(fixture.coordinator.highlight(debounced: true))
+        fixture.coordinator.document = replacement
+        fixture.coordinator.session = replacementSession
+        await task.value
+        #expect(fixture.session.drainPerformanceSummaries().contains { $0.metric == .sourceHighlightCompute })
+        #expect(!replacementSession.drainPerformanceSummaries().contains { $0.metric == .sourceHighlightCompute })
+    }
+
     // Verifies: REQ-045 — ordinary source edits reset and restyle only their changed line.
     @Test func sourceHighlightAppliesOnlyToTheChangedWindow() async throws {
         let source = (0..<80).map { "ordinary source line \($0) with enough text to measure" }.joined(separator: "\n") + "\n"
@@ -92,6 +197,7 @@ struct SourceEditorParityTests {
     private struct Fixture {
         let coordinator: SourceEditor.Coordinator
         let storage: SpyTextStorage
+        let document: MarkdownDocument
         let session: EditorSession
         let trace: InMemoryEditorTrace
         // `coordinator.textView` is `weak` (production mirrors AppKit's normal top-down
@@ -111,11 +217,9 @@ struct SourceEditorParityTests {
     func sourceHighlightEnumeratesEveryPerformanceCorpus(_ corpus: PerformanceCorpus) async throws {
         let source = corpus.source(utf16Target: 20_000)
         let fixture = try makeFixture(source: source)
-        fixture.coordinator.apply(
-            try await MarkdownHighlighter().tokens(for: source),
-            expectedVersion: 0,
-            expectedText: source
-        )
+        if let task = fixture.coordinator.highlight(debounced: false) {
+            await task.value
+        }
         #expect(fixture.storage.string == source)
         #expect(fixture.session.drainPerformanceSummaries().contains {
             $0.metric == .sourceHighlightApplication
@@ -156,6 +260,6 @@ struct SourceEditorParityTests {
         // execution, never under serial or isolated execution. `coordinator.textView` still needs
         // to be set: `apply()` reads `textView.string`/`textView.textStorage` directly.
         coordinator.textView = textView
-        return Fixture(coordinator: coordinator, storage: storage, session: session, trace: trace, textView: textView)
+        return Fixture(coordinator: coordinator, storage: storage, document: document, session: session, trace: trace, textView: textView)
     }
 }
