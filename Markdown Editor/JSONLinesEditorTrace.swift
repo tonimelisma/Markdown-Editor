@@ -265,6 +265,14 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 (.cost, .int(cost)),
                 (.totalBytes, .int(totalBytes))
             ])
+        case .imageDisplayCacheObserved(let hit, let bytesRead, let decodeCount, let durationNanos, let totalBytes):
+            return Mapped(name: .imageDisplayCacheObserved, level: .debug, category: .image, data: [
+                (.hit, .bool(hit)),
+                (.fileBytesRead, .int(bytesRead)),
+                (.imageDecodes, .int(decodeCount)),
+                (.durationNanos, .uint(durationNanos)),
+                (.totalBytes, .int(totalBytes))
+            ])
         case .imageResolutionFailed(let reason):
             return Mapped(name: .imageResolutionFailed, level: .warn, category: .image, data: [
                 (.reason, .symbol(reason.symbol))

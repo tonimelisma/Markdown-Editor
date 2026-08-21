@@ -245,6 +245,7 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case compositionCancelled
     case compositionRefusedStale
     case imageCacheStore(cost: Int, totalBytes: Int)
+    case imageDisplayCacheObserved(hit: Bool, bytesRead: Int, decodeCount: Int, durationNanos: UInt64, totalBytes: Int)
     /// REQ-114: a referenced local image that could not be resolved for display. Carries only a
     /// closed reason symbol — never the destination, filename, or path.
     case imageResolutionFailed(reason: LocalImageResolveFailure)

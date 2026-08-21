@@ -218,6 +218,7 @@ nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
     case longestFrameNanos
     case framesObserved
     case bytes
+    case hit
     case peakBytes
     // Repeated work-ledger records retain both dimensions of the collapsed work. These are
     // intentionally closed fields rather than a string-keyed map (ARC-016).
@@ -300,6 +301,7 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
 
     // image
     case imageCacheStore
+    case imageDisplayCacheObserved
     case imageResolutionFailed
 
     // image placement (REQ-101/102; ARC-017)

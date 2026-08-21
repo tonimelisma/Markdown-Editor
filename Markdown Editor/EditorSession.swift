@@ -44,7 +44,9 @@ final class EditorSession: ObservableObject {
     private(set) var wysiwygModeState = WYSIWYGModeState()
     private(set) var pendingSelectionRestoration: PendingSelectionRestoration?
 
-    let imageCache = LocalImageCache()
+    /// Sole owner of local image identity, decode, coalescing, and decoded-cache state.
+    /// // REQ-085; ARC-023: parse and views do not own a second image route.
+    let imageDisplayService = ImageDisplayService()
     /// Sole owner of intent identities for this editor window.
     let intentRecorder = IntentRecorder()
     private var presentationIntents: [PresentationSnapshot.ID: IntentContext] = [:]
@@ -149,7 +151,6 @@ final class EditorSession: ObservableObject {
         updateOrigin.didChange = { [weak document] origin in
             document?.trace?.record(route: .updateOrigin, .updateOrigin(origin))
         }
-        imageCache.trace = document.trace
         cancellables.removeAll()
         document.objectWillChange
             .sink { [weak self] _ in
@@ -193,7 +194,8 @@ final class EditorSession: ObservableObject {
         publicationObserver?.cancel()
         publicationObserver = nil
         updateOrigin.didChange = nil
-        imageCache.trace = nil
+        let imageService = imageDisplayService
+        Task { await imageService.clear() }
         document?.updateCanonicalAssetReferences(CanonicalAssetReferences(values: []))
         document = nil
         presentation = nil

@@ -157,6 +157,7 @@ struct DiagnosticLogTests {
             .compositionCancelled,
             .compositionRefusedStale,
             .imageCacheStore(cost: 10, totalBytes: 20),
+            .imageDisplayCacheObserved(hit: true, bytesRead: 0, decodeCount: 0, durationNanos: 5, totalBytes: 20),
             // REQ-114: `oversizeDimensions` carries measurements in the Swift case; the mapping
             // must reduce it to a bare reason symbol so the payload cannot describe the file.
             .imageResolutionFailed(reason: .missingFile),
@@ -317,6 +318,40 @@ struct DiagnosticLogTests {
         }
         #expect(trace.events.contains {
             if case .imageResolutionFailed = $0 { return true }
+            return false
+        })
+        session.detach()
+    }
+
+    // Verifies: REQ-089/085 — the real parse owner emits cache telemetry for the dedicated service.
+    @Test func parseOwnerRecordsImageDisplayCacheTelemetryOnTheProductionRoute() async throws {
+        let directory = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let assets = directory.appendingPathComponent("assets", isDirectory: true)
+        try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
+        let fixture = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/Images/sample.png")
+        try FileManager.default.copyItem(at: fixture, to: assets.appendingPathComponent("sample.png"))
+        let document = MarkdownDocument()
+        document.fileURL = directory.appendingPathComponent("document.md")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("![](assets/sample.png)\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        for _ in 0..<200 {
+            if trace.events.contains(where: {
+                if case .imageDisplayCacheObserved = $0 { return true }
+                return false
+            }) { break }
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(trace.events.contains {
+            if case .imageDisplayCacheObserved(_, let bytes, let decodes, _, _) = $0 {
+                return bytes > 0 && decodes == 1
+            }
             return false
         })
         session.detach()

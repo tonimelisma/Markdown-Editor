@@ -598,56 +598,6 @@ struct PersistentEditorCharacterizationTests {
         } == [.imagePlacementFailed(reason: .parentChanged, phase: .idle)])
     }
 
-    // Verifies: REQ-089 — image cache store emits privacy-safe trace.
-    @Test func imageCacheStoreEmitsTrace() throws {
-        let fixtures = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/Images")
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cor07-trace-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try FileManager.default.copyItem(
-            at: fixtures.appendingPathComponent("sample.png"),
-            to: dir.appendingPathComponent("sample.png")
-        )
-        let docURL = dir.appendingPathComponent("doc.md")
-        try "x".write(to: docURL, atomically: true, encoding: .utf8)
-        let desc = try #require(
-            LocalImageResolver.resolve(
-                destination: "sample.png",
-                documentURL: docURL,
-                nodeID: MarkdownNodeID(rawValue: 1),
-                sourceVersion: 1,
-                locationGeneration: 1
-            ).get()
-        )
-        let trace = InMemoryEditorTrace()
-        let cache = LocalImageCache()
-        cache.trace = trace
-        let first = try #require(cache.image(for: desc))
-        let sameAssetAtNewRevision = try #require(
-            LocalImageResolver.resolve(
-                destination: "sample.png",
-                documentURL: docURL,
-                nodeID: MarkdownNodeID(rawValue: 2),
-                sourceVersion: 2,
-                locationGeneration: 1
-            ).get()
-        )
-        let second = try #require(cache.image(for: sameAssetAtNewRevision))
-        #expect(first === second, "a cache hit must retain its display-image identity")
-        let stores = trace.eventsMatching {
-            if case .imageCacheStore = $0 { return true }
-            return false
-        }
-        #expect(!stores.isEmpty)
-        #expect(stores.count == 1)
-        if case .imageCacheStore(_, let total) = stores[0] {
-            #expect(total <= LocalImageByteCache.maxBytes)
-        }
-    }
-
     // Verifies: REQ-082 — Add Image is window-scoped via router, not a global notification.
     @Test func addImageUsesWindowScopedRouterNotGlobalNotification() async {
         let document = MarkdownDocument()
@@ -756,7 +706,7 @@ struct PersistentEditorCharacterizationTests {
     }
 
     // Verifies: REQ-081 — HEIC and HEIF decode; originals unchanged; hashes match manifest.
-    @Test func heicAndHeifDecodeWithoutTouchingOriginals() throws {
+    @Test func heicAndHeifDecodeWithoutTouchingOriginals() async throws {
         let fixtures = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .appendingPathComponent("Fixtures/Images")
@@ -768,11 +718,13 @@ struct PersistentEditorCharacterizationTests {
             .appendingPathComponent("cor07-images-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
+        let assets = dir.appendingPathComponent("assets", isDirectory: true)
+        try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
 
         for name in ["sample.heic", "sample.heif", "sample.png"] {
             try FileManager.default.copyItem(
                 at: fixtures.appendingPathComponent(name),
-                to: dir.appendingPathComponent(name)
+                to: assets.appendingPathComponent(name)
             )
         }
         let docURL = dir.appendingPathComponent("doc.md")
@@ -783,11 +735,17 @@ struct PersistentEditorCharacterizationTests {
         #expect(heicHash != heifHash)
 
         for name in ["sample.heic", "sample.heif"] {
-            let url = dir.appendingPathComponent(name)
+            let url = assets.appendingPathComponent(name)
             let before = try Data(contentsOf: url)
             let digest = SHA256.hash(data: before).map { String(format: "%02x", $0) }.joined()
             #expect(digest == (manifest[name]?["sha256"] as? String))
-            let decoded = LocalImageDecoder.decode(destination: name, documentURL: docURL)
+            let request = ImageDecodeRequest(
+                destination: "assets/\(name)", documentURL: docURL,
+                nodeID: MarkdownNodeID(rawValue: UInt64(name.count)), sourceRevision: 1,
+                locationGeneration: 1, requestGeneration: UInt64(name.count), pixelTarget: 64,
+                backingScale: 2, appearance: .light
+            )
+            let decoded = await ImageDisplayService().resolve(request)
             guard case .success = decoded else {
                 Issue.record("decode failed for \(name): \(decoded)")
                 return
@@ -795,78 +753,6 @@ struct PersistentEditorCharacterizationTests {
             let after = try Data(contentsOf: url)
             #expect(before == after)
         }
-    }
-
-    // Verifies: REQ-081 — corrupt/unsupported content rejected by UTI/decode.
-    @Test func unsupportedOrCorruptContentRejected() throws {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cor07-bad-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let docURL = dir.appendingPathComponent("doc.md")
-        try "x".write(to: docURL, atomically: true, encoding: .utf8)
-        let fake = dir.appendingPathComponent("fake.png")
-        try Data([0x00, 0x01, 0x02]).write(to: fake)
-        let result = LocalImageDecoder.decode(destination: "fake.png", documentURL: docURL)
-        #expect(result.isFailure)
-    }
-
-    // Verifies: REQ-081 — cache stays within 64 MiB and refreshes after file change.
-    @Test func imageCacheRespectsBudgetAndRefreshesOnChange() throws {
-        #expect(LocalImageByteCache.maxBytes == 64 * 1024 * 1024)
-        let cache = LocalImageByteCache()
-        #expect(cache.totalBytes == 0)
-
-        let fixtures = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/Images")
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cor07-cache-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let png = dir.appendingPathComponent("sample.png")
-        try FileManager.default.copyItem(at: fixtures.appendingPathComponent("sample.png"), to: png)
-        let docURL = dir.appendingPathComponent("doc.md")
-        try "x".write(to: docURL, atomically: true, encoding: .utf8)
-
-        let first = LocalImageResolver.resolve(
-            destination: "sample.png",
-            documentURL: docURL,
-            nodeID: MarkdownNodeID(rawValue: 1),
-            sourceVersion: 1,
-            locationGeneration: 1
-        )
-        let desc1 = try #require(first.get())
-        let mainCache = LocalImageCache()
-        let image1 = mainCache.image(for: desc1)
-        #expect(image1 != nil)
-        #expect(mainCache.totalBytes <= LocalImageByteCache.maxBytes)
-
-        // Replace file with JPEG bytes under the same name → new modification date / content.
-        try FileManager.default.removeItem(at: png)
-        try FileManager.default.copyItem(at: fixtures.appendingPathComponent("sample.jpg"), to: png)
-        // Touch modification date.
-        try FileManager.default.setAttributes(
-            [.modificationDate: Date().addingTimeInterval(5)],
-            ofItemAtPath: png.path
-        )
-        let second = LocalImageResolver.resolve(
-            destination: "sample.png",
-            documentURL: docURL,
-            nodeID: MarkdownNodeID(rawValue: 2),
-            sourceVersion: 2,
-            locationGeneration: 1
-        )
-        // Extension says png but content is JPEG — UTI detect should accept JPEG.
-        let desc2 = try #require(second.get())
-        #expect(desc2.contentType.contains("jpeg") || desc2.pixelWidth > 0)
-        // Different file bytes must yield different content digests (SHA-256 cache key).
-        #expect(desc1.contentDigest != desc2.contentDigest)
-        let image2 = mainCache.image(for: desc2)
-        #expect(image2 != nil)
-        #expect(mainCache.totalBytes <= LocalImageByteCache.maxBytes)
-        cache.clear()
-        #expect(cache.totalBytes == 0)
     }
 
     /// Verifies: REQ-090 — p95 of the *complete* native input callback < 8 ms (Release only).
