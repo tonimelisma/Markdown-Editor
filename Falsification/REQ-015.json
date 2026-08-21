@@ -5,6 +5,6 @@
     "file": "Markdown Editor/MarkdownDocument.swift",
     "find": "            MarkdownDocumentData(text: self.text).data()",
     "replace": "            Data()",
-    "expect_red": ["dataOfTypeSnapshotsCanonicalMainActorText"]
+    "expect_red": ["readAndDataRoundTripByteFixtures"]
   }]
 }
