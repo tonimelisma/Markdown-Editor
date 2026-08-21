@@ -214,7 +214,7 @@ return to discovery; do not improvise an architecture change.
    The corrected lifecycle suite exercises a real edit, saved-content revert, New controller route,
    two-window tabs, production Open Recent menu construction, and recent URL registration. The final
    full gate observed 513 tests passed, 33/33 selected mutations red, 50 production trace events,
-   51 Done rows verified against 456 executed tests, and 31 increment rows resolved. The approved
+   63 Done rows verified against 456 executed tests, and 31 increment rows resolved. The approved
    plan is deleted with delivery.
 8. ⚪ **COR-75 — Native Source editor and privacy contracts.** (Delivers: REQ-010, REQ-011, REQ-012, REQ-022, REQ-030, REQ-031, REQ-044, REQ-046)
    ([plan](plans/COR-75-native-source-editor-and-privacy.md)) Proves native editing liveness and the

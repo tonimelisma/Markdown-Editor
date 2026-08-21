@@ -78,6 +78,59 @@ struct DocumentLifecycleContractTests {
         #expect(outcome == .failed)
         #expect(document.text == "before!")
         #expect(document.fileURL == nil)
+
+        let sourceVersionAfterFailure = document.sourceVersion
+        let locationGenerationAfterFailure = document.locationGeneration
+        let canUndoAfterFailure = document.undoManager?.canUndo == true
+
+        document.saveExecutorOverride = SaveOutcome(.cancelled)
+        let cancelled = await document.saveDocument()
+
+        #expect(cancelled == .cancelled)
+        #expect(document.text == "before!")
+        #expect(document.sourceVersion == sourceVersionAfterFailure)
+        #expect(document.locationGeneration == locationGenerationAfterFailure)
+        #expect(document.undoManager?.canUndo == canUndoAfterFailure)
+    }
+
+    // Verifies: REQ-005 — a canonical edit hands off to NSDocument's autosave contract and
+    // completes without a custom timer or shadow persistence service.
+    @Test func autosaveHandoffCompletesAfterCanonicalEdit() async throws {
+        let document = MarkdownDocument()
+        document.installTextForTesting("before")
+        let snapshot = document.sourceSnapshot()
+        let mutation = try #require(SourceMutation.exact(
+            snapshot: snapshot,
+            range: NSRange(location: 6, length: 0),
+            replacement: "!",
+            selectionBefore: SourceSelection(utf16: NSRange(location: 6, length: 0)),
+            actionName: "Autosave edit",
+            grouping: .discrete
+        ))
+        let commit = document.commitEditorInput(
+            .sourceReplacement(EditorReplacementInput(
+                mutation: mutation,
+                selectionIdentity: .source(mutation.selectionBefore)
+            )),
+            state: EditorStateSnapshot(
+                source: snapshot,
+                sourceSelection: mutation.selectionBefore
+            )
+        )
+        guard case .committed = commit else {
+            Issue.record("canonical autosave edit was refused")
+            return
+        }
+
+        #expect(document.hasUnautosavedChanges == true)
+        let error = await withCheckedContinuation { continuation in
+            document.autosave(withImplicitCancellability: true) { error in
+                continuation.resume(returning: error)
+            }
+        }
+
+        #expect(error == nil)
+        #expect(document.hasUnautosavedChanges == false)
     }
 
     // Verifies: REQ-006/014/020 — Versions/revert and tabs stay AppKit-owned. The app configures
@@ -94,7 +147,7 @@ struct DocumentLifecycleContractTests {
         #expect(document.isInViewingMode == false)
 
         let savedURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cor74-revert-\\(UUID().uuidString).md")
+            .appendingPathComponent("cor74-revert-" + UUID().uuidString + ".md")
         defer { try? FileManager.default.removeItem(at: savedURL) }
         try Data("saved\n".utf8).write(to: savedURL)
         document.installTextForTesting("edited\n")
@@ -142,23 +195,34 @@ struct DocumentLifecycleContractTests {
         #expect(!source.contains("RecentDocumentStore"))
 
         let originalMenu = NSApp.mainMenu
-        defer { NSApp.mainMenu = originalMenu }
-        let menu = NSMenu(title: "Main")
-        let fileMenu = NSMenu(title: "File")
-        menu.addItem(withTitle: "File", action: nil, keyEquivalent: "").submenu = fileMenu
+        let menu = originalMenu ?? NSMenu(title: "Main")
         NSApp.mainMenu = menu
+        let fileItem = menu.item(withTitle: "File") ?? menu.addItem(
+            withTitle: "File",
+            action: nil,
+            keyEquivalent: ""
+        )
+        let fileMenu = fileItem.submenu ?? NSMenu(title: "File")
+        fileItem.submenu = fileMenu
+        let hadOpenRecent = fileMenu.item(withTitle: "Open Recent") != nil
         let appDelegate = MarkdownAppDelegate()
         appDelegate.ensureOpenRecentMenuItem()
         let openRecent = fileMenu.item(withTitle: "Open Recent")
         #expect(openRecent?.submenu?.item(withTitle: "Clear Menu") != nil)
+        defer {
+            if !hadOpenRecent, let insertedOpenRecent = fileMenu.item(withTitle: "Open Recent") {
+                fileMenu.removeItem(insertedOpenRecent)
+            }
+            NSApp.mainMenu = originalMenu
+        }
 
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cor74-recent-(UUID().uuidString).md")
+            .appendingPathComponent("cor74-recent-" + UUID().uuidString + ".md")
         try Data().write(to: url)
         let defaults = UserDefaults.standard
         let previousRecentLimit = defaults.object(forKey: "NSRecentDocumentsLimit")
         defaults.set(10, forKey: "NSRecentDocumentsLimit")
-        let controller = MarkdownDocumentController()
+        let controller = NSDocumentController.shared
         controller.noteNewRecentDocumentURL(url)
         defer {
             controller.clearRecentDocuments(nil)
@@ -171,6 +235,8 @@ struct DocumentLifecycleContractTests {
         }
         let canonicalPath = url.path.hasPrefix("/private/") ? url.path : "/private\(url.path)"
         #expect(controller.maximumRecentDocumentCount > 0)
+        // AppKit documents recentDocumentURLs as the URLs currently represented by Open Recent;
+        // use that public menu contract rather than depending on private dynamic submenu items.
         #expect(controller.recentDocumentURLs.contains { $0.path == canonicalPath })
     }
 
