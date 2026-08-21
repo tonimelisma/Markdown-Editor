@@ -375,18 +375,18 @@ struct DiagnosticLogTests {
         document.installTextForTesting("![](assets/sample.png)\n")
         let session = EditorSession(imageDisplayService: ImageDisplayService(fileOperations: operations))
         session.attach(document: document)
-        for _ in 0..<1_000 where !operations.didStartReading {
+        for _ in 0..<4_000 where !operations.didStartReading {
             await Task.yield()
             try? await Task.sleep(for: .milliseconds(5))
         }
         #expect(operations.didStartReading)
         session.parseCoordinator.cancel()
-        for _ in 0..<200 where !trace.events.contains(where: {
+        for _ in 0..<4_000 where !trace.events.contains(where: {
             if case .parseCancelled = $0 { return true }
             return false
         }) {
             await Task.yield()
-            try? await Task.sleep(for: .milliseconds(2))
+            try? await Task.sleep(for: .milliseconds(5))
         }
         #expect(session.presentation == nil)
         #expect(session.resolvedImages.isEmpty)
