@@ -109,13 +109,15 @@ nonisolated struct DiagnosticRunHeader: Sendable, Equatable {
 actor DiagnosticFileSink {
     private let url: URL
     private let byteLimit: Int
+    private let reservedTerminalBytes: Int
     private var handle: FileHandle?
     private var bytesWritten = 0
     private var truncated = false
 
-    init(url: URL, byteLimit: Int) {
+    init(url: URL, byteLimit: Int, reservedTerminalBytes: Int = 0) {
         self.url = url
         self.byteLimit = byteLimit
+        self.reservedTerminalBytes = min(max(reservedTerminalBytes, 0), byteLimit)
     }
 
     /// Appends lines and reports whether the size cap was reached during this batch.
@@ -130,7 +132,7 @@ actor DiagnosticFileSink {
         var payload = Data()
         for line in lines {
             guard let encoded = (line + "\n").data(using: .utf8) else { continue }
-            if bytesWritten + payload.count + encoded.count > byteLimit {
+            if bytesWritten + payload.count + encoded.count > byteLimit - reservedTerminalBytes {
                 truncated = true
                 break
             }
@@ -141,6 +143,30 @@ actor DiagnosticFileSink {
             bytesWritten += payload.count
         }
         return truncated
+    }
+
+    /// Appends terminal records after ordinary writes have reached their reserved limit. The
+    /// reservation keeps terminal records within the file-size bound while preserving the
+    /// ordinary sink's refusal semantics for all later writes. A capped run needs both its cap
+    /// marker and its run-end marker.
+    @discardableResult
+    func appendTerminal(_ lines: [String]) -> Bool {
+        guard !lines.isEmpty else { return false }
+        if handle == nil {
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+            handle = try? FileHandle(forWritingTo: url)
+        }
+        guard let handle else { return false }
+        var payload = Data()
+        for line in lines {
+            guard let encoded = (line + "\n").data(using: .utf8) else { continue }
+            guard bytesWritten + payload.count + encoded.count <= byteLimit else { return false }
+            payload.append(encoded)
+        }
+        guard !payload.isEmpty else { return false }
+        try? handle.write(contentsOf: payload)
+        bytesWritten += payload.count
+        return true
     }
 
     var isTruncated: Bool {
@@ -187,8 +213,8 @@ final class DiagnosticLog {
     private let coverageRecorder: JSONLinesEditorTrace.ProductionRouteCoverageRecorder?
     private var durabilityTask: Task<Void, Never>?
     private var closed = false
-    private var sizeLimitRecorded = false
     private var suddenTerminationDisabled = false
+    private let byteLimit: Int
 
     /// Rate-collapse bookkeeping keyed by event name.
     private struct RepeatWindow {
@@ -202,8 +228,15 @@ final class DiagnosticLog {
 
     private var nextDocumentHandle: UInt64 = 0
 
-    init(directory: URL, hostKind: DiagnosticHostKind, startedAt: Date = Date()) {
+    init(
+        directory: URL,
+        hostKind: DiagnosticHostKind,
+        startedAt: Date = Date(),
+        byteLimit: Int? = nil
+    ) {
         let runID = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12)
+        let configuredByteLimit = byteLimit ?? Self.maximumFileBytes
+        self.byteLimit = configuredByteLimit
         let bundle = Bundle.main.infoDictionary
         header = DiagnosticRunHeader(
             runID: String(runID),
@@ -229,7 +262,14 @@ final class DiagnosticLog {
         Task.detached(priority: .utility) {
             Self.pruneRuns(in: pruneDirectory, keeping: keep)
         }
-        let sink = DiagnosticFileSink(url: fileURL, byteLimit: Self.maximumFileBytes)
+        // Reserve room for both the cap marker and the clean-shutdown marker. A capped run must
+        // retain enough terminal space for `sizeLimitReached` followed by `runEnd`.
+        let terminalReservation = min(2048, max(1024, configuredByteLimit / 4))
+        let sink = DiagnosticFileSink(
+            url: fileURL,
+            byteLimit: configuredByteLimit,
+            reservedTerminalBytes: terminalReservation
+        )
         writeCoordinator = DiagnosticWriteCoordinator(sink: sink)
         coverageRecorder = JSONLinesEditorTrace.ProductionRouteCoverageRecorder(hostKind: hostKind)
         startUptimeNanos = DispatchTime.now().uptimeNanoseconds
@@ -397,23 +437,52 @@ final class DiagnosticLog {
         origin: DiagnosticEvidenceOrigin,
         productionRoute: DiagnosticEventName?,
         data: [(key: DiagnosticField, value: DiagnosticValue)],
-        uptime: Double
+        uptime: Double,
+        terminal: Bool = false
     ) {
         let timestamp = Date()
-        observeSizeLimit(writeCoordinator.appendRecord { sequence in
-            DiagnosticRecord(
-                wallClock: timestamp,
-                uptimeSeconds: uptime,
-                sequence: sequence,
-                level: level,
-                category: category,
-                event: event,
-                document: document,
-                origin: origin,
-                productionRoute: productionRoute,
-                data: data
-            ).jsonLine
-        })
+        let terminalTimestamp = Date()
+        let terminalUptime = Double(DispatchTime.now().uptimeNanoseconds - startUptimeNanos) / 1_000_000_000
+        let capBytes = byteLimit
+        _ = terminal
+            ? writeCoordinator.appendTerminalRecord { sequence in
+                DiagnosticRecord(
+                    wallClock: timestamp,
+                    uptimeSeconds: uptime,
+                    sequence: sequence,
+                    level: level,
+                    category: category,
+                    event: event,
+                    document: document,
+                    origin: origin,
+                    productionRoute: productionRoute,
+                    data: data
+                ).jsonLine
+            }
+            : writeCoordinator.appendRecord({ sequence in
+                DiagnosticRecord(
+                    wallClock: timestamp,
+                    uptimeSeconds: uptime,
+                    sequence: sequence,
+                    level: level,
+                    category: category,
+                    event: event,
+                    document: document,
+                    origin: origin,
+                    productionRoute: productionRoute,
+                    data: data
+                ).jsonLine
+            }, terminalOnTruncation: { sequence in
+                DiagnosticRecord(
+                    wallClock: terminalTimestamp,
+                    uptimeSeconds: terminalUptime,
+                    sequence: sequence,
+                    level: .warn,
+                    category: .diagnostics,
+                    event: .sizeLimitReached,
+                    data: [(.totalBytes, .int(capBytes))]
+                ).jsonLine
+            })
     }
 
     private func appendCollapseSummary(
@@ -432,7 +501,8 @@ final class DiagnosticLog {
         }
         let finalData = data
         let timestamp = Date()
-        observeSizeLimit(writeCoordinator.appendRecord { sequence in
+        let capBytes = byteLimit
+        _ = writeCoordinator.appendRecord({ sequence in
             DiagnosticRecord(
                 wallClock: timestamp,
                 uptimeSeconds: uptime,
@@ -442,6 +512,16 @@ final class DiagnosticLog {
                 event: .repeated,
                 collapsedEvent: event,
                 data: finalData
+            ).jsonLine
+        }, terminalOnTruncation: { sequence in
+            DiagnosticRecord(
+                wallClock: timestamp,
+                uptimeSeconds: uptime,
+                sequence: sequence,
+                level: .warn,
+                category: .diagnostics,
+                event: .sizeLimitReached,
+                data: [(.totalBytes, .int(capBytes))]
             ).jsonLine
         })
     }
@@ -529,31 +609,12 @@ final class DiagnosticLog {
     }
 
     private func appendLine(_ line: String) {
-        observeSizeLimit(writeCoordinator.appendUnsequenced([line]))
-    }
-
-    private func observeSizeLimit(_ write: Task<Bool, Never>?) {
-        guard let write else { return }
-        Task { @MainActor [weak self] in
-            if await write.value { self?.noteSizeLimitReached() }
-        }
+        _ = writeCoordinator.appendUnsequenced([line])
     }
 
     func flush() {
         // Records are handed to the serialized writer as they are created. This method remains
         // as a no-op compatibility point for callers that used to trigger buffered writes.
-    }
-
-    /// Records the cap once, as a well-formed record rather than a hand-written fragment.
-    private func noteSizeLimitReached() {
-        guard !sizeLimitRecorded, !closed else { return }
-        sizeLimitRecorded = true
-        record(
-            .sizeLimitReached,
-            level: .warn,
-            category: .diagnostics,
-            data: [(.totalBytes, .int(Self.maximumFileBytes))]
-        )
     }
 
     /// Writes the terminating record so a reader can distinguish a clean exit from a crash.

@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-031",
+  "mutations": [
+    {
+      "rationale": "Introducing a compilable Network capability into production source must fail the structural account/telemetry/privacy boundary gate.",
+      "file": "Markdown Editor/Markdown_EditorApp.swift",
+      "find": "import AppKit\n",
+      "replace": "import AppKit\nimport Network\n",
+      "expect_red": ["productionBoundaryRejectsNetworkAccountAndAnalyticsCapabilities"]
+    }
+  ]
+}

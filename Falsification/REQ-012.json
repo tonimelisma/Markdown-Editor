@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-012",
+  "mutations": [
+    {
+      "rationale": "Disabling AppKit continuous spell checking in the production source configuration violates the native spell-checker integration.",
+      "file": "Markdown Editor/EditorHost.swift",
+      "find": "            textView.isContinuousSpellCheckingEnabled = true",
+      "replace": "            textView.isContinuousSpellCheckingEnabled = false",
+      "expect_red": ["productionSourceEditorUsesNativeSpellAndFindServices"]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-022",
+  "mutations": [
+    {
+      "rationale": "Replacing the semantic label color with a transparent color breaks the appearance-resolved typography contract.",
+      "file": "Markdown Editor/MarkdownTypography.swift",
+      "find": "        [.font: bodyFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraphStyle()]",
+      "replace": "        [.font: bodyFont, .foregroundColor: NSColor.clear, .paragraphStyle: paragraphStyle()]",
+      "expect_red": ["semanticAppearanceDoesNotMutateSource"]
+    }
+  ]
+}

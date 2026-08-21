@@ -569,18 +569,32 @@ struct DiagnosticLogTests {
     // well-formed record rather than a hand-written fragment that would break the schema.
     @Test func fileSizeCapIsBoundedAndRecorded() async {
         let directory = makeTemporaryDirectory()
-        let log = DiagnosticLog(directory: directory, hostKind: .unitTest)
-        let sink = DiagnosticFileSink(url: log.fileURL, byteLimit: 200)
-        // Fill past a deliberately tiny cap.
-        var reachedCap = false
-        for index in 0..<50 where !reachedCap {
-            reachedCap = await sink.append(["{\"seq\":\(index)}"])
+        let log = DiagnosticLog(directory: directory, hostKind: .unitTest, byteLimit: 2_048)
+        // Error-level records are not collapsed; enough ordinary records reach the reserved
+        // terminal-record space and exercise DiagnosticLog's actual sizeLimitReached route.
+        for _ in 0..<100 {
+            log.record(
+                .userAlertPresented,
+                level: .error,
+                category: .diagnostics,
+                data: [(.reason, .symbol(.writeFailed))]
+            )
         }
-        #expect(reachedCap)
+        // Finish immediately after scheduling the burst: the cap marker and clean-shutdown
+        // marker must both survive the serialized writer race.
+        log.finish()
 
-        let written = (try? String(contentsOf: log.fileURL, encoding: .utf8)) ?? ""
-        #expect(written.utf8.count <= 200)
-        for line in written.split(separator: "\n") {
+        var recorded = [String]()
+        for _ in 0..<100 {
+            recorded = await lines(of: log)
+            if recorded.contains(where: { $0.contains("\"ev\":\"sizeLimitReached\"") }) { break }
+            await Task.yield()
+        }
+        let written = recorded.joined(separator: "\n") + "\n"
+        #expect(written.utf8.count <= 2_048)
+        #expect(recorded.contains { $0.contains("\"ev\":\"sizeLimitReached\"") })
+        #expect(recorded.last?.contains("\"ev\":\"runEnd\"") == true)
+        for line in recorded {
             #expect(object(String(line)) != nil)
         }
     }

@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-044",
+  "mutations": [
+    {
+      "rationale": "Keying the live count task on the complete document string restores main-actor string comparison instead of the source revision owner route.",
+      "file": "Markdown Editor/ContentView.swift",
+      "find": "        .task(id: document.sourceVersion) {",
+      "replace": "        .task(id: document.text) {",
+      "expect_red": ["liveCountOwnerEnumeratesUnicodeAndRevisionRoute"]
+    }
+  ]
+}

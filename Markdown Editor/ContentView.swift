@@ -7,8 +7,7 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var document: MarkdownDocument
-    @State private var counts = TextStats.Counts(words: 0, characters: 0)
-    @State private var statsComputer = TextStatsComputer()
+    @StateObject private var countOwner = LiveCountOwner()
     @StateObject private var placementController = ImagePlacementController()
     @StateObject private var session = EditorSession()
     @StateObject private var actionRouter = EditorActionRouter()
@@ -28,7 +27,7 @@ struct ContentView: View {
             HStack {
                 Spacer()
                 // REQ-044: live word / character count.
-                Text("\(counts.words) words · \(counts.characters) characters")
+                Text(countOwner.displayLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)
@@ -40,9 +39,7 @@ struct ContentView: View {
         // cancel and restart the counting task — O(document) work per keystroke, outside every
         // boundary the performance budgets measure.
         .task(id: document.sourceVersion) {
-            let snapshot = document.text
-            guard let next = await statsComputer.counts(for: snapshot), !Task.isCancelled else { return }
-            counts = next
+            await countOwner.update(snapshot: document.text, revision: document.sourceVersion)
         }
         .onAppear {
             placementController.attach(actions: document)

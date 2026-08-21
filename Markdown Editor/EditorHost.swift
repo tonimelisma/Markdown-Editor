@@ -422,6 +422,8 @@ struct EditorHostView: NSViewRepresentable {
             textView.isAutomaticDashSubstitutionEnabled = false
             textView.isAutomaticTextReplacementEnabled = false
             textView.isAutomaticSpellingCorrectionEnabled = false
+            // REQ-012: use AppKit's native checker; the editor does not own a spell engine.
+            textView.isContinuousSpellCheckingEnabled = true
             textView.usesFindBar = true
             textView.isIncrementalSearchingEnabled = true
             textView.textContainerInset = NSSize(width: 8, height: 8)
