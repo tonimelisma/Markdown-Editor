@@ -619,17 +619,23 @@ final class EditorSession: ObservableObject {
         default:
             isTypingCommand = false
         }
+        let nativeClassification: ProjectionSelectionClass? = {
+            guard isOrdinaryNativeReplacement,
+                  isTypingCommand,
+                  case .projection(let projectionSelection) = selection,
+                  let presentation = state.presentation else { return nil }
+            return ProjectionSelectionClassifier.classify(
+                selection: projectionSelection.range.utf16,
+                affinity: projectionSelection.affinity,
+                snapshot: presentation
+            )
+        }()
         if isOrdinaryNativeReplacement,
            case .projection(let projectionSelection) = selection,
            isTypingCommand,
            let presentation = state.presentation,
-           LocalTransitionDomain.classify(
-               ProjectionSelectionClassifier.classify(
-                   selection: projectionSelection.range.utf16,
-                   affinity: projectionSelection.affinity,
-                   snapshot: presentation
-               )
-           ) != .tableCell {
+           let classification = nativeClassification,
+           LocalTransitionDomain.classify(classification) != .taskMarker {
             // COR-71: this route is deliberately synchronous but parser-free. The closed local
             // domain either produces a complete identity transition or refuses before owner
             // mutation; authoritative reconciliation is scheduled only after an accepted edit.
@@ -639,7 +645,8 @@ final class EditorSession: ObservableObject {
                 presentation: presentation,
                 tree: state.tree,
                 nextSnapshotID: state.nextPresentationID,
-                intent: intent
+                intent: intent,
+                classification: classification
             )
         } else {
             plannedOutcome = EditorSemanticWorker.sync(intent: intent) {

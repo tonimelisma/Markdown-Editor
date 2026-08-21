@@ -89,7 +89,10 @@ enum AttributedPresentationBuilder {
             storage.setAttributes(theme.baseAttributes, range: full)
         }
 
+        // Projection runs are emitted in projection order. Stop once the sorted run stream is
+        // beyond the bounded scope; ordinary input must not scan/style the whole document.
         for run in model.runs {
+            if run.utf16Range.location >= NSMaxRange(scope) { break }
             guard let local = localRange(run.utf16Range, in: scope), local.length > 0 else { continue }
             storage.addAttributes(
                 inlineAttributes(for: run, theme: theme, typography: typography),
@@ -99,13 +102,17 @@ enum AttributedPresentationBuilder {
 
         // Containing blocks first: a nested list or quote then refines its own paragraph geometry
         // instead of being overwritten by the block that encloses it.
-        for block in model.blocks.sorted(by: { $0.projectionRange.length > $1.projectionRange.length }) {
+        let scopedBlocks = model.blocks
+            .filter { intersectsOrTouches($0.projectionRange, scope) }
+            .sorted { $0.projectionRange.length > $1.projectionRange.length }
+        for block in scopedBlocks {
             guard let local = localRange(block.projectionRange, in: scope), local.length > 0 else { continue }
             apply(block: block, localRange: local, to: storage, typography: typography)
         }
 
         var attachmentNodes: [Int: MarkdownNodeID] = [:]
         for attachment in model.attachments {
+            if attachment.utf16Location >= NSMaxRange(scope) { break }
             let location = attachment.utf16Location
             guard location >= scope.location, location < NSMaxRange(scope) else { continue }
             let local = NSRange(location: location - scope.location, length: 1)

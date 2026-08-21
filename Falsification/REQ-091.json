@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-091",
+  "mutations": [
+    {
+      "rationale": "Refusing the local production route breaks the synchronous source and presentation transition required before the next input.",
+      "file": "Markdown Editor/LocalTransitionDomain.swift",
+      "find": "            return .accepted(edit)\n        case .tableCell:",
+      "replace": "            return .refused(.unprovable)\n        case .tableCell:",
+      "expect_red": ["ordinaryLiteralInsertionUsesLocalTransition"]
+    }
+  ]
+}

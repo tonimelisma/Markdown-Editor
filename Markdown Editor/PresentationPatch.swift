@@ -57,13 +57,24 @@ struct PresentationPatch {
               NSMaxRange(declaredNextRange) <= nextText.length,
               nextText.substring(with: declaredNextRange) == transition.projectionReplacement
         else { return nil }
-        // The declared range is not trusted as the patch scope. A semantic formatting command
-        // declares the whole document; only the real textual difference may drive the patch.
+        // The declared range is not trusted as the patch scope for authoritative transitions. A
+        // local identity transition carries an exact change proof, so rescanning the complete
+        // rendered string would violate the bounded callback contract.
+        let knownChange: (current: NSRange, next: NSRange)? = transition.proof == .localIdentity
+            ? (
+                current: transition.projectionReplacementRange,
+                next: NSRange(
+                    location: transition.projectionReplacementRange.location,
+                    length: (transition.projectionReplacement as NSString).length
+                )
+            )
+            : nil
         return between(
             current: current,
             next: next,
             selectionAfter: transition.selectionAfter,
-            buildScope: buildScope
+            buildScope: buildScope,
+            knownChange: knownChange
         )
     }
 
@@ -74,42 +85,62 @@ struct PresentationPatch {
         current: PresentationSnapshot,
         next: PresentationSnapshot,
         selectionAfter: ProjectionSelection?,
-        buildScope: (MarkdownProjectionModel, NSRange) -> AttributedPresentationBuilder.Scoped
+        buildScope: (MarkdownProjectionModel, NSRange) -> AttributedPresentationBuilder.Scoped,
+        knownChange: (current: NSRange, next: NSRange)? = nil
     ) -> PresentationPatch? {
         let currentText = current.renderedString as NSString
         let nextText = next.renderedString as NSString
-        guard let (rawCurrent, rawNext) = changedSpan(from: currentText, to: nextText) else {
+        let changed: (current: NSRange, next: NSRange)? = knownChange ?? changedSpan(
+            from: currentText,
+            to: nextText
+        ).map { (current: $0.0, next: $0.1) }
+        guard let (rawCurrent, rawNext) = changed else {
             return nil
         }
 
         let currentModel = current.asProjectionModel
         let nextModel = next.asProjectionModel
-        let scopeCurrent = AttributedPresentationBuilder.blockScope(for: rawCurrent, in: currentModel)
-        let scopeNext = AttributedPresentationBuilder.blockScope(for: rawNext, in: nextModel)
-
-        let start = min(scopeCurrent.location, scopeNext.location)
-        let tail = min(
-            max(
-                NSMaxRange(scopeCurrent) - NSMaxRange(rawCurrent),
-                NSMaxRange(scopeNext) - NSMaxRange(rawNext)
-            ),
-            min(currentText.length - NSMaxRange(rawCurrent), nextText.length - NSMaxRange(rawNext))
-        )
-        guard start >= 0, start <= rawCurrent.location, tail >= 0 else { return nil }
-        let currentRange = NSRange(location: start, length: NSMaxRange(rawCurrent) + tail - start)
-        let nextRange = NSRange(location: start, length: NSMaxRange(rawNext) + tail - start)
+        let isBoundedLocalChange = knownChange != nil
+        let currentRange: NSRange
+        let nextRange: NSRange
+        if isBoundedLocalChange {
+            // The local proof covers exactly the changed projection span. Rebuilding the
+            // containing paragraph here would be a needless TextKit invalidation and would make
+            // the callback cost scale with unrelated text. The authoritative path below retains
+            // whole-block expansion because its diff must re-establish semantic block styling.
+            currentRange = rawCurrent
+            nextRange = rawNext
+        } else {
+            let scopeCurrent = AttributedPresentationBuilder.blockScope(for: rawCurrent, in: currentModel)
+            let scopeNext = AttributedPresentationBuilder.blockScope(for: rawNext, in: nextModel)
+            let start = min(scopeCurrent.location, scopeNext.location)
+            let tail = min(
+                max(
+                    NSMaxRange(scopeCurrent) - NSMaxRange(rawCurrent),
+                    NSMaxRange(scopeNext) - NSMaxRange(rawNext)
+                ),
+                min(currentText.length - NSMaxRange(rawCurrent), nextText.length - NSMaxRange(rawNext))
+            )
+            guard start >= 0, start <= rawCurrent.location, tail >= 0 else { return nil }
+            currentRange = NSRange(location: start, length: NSMaxRange(rawCurrent) + tail - start)
+            nextRange = NSRange(location: start, length: NSMaxRange(rawNext) + tail - start)
+        }
         guard NSMaxRange(currentRange) <= currentText.length,
               NSMaxRange(nextRange) <= nextText.length
         else { return nil }
 
-        // Expanding past the literal replacement is only sound if the extra text is identical in
-        // both snapshots. Proving it here is what lets the applier treat this as a local edit.
-        let prefixLength = rawCurrent.location - start
-        guard currentText.substring(with: NSRange(location: start, length: prefixLength))
-                == nextText.substring(with: NSRange(location: start, length: prefixLength)),
-              currentText.substring(with: NSRange(location: NSMaxRange(rawCurrent), length: tail))
-                == nextText.substring(with: NSRange(location: NSMaxRange(rawNext), length: tail))
-        else { return nil }
+        if !isBoundedLocalChange {
+            // Expanding past the literal replacement is only sound if the extra text is
+            // identical in both snapshots. Proving it here is what lets the applier treat an
+            // authoritative block patch as a local edit.
+            let prefixLength = rawCurrent.location - currentRange.location
+            let tail = NSMaxRange(currentRange) - NSMaxRange(rawCurrent)
+            guard currentText.substring(with: NSRange(location: currentRange.location, length: prefixLength))
+                    == nextText.substring(with: NSRange(location: nextRange.location, length: prefixLength)),
+                  currentText.substring(with: NSRange(location: NSMaxRange(rawCurrent), length: tail))
+                    == nextText.substring(with: NSRange(location: NSMaxRange(rawNext), length: tail))
+            else { return nil }
+        }
 
         let scoped = buildScope(nextModel, nextRange)
         guard scoped.range == nextRange,

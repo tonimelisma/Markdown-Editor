@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-092",
+  "mutations": [
+    {
+      "rationale": "Dropping the encoded source spelling loses the literal punctuation contract even when visible text appears correct.",
+      "file": "Markdown Editor/MarkdownLiteralEncoder.swift",
+      "find": "        return .encoded(output)\n    }\n\n    /// Decode a concrete atomic source span",
+      "replace": "        return .encoded(\"\")\n    }\n\n    /// Decode a concrete atomic source span",
+      "expect_red": ["consecutiveLiteralPunctuationKeepsExactSourceAndVisibleText"]
+    }
+  ]
+}

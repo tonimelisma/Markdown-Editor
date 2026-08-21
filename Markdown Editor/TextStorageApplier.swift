@@ -10,12 +10,59 @@ import AppKit
 /// // REQ-109; ARC-019/ARC-Q16: full replacement is reachable only through the three explicitly
 /// named routes below. An ordinary accepted edit can call `applyPatch` and nothing else.
 @MainActor
-final class TextStorageApplier {
+final class TextStorageApplier: NSObject, NSTextStorageDelegate {
     private(set) var attachmentNodes: [Int: MarkdownNodeID] = [:]
+    private weak var trackedStorage: NSTextStorage?
+    private var internalMutationDepth = 0
+    private var storageWasMutatedExternally = false
+    private var hasKnownStorage = false
+
+    /// NSTextStorage's delegate turns storage drift into a generation flag. The ordinary native
+    /// callback can therefore validate its applied snapshot without rescanning every character.
+    func isKnownCurrent(_ textView: NSTextView, expected: PresentationSnapshot) -> Bool {
+        guard let storage = textView.textStorage else { return false }
+        track(storage)
+        return hasKnownStorage
+            && !storageWasMutatedExternally
+            && storage.length == (expected.renderedString as NSString).length
+    }
+
+    /// Composition commits are the one bounded route where AppKit has already edited the
+    /// storage before the coordinator receives the commit callback. In that route the delegate
+    /// drift flag is expected, so prove the complete expected string once and then resume the
+    /// O(1) generation check used by ordinary accepted edits.
+    private func isExpectedAfterExternalComposition(
+        _ textView: NSTextView,
+        expected: PresentationSnapshot
+    ) -> Bool {
+        guard let storage = textView.textStorage,
+              storage.length == (expected.renderedString as NSString).length else { return false }
+        if !storageWasMutatedExternally {
+            return hasKnownStorage
+        }
+        guard storage.string == expected.renderedString else { return false }
+        storageWasMutatedExternally = false
+        hasKnownStorage = true
+        return true
+    }
+
+    func textStorage(
+        _ textStorage: NSTextStorage,
+        didProcessEditing editedMask: NSTextStorageEditActions,
+        range editedRange: NSRange,
+        changeInLength delta: Int
+    ) {
+        if internalMutationDepth == 0 {
+            storageWasMutatedExternally = true
+        }
+    }
 
     func applyInitialPresentation(_ built: AttributedPresentation, to textView: NSTextView, intent: IntentContext? = nil) {
         if let intent { intent.recorder.add(intent) { $0.storageFullReplacements += 1 } }
-        replaceEverything(with: built, in: textView)
+        guard let storage = textView.textStorage else { return }
+        track(storage)
+        withInternalMutation { replaceEverything(with: built, in: textView) }
+        hasKnownStorage = true
     }
 
     /// Applies one bounded range edit. Returns false without touching storage when the applied
@@ -27,15 +74,18 @@ final class TextStorageApplier {
         expectedCurrent: PresentationSnapshot
     ) -> Bool {
         guard let storage = textView.textStorage,
-              storage.string == expectedCurrent.renderedString,
+              isKnownCurrent(textView, expected: expectedCurrent),
               patch.fromSnapshotID == expectedCurrent.id,
               patch.currentRange.location >= 0,
               NSMaxRange(patch.currentRange) <= storage.length else {
             return false
         }
-        storage.beginEditing()
-        storage.replaceCharacters(in: patch.currentRange, with: patch.replacement)
-        storage.endEditing()
+        withInternalMutation {
+            storage.beginEditing()
+            storage.replaceCharacters(in: patch.currentRange, with: patch.replacement)
+            storage.endEditing()
+        }
+        hasKnownStorage = true
         attachmentNodes = splicedAttachmentNodes(for: patch)
         if let selection = patch.selectionAfter {
             textView.setSelectedRange(selection.range.utf16)
@@ -53,22 +103,25 @@ final class TextStorageApplier {
         expectedCurrent: PresentationSnapshot
     ) -> Bool {
         guard let storage = textView.textStorage,
-              storage.string == expectedCurrent.renderedString,
+              isKnownCurrent(textView, expected: expectedCurrent),
               scoped.range.location >= 0,
               NSMaxRange(scoped.range) <= storage.length,
               scoped.attributed.length == scoped.range.length else { return false }
-        storage.beginEditing()
-        scoped.attributed.enumerateAttributes(in: NSRange(location: 0, length: scoped.attributed.length)) {
-            attributes, localRange, _ in
-            storage.setAttributes(
-                attributes,
-                range: NSRange(
-                    location: scoped.range.location + localRange.location,
-                    length: localRange.length
+        withInternalMutation {
+            storage.beginEditing()
+            scoped.attributed.enumerateAttributes(in: NSRange(location: 0, length: scoped.attributed.length)) {
+                attributes, localRange, _ in
+                storage.setAttributes(
+                    attributes,
+                    range: NSRange(
+                        location: scoped.range.location + localRange.location,
+                        length: localRange.length
+                    )
                 )
-            )
+            }
+            storage.endEditing()
         }
-        storage.endEditing()
+        hasKnownStorage = true
         attachmentNodes = refreshedAttachmentNodes(scope: scoped.range, next: scoped.attachmentNodes)
         return true
     }
@@ -85,26 +138,29 @@ final class TextStorageApplier {
         expectedNext: PresentationSnapshot
     ) -> Bool {
         guard let storage = textView.textStorage,
-              storage.string == expectedNext.renderedString,
+              isExpectedAfterExternalComposition(textView, expected: expectedNext),
               patch.nextRange.location >= 0,
               NSMaxRange(patch.nextRange) <= storage.length,
               patch.replacement.string == (expectedNext.renderedString as NSString)
                 .substring(with: patch.nextRange) else {
             return false
         }
-        storage.beginEditing()
-        patch.replacement.enumerateAttributes(
-            in: NSRange(location: 0, length: patch.replacement.length)
-        ) { attributes, localRange, _ in
-            storage.setAttributes(
-                attributes,
-                range: NSRange(
-                    location: patch.nextRange.location + localRange.location,
-                    length: localRange.length
+        withInternalMutation {
+            storage.beginEditing()
+            patch.replacement.enumerateAttributes(
+                in: NSRange(location: 0, length: patch.replacement.length)
+            ) { attributes, localRange, _ in
+                storage.setAttributes(
+                    attributes,
+                    range: NSRange(
+                        location: patch.nextRange.location + localRange.location,
+                        length: localRange.length
+                    )
                 )
-            )
+            }
+            storage.endEditing()
         }
-        storage.endEditing()
+        hasKnownStorage = true
         attachmentNodes = splicedAttachmentNodes(for: patch)
         if let selection = patch.selectionAfter {
             textView.setSelectedRange(selection.range.utf16)
@@ -116,12 +172,36 @@ final class TextStorageApplier {
     /// record a typed reason so a recovery can never pass for an ordinary edit.
     func applyRecoveryPresentation(_ built: AttributedPresentation, to textView: NSTextView, intent: IntentContext? = nil) {
         if let intent { intent.recorder.add(intent) { $0.storageFullReplacements += 1 } }
-        replaceEverything(with: built, in: textView)
+        guard let storage = textView.textStorage else { return }
+        track(storage)
+        withInternalMutation { replaceEverything(with: built, in: textView) }
+        hasKnownStorage = true
     }
 
     /// Rebuilds everything after an explicit typography/theme identity change.
     func applyTypographyChange(_ built: AttributedPresentation, to textView: NSTextView) {
-        replaceEverything(with: built, in: textView)
+        guard let storage = textView.textStorage else { return }
+        track(storage)
+        withInternalMutation { replaceEverything(with: built, in: textView) }
+        hasKnownStorage = true
+    }
+
+    private func track(_ storage: NSTextStorage) {
+        if trackedStorage !== storage {
+            trackedStorage = storage
+            storage.delegate = self
+            storageWasMutatedExternally = false
+            hasKnownStorage = false
+        } else if storage.delegate !== self {
+            storage.delegate = self
+        }
+    }
+
+    private func withInternalMutation(_ body: () -> Void) {
+        internalMutationDepth += 1
+        defer { internalMutationDepth -= 1 }
+        body()
+        storageWasMutatedExternally = false
     }
 
     private func replaceEverything(with built: AttributedPresentation, in textView: NSTextView) {

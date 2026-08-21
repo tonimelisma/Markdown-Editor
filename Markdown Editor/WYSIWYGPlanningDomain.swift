@@ -17,7 +17,8 @@ enum WYSIWYGPlanningDomain {
         presentation: PresentationSnapshot,
         tree: MarkdownTree?,
         grouping: MutationGrouping,
-        intent: IntentContext? = nil
+        intent: IntentContext? = nil,
+        classification: ProjectionSelectionClass? = nil
     ) -> SemanticEditResult {
         guard presentation.sourceRevision.value == snapshot.sourceVersion,
               selection.range.revision.snapshotID == presentation.id else {
@@ -25,7 +26,7 @@ enum WYSIWYGPlanningDomain {
         }
         let projection = presentation.asProjectionModel
         let selectionRange = selection.range.utf16
-        let classification = ProjectionSelectionClassifier.classify(
+        let classification = classification ?? ProjectionSelectionClassifier.classify(
             selection: selectionRange,
             affinity: selection.affinity,
             snapshot: presentation

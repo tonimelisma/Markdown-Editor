@@ -140,6 +140,19 @@ An accepted WYSIWYG edit is a synchronous atomic transition:
 
 It is forbidden to commit source and leave the old projection editable while waiting for parsing.
 
+The synchronous planning boundary is deliberately closed and conservative. `LocalTransitionDomain`
+classifies the complete selection into identity text, atomic text, synthetic insertion, one table
+cell, task-marker, uneditable, mixed, cross-cell, or ambiguous input. Identity/atomic/synthetic
+and task-marker edits use the exact local encoder/decoder transition; table-cell edits use the
+declared enclosing-block bounded transition; mixed, cross-cell, ambiguous, and every unassigned
+class refuse without mutation. The local and bounded proof paths construct the complete next
+`PresentationSnapshot` from the accepted source mutation, then apply one exact or bounded patch.
+They do not invoke synchronous whole-document cmark parsing, source indexing, or projection
+compilation. Full cmark remains the asynchronous authority and may replace the provisional
+snapshot only after source revision, location generation, projection identity, and active-session
+checks. Storage drift is generation-tracked; an externally committed composition is accepted only
+when the concrete storage matches the expected rendered snapshot.
+
 ### Literal WYSIWYG typing
 
 Typing inserts visible content; it is not a formatting command. `MarkdownLiteralEncoder` derives
@@ -631,7 +644,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-002 | One session-owned typed state per editor mode; no parallel compatibility state. | compiler types; documentation/source conformance check |
 | ARC-003 | Presented string, attributes, structure, coordinate map, and revision form one snapshot. | snapshot construction API; oracle |
 | ARC-004 | Editable WYSIWYG always matches current canonical source/location identity. | state-machine tests and traces; `EditorTransactionKernelTests` |
-| ARC-005 | Accepted WYSIWYG edits advance source and presentation synchronously and exactly once. | `acceptedEditAdvancesSourcePresentationSelectionAndUndoOnce`; rapid-input property tests |
+| ARC-005 | Accepted WYSIWYG edits advance source and presentation synchronously and exactly once. | `acceptedEditAdvancesSourcePresentationSelectionAndUndoOnce`; `LocalTransitionDomainTests`; rapid-input property tests; concrete Release corpus |
 | ARC-006 | Background reconciliation cannot overwrite newer state. | adversarial generation tests and traces |
 | ARC-007 | Coordinate conversion is exact or refused; never guessed or clamped. | typed APIs; projection oracle; generated fixtures |
 | ARC-008 | Literal typing and semantic formatting are separate commands. | punctuation/context fixtures; toolbar tests |
@@ -645,7 +658,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-016 | Diagnostic payloads cannot represent document content, URLs, descriptions, filenames, or paths. | closed payload value type without a string case; encoder tests |
 | ARC-017 | Every user-visible failure or warning alert has a corresponding diagnostic record. | `alert` is `private(set)`; `presentAlert(_:reason:)` is its only assignment route (compiler-enforced); structural conformance test |
 | ARC-018 | Typography is derived from semantic inline/block presentation plus immutable tokens and never changes canonical source, history, or coordinate meaning. | attributed-presentation semantic tests; source-before/after equality |
-| ARC-019 | An ordinary accepted WYSIWYG edit applies one validated attributed patch and performs no full-storage replacement. | instrumented `NSTextStorage` component test; native-input performance corpus |
+| ARC-019 | An ordinary accepted WYSIWYG edit applies one validated attributed patch and performs no full-storage replacement. | instrumented `NSTextStorage` component test; `TextStorageApplierTests`; `PerformanceBoundaryTests`; concrete Release corpus |
 | ARC-020 | Performance samples are lifetime-owned, bounded, honestly named, and include every synchronous operation claimed by their boundary. | sampler lifetime tests; nonzero Release evidence; boundary-spy tests |
 | ARC-026 | One explicit sendable intent identity owns all downstream work across actor, task, GCD, parser, presentation, and terminal lifecycle boundaries; late or cancelled work is typed and durably emitted. | `COR69IntentMeasurementTests/editorSessionRouteRetainsIntentThroughParse()`; `asyncAndGCDWorkRetainTheExplicitIntent()`; `presentationLeaseDefersTerminalLedger()`; `lateWorkAfterFinishIsTypedOrphan()`; process smoke diagnostics |
 | ARC-021 | A main-actor stall can be made durable without scheduling the report onto the main actor, and terminal durability never waits on a main-actor hop. | blocked-main component test; bounded terminal-close test |

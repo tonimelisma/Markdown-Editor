@@ -876,43 +876,44 @@ struct PersistentEditorCharacterizationTests {
     /// Timing `EditorSession.perform` alone would exclude every TextKit cost the budget is about.
     @Test func nativeInputCallbackP95Under8ms() throws {
 #if !DEBUG
-        let harness = try PerformanceBoundaryTests.EditorHarness(
-            source: String(repeating: "word ", count: 20_000)
-        )
-        let source = harness.document.text
-
-        var samples: [Double] = []
-        var failures: [String] = []
-        samples.reserveCapacity(40)
-        for i in 0..<50 {
-            let before = harness.document.sourceVersion
-            let start = CFAbsoluteTimeGetCurrent()
-            harness.typeCharacter("x", at: NSRange(location: i, length: 0))
-            let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
-            guard harness.document.sourceVersion == before &+ 1 else {
-                failures.append("performance input refused at sample \(i)")
-                break
+        // Performance evidence must use AppKit's concrete NSTextStorage, not the spy storage
+        // used by mutation-scope tests. The closed corpus enumeration prevents a fast degenerate
+        // document from standing in for structured blocks, tables, code, lists, and attachments.
+        for corpus in PerformanceCorpus.allCases {
+            let harness = try PerformanceBoundaryTests.ConcreteEditorHarness(
+                source: corpus.source()
+            )
+            let source = harness.document.text
+            let rendered = try #require(harness.session.presentation?.renderedString)
+            let location = max(0, (rendered as NSString).length - 2)
+            var samples: [Double] = []
+            var failures: [String] = []
+            samples.reserveCapacity(40)
+            for i in 0..<50 {
+                let before = harness.document.sourceVersion
+                let start = CFAbsoluteTimeGetCurrent()
+                harness.typeCharacter("x", at: NSRange(location: location, length: 0))
+                let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
+                guard harness.document.sourceVersion == before &+ 1 else {
+                    failures.append("performance input refused at sample \(i)")
+                    break
+                }
+                if i >= 10 { samples.append(ms) }
             }
-            if i >= 10 { samples.append(ms) }
+            let evidence = recordPerformanceEvidence(
+                name: "wysiwyg-native-input-callback-\(corpus.rawValue)",
+                corpus: source,
+                warmups: 10,
+                samples: samples,
+                failures: failures
+            )
+            #expect(evidence.failures.isEmpty, "\(corpus.rawValue): \(evidence.failures)")
+            #expect(evidence.samples.count == 40)
+            if let p95 = evidence.p95 {
+                #expect(p95 < 8.0, "\(corpus.rawValue) p95=\(p95)ms samples=\(evidence.samples)")
+            }
         }
-        // Every accepted input was applied as a bounded patch: a full rebuild would satisfy the
-        // string assertions while quietly invalidating the latency claim.
-        if harness.storage.fullReplacements > 0 {
-            failures.append("\(harness.storage.fullReplacements) full storage replacements")
-        }
-        let evidence = recordPerformanceEvidence(
-            name: "wysiwyg-native-input-callback",
-            corpus: source,
-            warmups: 10,
-            samples: samples,
-            failures: failures
-        )
-        #expect(evidence.failures.isEmpty, "performance evidence failures: \(evidence.failures)")
-        #expect(evidence.samples.count > 0)
-        if let p95 = evidence.p95 {
-            #expect(p95 < 8.0, "p95=\(p95)ms samples=\(evidence.samples)")
-        }
-        #else
+#else
         return
         #endif
     }

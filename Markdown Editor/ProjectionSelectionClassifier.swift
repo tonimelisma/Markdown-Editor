@@ -32,7 +32,13 @@ nonisolated enum ProjectionSelectionClassifier {
         }
 
         // Task attachment hit (zero/one-length at attachment).
-        for attachment in snapshot.attachments {
+        let attachmentIndex = lowerBound(
+            snapshot.attachments,
+            by: { $0.utf16Location },
+            for: selection.location
+        )
+        for attachment in snapshot.attachments.dropFirst(attachmentIndex) {
+            if attachment.utf16Location > NSMaxRange(selection) { break }
             if case .task = attachment.kind,
                selection.length <= 1,
                selection.location == attachment.utf16Location
@@ -46,9 +52,11 @@ nonisolated enum ProjectionSelectionClassifier {
             return tableClass
         }
 
-        let intersected = snapshot.atoms.filter { atom in
-            intersects(selection, atom.projectionRange, affinity: affinity)
-        }
+        let intersected = intersectingAtoms(
+            selection: selection,
+            affinity: affinity,
+            atoms: snapshot.atoms
+        )
 
         guard !intersected.isEmpty else {
             // Empty caret between atoms — try insertion policy at boundary.
@@ -121,8 +129,11 @@ nonisolated enum ProjectionSelectionClassifier {
         snapshot: PresentationSnapshot
     ) -> ProjectionSelectionClass {
         // Prefer synthetic insertion policy when caret sits on a synthetic atom.
-        for atom in snapshot.atoms {
+        let start = lowerBound(snapshot.atoms, by: { $0.projectionRange.location }, for: location)
+        let first = max(0, start - 1)
+        for atom in snapshot.atoms.dropFirst(first) {
             let r = atom.projectionRange
+            if r.location > location { break }
             if location == r.location || location == NSMaxRange(r) || (location > r.location && location < NSMaxRange(r)) {
                 if case .synthetic(let synthetic) = atom {
                     return .syntheticInsertion(policy: synthetic.insertion)
@@ -138,6 +149,42 @@ nonisolated enum ProjectionSelectionClassifier {
         case .refused(let reason):
             return .uneditable(reason)
         }
+    }
+
+    private static func intersectingAtoms(
+        selection: NSRange,
+        affinity: SelectionAffinity,
+        atoms: [ProjectionAtom]
+    ) -> [ProjectionAtom] {
+        guard !atoms.isEmpty else { return [] }
+        let start = lowerBound(atoms, by: { $0.projectionRange.location }, for: selection.location)
+        let first = max(0, start - 1)
+        var result: [ProjectionAtom] = []
+        for atom in atoms.dropFirst(first) {
+            if atom.projectionRange.location > NSMaxRange(selection) { break }
+            if intersects(selection, atom.projectionRange, affinity: affinity) {
+                result.append(atom)
+            }
+        }
+        return result
+    }
+
+    private static func lowerBound<Element>(
+        _ values: [Element],
+        by key: (Element) -> Int,
+        for value: Int
+    ) -> Int {
+        var lower = 0
+        var upper = values.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if key(values[middle]) < value {
+                lower = middle + 1
+            } else {
+                upper = middle
+            }
+        }
+        return lower
     }
 
     private static func classifyTable(

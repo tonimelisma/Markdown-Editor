@@ -192,9 +192,13 @@ return to discovery; do not improvise an architecture change.
    Extracts one pure input-to-transaction/refusal seam and thins AppKit adapters without changing
    product behavior. Delivered with owner-state validation, atomic refusal behavior, and real
    source/WYSIWYG route proofs; the full gate observed 476 passing tests and zero failures.
-4. ⚪ **COR-71 — Bounded WYSIWYG input.** (Delivers: REQ-090, REQ-091, REQ-092)
-   ([plan](plans/COR-71-bounded-wysiwyg-input.md)) Removes whole-document parse/compile work from
-   ordinary input while retaining synchronous source/presentation correctness.
+4. ✅ **COR-71 — Bounded WYSIWYG input.** (Delivers: REQ-090, REQ-091, REQ-092)
+   Removes whole-document parse/compile work from ordinary input while retaining synchronous
+   source/presentation correctness. The closed local-transition matrix accepts only proven
+   identity/atomic/synthetic/task-marker edits, uses one bounded enclosing-block path for table
+   cells, and refuses ambiguous classes. Concrete Release corpus evidence observed callback p95
+   below 8 ms for every approved corpus case; all three requirement proofs and falsifying mutations
+   passed.
 5. ⚪ **COR-72 — Incremental Source pipeline.** (Delivers: REQ-040, REQ-041, REQ-043, REQ-045)
    ([plan](plans/COR-72-incremental-source-pipeline.md)) Relexes invalidated lines until lexical state
    stabilizes and applies only matching bounded attribute patches.

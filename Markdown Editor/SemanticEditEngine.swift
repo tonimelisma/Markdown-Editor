@@ -265,6 +265,7 @@ nonisolated enum SemanticEditEngine {
         visibleReplacement: String,
         nextSnapshotID: PresentationSnapshot.ID,
         affinity: SelectionAffinity,
+        proof: PresentationSnapshot.ConstructionProof = .authoritative,
         intent: IntentContext? = nil
     ) -> EditorEditOutcome {
         let nextSourceCount = presentation.sourceUTF16Count
@@ -279,7 +280,8 @@ nonisolated enum SemanticEditEngine {
             nextSourceRevision: SourceRevision(value: mutation.expectedRevision &+ 1),
             nextSourceUTF16Count: nextSourceCount,
             nextSnapshotID: nextSnapshotID,
-            affinity: affinity
+            affinity: affinity,
+            proof: proof
         ) else {
             return .refused(.unprovable)
         }

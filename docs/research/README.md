@@ -28,4 +28,5 @@ Current evidence:
 - [COR-62 — Proof-floor audit](COR-62-proof-floor-audit.md)
 - [DISC-08 — Does AppKit's Dynamic Type route reach this app's editor content?](DISC-08-macos-text-scaling.md)
 - [COR-71 — Stage 0 local-transition probe](COR-71-stage0-local-transition-probe.md)
+- [COR-71 — Release performance evidence](COR-71-release-performance.md)
 - [Performance baseline](performance-baseline.md)

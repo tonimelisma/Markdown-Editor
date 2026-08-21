@@ -8,6 +8,12 @@ import Foundation
 /// Exact synchronous update from one presentation snapshot to the next.
 ///
 /// // REQ-091; ARC-005: validated before commit; non-failable after source commit.
+nonisolated enum PresentationTransitionProof: Sendable, Equatable {
+    case authoritativeDiff
+    case localIdentity
+    case boundedLocalScope
+}
+
 nonisolated struct PresentationTransition: Sendable, Equatable {
     let fromSnapshotID: PresentationSnapshot.ID
     let nextSnapshot: PresentationSnapshot
@@ -17,6 +23,7 @@ nonisolated struct PresentationTransition: Sendable, Equatable {
     /// Canonical source produced by an authoritative structural rebuild. Local identity patches
     /// leave this nil because their existing atom splice is the proof of the next projection.
     let sourceAfter: String?
+    let proof: PresentationTransitionProof
 
     init(
         fromSnapshotID: PresentationSnapshot.ID,
@@ -24,7 +31,8 @@ nonisolated struct PresentationTransition: Sendable, Equatable {
         projectionReplacementRange: NSRange,
         projectionReplacement: String,
         selectionAfter: ProjectionSelection,
-        sourceAfter: String? = nil
+        sourceAfter: String? = nil,
+        proof: PresentationTransitionProof = .authoritativeDiff
     ) {
         self.fromSnapshotID = fromSnapshotID
         self.nextSnapshot = nextSnapshot
@@ -32,6 +40,7 @@ nonisolated struct PresentationTransition: Sendable, Equatable {
         self.projectionReplacement = projectionReplacement
         self.selectionAfter = selectionAfter
         self.sourceAfter = sourceAfter
+        self.proof = proof
     }
 }
 
@@ -94,7 +103,8 @@ nonisolated enum PresentationTransitionPlanner {
         nextSourceRevision: SourceRevision,
         nextSourceUTF16Count: Int,
         nextSnapshotID: PresentationSnapshot.ID,
-        affinity: SelectionAffinity
+        affinity: SelectionAffinity,
+        proof: PresentationSnapshot.ConstructionProof = .authoritative
     ) -> PresentationTransition? {
         let rendered = snapshot.renderedString as NSString
         guard projectionRange.location >= 0,
@@ -168,7 +178,8 @@ nonisolated enum PresentationTransitionPlanner {
             tables: nextTables,
             listMarkers: nextMarkers,
             atoms: nextAtoms,
-            sourceUTF16Count: nextSourceUTF16Count
+            sourceUTF16Count: nextSourceUTF16Count,
+            proof: proof
         )
 
         let selection = ProjectionSelection(
@@ -176,12 +187,19 @@ nonisolated enum PresentationTransitionPlanner {
             revision: next.projectionRevision,
             affinity: affinity
         )
+        let transitionProof: PresentationTransitionProof
+        switch proof {
+        case .locallyProven: transitionProof = .localIdentity
+        case .boundedLocallyProven: transitionProof = .boundedLocalScope
+        case .authoritative: transitionProof = .authoritativeDiff
+        }
         return PresentationTransition(
             fromSnapshotID: snapshot.id,
             nextSnapshot: next,
             projectionReplacementRange: projectionRange,
             projectionReplacement: visibleReplacement,
-            selectionAfter: selection
+            selectionAfter: selection,
+            proof: transitionProof
         )
     }
 

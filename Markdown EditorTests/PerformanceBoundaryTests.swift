@@ -764,4 +764,76 @@ struct PerformanceBoundaryTests {
             MainActor.assumeIsolated { session.detach() }
         }
     }
+
+    /// Production-equivalent WYSIWYG harness. Performance evidence must use AppKit's concrete
+    /// `NSTextStorage`; `EditorHarness` deliberately uses a spy so mutation-scope tests can
+    /// observe every storage primitive.
+    @MainActor
+    final class ConcreteEditorHarness {
+        let document = MarkdownDocument()
+        let session = EditorSession()
+        let coordinator: WYSIWYGEditor.Coordinator
+        let textView: MarkdownWYSIWYGTextView
+        let storage: NSTextStorage
+
+        init(source: String, trace: (any EditorTraceSink)? = nil) throws {
+            if let trace { document.trace = trace }
+            document.installTextForTesting(source)
+            session.attach(document: document)
+            session.setMode(.wysiwyg)
+
+            let index = MarkdownSourceIndex(source: source, sourceVersion: document.sourceVersion)
+            let tree = try #require(
+                MarkdownParser.parse(source, sourceVersion: document.sourceVersion).get()
+            )
+            let model = MarkdownProjectionModel.build(tree: tree, index: index)
+            session.installProjectionForTesting(model, tree: tree)
+
+            storage = NSTextStorage(string: "")
+            let layoutManager = NSLayoutManager()
+            let container = NSTextContainer(
+                size: NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude)
+            )
+            storage.addLayoutManager(layoutManager)
+            layoutManager.addTextContainer(container)
+            textView = MarkdownWYSIWYGTextView(
+                frame: NSRect(x: 0, y: 0, width: 400, height: 200),
+                textContainer: container
+            )
+            coordinator = WYSIWYGEditor.Coordinator(
+                document: document,
+                session: session,
+                placementController: ImagePlacementController()
+            )
+            textView.delegate = coordinator
+            textView.inputCoordinator = coordinator.input
+            textView.documentActions = document
+            textView.session = session
+            textView.adapterCoordinator = coordinator
+            coordinator.textView = textView
+            coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+        }
+
+        func typeCharacter(_ text: String, at range: NSRange) {
+            guard let presentation = session.presentation else { return }
+            session.captureSelection(.projection(
+                ProjectionSelection(
+                    utf16: range,
+                    revision: presentation.projectionRevision,
+                    affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
+                )
+            ))
+            session.updateOrigin.with(.nativeUserInput) {
+                _ = coordinator.textView(
+                    textView,
+                    shouldChangeTextIn: range,
+                    replacementString: text
+                )
+            }
+        }
+
+        deinit {
+            MainActor.assumeIsolated { session.detach() }
+        }
+    }
 }
