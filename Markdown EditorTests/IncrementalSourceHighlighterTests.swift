@@ -99,6 +99,26 @@ struct IncrementalSourceHighlighterTests {
         #expect(patch.tokens.contains { $0.style == .strikethrough && NSIntersectionRange($0.range, second).length == second.length })
     }
 
+    // Verifies: REQ-041/045 — after the cache is seeded, an ordinary edit still carries the
+    // unmatched GFM delimiter state into the following line.
+    @Test func ordinaryEditCarriesMultilineStrikethroughState() async throws {
+        let source = "before ~~first line\nsecond line~~ after\n"
+        let highlighter = IncrementalSourceHighlighter()
+        _ = try await highlighter.highlight(source: source, editedRange: nil, sourceRevision: 8, intentID: nil)
+        let location = (source as NSString).range(of: "second").location
+        let mutable = NSMutableString(string: source)
+        mutable.replaceCharacters(in: NSRange(location: location, length: 6), with: "Second")
+        let updated = mutable as String
+        let patch = try await highlighter.highlight(
+            source: updated,
+            editedRange: NSRange(location: location, length: 6),
+            sourceRevision: 9,
+            intentID: nil
+        )
+        let second = (updated as NSString).range(of: "Second line~~")
+        #expect(patch.tokens.contains { $0.style == .strikethrough && NSIntersectionRange($0.range, second).length == second.length })
+    }
+
     // Verifies: REQ-041 — escaped and unmatched tilde runs remain literal, while a later
     // multiline span remains discoverable after an earlier completed span.
     @Test func strikethroughMatchesFormalGFMDelimiterRuns() async throws {

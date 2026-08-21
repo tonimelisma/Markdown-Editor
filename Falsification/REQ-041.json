@@ -13,7 +13,7 @@
       "file": "Markdown Editor/IncrementalSourceHighlighter.swift",
       "find": "        let crossLineStrike = Self.crossLineStrikethrough(in: local, contentEnd: contentEnd, incomingStart: incoming.strikethroughStart, range: range)",
       "replace": "        let crossLineStrike: (outgoingStart: Int?, tokens: [Token]) = (nil, [])",
-      "expect_red": ["multilineStrikethroughStatePropagatesAcrossLines"]
+      "expect_red": ["ordinaryEditCarriesMultilineStrikethroughState"]
     },
     {
       "rationale": "Appending the raw cross-line token list instead of the filtered list reintroduces a duplicate same-line strikethrough token.",
