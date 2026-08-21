@@ -11,8 +11,8 @@
     {
       "rationale": "Inverting the terminal generation guard allows a stale parse to install through the coordinator, falsifying the stale-result side of the REQ-085 owner contract; service cancellation remains separately typed by cancelledDecodeReturnsTypedStaleResult.",
       "file": "Markdown Editor/ParseCoordinator.swift",
-      "find": "                      session.parseCoordinator.generation() == generation else {",
-      "replace": "                      session.parseCoordinator.generation() != generation else {",
+      "find": "                      document?.locationGeneration == snapshot.locationGeneration,\n                      session.parseCoordinator.generation() == generation else {",
+      "replace": "                      document?.locationGeneration == snapshot.locationGeneration,\n                      session.parseCoordinator.generation() != generation else {",
       "expect_red": ["parseOwnerRecordsStaleReconciliation"]
     }
   ]
