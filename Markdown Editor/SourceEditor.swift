@@ -534,7 +534,23 @@ final class MarkdownSourceTextView: NSTextView {
                 let range = selectedRange()
                 // Paste must not coalesce into the open typing undo group (REQ-016).
                 sourceCoordinator?.nextNativeEditIsDiscrete()
-                insertText(plain, replacementRange: range)
+                if let sourceCoordinator {
+                    guard sourceCoordinator.textView(
+                        self,
+                        shouldChangeTextIn: range,
+                        replacementString: plain
+                    ) else { return }
+                    textStorage?.replaceCharacters(in: range, with: plain)
+                    setSelectedRange(NSRange(
+                        location: range.location + (plain as NSString).length,
+                        length: 0
+                    ))
+                    sourceCoordinator.textDidChange(
+                        Notification(name: NSText.didChangeNotification, object: self)
+                    )
+                } else {
+                    super.pasteAsPlainText(sender)
+                }
             } else {
                 sourceCoordinator?.nextNativeEditIsDiscrete()
                 super.pasteAsPlainText(sender)

@@ -59,9 +59,9 @@ how delivered behavior is verified. Current architecture is in
 
 | ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
 | ---- | -------------------- | ----- | -------- | ---------------- | ------------- |
-| REQ-010 | The system shall provide plain-text editing of the document contents. | INC-01 | Correction | — | COR-62 audit: no falsifying manifest observed; re-verify before promotion to Done |
-| REQ-011 | The system shall support unlimited undo and redo of edits. | INC-01 / COR-05 | Correction | — | COR-62 audit: no falsifying manifest observed; re-verify before promotion to Done |
-| REQ-012 | The system shall integrate the macOS spell-checker. | INC-01 | Correction | — | COR-62 audit: no falsifying manifest observed; re-verify before promotion to Done |
+| REQ-010 | The system shall provide plain-text editing of the document contents. | INC-01 / COR-75 | Done | `MarkdownSourceTextView`; `SourceEditor.Coordinator`; `EditorHostView.HostCoordinator` | test `nativeReplacementPreservesUnicodeAndDocumentUndoRoute`; test `nativePasteUsesPlainTextAndDiscreteUndo`; test `programmaticSourceStylingCannotCreateAnEdit`; falsifying mutation observed red |
+| REQ-011 | The system shall support unlimited undo and redo of edits. | INC-01 / COR-05 / COR-75 | Done | `MarkdownDocument` history; `SourceEditor.Coordinator` | test `nativeReplacementPreservesUnicodeAndDocumentUndoRoute`; test `undoRedoRestoresTextAndAdvancesVersion`; falsifying mutation observed red |
+| REQ-012 | The system shall integrate the macOS spell-checker. | INC-01 / COR-75 | Done | `EditorHostView.HostCoordinator.configureSource`; AppKit `NSTextView` spell checker | test `productionSourceEditorUsesNativeSpellAndFindServices`; falsifying mutation observed red |
 
 ### C · Standard macOS behaviors
 
@@ -69,14 +69,14 @@ how delivered behavior is verified. Current architecture is in
 | ---- | -------------------- | ----- | -------- | ---------------- | ------------- |
 | REQ-020 | The system shall support document tabs (multiple documents in one window). | INC-01 / COR-74 | Done | `MarkdownDocument.makeWindowControllers`; standard `NSWindow` tabbing; `Markdown EditorTests/DocumentLifecycleContractTests.swift` | test `standardDocumentLifecycleUsesAppKitOwners`; falsifying mutation observed red |
 | REQ-021 | The system shall list recently opened documents under File ▸ Open Recent. | INC-01 / COR-74 | Done | `MarkdownAppDelegate.ensureOpenRecentMenuItem`; standard `NSDocumentController` Recents; `Markdown EditorTests/DocumentLifecycleContractTests.swift` | test `recentsUseTheStandardDocumentControllerRoute`; falsifying mutation observed red |
-| REQ-022 | The system shall adopt the system Light/Dark appearance automatically. | INC-01 | Correction | — | COR-62 audit: no falsifying manifest observed; re-verify before promotion to Done |
+| REQ-022 | The system shall adopt the system Light/Dark appearance automatically. | INC-01 / COR-75 | Done | `MarkdownTypography`; `AttributedPresentationBuilder`; AppKit semantic colors | test `semanticAppearanceDoesNotMutateSource`; test `TypographyTokenTests`; falsifying mutation observed red |
 
 ### D · Non-functional
 
 | ID | Requirement (EARS) | Inc | Status | Implemented in | Verified by |
 | ---- | -------------------- | ----- | -------- | ---------------- | ------------- |
-| REQ-030 | The system shall perform all editing offline, with no network access. | INC-01 | Correction | — | COR-62 audit: no falsifying manifest observed; re-verify before promotion to Done |
-| REQ-031 | The system shall collect no telemetry and require no account. | INC-01 | Correction | — | COR-62 audit: no falsifying manifest observed; re-verify before promotion to Done |
+| REQ-030 | The system shall perform all editing offline, with no network access. | INC-01 / COR-75 | Done | production Swift sources; `Markdown Editor.xcodeproj/project.pbxproj`; entitlements | test `productionBoundaryRejectsNetworkAccountAndAnalyticsCapabilities`; falsifying mutation observed red |
+| REQ-031 | The system shall collect no telemetry and require no account. | INC-01 / COR-75 | Done | production Swift sources; `DiagnosticValue`; project settings and entitlements | test `productionBoundaryRejectsNetworkAccountAndAnalyticsCapabilities`; test `diagnosticPayloadsAreClosedAndPrivacySafe`; falsifying mutation observed red |
 | REQ-032 | The system shall be operable via VoiceOver and full keyboard control. | INC-01 / COR-07 / COR-81 | Correction | — | Audit reproduced that only task-checkbox semantics and interaction paths are proved; headings, lists, quotes, code, tables, images, links, focus order, and the closed command surface lack route-level accessibility proof |
 
 ---
@@ -91,9 +91,9 @@ how delivered behavior is verified. Current architecture is in
 | REQ-041 | The system shall lexically style common Markdown/GFM source constructs: headings, bold, italic, inline code, fenced code blocks, links, images, ordered/unordered lists, task lists, blockquotes, tables, strikethrough, and thematic breaks. | COR-72 | Done | `IncrementalSourceHighlighter`; `MarkdownHighlighter` line rules; `SourceLexState` | `MarkdownHighlighterTests`; `IncrementalSourceHighlighterTests.multilineStrikethroughStatePropagatesAcrossLines`; `IncrementalSourceHighlighterTests.ordinaryEditCarriesMultilineStrikethroughState`; `IncrementalSourceHighlighterTests.strikethroughMatchesFormalGFMDelimiterRuns`; `IncrementalSourceHighlighterTests.editSequenceMatchesFreshFullLexer`; `IncrementalSourceHighlighterTests.generatedEditSequencesMatchFreshFullLexer`; `IncrementalSourceHighlighterTests.sameLineStrikethroughDoesNotDuplicateTokens`; falsifying mutation observed red |
 | REQ-042 | WHERE a future named dialect profile is approved, the system shall support that profile's explicitly defined source styles without changing the formal-GFM default. | Future dialect profiles | Deferred | — | — |
 | REQ-043 | The system shall visually distinguish fenced code blocks (monospace + subtle tint). | COR-72 | Done | `SourceLexState`; `IncrementalSourceHighlighter`; `SourceEditor.Coordinator` | `MarkdownHighlighterTests`; `IncrementalSourceHighlighterTests`; falsifying mutation observed red |
-| REQ-044 | The system shall display a live word and character count for the document. | INC-02 | Correction | — | COR-62 audit: no falsifying manifest observed; re-verify before promotion to Done |
+| REQ-044 | The system shall display a live word and character count for the document. | INC-02 / COR-75 | Done | `TextStats`; `TextStatsComputer`; `ContentView` revision-keyed task | test `liveCountOwnerEnumeratesUnicodeAndRevisionRoute`; test `staleCountWorkReturnsNothing`; falsifying mutation observed red |
 | REQ-045 | WHILE editing a large document, the system shall keep typing latency imperceptible (highlighting debounced and computed off the main thread). | COR-72 | Done | `IncrementalSourceHighlighter`; `SourceLineIndex`; `SourceEditor.Coordinator` | `ordinaryEditStopsAtStableTail`; `IncrementalSourceHighlighterTests.editSequenceMatchesFreshFullLexer`; `IncrementalSourceHighlighterTests.generatedEditSequencesMatchFreshFullLexer`; `SourceEditorParityTests.coordinatorHighlightUsesIncrementalProductionRoute`; `SourceEditorParityTests.coordinatorHighlightRejectsReplacedDocumentIdentity`; `SourceEditorParityTests.coordinatorRehighlightUsesReplacementDocumentCache`; `SourceEditorParityTests.coordinatorHighlightAttributesComputeToCapturedSession`; `SourceEditorParityTests.productionIncrementalPatchRejectsDifferentUTF16Snapshot`; `sourceHighlightEnumeratesEveryPerformanceCorpus`; `Scripts/benchmark.sh` sourceHighlightCompute sample for every corpus/size shape; falsifying mutation observed red |
-| REQ-046 | The system shall support standard find and replace within the document. | INC-02 | Correction | — | COR-62 audit: no falsifying manifest observed; re-verify before promotion to Done |
+| REQ-046 | The system shall support standard find and replace within the document. | INC-02 / COR-75 | Done | `EditorHostView.HostCoordinator.configureSource`; native `NSTextView` find bar/action route | test `productionSourceEditorUsesNativeSpellAndFindServices`; falsifying mutation observed red |
 
 ## Markdown dialect
 
