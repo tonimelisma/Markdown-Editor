@@ -156,7 +156,7 @@ struct DiagnosticLogTests {
             .compositionCommitted(sourceVersion: 1, replacementLength: 2),
             .compositionCancelled,
             .compositionRefusedStale,
-            .imageCacheStore(cost: 10, totalBytes: 20),
+            .imageDisplayCacheObserved(hit: true, bytesRead: 0, decodeCount: 0, durationNanos: 5, totalBytes: 20),
             // REQ-114: `oversizeDimensions` carries measurements in the Swift case; the mapping
             // must reduce it to a bare reason symbol so the payload cannot describe the file.
             .imageResolutionFailed(reason: .missingFile),
@@ -322,6 +322,55 @@ struct DiagnosticLogTests {
         session.detach()
     }
 
+    // Verifies: REQ-089/085 — the real parse owner emits cache telemetry for the dedicated service.
+    @Test func parseOwnerRecordsImageDisplayCacheTelemetryOnTheProductionRoute() async throws {
+        let directory = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let assets = directory.appendingPathComponent("assets", isDirectory: true)
+        try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
+        let fixture = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/Images/sample.png")
+        try FileManager.default.copyItem(at: fixture, to: assets.appendingPathComponent("sample.png"))
+        let document = MarkdownDocument()
+        document.fileURL = directory.appendingPathComponent("document.md")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("![](assets/sample.png)\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        for _ in 0..<200 {
+            if trace.events.contains(where: {
+                if case .imageDisplayCacheObserved = $0 { return true }
+                return false
+            }) { break }
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(trace.events.contains {
+            if case .imageDisplayCacheObserved(_, let bytes, let decodes, _, _) = $0 {
+                return bytes > 0 && decodes == 1
+            }
+            return false
+        })
+        session.detach()
+    }
+
+    // Verifies: ARC-023 — a scale change notification from the session's own window invalidates
+    // the current generation and schedules a fresh display request.
+    @Test func owningWindowBackingChangeStartsNewGeneration() async {
+        let document = MarkdownDocument()
+        document.installTextForTesting("hello\n")
+        let session = EditorSession()
+        let window = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+        session.bind(editorWindow: window)
+        session.attach(document: document)
+        let before = session.parseCoordinator.generation()
+        NotificationCenter.default.post(name: NSWindow.didChangeBackingPropertiesNotification, object: window)
+        #expect(session.parseCoordinator.generation() > before)
+        session.detach()
+    }
+
     // Verifies: REQ-111 — a parse that finishes after a newer source snapshot is discarded by the
     // real coordinator and leaves a typed reconciliation record.
     @Test func parseOwnerRecordsStaleReconciliation() async {
@@ -348,6 +397,22 @@ struct DiagnosticLogTests {
             if case .reconciliationDiscarded = $0 { return true }
             return false
         }, "events: \(trace.events)")
+        session.detach()
+    }
+
+    // Verifies: REQ-085 — cancellation through the owning ParseCoordinator invalidates its
+    // operation identity synchronously, so a pending parse cannot remain current.
+    @Test func parseOwnerCancellationInvalidatesGeneration() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("hello\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        let before = session.parseCoordinator.generation()
+
+        session.parseCoordinator.cancel()
+
+        #expect(session.parseCoordinator.generation() > before)
+        #expect(session.presentation == nil)
         session.detach()
     }
 

@@ -205,9 +205,11 @@ return to discovery; do not improvise an architecture change.
    Relexes invalidated lines until lexical state stabilizes and applies only matching bounded
    attribute patches. `SourceLexState` carries fenced-code state across CRLF/Unicode-safe
    `SourceLineIndex` ranges; superseded tasks are cancelled and stale patches apply nothing.
-6. ⚪ **COR-73 — Image identity and decode service.** (Delivers: REQ-085)
-   ([plan](plans/COR-73-image-display-service.md)) Makes metadata identity the cache gate, decode a
-   miss-only operation, and backing scale part of immutable request identity.
+6. ✅ **COR-73 — Image identity and decode service.** (Delivers: REQ-085)
+   Makes metadata identity the cache gate, decode a miss-only operation, and backing scale part of
+   immutable request identity. `ImageDisplayServiceTests`, production-route telemetry, the full
+   non-performance Debug suite, and the serialized falsification gate passed; the approved plan is
+   deleted on delivery.
 7. ⚪ **COR-74 — Document files and lifecycle proof.** (Delivers: REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-013, REQ-014, REQ-015, REQ-017, REQ-019, REQ-020, REQ-021)
    ([plan](plans/COR-74-document-files-and-lifecycle.md)) Re-verifies the complete NSDocument file and
    lifecycle boundary through direct construction and precise framework proofs.

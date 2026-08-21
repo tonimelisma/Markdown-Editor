@@ -5,7 +5,7 @@
       "rationale": "Removing the task checkbox attachment would leave task items without an operable control.",
       "file": "Markdown Editor/AttributedPresentationBuilder.swift",
       "find": "            nsAttachment.attachmentCell = cell",
-      "replace": "            nsAttachment.attachmentCell = nil // falsified",
+      "replace": "            nsAttachment.attachmentCell = NSTextAttachmentCell() // falsified",
       "expect_red": ["taskPresentationHasCheckboxWithoutDuplicateBullet"]
     }
   ]

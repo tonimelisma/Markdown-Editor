@@ -1,0 +1,26 @@
+{
+  "requirement": "REQ-085",
+  "mutations": [
+    {
+      "rationale": "Disabling the metadata-valid cache branch makes the second identical request read and decode again, falsifying the miss-only image service contract cited by REQ-085.",
+      "file": "Markdown Editor/ImageDisplayService.swift",
+      "find": "        if let image = cache.image(for: key) {",
+      "replace": "        if false, let image = cache.image(for: key) {",
+      "expect_red": ["cacheHitStatsButDoesNotReadOrDecode"]
+    },
+    {
+      "rationale": "Inverting the terminal generation guard allows a stale parse to install through the coordinator, falsifying the stale-result side of the REQ-085 owner contract; service cancellation remains separately typed by cancelledDecodeReturnsTypedStaleResult.",
+      "file": "Markdown Editor/ParseCoordinator.swift",
+      "find": "                      document?.locationGeneration == snapshot.locationGeneration,\n                      session.parseCoordinator.generation() == generation else {",
+      "replace": "                      document?.locationGeneration == snapshot.locationGeneration,\n                      session.parseCoordinator.generation() != generation else {",
+      "expect_red": ["parseOwnerRecordsStaleReconciliation"]
+    },
+    {
+      "rationale": "Removing the owning coordinator's cancellation generation invalidation leaves a pending parse current, falsifying the synchronous owner cancellation contract proved by parseOwnerCancellationInvalidatesGeneration.",
+      "file": "Markdown Editor/ParseCoordinator.swift",
+      "find": "    func cancel() {\n        operationGeneration &+= 1\n        parseTask?.cancel()",
+      "replace": "    func cancel() {\n        operationGeneration &+= 0\n        parseTask?.cancel()",
+      "expect_red": ["parseOwnerCancellationInvalidatesGeneration"]
+    }
+  ]
+}

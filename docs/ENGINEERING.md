@@ -40,7 +40,7 @@ The app is a native Swift 6 macOS document application:
 - WYSIWYG uses attributed rendered content compiled from pinned direct cmark-gfm semantics and
   exact concrete-source coordinates.
 - Image placement is one editor-neutral transaction used by paste, drag-and-drop, and Add Image.
-- Parser, source-index, projection compilation, hashing, image inspection, and image decoding run
+- Parser, source-index, projection compilation, image inspection, and image decoding run
   from immutable snapshots away from the main actor.
 
 TextKit 2, hidden-delimiter storage, an AST or rich text as canonical state, whole-document rich
@@ -63,7 +63,7 @@ Every mutable fact has exactly one owner.
 | Authoritative parse tree/projection | derived reconciliation result | `EditorSession` | replaceable |
 | Marked text/IME composition | transient native input | active `NSTextView`, coordinated by session | one composition |
 | Image-placement selection | immutable operation intent | placement operation | one operation |
-| Decoded image cache | derived bounded cache | `LocalImageCache` | replaceable |
+| Decoded image cache | derived bounded cache | `ImageDisplayService` / `ImageDisplayCache` | replaceable |
 | Diagnostic run record | derived append-only evidence | `DiagnosticLog` | one file per application run |
 | Asset files | external ordinary files | user/filesystem | persistent outside app state |
 
@@ -440,7 +440,8 @@ Displaying a referenced image is also resource-bounded before bulk input work:
 - inspect file identity and stat metadata before reading;
 - reject an encoded file larger than 256 MiB before mapping, hashing, or decoding it;
 - inspect type and pixel metadata without eager full-image caching;
-- hash accepted content off-main for cache identity;
+- establish metadata identity without reading accepted content for display-cache lookup; exact-byte
+  hashing remains confined to the placement/copy contract;
 - create only a bounded display representation; and
 - keep decoded display cache cost at or below 64 MiB.
 
@@ -543,7 +544,7 @@ Metric names describe their actual boundaries:
   patch application, and selection restoration;
 - `modeTransition`: requested mode change through visibility, focus, and selection restoration;
 - `parseProjection`: parser, source index, and semantic projection only;
-- `imageResolution`: inspection, hashing, thumbnail decode, and cache lookup; and
+- `imageResolution`: inspection, metadata identity, thumbnail decode, and cache lookup; and
 - `authoritativeApplication`: main-actor application of a completed authoritative result; and
 - `sourceHighlightCompute`: off-main incremental source lexing for the captured document/session;
   its duration starts at incremental-lexer actor entry, excluding time queued behind a superseded
@@ -640,7 +641,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-Q03 | A stale parse, projection, image decode, load, or placement result performs zero state applications. |
 | ARC-Q04 | Opening and saving without edits preserves the byte fixtures exactly, including empty, BOM, CRLF, and Unicode cases; invalid UTF-8 refuses. |
 | ARC-Q05 | On the approved 100,000 UTF-16 corpus in Release: complete native-input callback p95 <8 ms, complete mode transition p95 <16 ms, and off-main parse/index/semantic-projection p95 <100 ms; every gate proves a nonzero sample count. |
-| ARC-Q06 | Parser, source-index, projection compilation, image inspection/decode, hashing, and file I/O do not execute on the main actor. |
+| ARC-Q06 | Parser, source-index, projection compilation, image inspection/decode, exact-copy hashing, and file I/O do not execute on the main actor. |
 | ARC-Q07 | Every supported presentation atom satisfies the oracle; every unsupported, cross-cell, mixed-domain, or unprovable selection refuses without mutation. |
 | ARC-Q08 | Mode changes preserve each mode's logical selection/affinity/scroll and never change source. |
 | ARC-Q09 | File-backed PNG/JPEG/GIF/HEIC/HEIF fixtures retain exact bytes and metadata; display decoding creates no intermediate JPEG or PNG. |
@@ -683,7 +684,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-026 | One explicit sendable intent identity owns all downstream work across actor, task, GCD, parser, presentation, and terminal lifecycle boundaries; late or cancelled work is typed and durably emitted. | `COR69IntentMeasurementTests/editorSessionRouteRetainsIntentThroughParse()`; `asyncAndGCDWorkRetainTheExplicitIntent()`; `presentationLeaseDefersTerminalLedger()`; `lateWorkAfterFinishIsTypedOrphan()`; process smoke diagnostics |
 | ARC-021 | A main-actor stall can be made durable without scheduling the report onto the main actor, and terminal durability never waits on a main-actor hop. | blocked-main component test; bounded terminal-close test |
 | ARC-022 | Superseded pending parses do not enter source-copy/cmark work after the parser lock becomes available. | deterministic scheduler/lock test with controlled generations |
-| ARC-023 | Image display rejects over-limit encoded files before bulk read/hash/decode and derives references from the canonical parse tree. | file-operation spy; over-limit sparse-file test; scanner deletion gate |
+| ARC-023 | `ImageDisplayService` derives references from the canonical parse tree, establishes metadata identity before bulk I/O, includes destination, revision, location generation, pixel target, backing scale, and appearance in its request/cache contract, coalesces identical in-flight work, and rejects over-limit encoded files before bulk read/hash/decode. | `ImageDisplayServiceTests`; production-route cache telemetry; over-limit sparse-file and file-operation-spy tests; scanner deletion gate |
 | ARC-024 | Menu and native toolbar are presentations of one window-scoped command model with shared validation. | command-router tests; menu/toolbar construction inspection |
 | ARC-027 | Trace-vocabulary coverage and delivery status are derived from observed production-route evidence and passing requirement proofs; encoding probes and gate fixtures cannot satisfy reachability, and every evidence artefact remains bound to the exact pushed commit and tree before local publication. | Gate-owned FIFO production records with trusted run harness; exact nested owner-entry route checks; `Scripts/check-instrumentation-coverage.sh`; `Scripts/check-delivery-status.sh`; `Scripts/check-proof-results.sh`; `Scripts/check-falsification.sh` |
 

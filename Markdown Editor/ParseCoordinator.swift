@@ -24,6 +24,7 @@ final class ParseCoordinator {
     }
 
     func cancel() {
+        operationGeneration &+= 1
         parseTask?.cancel()
         parseTask = nil
         if let pendingIntent {
@@ -54,7 +55,14 @@ final class ParseCoordinator {
         operationGeneration &+= 1
         let generation = operationGeneration
         let currentPresentation = session.presentation
-        let cachedImageIdentities = session.imageCache.currentIdentities()
+        let imageDisplayService = session.imageDisplayService
+        let backingScale = session.editorWindow?.backingScaleFactor ?? 2
+        let appearance: ImageDisplayAppearance = {
+            switch NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) {
+            case .darkAqua: return .dark
+            default: return .light
+            }
+        }()
         let intent = intent ?? session.intentRecorder.begin(.reconciliation)
 
         if currentPresentation?.sourceRevision.value != snapshot.sourceVersion
@@ -146,39 +154,40 @@ final class ParseCoordinator {
             }
             let parseProjectionDuration = DispatchTime.now().uptimeNanoseconds &- parseProjectionStart
             let imageResolutionStart = DispatchTime.now().uptimeNanoseconds
-            var descriptors: [LocalImageDescriptor] = []
-            var cachedImageNodes: [MarkdownNodeID: LocalImageDecoder.ImageFileIdentity] = [:]
+            var descriptors: [ImageDisplayDescriptor] = []
             var resolveFailures: [LocalImageResolveFailure] = []
             for attachment in model.attachments {
                 if case .image(let destination, _) = attachment.kind {
-                    switch LocalImageDecoder.identity(
+                    let request = ImageDecodeRequest(
                         destination: destination,
                         documentURL: snapshot.fileURL,
-                        locationGeneration: snapshot.locationGeneration
-                    ) {
-                    case .success(let identity) where cachedImageIdentities.contains(identity):
-                        cachedImageNodes[attachment.nodeID] = identity
-                    case .success:
-                        switch LocalImageResolver.resolve(
-                            destination: destination,
-                            documentURL: snapshot.fileURL,
-                            nodeID: attachment.nodeID,
-                            sourceVersion: snapshot.sourceVersion,
-                            locationGeneration: snapshot.locationGeneration,
-                            intent: intent
-                        ) {
-                        case .success(let desc): descriptors.append(desc)
-                        case .failure(let reason): resolveFailures.append(reason)
-                        }
+                        nodeID: attachment.nodeID,
+                        sourceRevision: snapshot.sourceVersion,
+                        locationGeneration: snapshot.locationGeneration,
+                        requestGeneration: generation,
+                        pixelTarget: Int(MarkdownTypography.maximumReadingMeasure * 2),
+                        backingScale: backingScale,
+                        appearance: appearance,
+                        intent: intent
+                    )
+                    switch await imageDisplayService.resolve(request) {
+                    case .success(let descriptor): descriptors.append(descriptor)
                     case .failure(let reason):
                         resolveFailures.append(reason)
                     }
                 }
             }
             let imageResolutionDuration = DispatchTime.now().uptimeNanoseconds &- imageResolutionStart
+            guard !Task.isCancelled else {
+                await MainActor.run {
+                    document?.trace?.record(route: .parseCancelled, .parseCancelled(sourceVersion: snapshot.sourceVersion))
+                }
+                return
+            }
             await MainActor.run {
                 guard let session else { return }
-                guard document?.sourceVersion == snapshot.sourceVersion,
+                guard !Task.isCancelled,
+                      document?.sourceVersion == snapshot.sourceVersion,
                       document?.locationGeneration == snapshot.locationGeneration,
                       session.parseCoordinator.generation() == generation else {
                     document?.trace?.record(route: .reconciliationDiscarded, .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .identityMismatch)
@@ -201,21 +210,24 @@ final class ParseCoordinator {
                     document?.trace?.record(route: .imageResolutionFailed, .imageResolutionFailed(reason: reason))
                 }
                 document?.updateCanonicalAssetReferences(CanonicalAssetReferences.from(model: model))
-                let imageCacheLookupStart = DispatchTime.now().uptimeNanoseconds
                 var images: [MarkdownNodeID: NSImage] = [:]
-                for (nodeID, identity) in cachedImageNodes {
-                    if let image = session.imageCache.image(for: identity) {
-                        images[nodeID] = image
-                    }
-                }
                 for desc in descriptors {
-                    if let image = session.imageCache.image(for: desc) {
-                        images[desc.nodeID] = image
-                    }
+                    images[desc.nodeID] = desc.nsImage(backingScale: backingScale)
                 }
                 session.resolvedImages = images
+                for descriptor in descriptors {
+                    document?.trace?.record(
+                        route: .imageDisplayCacheObserved,
+                        .imageDisplayCacheObserved(
+                            hit: descriptor.cacheHit,
+                            bytesRead: descriptor.bytesRead,
+                            decodeCount: descriptor.decodeCount,
+                            durationNanos: descriptor.decodeDurationNanos,
+                            totalBytes: descriptor.cacheTotalBytes
+                        )
+                    )
+                }
                 let imageResolutionTotal = imageResolutionDuration
-                    &+ (DispatchTime.now().uptimeNanoseconds &- imageCacheLookupStart)
                 let applicationStart = DispatchTime.now().uptimeNanoseconds
                 if let provisional = session.presentation,
                    provisional.sourceRevision == authoritative.sourceRevision,
