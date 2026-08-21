@@ -78,6 +78,19 @@ actor IncrementalSourceHighlighter {
             lexedUTF16Count += range.length
             next.append(lexed)
 
+            if let opening = incoming.strikethroughStart,
+               lexed.outgoing.strikethroughStart == nil,
+               let closingToken = lexed.tokens.first(where: { $0.style == .strikethrough && $0.range.location == range.location }) {
+                let completed = NSRange(location: opening, length: NSMaxRange(closingToken.range) - opening)
+                retroactivelyApplyStrikethrough(
+                    completed,
+                    lines: index.lines,
+                    cache: &next,
+                    changedRanges: &changedRanges,
+                    changedTokens: &changedTokens
+                )
+            }
+
             let old = oldCache.indices.contains(line) ? oldCache[line] : nil
             let changed = old.map { !$0.hasSameLexicalResult(as: lexed) } ?? true
             if changed {
@@ -103,6 +116,26 @@ actor IncrementalSourceHighlighter {
             }
         }
 
+        if let opening = incoming.strikethroughStart {
+            let pending = NSRange(location: opening, length: max(0, index.sourceUTF16Count - opening))
+            for offset in next.indices {
+                let lineRange = index.lines[offset]
+                let oldLine = next[offset]
+                let filtered = oldLine.tokens.filter { token in
+                    token.style != .strikethrough || NSIntersectionRange(token.range, pending).length == 0
+                }
+                guard filtered != oldLine.tokens else { continue }
+                next[offset] = SourceLexedLine(
+                    text: oldLine.text,
+                    range: lineRange,
+                    incoming: oldLine.incoming,
+                    outgoing: oldLine.outgoing,
+                    tokens: filtered
+                )
+                changedRanges.append(lineRange)
+            }
+        }
+
         cache = next
         cachedSource = source
         cachedIndex = index
@@ -115,6 +148,32 @@ actor IncrementalSourceHighlighter {
             lexedUTF16Count: lexedUTF16Count,
             intentID: intentID
         )
+    }
+
+    private func retroactivelyApplyStrikethrough(
+        _ completed: NSRange,
+        lines: [NSRange],
+        cache: inout [SourceLexedLine],
+        changedRanges: inout [NSRange],
+        changedTokens: inout [Token]
+    ) {
+        for index in cache.indices {
+            let lineRange = lines[index]
+            let intersection = NSIntersectionRange(completed, lineRange)
+            guard intersection.length > 0 else { continue }
+            let oldLine = cache[index]
+            guard !oldLine.tokens.contains(where: { $0.style == .strikethrough && $0.range == intersection }) else { continue }
+            let token = Token(range: intersection, style: .strikethrough)
+            cache[index] = SourceLexedLine(
+                text: oldLine.text,
+                range: lineRange,
+                incoming: oldLine.incoming,
+                outgoing: oldLine.outgoing,
+                tokens: oldLine.tokens + [token]
+            )
+            changedRanges.append(lineRange)
+            changedTokens.append(token)
+        }
     }
 
     private func lexLine(
@@ -151,9 +210,9 @@ actor IncrementalSourceHighlighter {
         }
 
         let localTokens = try await lineHighlighter.tokens(for: text)
-        let crossLineStrike = Self.crossLineStrikethrough(in: local, contentEnd: contentEnd, incomingOpen: incoming.strikethroughOpen, range: range)
+        let crossLineStrike = Self.crossLineStrikethrough(in: local, contentEnd: contentEnd, incomingStart: incoming.strikethroughStart, range: range)
         let tokens = localTokens.map { Token(range: NSRange(location: range.location + $0.range.location, length: $0.range.length), style: $0.style) }
-        let outgoing = SourceLexState(fence: nil, strikethroughOpen: crossLineStrike.outgoingOpen)
+        let outgoing = SourceLexState(fence: nil, strikethroughStart: crossLineStrike.outgoingStart)
         return SourceLexedLine(
             text: text,
             range: range,
@@ -166,56 +225,57 @@ actor IncrementalSourceHighlighter {
     private static func crossLineStrikethrough(
         in text: NSString,
         contentEnd: Int,
-        incomingOpen: Bool,
+        incomingStart: Int?,
         range: NSRange
-    ) -> (outgoingOpen: Bool, tokens: [Token]) {
-        guard contentEnd > 0 else { return (false, []) }
+    ) -> (outgoingStart: Int?, tokens: [Token]) {
+        guard contentEnd > 0 else { return (nil, []) }
 
-        func isDoubleTilde(at index: Int) -> Bool {
-            guard index + 1 < contentEnd,
-                  text.character(at: index) == 0x7E,
-                  text.character(at: index + 1) == 0x7E,
-                  (index == 0 || text.character(at: index - 1) != 0x7E),
-                  (index + 2 >= contentEnd || text.character(at: index + 2) != 0x7E) else { return false }
+        func tildeRun(at index: Int) -> (end: Int, length: Int, escaped: Bool)? {
+            guard index < contentEnd, text.character(at: index) == 0x7E else { return nil }
+            var length = 0
+            while index + length < contentEnd, text.character(at: index + length) == 0x7E { length += 1 }
             var slashCount = 0
             var cursor = index - 1
             while cursor >= 0, text.character(at: cursor) == 0x5C { slashCount += 1; cursor -= 1 }
-            return slashCount.isMultiple(of: 2)
+            return (index + length, length, !slashCount.isMultiple(of: 2))
         }
 
-        func nextDelimiter(after start: Int) -> Int? {
-            guard start < contentEnd else { return nil }
-            for index in start..<contentEnd where isDoubleTilde(at: index) {
-                return index
+        func isWhitespace(_ character: unichar) -> Bool {
+            character == 0x20 || character == 0x09 || character == 0x0A || character == 0x0D || character == 0x0C
+        }
+
+        var openStart = incomingStart
+        var spans: [NSRange] = []
+        var index = 0
+        while index < contentEnd {
+            guard let run = tildeRun(at: index) else {
+                index += 1
+                continue
             }
-            return nil
-        }
-
-        if incomingOpen {
-            if let closer = nextDelimiter(after: 0) {
-                return (
-                    false,
-                    [Token(range: NSRange(location: range.location, length: closer + 2), style: .strikethrough)]
-                )
+            guard run.length == 2, !run.escaped else {
+                index = run.end
+                continue
             }
-            return (
-                true,
-                [Token(range: NSRange(location: range.location, length: contentEnd), style: .strikethrough)]
-            )
+
+            if let opening = openStart {
+                let previous = index == 0 ? 0x0A : text.character(at: index - 1)
+                if !isWhitespace(previous) {
+                    let end = range.location + run.end
+                    spans.append(NSRange(location: opening, length: end - opening))
+                    openStart = nil
+                }
+            } else if run.end < contentEnd, !isWhitespace(text.character(at: run.end)) {
+                openStart = range.location + index
+            }
+            index = run.end
         }
 
-        guard let opener = nextDelimiter(after: 0),
-              opener + 2 < contentEnd,
-              !Self.isWhitespace(text.character(at: opener + 2)) else { return (false, []) }
-        guard nextDelimiter(after: opener + 2) == nil else { return (false, []) }
-        return (
-            true,
-            [Token(range: NSRange(location: range.location + opener, length: contentEnd - opener), style: .strikethrough)]
-        )
-    }
-
-    private static func isWhitespace(_ character: unichar) -> Bool {
-        character == 0x20 || character == 0x09 || character == 0x0A || character == 0x0D
+        let tokens = spans.compactMap { span -> Token? in
+            let intersection = NSIntersectionRange(span, range)
+            guard intersection.length > 0 else { return nil }
+            return Token(range: intersection, style: .strikethrough)
+        }
+        return (openStart, tokens)
     }
 
     private static func contentEnd(in text: NSString) -> Int {

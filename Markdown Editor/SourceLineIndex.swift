@@ -65,7 +65,10 @@ nonisolated struct SourceLineIndex: Sendable, Equatable {
         guard editedRange.location >= oldRange.location else { return SourceLineIndex(source: source) }
         let newRange = lineRange(in: newNSString, startingAt: oldRange.location)
         guard newRange.location == oldRange.location,
-              oldNSString.substring(from: NSMaxRange(oldRange)) == newNSString.substring(from: NSMaxRange(newRange)) else {
+              utf16Equal(
+                  oldNSString.substring(from: NSMaxRange(oldRange)),
+                  newNSString.substring(from: NSMaxRange(newRange))
+              ) else {
             return SourceLineIndex(source: source)
         }
 
@@ -100,6 +103,10 @@ nonisolated struct SourceLineIndex: Sendable, Equatable {
             end += 1
         }
         return NSRange(location: start, length: end - start)
+    }
+
+    private static func utf16Equal(_ lhs: String, _ rhs: String) -> Bool {
+        Array(lhs.utf16) == Array(rhs.utf16)
     }
 
     func lineContaining(_ location: Int) -> Int {

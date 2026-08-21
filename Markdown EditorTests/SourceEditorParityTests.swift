@@ -45,6 +45,45 @@ struct SourceEditorParityTests {
         #expect(fixture.storage.string == "# a\n")
     }
 
+    // Verifies: REQ-045 — the coordinator's production route computes off-main, applies the
+    // incremental patch, and records both compute and application phases.
+    @Test func coordinatorHighlightUsesIncrementalProductionRoute() async throws {
+        let fixture = try makeFixture(source: "# Heading\nplain\n")
+        if let task = fixture.coordinator.highlight(debounced: false) {
+            await task.value
+        }
+        let font = fixture.storage.attributes(at: 0, effectiveRange: nil)[.font] as? NSFont
+        let expected = fixture.coordinator.theme.attributes(for: .heading(level: 1))[.font] as? NSFont
+        #expect(font == expected)
+        let metrics = fixture.session.drainPerformanceSummaries()
+        #expect(metrics.contains { $0.metric == .sourceHighlightCompute })
+        #expect(metrics.contains { $0.metric == .sourceHighlightApplication })
+    }
+
+    // Verifies: REQ-045 — replacing the document while work is outstanding rejects the old patch
+    // even when the replacement has the same text and numeric source revision.
+    @Test func coordinatorHighlightRejectsReplacedDocumentIdentity() async throws {
+        let fixture = try makeFixture(source: "# Heading\n")
+        let patch = try await IncrementalSourceHighlighter().highlight(
+            source: fixture.storage.string,
+            editedRange: nil,
+            sourceRevision: fixture.document.sourceVersion,
+            intentID: nil
+        )
+        let replacement = MarkdownDocument()
+        replacement.installTextForTesting(fixture.storage.string)
+        fixture.coordinator.document = replacement
+        fixture.storage.resetSpy()
+        fixture.coordinator.apply(
+            patch,
+            expectedVersion: 0,
+            expectedText: fixture.storage.string,
+            expectedDocument: fixture.document,
+            expectedSession: fixture.session
+        )
+        #expect(fixture.storage.attributeReplacements.isEmpty)
+    }
+
     // Verifies: REQ-045 — ordinary source edits reset and restyle only their changed line.
     @Test func sourceHighlightAppliesOnlyToTheChangedWindow() async throws {
         let source = (0..<80).map { "ordinary source line \($0) with enough text to measure" }.joined(separator: "\n") + "\n"
@@ -147,11 +186,9 @@ struct SourceEditorParityTests {
     func sourceHighlightEnumeratesEveryPerformanceCorpus(_ corpus: PerformanceCorpus) async throws {
         let source = corpus.source(utf16Target: 20_000)
         let fixture = try makeFixture(source: source)
-        fixture.coordinator.apply(
-            try await MarkdownHighlighter().tokens(for: source),
-            expectedVersion: 0,
-            expectedText: source
-        )
+        if let task = fixture.coordinator.highlight(debounced: false) {
+            await task.value
+        }
         #expect(fixture.storage.string == source)
         #expect(fixture.session.drainPerformanceSummaries().contains {
             $0.metric == .sourceHighlightApplication

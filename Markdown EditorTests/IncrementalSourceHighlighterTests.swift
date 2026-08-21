@@ -72,4 +72,26 @@ struct IncrementalSourceHighlighterTests {
         #expect(patch.tokens.contains { $0.style == .strikethrough && NSIntersectionRange($0.range, first).length == first.length })
         #expect(patch.tokens.contains { $0.style == .strikethrough && NSIntersectionRange($0.range, second).length == second.length })
     }
+
+    // Verifies: REQ-041 — escaped and unmatched tilde runs remain literal, while a later
+    // multiline span remains discoverable after an earlier completed span.
+    @Test func strikethroughMatchesFormalGFMDelimiterRuns() async throws {
+        let source = "~~not\\~~\n\n~~one~~ and ~~two\nthree~~\n"
+        let patch = try await IncrementalSourceHighlighter().highlight(
+            source: source,
+            editedRange: nil,
+            sourceRevision: 5,
+            intentID: nil
+        )
+        let ns = source as NSString
+        let escaped = ns.range(of: "~~not\\~~")
+        let first = ns.range(of: "~~one~~")
+        let later = ns.range(of: "~~two\nthree~~")
+        #expect(!patch.tokens.contains { $0.style == .strikethrough && NSIntersectionRange($0.range, escaped).length > 0 })
+        #expect(patch.tokens.contains { $0.style == .strikethrough && NSIntersectionRange($0.range, first).length == first.length })
+        let laterCoverage = patch.tokens
+            .filter { $0.style == .strikethrough }
+            .reduce(into: 0) { total, token in total += NSIntersectionRange(token.range, later).length }
+        #expect(laterCoverage == later.length)
+    }
 }

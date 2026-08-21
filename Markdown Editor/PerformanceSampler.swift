@@ -21,6 +21,8 @@ final class PerformanceSampler {
         case mainActorLatency
         /// REQ-045: main-actor application of lexical source styling, excluding off-main tokenisation.
         case sourceHighlightApplication
+        /// REQ-045: off-main incremental lexical computation, excluding attribute application.
+        case sourceHighlightCompute
     }
 
     /// p95 budget per metric, in nanoseconds.
@@ -39,6 +41,7 @@ final class PerformanceSampler {
         .layoutApplication: 16_000_000,
         .mainActorLatency: 16_000_000,
         .sourceHighlightApplication: 8_000_000,
+        .sourceHighlightCompute: 100_000_000,
     ]
     struct Summary: Equatable { let metric: Metric; let count: Int; let p50: UInt64; let p95: UInt64; let max: UInt64 }
 

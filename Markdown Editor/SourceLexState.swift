@@ -16,13 +16,17 @@ nonisolated struct SourceLexState: Sendable, Equatable {
     }
 
     let fence: Fence?
-    let strikethroughOpen: Bool
+    /// UTF-16 location of the currently unmatched GFM opener, if any. Keeping the concrete
+    /// location lets a later closer retroactively style the opener's cached lines.
+    let strikethroughStart: Int?
 
-    static let initial = SourceLexState(fence: nil, strikethroughOpen: false)
+    var strikethroughOpen: Bool { strikethroughStart != nil }
 
-    init(fence: Fence?, strikethroughOpen: Bool = false) {
+    static let initial = SourceLexState(fence: nil, strikethroughStart: nil)
+
+    init(fence: Fence?, strikethroughStart: Int? = nil) {
         self.fence = fence
-        self.strikethroughOpen = strikethroughOpen
+        self.strikethroughStart = strikethroughStart
     }
 }
 

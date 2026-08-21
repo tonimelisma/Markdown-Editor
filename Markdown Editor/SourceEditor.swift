@@ -191,13 +191,16 @@ enum SourceEditor {
         }
 
         // REQ-045: debounce + off-main highlight; no document-size styling suspension.
-        func highlight(debounced: Bool = false, intent: IntentContext? = nil) {
-            guard let textView else { return }
+        @discardableResult
+        func highlight(debounced: Bool = false, intent: IntentContext? = nil) -> Task<Void, Never>? {
+            guard let textView else { return nil }
             version &+= 1
             let expectedVersion = version
             let snapshot = textView.string
             let editedRange = pendingStyleRange
             let sourceRevision = document.sourceVersion
+            let expectedDocument = document
+            let expectedSession = session
             task?.cancel()
             if let activeHighlightIntent {
                 activeHighlightIntent.recorder.finish(activeHighlightIntent, orphaned: true)
@@ -207,7 +210,7 @@ enum SourceEditor {
                 activeHighlightIntent = intent
             }
 
-            task = Task { [weak self] in
+            let newTask = Task { [weak self] in
                 defer {
                     if let intent {
                         intent.recorder.finish(intent, orphaned: Task.isCancelled)
@@ -221,6 +224,7 @@ enum SourceEditor {
                     if Task.isCancelled { return }
                 }
                 guard let self else { return }
+                let started = DispatchTime.now().uptimeNanoseconds
                 let patch: SourceHighlightPatch
                 do {
                     patch = try await self.incrementalHighlighter.highlight(
@@ -232,13 +236,21 @@ enum SourceEditor {
                 } catch {
                     return
                 }
+                self.session?.recordPerformance(
+                    .sourceHighlightCompute,
+                    durationNanos: DispatchTime.now().uptimeNanoseconds &- started
+                )
                 if Task.isCancelled { return }
                 self.apply(
                     patch,
                     expectedVersion: expectedVersion,
-                    expectedText: snapshot
+                    expectedText: snapshot,
+                    expectedDocument: expectedDocument,
+                    expectedSession: expectedSession
                 )
             }
+            task = newTask
+            return newTask
         }
 
         /// Applies only the lines whose incoming state, outgoing state, or tokens changed.
@@ -247,10 +259,14 @@ enum SourceEditor {
         func apply(
             _ patch: SourceHighlightPatch,
             expectedVersion: Int,
-            expectedText: String
+            expectedText: String,
+            expectedDocument: MarkdownDocument? = nil,
+            expectedSession: EditorSession? = nil
         ) {
             let started = DispatchTime.now().uptimeNanoseconds
             guard expectedVersion == version,
+                  (expectedDocument == nil || document === expectedDocument),
+                  (expectedSession == nil || session === expectedSession),
                   patch.sourceRevision == document.sourceVersion,
                   let textView,
                   patch.sourceUTF16Count == textView.textStorage?.length,
