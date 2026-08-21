@@ -5,6 +5,6 @@
     "file": "Markdown Editor/MarkdownDocument.swift",
     "find": "        text = \"\"",
     "replace": "        text = \"seed\"",
-    "expect_red": ["newDocumentStartsEmptyAndUntitled"]
+    "expect_red": ["newDocumentStartsEmptyAndUntitled", "newRouteCreatesEmptyDocument"]
   }]
 }

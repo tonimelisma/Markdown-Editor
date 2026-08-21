@@ -326,7 +326,8 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// NSDocumentController populates Open Recent when a standard menu item exists.
-    private func ensureOpenRecentMenuItem() {
+    // Internal for the component proof that the production menu route remains AppKit-owned.
+    func ensureOpenRecentMenuItem() {
         guard let mainMenu = NSApp.mainMenu else { return }
         guard let fileMenu = mainMenu.item(withTitle: "File")?.submenu else { return }
         if fileMenu.items.contains(where: { $0.title == "Open Recent" }) { return }
