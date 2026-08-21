@@ -210,9 +210,11 @@ return to discovery; do not improvise an architecture change.
    immutable request identity. `ImageDisplayServiceTests`, production-route telemetry, the full
    non-performance Debug suite, and the serialized falsification gate passed; the approved plan is
    deleted on delivery.
-7. ⚪ **COR-74 — Document files and lifecycle proof.** (Delivers: REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-013, REQ-014, REQ-015, REQ-017, REQ-019, REQ-020, REQ-021)
-   ([plan](plans/COR-74-document-files-and-lifecycle.md)) Re-verifies the complete NSDocument file and
-   lifecycle boundary through direct construction and precise framework proofs.
+7. ✅ **COR-74 — Document files and lifecycle proof.** (Delivers: REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-013, REQ-014, REQ-015, REQ-017, REQ-019, REQ-020, REQ-021)
+   Twelve lifecycle requirements are Done on the observed focused contract suite and the changed-scope
+   falsification gate: 15 structurally valid manifests and 15/15 mutations turned their cited proofs
+   red. The complete NSDocument file and lifecycle boundary is verified through direct construction and
+   precise framework proofs; the approved plan was deleted with delivery.
 8. ⚪ **COR-75 — Native Source editor and privacy contracts.** (Delivers: REQ-010, REQ-011, REQ-012, REQ-022, REQ-030, REQ-031, REQ-044, REQ-046)
    ([plan](plans/COR-75-native-source-editor-and-privacy.md)) Proves native editing liveness and the
    offline/account-free/telemetry-free boundary without custom platform substitutes.
