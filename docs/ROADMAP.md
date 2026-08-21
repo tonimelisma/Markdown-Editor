@@ -218,9 +218,10 @@ return to discovery; do not improvise an architecture change.
    plan is deleted with delivery.
 8. ✅ **COR-75 — Native Source editor and privacy contracts.** (Delivers: REQ-010, REQ-011, REQ-012, REQ-022, REQ-030, REQ-031, REQ-044, REQ-046)
    Proves native editing liveness and the offline/account-free/telemetry-free boundary without
-   custom platform substitutes. The focused contract run observed 9 tests passed in 2 suites;
-   the closing full gate records the complete suite, observed falsification, and delivery counts.
-   The approved plan is deleted with delivery.
+   custom platform substitutes. The focused contract run observed 9 tests passed in 2 suites.
+   The closing full gate observed 523 tests passed, 53 falsifying mutations red across 46 valid
+   manifests, 50 production trace events, 71 Done rows verified against 466 executed tests in 27
+   cited suites, and 31 increment rows resolved. The approved plan is deleted with delivery.
 9. ⚪ **COR-76 — Formal-GFM and Source contract.** (Delivers: REQ-047, REQ-048, REQ-049, REQ-050, REQ-053, REQ-054, REQ-055, REQ-056, REQ-059)
    ([plan](plans/COR-76-gfm-source-contract.md)) Gives the pinned dialect one traceable fixture and
    range contract across parser, highlighter, projection, and encoder.
