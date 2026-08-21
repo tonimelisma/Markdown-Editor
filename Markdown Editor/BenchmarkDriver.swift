@@ -334,13 +334,15 @@ enum BenchmarkDriver {
             session.resetBenchmarkTransientState()
             try? await Task.sleep(for: .milliseconds(500))
             await waitForBenchmarkPresentation(session: session, document: document)
+            // Discard work caused by installing the next fixture or by the preceding case. A
+            // case's metrics must describe its own scenario, not cross-case reconciliation.
+            session.performanceSampler?.drainSummaries()
             if configuration.scenario == .typeProse {
                 guard let sourceCoordinator = sourceCoordinator(in: controller.presentingWindow?.contentView) else {
                     fatalError("benchmark: source coordinator is not attached to the editor window")
                 }
                 session.setMode(.source)
                 await waitForBenchmarkSource(sourceCoordinator, document: document)
-                session.performanceSampler?.drainSummaries()
                 guard let highlightTask = sourceCoordinator.highlight(debounced: false) else {
                     fatalError("benchmark: source coordinator could not schedule highlighting")
                 }
