@@ -156,7 +156,6 @@ struct DiagnosticLogTests {
             .compositionCommitted(sourceVersion: 1, replacementLength: 2),
             .compositionCancelled,
             .compositionRefusedStale,
-            .imageCacheStore(cost: 10, totalBytes: 20),
             .imageDisplayCacheObserved(hit: true, bytesRead: 0, decodeCount: 0, durationNanos: 5, totalBytes: 20),
             // REQ-114: `oversizeDimensions` carries measurements in the Swift case; the mapping
             // must reduce it to a bare reason symbol so the payload cannot describe the file.

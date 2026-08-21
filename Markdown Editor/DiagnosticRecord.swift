@@ -300,7 +300,6 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
     case compositionRefusedStale
 
     // image
-    case imageCacheStore
     case imageDisplayCacheObserved
     case imageResolutionFailed
 

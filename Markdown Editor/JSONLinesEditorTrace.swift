@@ -260,11 +260,6 @@ final class JSONLinesEditorTrace: EditorTraceSink {
             return Mapped(name: .compositionCancelled, level: .debug, category: .edit, data: [])
         case .compositionRefusedStale:
             return Mapped(name: .compositionRefusedStale, level: .error, category: .edit, data: [])
-        case .imageCacheStore(let cost, let totalBytes):
-            return Mapped(name: .imageCacheStore, level: .debug, category: .image, data: [
-                (.cost, .int(cost)),
-                (.totalBytes, .int(totalBytes))
-            ])
         case .imageDisplayCacheObserved(let hit, let bytesRead, let decodeCount, let durationNanos, let totalBytes):
             return Mapped(name: .imageDisplayCacheObserved, level: .debug, category: .image, data: [
                 (.hit, .bool(hit)),

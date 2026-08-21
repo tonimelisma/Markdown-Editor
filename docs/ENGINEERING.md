@@ -63,7 +63,7 @@ Every mutable fact has exactly one owner.
 | Authoritative parse tree/projection | derived reconciliation result | `EditorSession` | replaceable |
 | Marked text/IME composition | transient native input | active `NSTextView`, coordinated by session | one composition |
 | Image-placement selection | immutable operation intent | placement operation | one operation |
-| Decoded image cache | derived bounded cache | `LocalImageCache` | replaceable |
+| Decoded image cache | derived bounded cache | `ImageDisplayService` / `ImageDisplayCache` | replaceable |
 | Diagnostic run record | derived append-only evidence | `DiagnosticLog` | one file per application run |
 | Asset files | external ordinary files | user/filesystem | persistent outside app state |
 
@@ -683,7 +683,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-026 | One explicit sendable intent identity owns all downstream work across actor, task, GCD, parser, presentation, and terminal lifecycle boundaries; late or cancelled work is typed and durably emitted. | `COR69IntentMeasurementTests/editorSessionRouteRetainsIntentThroughParse()`; `asyncAndGCDWorkRetainTheExplicitIntent()`; `presentationLeaseDefersTerminalLedger()`; `lateWorkAfterFinishIsTypedOrphan()`; process smoke diagnostics |
 | ARC-021 | A main-actor stall can be made durable without scheduling the report onto the main actor, and terminal durability never waits on a main-actor hop. | blocked-main component test; bounded terminal-close test |
 | ARC-022 | Superseded pending parses do not enter source-copy/cmark work after the parser lock becomes available. | deterministic scheduler/lock test with controlled generations |
-| ARC-023 | Image display rejects over-limit encoded files before bulk read/hash/decode and derives references from the canonical parse tree. | file-operation spy; over-limit sparse-file test; scanner deletion gate |
+| ARC-023 | `ImageDisplayService` derives references from the canonical parse tree, establishes metadata identity before bulk I/O, includes destination, revision, location generation, pixel target, backing scale, and appearance in its request/cache contract, coalesces identical in-flight work, and rejects over-limit encoded files before bulk read/hash/decode. | `ImageDisplayServiceTests`; production-route cache telemetry; over-limit sparse-file and file-operation-spy tests; scanner deletion gate |
 | ARC-024 | Menu and native toolbar are presentations of one window-scoped command model with shared validation. | command-router tests; menu/toolbar construction inspection |
 | ARC-027 | Trace-vocabulary coverage and delivery status are derived from observed production-route evidence and passing requirement proofs; encoding probes and gate fixtures cannot satisfy reachability, and every evidence artefact remains bound to the exact pushed commit and tree before local publication. | Gate-owned FIFO production records with trusted run harness; exact nested owner-entry route checks; `Scripts/check-instrumentation-coverage.sh`; `Scripts/check-delivery-status.sh`; `Scripts/check-proof-results.sh`; `Scripts/check-falsification.sh` |
 

@@ -15,7 +15,6 @@
     "compositionCommitted": {"owner": "MarkdownWYSIWYGTextView", "entry": "commitComposition", "expectedRecord": "compositionCommitted", "allowedHarness": "component"},
     "compositionCancelled": {"owner": "MarkdownWYSIWYGTextView", "entry": "unmarkText", "expectedRecord": "compositionCancelled", "allowedHarness": "component"},
     "compositionRefusedStale": {"owner": "MarkdownWYSIWYGTextView", "entry": "commitComposition", "expectedRecord": "compositionRefusedStale", "allowedHarness": "component"},
-    "imageCacheStore": {"owner": "LocalImageCache", "entry": "image", "expectedRecord": "imageCacheStore", "allowedHarness": "component"},
     "imageResolutionFailed": {"owner": "ParseCoordinator", "entry": "scheduleParse", "expectedRecord": "imageResolutionFailed", "allowedHarness": "component"},
     "editRouted": {"owner": "EditorSession", "entry": "perform", "expectedRecord": "editRouted", "allowedHarness": "component"},
     "presentationInstalled": {"owner": "EditorSession", "entry": "installPresentation", "expectedRecord": "presentationInstalled", "allowedHarness": "component"},
