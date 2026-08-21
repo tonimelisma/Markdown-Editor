@@ -6,6 +6,8 @@ final class DiagnosticWriteCoordinator: Sendable {
     private struct State {
         var tail: Task<Bool, Never>?
         var nextSequence: UInt64 = 0
+        var truncationTerminalQueued = false
+        var truncationTerminalLine: String?
         var closed = false
     }
 
@@ -31,20 +33,43 @@ final class DiagnosticWriteCoordinator: Sendable {
     }
 
     /// Allocates the sequence and reserves the matching writer position under one lock.
-    func appendRecord(_ makeLine: @Sendable (UInt64) -> String) -> Task<Bool, Never>? {
+    func appendRecord(
+        _ makeLine: @Sendable (UInt64) -> String,
+        terminalOnTruncation: (@Sendable (UInt64) -> String)? = nil
+    ) -> Task<Bool, Never>? {
         state.withLock { state in
             guard !state.closed else { return nil }
             state.nextSequence &+= 1
             let line = makeLine(state.nextSequence)
+            if let terminalOnTruncation, state.truncationTerminalLine == nil {
+                state.nextSequence &+= 1
+                state.truncationTerminalLine = terminalOnTruncation(state.nextSequence)
+            }
+            let terminalLine = state.truncationTerminalLine
             let previous = state.tail
             let sink = self.sink
+            let coordinator = self
             let task = Task.detached {
                 _ = await previous?.value
-                return await sink.append([line])
+                let truncated = await sink.append([line])
+                if truncated, let terminalLine {
+                    await coordinator.appendReservedTruncationTerminal(terminalLine)
+                }
+                return truncated
             }
             state.tail = task
             return task
         }
+    }
+
+    private func appendReservedTruncationTerminal(_ line: String) async {
+        let shouldWrite = state.withLock { state in
+            guard !state.truncationTerminalQueued else { return false }
+            state.truncationTerminalQueued = true
+            return true
+        }
+        guard shouldWrite else { return }
+        _ = await sink.appendTerminal([line])
     }
 
     func appendTerminalRecord(_ makeLine: @Sendable (UInt64) -> String) -> Task<Bool, Never>? {
@@ -80,7 +105,7 @@ final class DiagnosticWriteCoordinator: Sendable {
             let sink = self.sink
             let write = Task.detached {
                 _ = await previous?.value
-                return await sink.append([line])
+                return await sink.appendTerminal([line])
             }
             state.tail = write
             return Task.detached {

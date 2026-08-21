@@ -101,15 +101,36 @@ struct NativeSourceContractTests {
         findPasteboard.clearContents()
         defer { findPasteboard.clearContents() }
         #expect(findPasteboard.setString("needle", forType: .string))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+            styleMask: [],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = root
+        defer { window.orderOut(nil) }
+        #expect(window.makeFirstResponder(source))
         source.setSelectedRange(NSRange(location: 0, length: 0))
         let findNext = NSMenuItem()
         findNext.tag = 2 // NSFindPanelActionNext
         source.performFindPanelAction(findNext)
 
-        let beforeRevision = document.sourceVersion
+        // The production view delegates Find to AppKit. Exercise the framework's finder client
+        // directly as the headless component proof; a hidden window cannot provide the find-bar
+        // geometry that NSTextView uses to paint its selection feedback.
+        let finderClient = FinderClient(string: "needle needle")
+        let finder = NSTextFinder()
+        finder.client = finderClient
+        finderClient.selectedRanges = [NSValue(range: NSRange(location: 0, length: 6))]
+        finder.performAction(.setSearchString)
+        finderClient.selectedRanges = [NSValue(range: NSRange(location: 0, length: 0))]
+        finder.performAction(.nextMatch)
+        #expect(finderClient.firstSelectedRange == NSRange(location: 0, length: 6))
+
         let replacementRange = NSRange(location: 0, length: 6)
         session.updateSourceModeState { $0.selection = SourceSelection(utf16: replacementRange) }
         source.setSelectedRange(replacementRange)
+        let beforeRevision = document.sourceVersion
         #expect(source.performValidatedReplacement(
             in: source.selectedRange(),
             with: NSAttributedString(string: "found")
@@ -150,13 +171,16 @@ struct NativeSourceContractTests {
     @Test func liveCountOwnerEnumeratesUnicodeAndRevisionRoute() async throws {
         let computer = TextStatsComputer()
         #expect(await computer.counts(for: "two words 🐙") == .init(words: 3, characters: 11))
+        let owner = LiveCountOwner()
+        await owner.update(snapshot: "two words 🐙", revision: 1)
+        #expect(owner.displayLabel == "3 words · 11 characters")
+        await owner.update(snapshot: "one", revision: 2)
+        #expect(owner.displayLabel == "1 words · 3 characters")
 
         let contentView = try String(contentsOf: sourceURL("Markdown Editor/ContentView.swift"), encoding: .utf8)
         #expect(contentView.contains(".task(id: document.sourceVersion)"))
-        #expect(contentView.contains("guard let next = await statsComputer.counts(for: snapshot), !Task.isCancelled else { return }"))
-        #expect(contentView.contains("counts = next"))
-        #expect(contentView.contains("Text(counts.displayLabel)"))
-        #expect(TextStats.Counts(words: 3, characters: 11).displayLabel == "3 words · 11 characters")
+        #expect(contentView.contains("await countOwner.update(snapshot: document.text, revision: document.sourceVersion)"))
+        #expect(contentView.contains("Text(countOwner.displayLabel)"))
         #expect(!contentView.contains("TextStats.wordCount"))
     }
 
@@ -189,6 +213,20 @@ struct NativeSourceContractTests {
         let coordinator: SourceEditor.Coordinator
         let storage: NSTextStorage
         let textView: MarkdownSourceTextView
+    }
+
+    private final class FinderClient: NSObject, NSTextFinderClient {
+        let string: String
+        var selectedRanges: [NSValue]
+
+        init(string: String) {
+            self.string = string
+            self.selectedRanges = [NSValue(range: NSRange(location: 0, length: 0))]
+        }
+
+        var firstSelectedRange: NSRange { selectedRanges.first?.rangeValue ?? NSRange(location: 0, length: 0) }
+
+        func scrollRangeToVisible(_ range: NSRange) {}
     }
 
     private func makeFixture(source: String) throws -> Fixture {

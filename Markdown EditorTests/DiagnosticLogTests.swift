@@ -580,6 +580,9 @@ struct DiagnosticLogTests {
                 data: [(.reason, .symbol(.writeFailed))]
             )
         }
+        // Finish immediately after scheduling the burst: the cap marker and clean-shutdown
+        // marker must both survive the serialized writer race.
+        log.finish()
 
         var recorded = [String]()
         for _ in 0..<100 {
@@ -590,6 +593,7 @@ struct DiagnosticLogTests {
         let written = recorded.joined(separator: "\n") + "\n"
         #expect(written.utf8.count <= 2_048)
         #expect(recorded.contains { $0.contains("\"ev\":\"sizeLimitReached\"") })
+        #expect(recorded.last?.contains("\"ev\":\"runEnd\"") == true)
         for line in recorded {
             #expect(object(String(line)) != nil)
         }

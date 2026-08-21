@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import Combine
 
 // REQ-044: word / character counts. Pure and testable.
 nonisolated enum TextStats {
@@ -56,5 +57,27 @@ nonisolated enum TextStats {
 actor TextStatsComputer {
     func counts(for text: String) -> TextStats.Counts? {
         TextStats.counts(text, shouldCancel: { Task.isCancelled })
+    }
+}
+
+/// Owns the revision-keyed count result that ContentView displays. The owner is deliberately
+/// testable without constructing a SwiftUI hierarchy: a completed revision updates `displayLabel`,
+/// while a superseded task cannot overwrite the current result.
+@MainActor
+final class LiveCountOwner: ObservableObject {
+    @Published private(set) var counts = TextStats.Counts(words: 0, characters: 0)
+
+    private let statsComputer = TextStatsComputer()
+    private var latestRequestedRevision: UInt64 = 0
+
+    var displayLabel: String { counts.displayLabel }
+
+    func update(snapshot: String, revision: UInt64) async {
+        latestRequestedRevision = max(latestRequestedRevision, revision)
+        let next = await statsComputer.counts(for: snapshot)
+        guard !Task.isCancelled,
+              revision == latestRequestedRevision,
+              let next else { return }
+        counts = next
     }
 }

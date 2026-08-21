@@ -30,6 +30,12 @@ struct PrivacyBoundaryTests {
         #expect(!project.contains("CODE_SIGN_ENTITLEMENTS"))
         #expect(project.contains("cmark-gfm"))
         #expect(project.contains("cmark-gfm-extensions"))
+        #expect(!hasForbiddenLinkedFramework(project))
+        let injectedForbiddenFramework = project.replacingOccurrences(
+            of: "A1B2C3D43010892B00668304 /* cmark-gfm in Frameworks */",
+            with: "A1B2C3D43010892B00668304 /* cmark-gfm in Frameworks */, Network.framework"
+        )
+        #expect(hasForbiddenLinkedFramework(injectedForbiddenFramework))
         #expect(!project.contains("Firebase"))
         #expect(!project.contains("Analytics"))
         #expect(!project.contains("AuthenticationServices"))
@@ -53,5 +59,14 @@ struct PrivacyBoundaryTests {
 
     private func sourceURL(_ relativePath: String) -> URL {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(relativePath)
+    }
+
+    private func hasForbiddenLinkedFramework(_ project: String) -> Bool {
+        let linkedFrameworkPhase = project.components(
+            separatedBy: "/* Begin PBXFrameworksBuildPhase section */"
+        ).dropFirst().first ?? ""
+        return [
+            "Network.framework", "AuthenticationServices.framework", "CloudKit.framework", "WebKit.framework"
+        ].contains { linkedFrameworkPhase.contains($0) }
     }
 }

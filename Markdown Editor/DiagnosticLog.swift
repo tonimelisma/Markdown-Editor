@@ -113,7 +113,6 @@ actor DiagnosticFileSink {
     private var handle: FileHandle?
     private var bytesWritten = 0
     private var truncated = false
-    private var terminalWritten = false
 
     init(url: URL, byteLimit: Int, reservedTerminalBytes: Int = 0) {
         self.url = url
@@ -146,12 +145,13 @@ actor DiagnosticFileSink {
         return truncated
     }
 
-    /// Appends the one terminal cap record after ordinary writes have reached their reserved
-    /// limit. The reservation keeps this record within the file-size bound while preserving the
-    /// ordinary sink's refusal semantics for all later writes.
+    /// Appends terminal records after ordinary writes have reached their reserved limit. The
+    /// reservation keeps terminal records within the file-size bound while preserving the
+    /// ordinary sink's refusal semantics for all later writes. A capped run needs both its cap
+    /// marker and its run-end marker.
     @discardableResult
     func appendTerminal(_ lines: [String]) -> Bool {
-        guard !terminalWritten, !lines.isEmpty else { return false }
+        guard !lines.isEmpty else { return false }
         if handle == nil {
             FileManager.default.createFile(atPath: url.path, contents: nil)
             handle = try? FileHandle(forWritingTo: url)
@@ -166,7 +166,6 @@ actor DiagnosticFileSink {
         guard !payload.isEmpty else { return false }
         try? handle.write(contentsOf: payload)
         bytesWritten += payload.count
-        terminalWritten = true
         return true
     }
 
@@ -214,7 +213,6 @@ final class DiagnosticLog {
     private let coverageRecorder: JSONLinesEditorTrace.ProductionRouteCoverageRecorder?
     private var durabilityTask: Task<Void, Never>?
     private var closed = false
-    private var sizeLimitRecorded = false
     private var suddenTerminationDisabled = false
     private let byteLimit: Int
 
@@ -264,7 +262,9 @@ final class DiagnosticLog {
         Task.detached(priority: .utility) {
             Self.pruneRuns(in: pruneDirectory, keeping: keep)
         }
-        let terminalReservation = min(1024, max(256, configuredByteLimit / 4))
+        // Reserve room for both the cap marker and the clean-shutdown marker. A capped run must
+        // retain enough terminal space for `sizeLimitReached` followed by `runEnd`.
+        let terminalReservation = min(2048, max(1024, configuredByteLimit / 4))
         let sink = DiagnosticFileSink(
             url: fileURL,
             byteLimit: configuredByteLimit,
@@ -441,7 +441,10 @@ final class DiagnosticLog {
         terminal: Bool = false
     ) {
         let timestamp = Date()
-        let write = terminal
+        let terminalTimestamp = Date()
+        let terminalUptime = Double(DispatchTime.now().uptimeNanoseconds - startUptimeNanos) / 1_000_000_000
+        let capBytes = byteLimit
+        _ = terminal
             ? writeCoordinator.appendTerminalRecord { sequence in
                 DiagnosticRecord(
                     wallClock: timestamp,
@@ -456,7 +459,7 @@ final class DiagnosticLog {
                     data: data
                 ).jsonLine
             }
-            : writeCoordinator.appendRecord { sequence in
+            : writeCoordinator.appendRecord({ sequence in
                 DiagnosticRecord(
                     wallClock: timestamp,
                     uptimeSeconds: uptime,
@@ -469,8 +472,17 @@ final class DiagnosticLog {
                     productionRoute: productionRoute,
                     data: data
                 ).jsonLine
-            }
-        observeSizeLimit(write)
+            }, terminalOnTruncation: { sequence in
+                DiagnosticRecord(
+                    wallClock: terminalTimestamp,
+                    uptimeSeconds: terminalUptime,
+                    sequence: sequence,
+                    level: .warn,
+                    category: .diagnostics,
+                    event: .sizeLimitReached,
+                    data: [(.totalBytes, .int(capBytes))]
+                ).jsonLine
+            })
     }
 
     private func appendCollapseSummary(
@@ -489,7 +501,8 @@ final class DiagnosticLog {
         }
         let finalData = data
         let timestamp = Date()
-        observeSizeLimit(writeCoordinator.appendRecord { sequence in
+        let capBytes = byteLimit
+        _ = writeCoordinator.appendRecord({ sequence in
             DiagnosticRecord(
                 wallClock: timestamp,
                 uptimeSeconds: uptime,
@@ -499,6 +512,16 @@ final class DiagnosticLog {
                 event: .repeated,
                 collapsedEvent: event,
                 data: finalData
+            ).jsonLine
+        }, terminalOnTruncation: { sequence in
+            DiagnosticRecord(
+                wallClock: timestamp,
+                uptimeSeconds: uptime,
+                sequence: sequence,
+                level: .warn,
+                category: .diagnostics,
+                event: .sizeLimitReached,
+                data: [(.totalBytes, .int(capBytes))]
             ).jsonLine
         })
     }
@@ -586,36 +609,12 @@ final class DiagnosticLog {
     }
 
     private func appendLine(_ line: String) {
-        observeSizeLimit(writeCoordinator.appendUnsequenced([line]))
-    }
-
-    private func observeSizeLimit(_ write: Task<Bool, Never>?) {
-        guard let write else { return }
-        Task { @MainActor [weak self] in
-            if await write.value { self?.noteSizeLimitReached() }
-        }
+        _ = writeCoordinator.appendUnsequenced([line])
     }
 
     func flush() {
         // Records are handed to the serialized writer as they are created. This method remains
         // as a no-op compatibility point for callers that used to trigger buffered writes.
-    }
-
-    /// Records the cap once, as a well-formed record rather than a hand-written fragment.
-    private func noteSizeLimitReached() {
-        guard !sizeLimitRecorded, !closed else { return }
-        sizeLimitRecorded = true
-        appendRecord(
-            .sizeLimitReached,
-            level: .warn,
-            category: .diagnostics,
-            document: nil,
-            origin: .gateFixture,
-            productionRoute: nil,
-            data: [(.totalBytes, .int(byteLimit))],
-            uptime: Double(DispatchTime.now().uptimeNanoseconds - startUptimeNanos) / 1_000_000_000,
-            terminal: true
-        )
     }
 
     /// Writes the terminating record so a reader can distinguish a clean exit from a crash.
