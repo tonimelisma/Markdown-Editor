@@ -236,7 +236,7 @@ enum SourceEditor {
                 } catch {
                     return
                 }
-                self.session?.recordPerformance(
+                expectedSession?.recordPerformance(
                     .sourceHighlightCompute,
                     durationNanos: DispatchTime.now().uptimeNanoseconds &- started
                 )

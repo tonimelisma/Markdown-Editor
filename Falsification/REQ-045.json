@@ -14,6 +14,20 @@
       "find": "                  Self.utf16Equal(textView.string, expectedText),",
       "replace": "                  true,",
       "expect_red": ["productionIncrementalPatchRejectsDifferentUTF16Snapshot"]
+    },
+    {
+      "rationale": "Removing the document identity guard allows an outstanding task for the replaced document to apply to the new binding.",
+      "file": "Markdown Editor/SourceEditor.swift",
+      "find": "                  (expectedDocument == nil || document === expectedDocument),",
+      "replace": "                  true,",
+      "expect_red": ["coordinatorHighlightRejectsReplacedDocumentIdentity"]
+    },
+    {
+      "rationale": "Recording compute work through the rebound session misattributes discarded work to the replacement session.",
+      "file": "Markdown Editor/SourceEditor.swift",
+      "find": "                expectedSession?.recordPerformance(\n",
+      "replace": "                self.session?.recordPerformance(\n",
+      "expect_red": ["coordinatorHighlightAttributesComputeToCapturedSession"]
     }
   ]
 }

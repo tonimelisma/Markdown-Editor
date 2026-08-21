@@ -545,6 +545,8 @@ Metric names describe their actual boundaries:
 - `parseProjection`: parser, source index, and semantic projection only;
 - `imageResolution`: inspection, hashing, thumbnail decode, and cache lookup; and
 - `authoritativeApplication`: main-actor application of a completed authoritative result; and
+- `sourceHighlightCompute`: off-main incremental source lexing for the captured document/session;
+- `sourceHighlightApplication`: main-actor application of matching bounded source attributes; and
 - `layoutApplication`: TextKit layout for the range an applied patch changed. The
   `nativeInputCallback` boundary ends when the input delegate returns — after
   `storage.endEditing()` but before glyph generation, layout, and drawing — so without this
@@ -556,7 +558,10 @@ against the values REQ-090 states. The budgets previously existed twice — as p
 literals inside `flush()` — with nothing tying them.
 
 Every Release performance proof records configuration, corpus identity, warmups, sample count,
-median, p95, and failures. Zero executed samples is a failing proof, never a skipped success.
+median, p95, and failures for both `parseProjection` and `sourceHighlightCompute`; the source
+compute matrix has at least one real production-route sample for every corpus/size shape, while
+the complete 6 x 2 x 9 case matrix remains the authority for scenario/action coverage. Zero
+executed samples for a required shape is a failing proof, never a skipped success.
 Terminal diagnostic close signals durability immediately after the sink closes; re-enabling
 sudden termination on the main actor is not part of the synchronous durability wait.
 

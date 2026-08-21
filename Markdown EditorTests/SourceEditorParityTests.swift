@@ -60,28 +60,34 @@ struct SourceEditorParityTests {
         #expect(metrics.contains { $0.metric == .sourceHighlightApplication })
     }
 
-    // Verifies: REQ-045 — replacing the document while work is outstanding rejects the old patch
-    // even when the replacement has the same text and numeric source revision.
+    // Verifies: REQ-045 — replacing the document while a real debounced coordinator task is
+    // outstanding rejects the old patch even when the replacement has the same text and revision.
     @Test func coordinatorHighlightRejectsReplacedDocumentIdentity() async throws {
         let fixture = try makeFixture(source: "# Heading\n")
-        let patch = try await IncrementalSourceHighlighter().highlight(
-            source: fixture.storage.string,
-            editedRange: nil,
-            sourceRevision: fixture.document.sourceVersion,
-            intentID: nil
-        )
         let replacement = MarkdownDocument()
         replacement.installTextForTesting(fixture.storage.string)
+        let task = try #require(fixture.coordinator.highlight(debounced: true))
         fixture.coordinator.document = replacement
         fixture.storage.resetSpy()
-        fixture.coordinator.apply(
-            patch,
-            expectedVersion: 0,
-            expectedText: fixture.storage.string,
-            expectedDocument: fixture.document,
-            expectedSession: fixture.session
-        )
+        await task.value
         #expect(fixture.storage.attributeReplacements.isEmpty)
+    }
+
+    // Verifies: REQ-045 — compute work belongs to the captured session even if the coordinator
+    // is rebound before the debounced task completes; discarded work must not contaminate the new
+    // session's measurements.
+    @Test func coordinatorHighlightAttributesComputeToCapturedSession() async throws {
+        let fixture = try makeFixture(source: "# Heading\n")
+        let replacement = MarkdownDocument()
+        replacement.installTextForTesting(fixture.storage.string)
+        let replacementSession = EditorSession(performanceSamplerCoordinator: DiagnosticRunCoordinator())
+        replacementSession.attach(document: replacement)
+        let task = try #require(fixture.coordinator.highlight(debounced: true))
+        fixture.coordinator.document = replacement
+        fixture.coordinator.session = replacementSession
+        await task.value
+        #expect(fixture.session.drainPerformanceSummaries().contains { $0.metric == .sourceHighlightCompute })
+        #expect(!replacementSession.drainPerformanceSummaries().contains { $0.metric == .sourceHighlightCompute })
     }
 
     // Verifies: REQ-045 — ordinary source edits reset and restyle only their changed line.

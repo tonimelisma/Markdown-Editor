@@ -333,7 +333,18 @@ enum BenchmarkDriver {
             session.resetBenchmarkTransientState()
             try? await Task.sleep(for: .milliseconds(500))
             await waitForBenchmarkPresentation(session: session, document: document)
-            session.performanceSampler?.drainSummaries()
+            if configuration.scenario == .typeProse {
+                guard let sourceCoordinator = sourceCoordinator(in: controller.presentingWindow?.contentView) else {
+                    fatalError("benchmark: source coordinator is not attached to the editor window")
+                }
+                session.setMode(.source)
+                await waitForBenchmarkSource(sourceCoordinator, document: document)
+                session.performanceSampler?.drainSummaries()
+                guard let highlightTask = sourceCoordinator.highlight(debounced: false) else {
+                    fatalError("benchmark: source coordinator could not schedule highlighting")
+                }
+                await highlightTask.value
+            }
             var counters = Counters()
             let deadline = ContinuousClock.now + configuration.duration
             repeat {
@@ -587,6 +598,14 @@ enum BenchmarkDriver {
         NSApp.windows.compactMap { ($0.toolbar?.delegate as? EditorToolbarController)?.commandController }.first
     }
 
+    private static func sourceCoordinator(in view: NSView?) -> SourceEditor.Coordinator? {
+        guard let view else { return nil }
+        if let sourceText = view as? MarkdownSourceTextView {
+            return sourceText.sourceCoordinator
+        }
+        return view.subviews.lazy.compactMap { sourceCoordinator(in: $0) }.first
+    }
+
     private static func metricName(_ metric: PerformanceSampler.Metric) -> String {
         switch metric {
         case .nativeInputCallback: return "nativeInputCallback"
@@ -643,6 +662,17 @@ enum BenchmarkDriver {
             if session.presentation?.sourceRevision.value == document.sourceVersion { return }
             try? await Task.sleep(for: .milliseconds(25))
         }
+    }
+
+    private static func waitForBenchmarkSource(
+        _ coordinator: SourceEditor.Coordinator,
+        document: MarkdownDocument
+    ) async {
+        for _ in 0..<200 {
+            if coordinator.textView?.string == document.text { return }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        fatalError("benchmark: source editor did not receive the benchmark document")
     }
 
     private static func measuredMaxScrollY(in scrollView: NSScrollView) -> CGFloat {

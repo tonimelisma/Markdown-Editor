@@ -62,7 +62,13 @@ nonisolated struct SourceLineIndex: Sendable, Equatable {
 
         let line = previous.lineContaining(editedRange.location)
         let oldRange = previous.lines[line]
-        guard editedRange.location >= oldRange.location else { return SourceLineIndex(source: source) }
+        // An edit that reaches beyond the old line can create or remove a terminal line even
+        // when the first line's suffix still compares equal. Preserve the safe topology fallback
+        // for that boundary case; the fast path is only for edits contained by one old line.
+        guard editedRange.location >= oldRange.location,
+              NSMaxRange(editedRange) <= NSMaxRange(oldRange) else {
+            return SourceLineIndex(source: source)
+        }
         let newRange = lineRange(in: newNSString, startingAt: oldRange.location)
         guard newRange.location == oldRange.location,
               utf16Equal(

@@ -213,12 +213,15 @@ actor IncrementalSourceHighlighter {
         let crossLineStrike = Self.crossLineStrikethrough(in: local, contentEnd: contentEnd, incomingStart: incoming.strikethroughStart, range: range)
         let tokens = localTokens.map { Token(range: NSRange(location: range.location + $0.range.location, length: $0.range.length), style: $0.style) }
         let outgoing = SourceLexState(fence: nil, strikethroughStart: crossLineStrike.outgoingStart)
+        let additionalCrossLineTokens = crossLineStrike.tokens.filter { crossToken in
+            !tokens.contains { $0.style == crossToken.style && $0.range == crossToken.range }
+        }
         return SourceLexedLine(
             text: text,
             range: range,
             incoming: incoming,
             outgoing: outgoing,
-            tokens: tokens + crossLineStrike.tokens
+            tokens: tokens + additionalCrossLineTokens
         )
     }
 
