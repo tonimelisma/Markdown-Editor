@@ -367,7 +367,7 @@ actor ImageDisplayService {
             if cache.image(for: key) == nil {
                 cache.store(core.image, cost: core.byteCost, for: key)
             }
-            return .success(Self.descriptor(from: core.image, core: core, snapshot: snapshot, key: key, request: request, cacheHit: false, cacheTotalBytes: cache.totalBytes))
+            return .success(Self.descriptor(from: core.image, core: nil, snapshot: snapshot, key: key, request: request, cacheHit: true, cacheTotalBytes: cache.totalBytes))
         }
     }
 

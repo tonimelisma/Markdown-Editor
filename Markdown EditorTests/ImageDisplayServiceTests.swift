@@ -164,9 +164,23 @@ struct ImageDisplayServiceTests {
         let firstResult = await first
         let secondResult = await second
 
-        if case .failure(let error) = firstResult { Issue.record("first request failed: \(error)") }
-        if case .failure(let error) = secondResult { Issue.record("second request failed: \(error)") }
+        let descriptors: [ImageDisplayDescriptor] = [try firstResult.get(), try secondResult.get()]
+        #expect(descriptors.filter(\.cacheHit).count == 1)
+        #expect(descriptors.filter { !$0.cacheHit && $0.decodeCount == 1 }.count == 1)
+        #expect(descriptors.filter { $0.cacheHit && $0.bytesRead == 0 && $0.decodeCount == 0 }.count == 1)
         #expect(spy.reads == 1)
+    }
+
+    // Verifies: REQ-085 — cancellation crossing the off-main decode boundary returns a typed
+    // stale result and never reports a successful display application.
+    @Test func cancelledDecodeReturnsTypedStaleResult() async throws {
+        let fixture = try Fixture()
+        let service = ImageDisplayService(fileOperations: CountingImageFileOperations(delayNanoseconds: 100_000_000))
+        let task = Task { await service.resolve(fixture.request(serviceGeneration: 1)) }
+        try await Task.sleep(for: .milliseconds(10))
+        task.cancel()
+        let result = await task.value
+        #expect(result == .failure(.staleVersion))
     }
 
     private final class Fixture {

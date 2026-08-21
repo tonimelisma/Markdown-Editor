@@ -24,6 +24,7 @@ final class ParseCoordinator {
     }
 
     func cancel() {
+        operationGeneration &+= 1
         parseTask?.cancel()
         parseTask = nil
         if let pendingIntent {
@@ -55,7 +56,7 @@ final class ParseCoordinator {
         let generation = operationGeneration
         let currentPresentation = session.presentation
         let imageDisplayService = session.imageDisplayService
-        let backingScale = NSScreen.main?.backingScaleFactor ?? 2
+        let backingScale = session.editorWindow?.backingScaleFactor ?? 2
         let appearance: ImageDisplayAppearance = {
             switch NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) {
             case .darkAqua: return .dark
@@ -177,9 +178,16 @@ final class ParseCoordinator {
                 }
             }
             let imageResolutionDuration = DispatchTime.now().uptimeNanoseconds &- imageResolutionStart
+            guard !Task.isCancelled else {
+                await MainActor.run {
+                    document?.trace?.record(route: .parseCancelled, .parseCancelled(sourceVersion: snapshot.sourceVersion))
+                }
+                return
+            }
             await MainActor.run {
                 guard let session else { return }
-                guard document?.sourceVersion == snapshot.sourceVersion,
+                guard !Task.isCancelled,
+                      document?.sourceVersion == snapshot.sourceVersion,
                       document?.locationGeneration == snapshot.locationGeneration,
                       session.parseCoordinator.generation() == generation else {
                     document?.trace?.record(route: .reconciliationDiscarded, .reconciliationDiscarded(sourceRevision: snapshot.sourceVersion, reason: .identityMismatch)

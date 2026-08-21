@@ -356,6 +356,62 @@ struct DiagnosticLogTests {
         session.detach()
     }
 
+    // Verifies: REQ-085 — cancelling after image work has begun cannot install a stale
+    // presentation or resolved-image map through the real ParseCoordinator owner.
+    @Test func parseCancellationAfterImageWorkDoesNotInstall() async throws {
+        let directory = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let assets = directory.appendingPathComponent("assets", isDirectory: true)
+        try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
+        let fixture = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/Images/sample.png")
+        try FileManager.default.copyItem(at: fixture, to: assets.appendingPathComponent("sample.png"))
+        let operations = DelayedImageFileOperations()
+        let document = MarkdownDocument()
+        document.fileURL = directory.appendingPathComponent("document.md")
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("![](assets/sample.png)\n")
+        let session = EditorSession(imageDisplayService: ImageDisplayService(fileOperations: operations))
+        session.attach(document: document)
+        for _ in 0..<200 where !operations.didStartReading {
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(operations.didStartReading)
+        session.parseCoordinator.cancel()
+        for _ in 0..<200 where !trace.events.contains(where: {
+            if case .parseCancelled = $0 { return true }
+            return false
+        }) {
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(session.presentation == nil)
+        #expect(session.resolvedImages.isEmpty)
+        #expect(trace.events.contains {
+            if case .parseCancelled = $0 { return true }
+            return false
+        })
+        session.detach()
+    }
+
+    // Verifies: ARC-023 — a scale change notification from the session's own window invalidates
+    // the current generation and schedules a fresh display request.
+    @Test func owningWindowBackingChangeStartsNewGeneration() async {
+        let document = MarkdownDocument()
+        document.installTextForTesting("hello\n")
+        let session = EditorSession()
+        let window = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+        session.bind(editorWindow: window)
+        session.attach(document: document)
+        let before = session.parseCoordinator.generation()
+        NotificationCenter.default.post(name: NSWindow.didChangeBackingPropertiesNotification, object: window)
+        #expect(session.parseCoordinator.generation() > before)
+        session.detach()
+    }
+
     // Verifies: REQ-111 — a parse that finishes after a newer source snapshot is discarded by the
     // real coordinator and leaves a typed reconciliation record.
     @Test func parseOwnerRecordsStaleReconciliation() async {
@@ -761,5 +817,27 @@ struct DiagnosticLogTests {
             environment: ["MARKDOWN_EDITOR_DIAGNOSTICS_DIR": ""]
         )
         #expect(emptyOverride.path == withoutOverride.path)
+    }
+}
+
+private final class DelayedImageFileOperations: ImageDisplayFileOperations, @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var didStartReading = false
+    private let base = DefaultImageDisplayFileOperations()
+
+    func snapshot(
+        at url: URL,
+        locationGeneration: UInt64,
+        maximumEncodedBytes: Int64
+    ) throws -> FileIdentitySnapshot {
+        try base.snapshot(at: url, locationGeneration: locationGeneration, maximumEncodedBytes: maximumEncodedBytes)
+    }
+
+    func readData(at url: URL, maximumBytes: Int64) throws -> Data {
+        lock.lock()
+        didStartReading = true
+        lock.unlock()
+        Thread.sleep(forTimeInterval: 0.2)
+        return try base.readData(at: url, maximumBytes: maximumBytes)
     }
 }

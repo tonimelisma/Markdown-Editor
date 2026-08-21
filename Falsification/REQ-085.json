@@ -7,6 +7,13 @@
       "find": "        if let image = cache.image(for: key) {",
       "replace": "        if false, let image = cache.image(for: key) {",
       "expect_red": ["cacheHitStatsButDoesNotReadOrDecode"]
+    },
+    {
+      "rationale": "Allowing a cancelled parse through the terminal identity guard installs a stale presentation after image work, falsifying the cancellation side of the REQ-085 owner contract.",
+      "file": "Markdown Editor/ParseCoordinator.swift",
+      "find": "                guard !Task.isCancelled,\n                      document?.sourceVersion == snapshot.sourceVersion,",
+      "replace": "                guard true,\n                      document?.sourceVersion == snapshot.sourceVersion,",
+      "expect_red": ["parseCancellationAfterImageWorkDoesNotInstall"]
     }
   ]
 }

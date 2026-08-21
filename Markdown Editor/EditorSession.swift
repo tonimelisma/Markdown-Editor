@@ -46,7 +46,7 @@ final class EditorSession: ObservableObject {
 
     /// Sole owner of local image identity, decode, coalescing, and decoded-cache state.
     /// // REQ-085; ARC-023: parse and views do not own a second image route.
-    let imageDisplayService = ImageDisplayService()
+    let imageDisplayService: ImageDisplayService
     /// Sole owner of intent identities for this editor window.
     let intentRecorder = IntentRecorder()
     private var presentationIntents: [PresentationSnapshot.ID: IntentContext] = [:]
@@ -73,6 +73,8 @@ final class EditorSession: ObservableObject {
     /// mutation. The mutation's staged intent must be consumed by the one resulting parse,
     /// rather than allowing the second property emission to create a fresh reconciliation owner.
     private var pendingDocumentChangeTask: Task<Void, Never>?
+    private(set) weak var editorWindow: NSWindow?
+    private var backingPropertiesObserver: NSObjectProtocol?
 
     // MARK: - View reconciliation scope (REQ-094/096; ARC-015)
 
@@ -115,12 +117,41 @@ final class EditorSession: ObservableObject {
 
     init(
         trapsOnReconciliationViolation: Bool = true,
-        performanceSamplerCoordinator: DiagnosticRunCoordinator = .shared
+        performanceSamplerCoordinator: DiagnosticRunCoordinator = .shared,
+        imageDisplayService: ImageDisplayService = ImageDisplayService()
     ) {
         self.trapsOnReconciliationViolation = trapsOnReconciliationViolation
         self.performanceSamplerCoordinator = performanceSamplerCoordinator
+        self.imageDisplayService = imageDisplayService
         self.parseCoordinator = ParseCoordinator(snapshotIDs: snapshotIDs)
         installPublicationObserver()
+    }
+
+    /// Binds image-scale identity to the window that owns this session. `NSScreen.main` is
+    /// ambient and can describe a different document while windows move between displays.
+    func bind(editorWindow: NSWindow) {
+        let scaleChanged = self.editorWindow?.backingScaleFactor != editorWindow.backingScaleFactor
+        if self.editorWindow !== editorWindow {
+            if let backingPropertiesObserver {
+                NotificationCenter.default.removeObserver(backingPropertiesObserver)
+            }
+            self.editorWindow = editorWindow
+            backingPropertiesObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didChangeBackingPropertiesNotification,
+                object: editorWindow,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.document != nil else { return }
+                    self.invalidateDerivedState()
+                    self.scheduleParse()
+                }
+            }
+        }
+        if scaleChanged, document != nil {
+            invalidateDerivedState()
+            scheduleParse()
+        }
     }
 
     private func installPublicationObserver() {
@@ -193,6 +224,11 @@ final class EditorSession: ObservableObject {
         performanceSampler = nil
         publicationObserver?.cancel()
         publicationObserver = nil
+        if let backingPropertiesObserver {
+            NotificationCenter.default.removeObserver(backingPropertiesObserver)
+            self.backingPropertiesObserver = nil
+        }
+        editorWindow = nil
         updateOrigin.didChange = nil
         let imageService = imageDisplayService
         Task { await imageService.clear() }

@@ -65,6 +65,7 @@ struct ContentView: View {
         }
         .background(
             WindowAccessor { window in
+                session.bind(editorWindow: window)
                 // Rebind with the window this view really belongs to, then install that window's
                 // own toolbar. Ordering is safe either way: onAppear and viewDidMoveToWindow
                 // both bind the same document and session.
