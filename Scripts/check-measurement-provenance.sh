@@ -125,7 +125,7 @@ for path in sorted(research.glob("*.md")):
         "Commit": field(text, "Commit"),
         "Run ID": field(text, "Run ID"),
     }
-    if not fixture_mode:
+    if fixture_root is None:
         required["Source implementation digest"] = field(text, "Source implementation digest")
     for name, value in required.items():
         if not value:
@@ -144,9 +144,9 @@ for path in sorted(research.glob("*.md")):
         problems.append(f"{path}: corpus digest does not match current PerformanceCorpus")
     if required["Corpus digest"] and not corpus_digest:
         problems.append(f"{path}: current PerformanceCorpus is unavailable; cannot verify corpus digest")
-    if not fixture_mode and required["Source implementation digest"] and implementation_digest and required["Source implementation digest"] != implementation_digest:
+    if fixture_root is None and required["Source implementation digest"] and implementation_digest and required["Source implementation digest"] != implementation_digest:
         problems.append(f"{path}: source implementation digest does not match current production sources")
-    if not fixture_mode and required["Source implementation digest"] and not implementation_digest:
+    if fixture_root is None and required["Source implementation digest"] and not implementation_digest:
         problems.append(f"{path}: current source implementation is unavailable; cannot verify implementation digest")
 
 if problems:
