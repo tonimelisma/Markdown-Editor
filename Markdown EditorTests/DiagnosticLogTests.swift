@@ -394,6 +394,10 @@ struct DiagnosticLogTests {
             if case .parseCancelled = $0 { return true }
             return false
         })
+        #expect(!trace.events.contains {
+            if case .reconciliationDiscarded = $0 { return true }
+            return false
+        })
         session.detach()
     }
 
