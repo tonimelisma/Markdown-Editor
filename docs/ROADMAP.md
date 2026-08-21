@@ -210,11 +210,12 @@ return to discovery; do not improvise an architecture change.
    immutable request identity. `ImageDisplayServiceTests`, production-route telemetry, the full
    non-performance Debug suite, and the serialized falsification gate passed; the approved plan is
    deleted on delivery.
-7. ⚪ **COR-74 — Document files and lifecycle proof.** (Delivers: REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-013, REQ-014, REQ-015, REQ-017, REQ-019, REQ-020, REQ-021)
-   ([plan](plans/COR-74-document-files-and-lifecycle.md))
-   Reviewer follow-up added direct liveness proofs for the edit, revert, New, tabs, and Open Recent
-   routes plus stronger single-owner structural checks; final falsification and full-gate evidence is
-   pending for those corrected proofs.
+7. ✅ **COR-74 — Document files and lifecycle proof.** (Delivers: REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-013, REQ-014, REQ-015, REQ-017, REQ-019, REQ-020, REQ-021)
+   The corrected lifecycle suite exercises a real edit, saved-content revert, New controller route,
+   two-window tabs, production Open Recent menu construction, and recent URL registration. The final
+   full gate observed 513 tests passed, 33/33 selected mutations red, 50 production trace events,
+   51 Done rows verified against 456 executed tests, and 31 increment rows resolved. The approved
+   plan is deleted with delivery.
 8. ⚪ **COR-75 — Native Source editor and privacy contracts.** (Delivers: REQ-010, REQ-011, REQ-012, REQ-022, REQ-030, REQ-031, REQ-044, REQ-046)
    ([plan](plans/COR-75-native-source-editor-and-privacy.md)) Proves native editing liveness and the
    offline/account-free/telemetry-free boundary without custom platform substitutes.
