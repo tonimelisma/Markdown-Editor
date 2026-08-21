@@ -22,7 +22,6 @@ enum SourceEditor {
         var document: MarkdownDocument {
             didSet {
                 guard oldValue !== document else { return }
-                task?.cancel()
                 incrementalHighlighter = IncrementalSourceHighlighter()
                 pendingStyleRange = nil
                 lastStyledText = nil
