@@ -5,6 +5,6 @@
     "file": "Markdown Editor/MarkdownDocument.swift",
     "find": "        locationGeneration &+= 1",
     "replace": "        locationGeneration &+= 0",
-    "expect_red": ["MarkdownDocumentTests/locationGenerationAdvancesOnURLChangeButNotUntitledSave()"]
+    "expect_red": ["Markdown EditorTests/MarkdownDocumentTests/locationGenerationAdvancesOnURLChangeButNotUntitledSave()"]
   }]
 }
