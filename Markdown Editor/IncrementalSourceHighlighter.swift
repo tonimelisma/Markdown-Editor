@@ -151,12 +151,7 @@ actor IncrementalSourceHighlighter {
         }
 
         let localTokens = try await lineHighlighter.tokens(for: text)
-        let crossLineStrike = Self.crossLineStrikethrough(
-            in: local,
-            contentEnd: contentEnd,
-            incomingOpen: incoming.strikethroughOpen,
-            range: range
-        )
+        let crossLineStrike = Self.crossLineStrikethrough(in: local, contentEnd: contentEnd, incomingOpen: incoming.strikethroughOpen, range: range)
         let tokens = localTokens.map {
             Token(range: NSRange(location: range.location + $0.range.location, length: $0.range.length), style: $0.style)
         }
