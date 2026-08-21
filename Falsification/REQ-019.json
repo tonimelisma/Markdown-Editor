@@ -1,0 +1,10 @@
+{
+  "requirement": "REQ-019",
+  "mutations": [{
+    "rationale": "Suppressing the location-generation increment makes a rename or move indistinguishable from the prior document identity.",
+    "file": "Markdown Editor/MarkdownDocument.swift",
+    "find": "        locationGeneration &+= 1",
+    "replace": "        locationGeneration &+= 0",
+    "expect_red": ["Markdown EditorTests/MarkdownDocumentTests/locationGenerationAdvancesOnURLChangeButNotUntitledSave()"]
+  }]
+}

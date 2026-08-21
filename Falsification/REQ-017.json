@@ -1,0 +1,10 @@
+{
+  "requirement": "REQ-017",
+  "mutations": [{
+    "rationale": "Forcing the injected Save route to succeed hides operation-scoped cancellation and failure outcomes.",
+    "file": "Markdown Editor/MarkdownDocument.swift",
+    "find": "            return outcome",
+    "replace": "            return .succeeded",
+    "expect_red": ["injectedSaveSuccessCancelFailure"]
+  }]
+}

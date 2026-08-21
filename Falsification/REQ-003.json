@@ -1,0 +1,10 @@
+{
+  "requirement": "REQ-003",
+  "mutations": [{
+    "rationale": "Replacing the decoded file contents with empty text makes a valid open lose its UTF-8 document contents.",
+    "file": "Markdown Editor/MarkdownDocument.swift",
+    "find": "                self.installLoadedText(decoded.text)",
+    "replace": "                self.installLoadedText(\"\")",
+    "expect_red": ["readContractInstallsOnlyValidUTF8"]
+  }]
+}

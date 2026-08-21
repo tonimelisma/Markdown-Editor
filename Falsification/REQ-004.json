@@ -1,0 +1,10 @@
+{
+  "requirement": "REQ-004",
+  "mutations": [{
+    "rationale": "Using lossy String decoding accepts malformed UTF-8 instead of refusing the document.",
+    "file": "Markdown Editor/MarkdownDocumentData.swift",
+    "find": "        guard let string = String(validating: data, as: UTF8.self) else {",
+    "replace": "        guard let string = Optional(String(decoding: data, as: UTF8.self)) else {",
+    "expect_red": ["readContractInstallsOnlyValidUTF8"]
+  }]
+}
