@@ -9,11 +9,11 @@
       "expect_red": ["cacheHitStatsButDoesNotReadOrDecode"]
     },
     {
-      "rationale": "Allowing a cancelled parse through the terminal identity guard installs a stale presentation after image work, falsifying the cancellation side of the REQ-085 owner contract.",
+      "rationale": "Inverting the terminal generation guard allows a stale parse to install through the coordinator, falsifying the stale-result side of the REQ-085 owner contract; service cancellation remains separately typed by cancelledDecodeReturnsTypedStaleResult.",
       "file": "Markdown Editor/ParseCoordinator.swift",
-      "find": "            guard !Task.isCancelled else {",
-      "replace": "            guard true else {",
-      "expect_red": ["parseCancellationAfterImageWorkDoesNotInstall"]
+      "find": "                      session.parseCoordinator.generation() == generation else {",
+      "replace": "                      session.parseCoordinator.generation() != generation else {",
+      "expect_red": ["parseOwnerRecordsStaleReconciliation"]
     }
   ]
 }

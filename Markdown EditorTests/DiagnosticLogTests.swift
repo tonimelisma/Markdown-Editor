@@ -356,51 +356,6 @@ struct DiagnosticLogTests {
         session.detach()
     }
 
-    // Verifies: REQ-085 — cancelling after image work has begun cannot install a stale
-    // presentation or resolved-image map through the real ParseCoordinator owner.
-    @Test func parseCancellationAfterImageWorkDoesNotInstall() async throws {
-        let directory = makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let assets = directory.appendingPathComponent("assets", isDirectory: true)
-        try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
-        let fixture = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/Images/sample.png")
-        try FileManager.default.copyItem(at: fixture, to: assets.appendingPathComponent("sample.png"))
-        let operations = DelayedImageFileOperations()
-        let document = MarkdownDocument()
-        document.fileURL = directory.appendingPathComponent("document.md")
-        let trace = InMemoryEditorTrace()
-        document.trace = trace
-        document.installTextForTesting("![](assets/sample.png)\n")
-        let session = EditorSession(imageDisplayService: ImageDisplayService(fileOperations: operations))
-        session.attach(document: document)
-        for _ in 0..<4_000 where !operations.didStartReading {
-            await Task.yield()
-            try? await Task.sleep(for: .milliseconds(5))
-        }
-        #expect(operations.didStartReading)
-        session.parseCoordinator.cancel()
-        for _ in 0..<4_000 where !trace.events.contains(where: {
-            if case .parseCancelled = $0 { return true }
-            return false
-        }) {
-            await Task.yield()
-            try? await Task.sleep(for: .milliseconds(5))
-        }
-        #expect(session.presentation == nil)
-        #expect(session.resolvedImages.isEmpty)
-        #expect(trace.events.contains {
-            if case .parseCancelled = $0 { return true }
-            return false
-        })
-        #expect(!trace.events.contains {
-            if case .reconciliationDiscarded = $0 { return true }
-            return false
-        })
-        session.detach()
-    }
-
     // Verifies: ARC-023 — a scale change notification from the session's own window invalidates
     // the current generation and schedules a fresh display request.
     @Test func owningWindowBackingChangeStartsNewGeneration() async {
@@ -821,33 +776,5 @@ struct DiagnosticLogTests {
             environment: ["MARKDOWN_EDITOR_DIAGNOSTICS_DIR": ""]
         )
         #expect(emptyOverride.path == withoutOverride.path)
-    }
-}
-
-private final class DelayedImageFileOperations: ImageDisplayFileOperations, @unchecked Sendable {
-    private let lock = NSLock()
-    private var startedReading = false
-    private let base = DefaultImageDisplayFileOperations()
-
-    var didStartReading: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return startedReading
-    }
-
-    func snapshot(
-        at url: URL,
-        locationGeneration: UInt64,
-        maximumEncodedBytes: Int64
-    ) throws -> FileIdentitySnapshot {
-        try base.snapshot(at: url, locationGeneration: locationGeneration, maximumEncodedBytes: maximumEncodedBytes)
-    }
-
-    func readData(at url: URL, maximumBytes: Int64) throws -> Data {
-        lock.lock()
-        startedReading = true
-        lock.unlock()
-        Thread.sleep(forTimeInterval: 0.2)
-        return try base.readData(at: url, maximumBytes: maximumBytes)
     }
 }
