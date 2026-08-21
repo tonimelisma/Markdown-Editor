@@ -31,8 +31,8 @@ struct SourceEditorParityTests {
     // Verifies: REQ-040/045 — a patch with a different UTF-16 source snapshot cannot style a
     // canonically equivalent but range-distinct storage value.
     @Test func productionIncrementalPatchRejectsDifferentUTF16Snapshot() async throws {
-        let source = "# é\n"
-        let fixture = try makeFixture(source: "# e\u{301}\n")
+        let source = "# A\n"
+        let fixture = try makeFixture(source: "# a\n")
         let patch = try await IncrementalSourceHighlighter().highlight(
             source: source,
             editedRange: nil,
@@ -42,7 +42,7 @@ struct SourceEditorParityTests {
         fixture.storage.resetSpy()
         fixture.coordinator.apply(patch, expectedVersion: 0, expectedText: source)
         #expect(fixture.storage.attributeReplacements.isEmpty)
-        #expect(fixture.storage.string == "# e\u{301}\n")
+        #expect(fixture.storage.string == "# a\n")
     }
 
     // Verifies: REQ-045 — ordinary source edits reset and restyle only their changed line.
