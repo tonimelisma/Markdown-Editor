@@ -20,6 +20,7 @@ KNOWN_METRICS = {
     "layoutApplication",
     "mainActorLatency",
     "sourceHighlightApplication",
+    "sourceHighlightCompute",
 }
 
 BUDGET_NANOS = {
@@ -31,6 +32,7 @@ BUDGET_NANOS = {
     "layoutApplication": 16_000_000,
     "mainActorLatency": 16_000_000,
     "sourceHighlightApplication": 8_000_000,
+    "sourceHighlightCompute": 100_000_000,
 }
 
 WORK_SCOPES = {"acceptedEdit", "reconciliation", "documentOpen", "modeTransition", "semanticCommand"}
