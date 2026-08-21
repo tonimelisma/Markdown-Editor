@@ -153,6 +153,33 @@ struct ImageDisplayServiceTests {
         #expect(await service.cachedByteCount() <= ImageDisplayCache.maxBytes)
     }
 
+    // Verifies: REQ-085/REQ-090 — the production cache evicts the least-recently-used entry
+    // deterministically when the decoded-byte bound is exceeded.
+    @Test func decodedCacheEvictsOldestEntryAtBound() async throws {
+        let fixture = try Fixture()
+        let service = ImageDisplayService()
+        let descriptor = try #require((await service.resolve(fixture.request(serviceGeneration: 1))).get())
+        let snapshot = descriptor.identity
+        let requests = [1, 2, 3, 4].map { scale in
+            fixture.request(serviceGeneration: UInt64(scale), backingScale: CGFloat(scale))
+        }
+        let keys = requests.map { ImageReferenceKey(snapshot: snapshot, request: $0) }
+        let cost = ImageDisplayCache.maxBytes / 3
+        var cache = ImageDisplayCache()
+
+        cache.store(descriptor.cgImage, cost: cost, for: keys[0])
+        cache.store(descriptor.cgImage, cost: cost, for: keys[1])
+        cache.store(descriptor.cgImage, cost: cost, for: keys[2])
+        #expect(cache.image(for: keys[0]) != nil, "the first entry becomes most recently used")
+        cache.store(descriptor.cgImage, cost: cost, for: keys[3])
+
+        #expect(cache.image(for: keys[1]) == nil, "the least-recently-used entry is evicted")
+        #expect(cache.image(for: keys[0]) != nil)
+        #expect(cache.image(for: keys[2]) != nil)
+        #expect(cache.image(for: keys[3]) != nil)
+        #expect(cache.totalBytes <= ImageDisplayCache.maxBytes)
+    }
+
     @Test func identicalConcurrentRequestsDecodeOnce() async throws {
         let fixture = try Fixture()
         let spy = CountingImageFileOperations(delayNanoseconds: 50_000_000)

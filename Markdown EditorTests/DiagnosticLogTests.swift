@@ -400,6 +400,22 @@ struct DiagnosticLogTests {
         session.detach()
     }
 
+    // Verifies: REQ-085 — cancellation through the owning ParseCoordinator invalidates its
+    // operation identity synchronously, so a pending parse cannot remain current.
+    @Test func parseOwnerCancellationInvalidatesGeneration() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("hello\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        let before = session.parseCoordinator.generation()
+
+        session.parseCoordinator.cancel()
+
+        #expect(session.parseCoordinator.generation() > before)
+        #expect(session.presentation == nil)
+        session.detach()
+    }
+
     // Verifies: REQ-115 — the smoke exercise uses the ordinary window command route for an
     // accepted insertion and a semantic command, independent of process/window timing.
     @Test func smokeEditExerciseUsesRealRoutes() {

@@ -14,6 +14,13 @@
       "find": "                      document?.locationGeneration == snapshot.locationGeneration,\n                      session.parseCoordinator.generation() == generation else {",
       "replace": "                      document?.locationGeneration == snapshot.locationGeneration,\n                      session.parseCoordinator.generation() != generation else {",
       "expect_red": ["parseOwnerRecordsStaleReconciliation"]
+    },
+    {
+      "rationale": "Removing the owning coordinator's cancellation generation invalidation leaves a pending parse current, falsifying the synchronous owner cancellation contract proved by parseOwnerCancellationInvalidatesGeneration.",
+      "file": "Markdown Editor/ParseCoordinator.swift",
+      "find": "    func cancel() {\n        operationGeneration &+= 1\n        parseTask?.cancel()",
+      "replace": "    func cancel() {\n        operationGeneration &+= 0\n        parseTask?.cancel()",
+      "expect_red": ["parseOwnerCancellationInvalidatesGeneration"]
     }
   ]
 }
