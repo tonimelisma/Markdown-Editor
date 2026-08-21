@@ -205,7 +205,7 @@ return to discovery; do not improvise an architecture change.
    Relexes invalidated lines until lexical state stabilizes and applies only matching bounded
    attribute patches. `SourceLexState` carries fenced-code state across CRLF/Unicode-safe
    `SourceLineIndex` ranges; superseded tasks are cancelled and stale patches apply nothing.
-6. ✅ **COR-73 — Image identity and decode service.** (Delivers: REQ-081, REQ-085, REQ-090, REQ-114)
+6. ✅ **COR-73 — Image identity and decode service.** (Delivers: REQ-085)
    Makes metadata identity the cache gate, decode a miss-only operation, and backing scale part of
    immutable request identity. `ImageDisplayServiceTests`, production-route telemetry, the full
    non-performance Debug suite, and the serialized falsification gate passed; the approved plan is
