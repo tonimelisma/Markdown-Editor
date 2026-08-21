@@ -73,6 +73,21 @@ else:
         ).hexdigest()
     else:
         corpus_digest = ""
+    implementation_paths = [
+        "Markdown Editor/PerformanceCorpus.swift",
+        "Markdown Editor/BenchmarkDriver.swift",
+        "Markdown Editor/IncrementalSourceHighlighter.swift",
+        "Markdown Editor/SourceEditor.swift",
+        "Markdown Editor/PerformanceSampler.swift",
+    ]
+    implementation_input = b""
+    for relative in implementation_paths:
+        path = repo / relative
+        if not path.is_file():
+            implementation_input = b""
+            break
+        implementation_input += relative.encode() + b"\n" + path.read_bytes() + b"\n-- source implementation authority --\n"
+    implementation_digest = __import__("hashlib").sha256(implementation_input).hexdigest() if implementation_input else ""
 
 def has_results_table(text):
     # This is the benchmark schema, not every ordinary evidence table in research. COR-45 owns
@@ -110,6 +125,8 @@ for path in sorted(research.glob("*.md")):
         "Commit": field(text, "Commit"),
         "Run ID": field(text, "Run ID"),
     }
+    if not fixture_mode:
+        required["Source implementation digest"] = field(text, "Source implementation digest")
     for name, value in required.items():
         if not value:
             problems.append(f"{path}: missing provenance field {name}")
@@ -127,6 +144,10 @@ for path in sorted(research.glob("*.md")):
         problems.append(f"{path}: corpus digest does not match current PerformanceCorpus")
     if required["Corpus digest"] and not corpus_digest:
         problems.append(f"{path}: current PerformanceCorpus is unavailable; cannot verify corpus digest")
+    if not fixture_mode and required["Source implementation digest"] and implementation_digest and required["Source implementation digest"] != implementation_digest:
+        problems.append(f"{path}: source implementation digest does not match current production sources")
+    if not fixture_mode and required["Source implementation digest"] and not implementation_digest:
+        problems.append(f"{path}: current source implementation is unavailable; cannot verify implementation digest")
 
 if problems:
     for problem in problems:

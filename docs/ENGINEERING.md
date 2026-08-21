@@ -566,6 +566,8 @@ the complete 6 x 2 x 9 case matrix remains the authority for scenario/action cov
 executed samples for a required shape is a failing proof, never a skipped success.
 The benchmark drains the initial source-cache seed before measuring typing actions, so its source
 compute values describe the ordinary incremental-edit route rather than document-open work.
+Each committed baseline also records a digest of the production benchmark and source-highlighting
+implementation files, and each metric row records whether its declared p95 budget was exceeded.
 Terminal diagnostic close signals durability immediately after the sink closes; re-enabling
 sudden termination on the main actor is not part of the synchronous durability wait.
 

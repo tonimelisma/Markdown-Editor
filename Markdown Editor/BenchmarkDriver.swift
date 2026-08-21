@@ -79,6 +79,7 @@ enum BenchmarkDriver {
         let p50Nanos: UInt64
         let p95Nanos: UInt64
         let maxNanos: UInt64
+        let budgetExceeded: Bool
     }
 
     private struct CaseResult: Codable, Sendable {
@@ -359,7 +360,8 @@ enum BenchmarkDriver {
             let metrics = session.performanceSampler?.drainSummaries().map {
                 MetricResult(
                     name: metricName($0.metric), count: $0.count,
-                    p50Nanos: $0.p50, p95Nanos: $0.p95, maxNanos: $0.max
+                    p50Nanos: $0.p50, p95Nanos: $0.p95, maxNanos: $0.max,
+                    budgetExceeded: $0.p95 > (PerformanceSampler.budgetNanos[$0.metric] ?? .max)
                 )
             } ?? []
             let result = CaseResult(
