@@ -1,0 +1,1 @@
+{"requirement":"REQ-049","mutations":[{"rationale":"Removing the disabled-footnote literal fallback must expose unsupported writing syntax as transformed projection text.","file":"Markdown Editor/ProjectionCompiler.swift","find":"source.hasPrefix(\"[^\")","replace":"source.hasPrefix(\"[!\")","expect_red":["everyFormalFixtureUsesAllProductionBoundaries"]}]}

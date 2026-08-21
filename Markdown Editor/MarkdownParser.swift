@@ -15,17 +15,17 @@ import cmark_gfm_extensions
 /// // REQ-085: parsing is synchronous and runs off-main on immutable source.
 nonisolated enum MarkdownParser {
     /// Exact pinned revision string for tests / attribution.
-    static let pinnedRevision = "5d9bdaa4228b381639fff09403e39a04926e2dbe"
+    static let pinnedRevision = FormalGFMDialect.pinnedRevision
 
     /// Enabled formal-GFM extension names (exact set).
-    static let enabledExtensions = ["table", "tasklist", "strikethrough", "autolink", "tagfilter"]
+    static let enabledExtensions = FormalGFMDialect.enabledExtensions
 
     /// cmark-gfm global registration / parse is not concurrent-safe.
     private static let parseLock = Mutex(false)
 
     /// Parser option bits: double-tilde strikethrough only; no smart/table-span extras.
     static var parserOptions: Int32 {
-        Int32(CMARK_OPT_STRIKETHROUGH_DOUBLE_TILDE)
+        FormalGFMDialect.parserOptions
     }
 
     /// Parse Markdown into an immutable Swift value tree.

@@ -1,0 +1,1 @@
+{"requirement":"REQ-055","mutations":[{"rationale":"Removing the literal fallback for disabled footnotes must fail the unsupported-source projection proof.","file":"Markdown Editor/ProjectionCompiler.swift","find":"source.hasPrefix(\"[^\")","replace":"source.hasPrefix(\"[!\")","expect_red":["everyFormalFixtureUsesAllProductionBoundaries"]}]}

@@ -223,9 +223,11 @@ return to discovery; do not improvise an architecture change.
    manifests, 50 production trace events, 71 Done rows verified against 466 executed tests in 27
    cited suites, and 31 increment rows resolved after the review-proof corrections. The approved
    plan is deleted with delivery.
-9. ⚪ **COR-76 — Formal-GFM and Source contract.** (Delivers: REQ-047, REQ-048, REQ-049, REQ-050, REQ-053, REQ-054, REQ-055, REQ-056, REQ-059)
-   ([plan](plans/COR-76-gfm-source-contract.md)) Gives the pinned dialect one traceable fixture and
-   range contract across parser, highlighter, projection, and encoder.
+9. ✅ **COR-76 — Formal-GFM and Source contract.** (Delivers: REQ-047, REQ-048, REQ-049, REQ-050, REQ-053, REQ-054, REQ-055, REQ-056, REQ-059)
+   Gives the pinned dialect one traceable fixture and range contract across parser, highlighter,
+   projection, and encoder. Focused fixture, parser, highlighter, source-index, and projection
+   suites pass; the closing full gate evidence is recorded after the exact-head run. The approved
+   plan is deleted with delivery.
 10. ⚪ **COR-77 — WYSIWYG ownership, IME, selection, and undo.** (Delivers: REQ-052, REQ-079, REQ-080, REQ-082, REQ-083, REQ-084, REQ-086, REQ-087, REQ-089, REQ-093, REQ-094)
     ([plan](plans/COR-77-wysiwyg-ownership-ime-and-selection.md)) Closes native callback ownership,
     composition, selection, history, mode, and reconciliation through the transaction kernel.
