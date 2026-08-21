@@ -14,7 +14,7 @@
     {"id":"gfm-table","class":"extension.table","source":"| a | b |\n| --- | :---: |\n| c | d |","highlightStyle":"table"},
     {"id":"gfm-tasklist","class":"extension.tasklist","source":"- [x] done\n- [ ] open","highlightStyle":"taskMarker"},
     {"id":"unsupported-single-tilde","class":"unsupported.single-tilde","source":"~literal~","highlightStyle":"none"},
-    {"id":"unsupported-footnote","class":"unsupported.footnotes","source":"text[^1][]","highlightStyle":"none"},
+    {"id":"unsupported-footnote","class":"unsupported.footnotes","source":"text[^1]()","highlightStyle":"none"},
     {"id":"core-reference-link","class":"core.reference-link","source":"[^topic]: /url\n\n[^topic]","highlightStyle":"none"},
     {"id":"unsupported-highlight","class":"unsupported.highlight","source":"==highlight==","highlightStyle":"none"},
     {"id":"unsupported-super","class":"unsupported.superscript","source":"x^2^","highlightStyle":"none"},

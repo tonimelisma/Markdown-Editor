@@ -23,6 +23,7 @@ nonisolated enum FormalGFMDialect {
     }
 
     static func preservesUnsupportedLinkLiteral(source: String, destination: String) -> Bool {
-        destination.isEmpty && source.hasPrefix("[^") && source.hasSuffix("]")
+        let footnoteLike = source.hasPrefix("[^") && (source.hasSuffix("]") || source.hasSuffix("]()"))
+        return destination.isEmpty && footnoteLike
     }
 }
