@@ -246,15 +246,19 @@ nonisolated enum MarkdownParser {
         case CMARK_NODE_STRONG:
             kind = .strong
         case CMARK_NODE_LINK:
+            let destination = literalString(cmark_node_get_url(node))
             let preservesLiteralSource: Bool
             switch sourceIndex.substring(position: position) {
             case .success(let source):
-                preservesLiteralSource = FormalGFMDialect.preservesUnsupportedLinkLiteral(source)
+                preservesLiteralSource = FormalGFMDialect.preservesUnsupportedLinkLiteral(
+                    source: source,
+                    destination: destination
+                )
             case .failure:
                 preservesLiteralSource = false
             }
             kind = .link(
-                destination: literalString(cmark_node_get_url(node)),
+                destination: destination,
                 title: literalString(cmark_node_get_title(node)),
                 preservesLiteralSource: preservesLiteralSource
             )

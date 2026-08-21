@@ -22,7 +22,7 @@ nonisolated enum FormalGFMDialect {
         return extensions.allSatisfy { allowed.contains($0) }
     }
 
-    static func preservesUnsupportedLinkLiteral(_ source: String) -> Bool {
-        source.hasPrefix("[^") && source.hasSuffix("]")
+    static func preservesUnsupportedLinkLiteral(source: String, destination: String) -> Bool {
+        destination.isEmpty && source.hasPrefix("[^") && source.hasSuffix("]")
     }
 }

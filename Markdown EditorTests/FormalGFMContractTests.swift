@@ -159,6 +159,18 @@ struct FormalGFMContractTests {
             case .source(let projection, let sourceRange, _, _):
                 assertBounds(projection, length: renderedText.length)
                 assertBounds(sourceRange, length: sourceText.length)
+                let atoms = ProjectionAtom.from(
+                    segments: [segment],
+                    sourceText: source,
+                    renderedText: model.renderedString
+                )
+                #expect(atoms.allSatisfy { atom in
+                    if case .uneditable = atom { return false }
+                    return true
+                })
+                if projection.length == sourceRange.length {
+                    #expect(renderedText.substring(with: projection) == sourceText.substring(with: sourceRange))
+                }
             case .literalFallback(let projection, let sourceRange):
                 assertBounds(projection, length: renderedText.length)
                 assertBounds(sourceRange, length: sourceText.length)
@@ -190,6 +202,7 @@ struct FormalGFMContractTests {
         case "extension.table": #expect(contains(tree) { if case .table = $0.kind { return true }; return false })
         case "extension.tasklist": #expect(contains(tree) { if case .item(let checked) = $0.kind { return checked != nil }; return false })
         case "core.link-image": #expect(contains(tree) { if case .image = $0.kind { return true }; return false })
+        case "core.reference-link": #expect(contains(tree) { if case .link(_, _, let preservesLiteralSource) = $0.kind { return !preservesLiteralSource }; return false })
         case "core.raw-html": #expect(contains(tree) { if case .htmlBlock = $0.kind { return true }; if case .htmlInline = $0.kind { return true }; return false })
         case "core.code-span-fence": #expect(contains(tree) { if case .code = $0.kind { return true }; return false })
         default: break
