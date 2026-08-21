@@ -19,11 +19,22 @@ enum SourceEditor {
             case awaitingTextDidChange
         }
 
-        var document: MarkdownDocument
+        var document: MarkdownDocument {
+            didSet {
+                guard oldValue !== document else { return }
+                task?.cancel()
+                incrementalHighlighter = IncrementalSourceHighlighter()
+                pendingStyleRange = nil
+                lastStyledText = nil
+            }
+        }
         var session: EditorSession?
         let theme = MarkdownTypography()
         let placementController: ImagePlacementController
-        private let incrementalHighlighter = IncrementalSourceHighlighter()
+        /// Rebinding a persistent host to another document must never share the previous
+        /// document's line cache. Outstanding tasks capture the old actor and remain guarded by
+        /// document/session identity before applying their result.
+        private var incrementalHighlighter = IncrementalSourceHighlighter()
         weak var textView: MarkdownSourceTextView? {
             didSet { textView?.sourceCoordinator = self }
         }
@@ -201,6 +212,7 @@ enum SourceEditor {
             let sourceRevision = document.sourceVersion
             let expectedDocument = document
             let expectedSession = session
+            let highlighter = incrementalHighlighter
             task?.cancel()
             if let activeHighlightIntent {
                 activeHighlightIntent.recorder.finish(activeHighlightIntent, orphaned: true)
@@ -226,7 +238,7 @@ enum SourceEditor {
                 guard let self else { return }
                 let patch: SourceHighlightPatch
                 do {
-                    patch = try await self.incrementalHighlighter.highlight(
+                    patch = try await highlighter.highlight(
                         source: snapshot,
                         editedRange: editedRange,
                         sourceRevision: sourceRevision,

@@ -73,6 +73,31 @@ struct SourceEditorParityTests {
         #expect(fixture.storage.attributeReplacements.isEmpty)
     }
 
+    // Verifies: REQ-045 — rebinding a persistent source host replaces the incremental cache so
+    // a replacement document that shares its first line cannot inherit stale tail styling.
+    @Test func coordinatorRehighlightUsesReplacementDocumentCache() async throws {
+        let fixture = try makeFixture(source: "# Heading\nplain\n")
+        if let task = fixture.coordinator.highlight(debounced: false) {
+            await task.value
+        }
+        let replacement = MarkdownDocument()
+        let replacementSource = "# Heading\n**bold**\n"
+        replacement.installTextForTesting(replacementSource)
+        fixture.coordinator.document = replacement
+        fixture.storage.replaceCharacters(
+            in: NSRange(location: 0, length: fixture.storage.length),
+            with: replacementSource
+        )
+        fixture.storage.resetSpy()
+        if let task = fixture.coordinator.highlight(debounced: false) {
+            await task.value
+        }
+        let boldLocation = (replacementSource as NSString).range(of: "**bold**").location
+        let expected = fixture.coordinator.theme.attributes(for: .bold)[.font] as? NSFont
+        let actual = fixture.storage.attributes(at: boldLocation, effectiveRange: nil)[.font] as? NSFont
+        #expect(actual == expected)
+    }
+
     // Verifies: REQ-045 — compute work belongs to the captured session even if the coordinator
     // is rebound before the debounced task completes; discarded work must not contaminate the new
     // session's measurements.

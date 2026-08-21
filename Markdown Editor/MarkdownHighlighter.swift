@@ -109,31 +109,14 @@ actor MarkdownHighlighter {
     }
 
     /// Seeds line-local cache entries under one actor hop. The initial snapshot can use the
-    /// established full rule engine once; ordinary edits still tokenize only their invalidated
-    /// lines through `tokens(for: String)`.
+    /// same line-local rules as ordinary edits; ordinary edits still tokenize only their
+    /// invalidated lines through `tokens(for: String)`.
     func tokens(for lines: [String]) throws -> [[Token]] {
-        guard !lines.isEmpty else { return [] }
-        let source = lines.joined()
-        let index = SourceLineIndex(source: source)
-        let fullTokens = try tokens(for: source)
-        var result = Array(repeating: [Token](), count: index.lines.count)
-        for token in fullTokens where token.style != .codeBlock {
+        var result: [[Token]] = []
+        result.reserveCapacity(lines.count)
+        for line in lines {
             try Task.checkCancellation()
-            let firstLine = index.lineContaining(token.range.location)
-            let lastLine = index.lineContaining(max(token.range.location, NSMaxRange(token.range) - 1))
-            guard firstLine < result.count else { continue }
-            for line in firstLine...min(lastLine, result.count - 1) {
-                let lineRange = index.lines[line]
-                let intersection = NSIntersectionRange(token.range, lineRange)
-                guard intersection.length > 0 else { continue }
-                result[line].append(Token(
-                    range: NSRange(
-                        location: intersection.location - lineRange.location,
-                        length: intersection.length
-                    ),
-                    style: token.style
-                ))
-            }
+            result.append(try tokens(for: line))
         }
         return result
     }
