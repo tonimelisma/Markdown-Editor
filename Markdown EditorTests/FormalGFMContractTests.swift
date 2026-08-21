@@ -38,6 +38,18 @@ struct FormalGFMContractTests {
         #expect(manifest.fixtures.count >= 15)
     }
 
+    // Verifies: REQ-054 — spec-only rendering cannot enable an extension outside the declared
+    // formal dialect, even though the conformance harness supplies per-example subsets.
+    @Test func rendererRejectsExtensionsOutsideFormalDialect() {
+        guard case .failure(.unsupportedExtension("footnotes")) = MarkdownParser.renderHTML(
+            "text[^1]",
+            extensions: ["footnotes"]
+        ) else {
+            Issue.record("renderer accepted an extension outside the formal dialect")
+            return
+        }
+    }
+
     // Verifies: REQ-047/048/049/050/053/054/055/056 — every declared fixture succeeds through
     // parse, source index, projection oracle, and source highlighter routes.
     @Test func everyFormalFixtureUsesAllProductionBoundaries() async throws {
@@ -48,6 +60,8 @@ struct FormalGFMContractTests {
             let tree = try #require(MarkdownParser.parse(fixture.source, sourceVersion: 1).get())
             let index = MarkdownSourceIndex(source: fixture.source, sourceVersion: 1)
             let model = MarkdownProjectionModel.build(tree: tree, index: index)
+            try assertFullSourceRoundTrip(fixture.source, index: index)
+            assertProjectionSegments(model, source: fixture.source)
             guard case .success = ProjectionOracle.validate(model: model, sourceUTF16Count: (fixture.source as NSString).length) else {
                 Issue.record("projection oracle refused fixture \(fixture.id)")
                 continue
@@ -60,6 +74,7 @@ struct FormalGFMContractTests {
             }
 
             let tokens = try await highlighter.tokens(for: fixture.source)
+            assertTokenRanges(tokens, source: fixture.source)
             #expect(hasHighlight(fixture.highlightStyle, tokens: tokens))
             if fixture.unsupported {
                 #expect(tokens.allSatisfy { $0.style != .strikethrough && $0.style != .table && $0.style != .taskMarker })
@@ -129,6 +144,44 @@ struct FormalGFMContractTests {
             }
         }
         for child in node.children { assertNodeRanges(child, index: index, fixtureID: fixtureID) }
+    }
+
+    private func assertFullSourceRoundTrip(_ source: String, index: MarkdownSourceIndex) throws {
+        #expect(try #require(index.substring(utf8: UTF8Range(start: 0, end: source.utf8.count)).get()) == source)
+        #expect(try #require(index.substring(utf16: NSRange(location: 0, length: (source as NSString).length)).get()) == source)
+    }
+
+    private func assertProjectionSegments(_ model: MarkdownProjectionModel, source: String) {
+        let sourceText = source as NSString
+        let renderedText = model.renderedString as NSString
+        for segment in model.segments {
+            switch segment {
+            case .source(let projection, let sourceRange, _, _):
+                assertBounds(projection, length: renderedText.length)
+                assertBounds(sourceRange, length: sourceText.length)
+            case .literalFallback(let projection, let sourceRange):
+                assertBounds(projection, length: renderedText.length)
+                assertBounds(sourceRange, length: sourceText.length)
+                #expect(projection.length == sourceRange.length)
+                #expect(renderedText.substring(with: projection) == sourceText.substring(with: sourceRange))
+            case .synthetic(let projection, _, _), .uneditable(let projection, _):
+                assertBounds(projection, length: renderedText.length)
+            }
+        }
+    }
+
+    private func assertTokenRanges(_ tokens: [Token], source: String) {
+        let sourceLength = (source as NSString).length
+        for token in tokens {
+            assertBounds(token.range, length: sourceLength)
+            _ = (source as NSString).substring(with: token.range)
+        }
+    }
+
+    private func assertBounds(_ range: NSRange, length: Int) {
+        #expect(range.location >= 0)
+        #expect(range.length >= 0)
+        #expect(NSMaxRange(range) <= length)
     }
 
     private func assertSemanticClass(_ fixture: Fixture, tree: MarkdownNode) {

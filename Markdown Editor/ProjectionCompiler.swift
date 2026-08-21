@@ -144,11 +144,8 @@ private nonisolated struct CompilerBuilder {
             emitInlineChildren(node, styleStack: styleStack + [.strong])
         case .strikethrough:
             emitInlineChildren(node, styleStack: styleStack + [.strikethrough])
-        case .link(let destination, _):
-            // CommonMark leaves footnote spellings as ordinary link-like syntax when the
-            // footnotes extension is disabled. Preserve that unsupported writing extension
-            // literally instead of hiding its brackets through the link projection path.
-            if let source = substring(of: node), source.hasPrefix("[^"), source.hasSuffix("]") {
+        case .link(let destination, _, let preservesLiteralSource):
+            if preservesLiteralSource, let source = substring(of: node) {
                 appendLiteralFallback(source, node: node, styles: styleStack)
             } else {
                 emitLinkedChildren(node, styleStack: styleStack + [.link], destination: destination)

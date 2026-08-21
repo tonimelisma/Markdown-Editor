@@ -16,4 +16,13 @@ nonisolated enum FormalGFMDialect {
     static let enabledExtensions = ["table", "tasklist", "strikethrough", "autolink", "tagfilter"]
     static let unsupportedWritingExtensions = ["footnotes", "highlight", "superscript", "subscript"]
     static let parserOptions = Int32(CMARK_OPT_STRIKETHROUGH_DOUBLE_TILDE)
+
+    static func accepts(extensions: [String]) -> Bool {
+        let allowed = Set(enabledExtensions)
+        return extensions.allSatisfy { allowed.contains($0) }
+    }
+
+    static func preservesUnsupportedLinkLiteral(_ source: String) -> Bool {
+        source.hasPrefix("[^") && source.hasSuffix("]")
+    }
 }
