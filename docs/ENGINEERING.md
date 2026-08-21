@@ -730,7 +730,9 @@ supersession documents. The working tree states current truth; Git records histo
   transition plus identity-checked asynchronous authority.
 - Source highlighting uses a cached UTF-16 line index and per-line lexical state. COR-72 propagates
   fence and multiline-strikethrough state only until the cached tail is lexically stable; the
-  production route never performs whole-source tokenization for an ordinary edit.
+  production route never performs whole-source tokenization for an ordinary edit. Initial cache
+  seeding batches line-local Markdown rules under one `MarkdownHighlighter` actor hop, while
+  ordinary edits still lex only invalidated lines.
 - Native `NSTextTable` currently keeps the WYSIWYG editor on the TextKit 1 compatibility path. A
   TextKit 2 migration requires a separate table, attachment, selection, IME, and performance POC.
 - Dense semantic typography makes patch boundaries more demanding: a local source edit can change

@@ -108,6 +108,18 @@ actor MarkdownHighlighter {
         return result
     }
 
+    /// Batches line-local rules under one actor hop. The incremental source owner uses this only
+    /// while seeding an empty cache; ordinary edits still tokenize only their invalidated lines.
+    func tokens(for lines: [String]) throws -> [[Token]] {
+        var result: [[Token]] = []
+        result.reserveCapacity(lines.count)
+        for line in lines {
+            try Task.checkCancellation()
+            result.append(try tokens(for: line))
+        }
+        return result
+    }
+
     // MARK: - Fenced code (CommonMark §4.5, lexical)
 
     /// Returns ranges covering each fenced code block including opener and closer lines.

@@ -73,6 +73,19 @@ struct IncrementalSourceHighlighterTests {
         #expect(updated.lines == [NSRange(location: 0, length: 4), NSRange(location: 4, length: 4)])
     }
 
+    // Verifies: REQ-040/045 — deleting the final line cannot leave a phantom zero-length line
+    // in the cached UTF-16 topology.
+    @Test func terminalLineDeletionRebuildsLineTopology() {
+        let previous = SourceLineIndex(source: "one\ntwo\n")
+        let updated = SourceLineIndex.updating(
+            source: "one\n",
+            previousSource: "one\ntwo\n",
+            previous: previous,
+            editedRange: NSRange(location: 4, length: 0)
+        )
+        #expect(updated.lines == [NSRange(location: 0, length: 4)])
+    }
+
     // Verifies: REQ-041/043 — multiline GFM strikethrough state crosses a soft line break and
     // terminates on the matching delimiter without requiring a whole-source lexer.
     @Test func multilineStrikethroughStatePropagatesAcrossLines() async throws {
@@ -144,27 +157,110 @@ struct IncrementalSourceHighlighterTests {
                 patch.changedRanges.contains { NSIntersectionRange(token.range, $0).length > 0 }
             }
             incrementalTokens.append(contentsOf: patch.tokens)
+            #expect(incrementalTokens.count == Set(incrementalTokens).count)
             let expected = try await MarkdownHighlighter().tokens(for: source)
             #expect(canonicalTokens(incrementalTokens) == canonicalTokens(expected))
         }
     }
 
-    private func canonicalTokens(_ tokens: [Token]) -> [Token] {
-        let sorted = tokens.sorted(by: tokenOrder)
-        return sorted.reduce(into: [Token]()) { result, token in
-            guard let previous = result.last else {
-                result.append(token)
-                return
-            }
-            if previous.style == token.style, NSMaxRange(previous.range) >= token.range.location {
-                result[result.count - 1] = Token(
-                    range: NSUnionRange(previous.range, token.range),
-                    style: previous.style
+    // Verifies: REQ-041/045 — deterministic generated edit sequences preserve the fresh-lexer
+    // result across varied delimiter, fence, Unicode, and newline edits.
+    @Test func generatedEditSequencesMatchFreshFullLexer() async throws {
+        let fixtures = [
+            "heading\nplain text\n",
+            "~~open\nsecond line\n",
+            "- item\n- **bold** and `code`\n",
+            "🐙\n```swift\nlet value = 1\n```\n"
+        ]
+        let replacements = ["closed~~", "", "~~", "```\n", "\ninserted\n", "🐳"]
+
+        for seed in [11, 29, 47, 83, 131] {
+            var generator = DeterministicEditGenerator(seed: seed)
+            var source = fixtures[generator.nextIndex(upperBound: fixtures.count)]
+            let highlighter = IncrementalSourceHighlighter()
+            var incrementalTokens = try await highlighter.highlight(
+                source: source,
+                editedRange: nil,
+                sourceRevision: UInt64(seed),
+                intentID: nil
+            ).tokens
+
+            for step in 0..<10 {
+                let sourceNSString = source as NSString
+                let location = generator.nextIndex(upperBound: sourceNSString.length + 1)
+                let length = min(generator.nextIndex(upperBound: 4), sourceNSString.length - location)
+                let replacement = replacements[generator.nextIndex(upperBound: replacements.count)]
+                let edit = NSRange(location: location, length: length)
+                let mutable = NSMutableString(string: source)
+                mutable.replaceCharacters(in: edit, with: replacement)
+                source = mutable as String
+                let changedRange = NSRange(location: location, length: (replacement as NSString).length)
+                let patch = try await highlighter.highlight(
+                    source: source,
+                    editedRange: changedRange,
+                    sourceRevision: UInt64(seed * 100 + step + 1),
+                    intentID: nil
                 )
-            } else {
-                result.append(token)
+                incrementalTokens.removeAll { token in
+                    patch.changedRanges.contains { NSIntersectionRange(token.range, $0).length > 0 }
+                }
+                incrementalTokens.append(contentsOf: patch.tokens)
+                #expect(incrementalTokens.count == Set(incrementalTokens).count)
+                let expected = try await MarkdownHighlighter().tokens(for: source)
+                #expect(canonicalTokens(incrementalTokens) == canonicalTokens(expected), "seed=\(seed) step=\(step) source=\(source.debugDescription)")
             }
         }
+    }
+
+    // Verifies: REQ-041 — same-line strikethrough tokens are emitted once even when the
+    // cross-line state handler observes the same delimiter.
+    @Test func sameLineStrikethroughDoesNotDuplicateTokens() async throws {
+        let source = "~~closed~~\n"
+        let patch = try await IncrementalSourceHighlighter().highlight(
+            source: source,
+            editedRange: nil,
+            sourceRevision: 7,
+            intentID: nil
+        )
+        #expect(patch.tokens.filter { $0.style == .strikethrough } == [
+            Token(range: NSRange(location: 0, length: 10), style: .strikethrough)
+        ])
+    }
+
+    private struct DeterministicEditGenerator {
+        private var state: UInt64
+
+        init(seed: Int) { state = UInt64(seed) }
+
+        mutating func nextIndex(upperBound: Int) -> Int {
+            precondition(upperBound > 0)
+            state = state &* 6_364_136_223_846_793_005 &+ 1
+            return Int(state % UInt64(upperBound))
+        }
+    }
+
+    private func canonicalTokens(_ tokens: [Token]) -> [Token] {
+        let grouped = tokens.reduce(into: [TokenStyle: [Token]]()) { result, token in
+            result[token.style, default: []].append(token)
+        }
+        return grouped.values
+            .flatMap { styleTokens in
+                styleTokens.sorted(by: tokenOrder).reduce(into: [Token]()) { result, token in
+                    guard let previous = result.last else {
+                        result.append(token)
+                        return
+                    }
+                    if NSMaxRange(previous.range) >= token.range.location {
+                        result[result.count - 1] = Token(
+                            range: NSUnionRange(previous.range, token.range),
+                            style: previous.style
+                        )
+                    } else {
+                        result.append(token)
+                    }
+                }
+            }
+            .sorted(by: tokenOrder)
     }
 
     private func tokenOrder(_ lhs: Token, _ rhs: Token) -> Bool {

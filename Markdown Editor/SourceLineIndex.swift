@@ -70,7 +70,8 @@ nonisolated struct SourceLineIndex: Sendable, Equatable {
             return SourceLineIndex(source: source)
         }
         let newRange = lineRange(in: newNSString, startingAt: oldRange.location)
-        guard newRange.location == oldRange.location,
+        guard newRange.length > 0,
+              newRange.location == oldRange.location,
               utf16Equal(
                   oldNSString.substring(from: NSMaxRange(oldRange)),
                   newNSString.substring(from: NSMaxRange(newRange))

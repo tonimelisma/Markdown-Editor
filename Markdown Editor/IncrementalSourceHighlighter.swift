@@ -51,6 +51,11 @@ actor IncrementalSourceHighlighter {
         let ns = source as NSString
         let oldCache = cache
         let oldIndex = cachedIndex
+        let initialLineTokens: [[Token]]? = if oldCache.isEmpty {
+            try await lineHighlighter.tokens(for: index.lines.map { ns.substring(with: $0) })
+        } else {
+            nil
+        }
         let startLine: Int
         if oldCache.isEmpty {
             startLine = 0
@@ -73,7 +78,12 @@ actor IncrementalSourceHighlighter {
             try Task.checkCancellation()
             let range = index.lines[line]
             let text = ns.substring(with: range)
-            let lexed = try await lexLine(text: text, range: range, incoming: incoming)
+            let lexed = try await lexLine(
+                text: text,
+                range: range,
+                incoming: incoming,
+                localTokens: initialLineTokens?[line]
+            )
             scannedLineCount += 1
             lexedUTF16Count += range.length
             next.append(lexed)
@@ -179,7 +189,8 @@ actor IncrementalSourceHighlighter {
     private func lexLine(
         text: String,
         range: NSRange,
-        incoming: SourceLexState
+        incoming: SourceLexState,
+        localTokens: [Token]? = nil
     ) async throws -> SourceLexedLine {
         let local = text as NSString
         let contentEnd = Self.contentEnd(in: local)
@@ -209,19 +220,24 @@ actor IncrementalSourceHighlighter {
             )
         }
 
-        let localTokens = try await lineHighlighter.tokens(for: text)
+        let resolvedTokens = if let localTokens {
+            localTokens
+        } else {
+            try await lineHighlighter.tokens(for: text)
+        }
         let crossLineStrike = Self.crossLineStrikethrough(in: local, contentEnd: contentEnd, incomingStart: incoming.strikethroughStart, range: range)
-        let tokens = localTokens.map { Token(range: NSRange(location: range.location + $0.range.location, length: $0.range.length), style: $0.style) }
+        let tokens = resolvedTokens.map { Token(range: NSRange(location: range.location + $0.range.location, length: $0.range.length), style: $0.style) }
         let outgoing = SourceLexState(fence: nil, strikethroughStart: crossLineStrike.outgoingStart)
         let additionalCrossLineTokens = crossLineStrike.tokens.filter { crossToken in
             !tokens.contains { $0.style == crossToken.style && $0.range == crossToken.range }
         }
+        let mergedTokens = tokens + additionalCrossLineTokens
         return SourceLexedLine(
             text: text,
             range: range,
             incoming: incoming,
             outgoing: outgoing,
-            tokens: tokens + additionalCrossLineTokens
+            tokens: mergedTokens
         )
     }
 
