@@ -2,10 +2,10 @@
   "requirement": "REQ-041",
   "mutations": [
     {
-      "rationale": "Removing line-local lexical tokens prevents the incremental lexer from styling ordinary inline Markdown after a fenced block.",
+      "rationale": "Removing the mapped line-local lexical tokens prevents the incremental lexer from styling ordinary inline Markdown after a fenced block.",
       "file": "Markdown Editor/IncrementalSourceHighlighter.swift",
-      "find": "        let localTokens = try await lineHighlighter.tokens(for: text)",
-      "replace": "        let localTokens: [Token] = []",
+      "find": "        let tokens = localTokens.map { Token(range: NSRange(location: range.location + $0.range.location, length: $0.range.length), style: $0.style) }",
+      "replace": "        let tokens: [Token] = []",
       "expect_red": ["fenceStatePropagatesAndClosesOnMatchingFence"]
     },
     {
