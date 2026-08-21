@@ -221,7 +221,8 @@ return to discovery; do not improvise an architecture change.
    custom platform substitutes. The focused contract run observed 42 tests passed in 3 suites.
    The closing full gate observed 523 tests passed, 54 falsifying mutations red across 47 valid
    manifests, 50 production trace events, 71 Done rows verified against 466 executed tests in 27
-   cited suites, and 31 increment rows resolved. The approved plan is deleted with delivery.
+   cited suites, and 31 increment rows resolved after the review-proof corrections. The approved
+   plan is deleted with delivery.
 9. ⚪ **COR-76 — Formal-GFM and Source contract.** (Delivers: REQ-047, REQ-048, REQ-049, REQ-050, REQ-053, REQ-054, REQ-055, REQ-056, REQ-059)
    ([plan](plans/COR-76-gfm-source-contract.md)) Gives the pinned dialect one traceable fixture and
    range contract across parser, highlighter, projection, and encoder.
