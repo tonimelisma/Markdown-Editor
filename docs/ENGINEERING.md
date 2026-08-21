@@ -147,7 +147,9 @@ identity/atomic edits and synthetic insertions proven to occur at source boundar
 local encoder/decoder transition; table-cell edits use the declared enclosing-block bounded
 transition; source-location synthetic edits, task-marker edits, mixed, cross-cell, ambiguous, and
 every unassigned class remain on their semantic/refusal routes without mutation in the parser-free
-path. The local and bounded proof paths construct the complete next
+path. A completed IME transaction is the one explicit exception: when its synthetic block-end
+anchor maps exactly to a zero-length source range, the captured composition route treats that
+range as identity text and uses the same local transition. The local and bounded proof paths construct the complete next
 `PresentationSnapshot` from the accepted source mutation, then apply one exact or bounded patch.
 They do not invoke synchronous whole-document cmark parsing, source indexing, or projection
 compilation. Task-marker commands remain on their existing semantic route; they are not silently

@@ -197,7 +197,8 @@ return to discovery; do not improvise an architecture change.
    source/presentation correctness. The closed local-transition matrix accepts only proven
    identity/atomic edits and source-boundary synthetic insertions, uses one bounded enclosing-block
    path for table cells, and keeps source-location synthetic/task-marker/ambiguous classes on their
-   semantic or refusal routes. Concrete Release corpus evidence observed callback p95
+   semantic or refusal routes. A completed IME transaction may use the local route when its
+   captured block-end anchor maps exactly to a zero-length source insertion. Concrete Release corpus evidence observed callback p95
    below 8 ms for every approved corpus case; all three requirement proofs and falsifying mutations
    passed.
 5. ⚪ **COR-72 — Incremental Source pipeline.** (Delivers: REQ-040, REQ-041, REQ-043, REQ-045)
