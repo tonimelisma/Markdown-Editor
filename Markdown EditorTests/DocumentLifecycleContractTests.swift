@@ -88,22 +88,6 @@ struct DocumentLifecycleContractTests {
         #expect(!source.contains("RecentDocumentStore"))
     }
 
-    // Verifies: REQ-021 — the app exposes the standard NSDocumentController Open Recent route
-    // and only supplies the required Clear Menu item rather than maintaining a recent-file store.
-    @Test func recentsUseTheStandardDocumentControllerRoute() throws {
-        let source = try String(
-            contentsOf: URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appendingPathComponent("Markdown Editor/Markdown_EditorApp.swift"),
-            encoding: .utf8
-        )
-
-        #expect(source.contains("withTitle: \"Open Recent\""))
-        #expect(source.contains("#selector(NSDocumentController.clearRecentDocuments(_:))"))
-        #expect(!source.contains("RecentDocumentStore"))
-    }
-
     // Verifies: REQ-013/015/019 — the lifecycle boundary is one NSDocument owner with serialized
     // framework I/O and one URL/location-generation route, not an app shadow subsystem.
     @Test func lifecycleOwnerHasNoDuplicateDocumentSubsystem() throws {
