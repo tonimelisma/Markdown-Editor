@@ -1,0 +1,10 @@
+{
+  "requirement": "REQ-015",
+  "mutations": [{
+    "rationale": "Returning empty output from the serialized NSDocument data route destroys the canonical byte contract.",
+    "file": "Markdown Editor/MarkdownDocument.swift",
+    "find": "            MarkdownDocumentData(text: self.text).data()",
+    "replace": "            Data()",
+    "expect_red": ["dataOfTypeSnapshotsCanonicalMainActorText"]
+  }]
+}

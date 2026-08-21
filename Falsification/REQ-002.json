@@ -1,0 +1,10 @@
+{
+  "requirement": "REQ-002",
+  "mutations": [{
+    "rationale": "Seeding MarkdownDocumentData's default text means a newly constructed document is no longer empty.",
+    "file": "Markdown Editor/MarkdownDocumentData.swift",
+    "find": "    init(text: String = \"\") {",
+    "replace": "    init(text: String = \"seed\") {",
+    "expect_red": ["newDocumentStartsEmptyAndUntitled"]
+  }]
+}

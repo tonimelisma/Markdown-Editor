@@ -1,0 +1,10 @@
+{
+  "requirement": "REQ-013",
+  "mutations": [{
+    "rationale": "Returning a different undo owner breaks the single NSDocument canonical history owner.",
+    "file": "Markdown Editor/MarkdownDocument.swift",
+    "find": "    var documentUndoManager: UndoManager? { undoManager }",
+    "replace": "    var documentUndoManager: UndoManager? { nil }",
+    "expect_red": ["newDocumentStartsEmptyAndUntitled"]
+  }]
+}

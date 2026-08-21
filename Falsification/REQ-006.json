@@ -1,0 +1,10 @@
+{
+  "requirement": "REQ-006",
+  "mutations": [{
+    "rationale": "Removing the preferred AppKit tabbing configuration breaks the standard document window lifecycle contract exercised alongside Versions/revert ownership.",
+    "file": "Markdown Editor/MarkdownDocument.swift",
+    "find": "        window.tabbingMode = .preferred",
+    "replace": "        window.tabbingMode = .automatic",
+    "expect_red": ["standardDocumentLifecycleUsesAppKitOwners"]
+  }]
+}
