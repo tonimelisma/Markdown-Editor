@@ -27,6 +27,7 @@ actor IncrementalSourceHighlighter {
         sourceRevision: UInt64,
         intentID: IntentID?
     ) async throws -> SourceHighlightPatch {
+        let started = DispatchTime.now().uptimeNanoseconds
         let index = SourceLineIndex.updating(
             source: source,
             previousSource: cachedSource,
@@ -44,6 +45,7 @@ actor IncrementalSourceHighlighter {
                 changedRanges: [],
                 scannedLineCount: 0,
                 lexedUTF16Count: 0,
+                computeDurationNanos: DispatchTime.now().uptimeNanoseconds &- started,
                 intentID: intentID
             )
         }
@@ -156,6 +158,7 @@ actor IncrementalSourceHighlighter {
             changedRanges: changedRanges,
             scannedLineCount: scannedLineCount,
             lexedUTF16Count: lexedUTF16Count,
+            computeDurationNanos: DispatchTime.now().uptimeNanoseconds &- started,
             intentID: intentID
         )
     }
@@ -356,5 +359,6 @@ nonisolated struct SourceHighlightPatch: Sendable, Equatable {
     let changedRanges: [NSRange]
     let scannedLineCount: Int
     let lexedUTF16Count: Int
+    let computeDurationNanos: UInt64
     let intentID: IntentID?
 }

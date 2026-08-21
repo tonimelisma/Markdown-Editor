@@ -224,7 +224,6 @@ enum SourceEditor {
                     if Task.isCancelled { return }
                 }
                 guard let self else { return }
-                let started = DispatchTime.now().uptimeNanoseconds
                 let patch: SourceHighlightPatch
                 do {
                     patch = try await self.incrementalHighlighter.highlight(
@@ -236,10 +235,7 @@ enum SourceEditor {
                 } catch {
                     return
                 }
-                expectedSession?.recordPerformance(
-                    .sourceHighlightCompute,
-                    durationNanos: DispatchTime.now().uptimeNanoseconds &- started
-                )
+                expectedSession?.recordPerformance(.sourceHighlightCompute, durationNanos: patch.computeDurationNanos)
                 if Task.isCancelled { return }
                 self.apply(
                     patch,

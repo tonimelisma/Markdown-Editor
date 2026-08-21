@@ -546,6 +546,8 @@ Metric names describe their actual boundaries:
 - `imageResolution`: inspection, hashing, thumbnail decode, and cache lookup; and
 - `authoritativeApplication`: main-actor application of a completed authoritative result; and
 - `sourceHighlightCompute`: off-main incremental source lexing for the captured document/session;
+  its duration starts at incremental-lexer actor entry, excluding time queued behind a superseded
+  demand, and includes the lexer's own rule-engine work;
 - `sourceHighlightApplication`: main-actor application of matching bounded source attributes; and
 - `layoutApplication`: TextKit layout for the range an applied patch changed. The
   `nativeInputCallback` boundary ends when the input delegate returns — after

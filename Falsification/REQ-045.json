@@ -25,8 +25,8 @@
     {
       "rationale": "Recording compute work through the rebound session misattributes discarded work to the replacement session.",
       "file": "Markdown Editor/SourceEditor.swift",
-      "find": "                expectedSession?.recordPerformance(\n",
-      "replace": "                self.session?.recordPerformance(\n",
+      "find": "                expectedSession?.recordPerformance(.sourceHighlightCompute, durationNanos: patch.computeDurationNanos)\n",
+      "replace": "                self.session?.recordPerformance(.sourceHighlightCompute, durationNanos: patch.computeDurationNanos)\n",
       "expect_red": ["coordinatorHighlightAttributesComputeToCapturedSession"]
     }
   ]
