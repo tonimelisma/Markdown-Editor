@@ -45,6 +45,16 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
         ProjectionAtom.toSegments(atoms)
     }
 
+    /// The local transition route proves its snapshot by preserving every affected atom and
+    /// coordinate boundary in `PresentationTransitionPlanner`. It must not repeat the
+    /// whole-document oracle on the input callback; authoritative snapshots still use the
+    /// oracle during reconciliation.
+    enum ConstructionProof: Sendable {
+        case authoritative
+        case locallyProven
+        case boundedLocallyProven
+    }
+
     /// COR-40: Total block identification for `reshapesWholeLine` — `caretLocation ∈ projectionRange`.
     /// Total when `caret ∈ renderedString`; `table`/`tableRow`/`tableCell` stay exact via classifier.
     func enclosingBlock(at location: Int) -> PresentationBlock? {
@@ -91,6 +101,36 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
         atoms: [ProjectionAtom],
         sourceUTF16Count: Int
     ) -> PresentationSnapshot {
+        make(
+            id: id,
+            sourceRevision: sourceRevision,
+            locationGeneration: locationGeneration,
+            renderedString: renderedString,
+            runs: runs,
+            attachments: attachments,
+            tables: tables,
+            blocks: blocks,
+            listMarkers: listMarkers,
+            atoms: atoms,
+            sourceUTF16Count: sourceUTF16Count,
+            proof: .authoritative
+        )
+    }
+
+    static func make(
+        id: ID,
+        sourceRevision: SourceRevision,
+        locationGeneration: UInt64,
+        renderedString: String,
+        runs: [ProjectionRun],
+        attachments: [ProjectionAttachment],
+        tables: [ProjectionTable],
+        blocks: [PresentationBlock] = [],
+        listMarkers: [ProjectionListMarker] = [],
+        atoms: [ProjectionAtom],
+        sourceUTF16Count: Int,
+        proof: ConstructionProof
+    ) -> PresentationSnapshot {
         let segments = ProjectionAtom.toSegments(atoms)
         let map = ProjectionCoordinateMap(
             segments: segments,
@@ -113,10 +153,15 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
             oracleValid: true
         )
         let valid: Bool
-        if case .success = ProjectionOracle.validate(snapshot: candidate) {
+        switch proof {
+        case .authoritative:
+            if case .success = ProjectionOracle.validate(snapshot: candidate) {
+                valid = true
+            } else {
+                valid = false
+            }
+        case .locallyProven, .boundedLocallyProven:
             valid = true
-        } else {
-            valid = false
         }
         return PresentationSnapshot(
             id: candidate.id,

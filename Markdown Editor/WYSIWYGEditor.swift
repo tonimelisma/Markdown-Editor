@@ -358,7 +358,7 @@ enum WYSIWYGEditor {
                   case .editable(let id) = session.wysiwygModeState.availability,
                   id == presentation.id,
                   appliedSnapshotID == presentation.id,
-                  textView.string == presentation.renderedString,
+                  textStorageApplier.isKnownCurrent(textView, expected: presentation),
                   affectedCharRange.location >= 0,
                   NSMaxRange(affectedCharRange) <= (presentation.renderedString as NSString).length
             else {

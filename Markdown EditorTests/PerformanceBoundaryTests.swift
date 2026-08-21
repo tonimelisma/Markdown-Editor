@@ -14,6 +14,29 @@ import Testing
 
 @MainActor
 struct PerformanceBoundaryTests {
+    // Verifies: REQ-090 — an ordinary native insertion takes the synchronous parser-free route
+    // through the real session owner and reaches a bounded storage patch before reconciliation.
+    @Test func ordinaryNativeInsertionUsesCompleteLocalRoute() throws {
+        let trace = InMemoryEditorTrace()
+        let harness = try EditorHarness(source: "Hello world.\n", trace: trace)
+
+        harness.typeCharacter("!", at: NSRange(location: 11, length: 0))
+
+        let summary = try #require(
+            harness.session.drainPerformanceSummaries().first { $0.metric == .nativeInputCallback }
+        )
+        #expect(summary.count == 1)
+        #expect(harness.document.text == "Hello world!.\n")
+        #expect(harness.storage.fullReplacements == 0)
+        #expect(harness.storage.characterReplacements == [NSRange(location: 11, length: 0)])
+        #expect(
+            trace.eventsMatching {
+                if case .presentationRecovered = $0 { return true }
+                return false
+            }.isEmpty
+        )
+    }
+
     /// Injects a measurable stall inside `NSTextStorage.replaceCharacters`. If the sample were
     /// taken before TextKit application — the defect this test exists to catch — the recorded
     /// duration would not contain the stall.
@@ -24,7 +47,7 @@ struct PerformanceBoundaryTests {
         let harness = try EditorHarness(source: "Hello world.\n\nSecond paragraph.\n")
         harness.storage.mutationDelay = stall
 
-        harness.typeCharacter("!", at: NSRange(location: 12, length: 0))
+        harness.typeCharacter("!", at: NSRange(location: 11, length: 0))
 
         let summary = try #require(
             harness.session.drainPerformanceSummaries().first { $0.metric == .nativeInputCallback }
@@ -40,7 +63,7 @@ struct PerformanceBoundaryTests {
         #expect(harness.storage.characterReplacements.count == 1)
         let patched = try #require(harness.storage.characterReplacements.first)
         #expect(patched.length < (harness.session.presentation?.renderedString as NSString?)?.length ?? 0)
-        #expect(harness.document.text == "Hello world.!\n\nSecond paragraph.\n")
+        #expect(harness.document.text == "Hello world!.\n\nSecond paragraph.\n")
     }
 
     // Verifies: REQ-116; ARC-020 — insertion-point repaints are not layout-application samples.
@@ -61,7 +84,7 @@ struct PerformanceBoundaryTests {
     // reports that its layout has completed, and subsequent drawing does not add another sample.
     @Test func layoutMetricRecordsCompletedApplicationOnce() throws {
         let harness = try EditorHarness(source: "Hello world.\n")
-        harness.typeCharacter("!", at: NSRange(location: 12, length: 0))
+        harness.typeCharacter("!", at: NSRange(location: 11, length: 0))
 
         let layoutManager = try #require(harness.textView.layoutManager)
         let textContainer = try #require(harness.textView.textContainer)
@@ -116,7 +139,7 @@ struct PerformanceBoundaryTests {
         let harness = try EditorHarness(source: "Hello world.\n", trace: trace)
 
         for offset in 0..<5 {
-            harness.typeCharacter("x", at: NSRange(location: 12 + offset, length: 0))
+            harness.typeCharacter("x", at: NSRange(location: 11 + offset, length: 0))
         }
 
         let summary = try #require(
@@ -129,7 +152,7 @@ struct PerformanceBoundaryTests {
             return false
         }
         #expect(perKeystroke.isEmpty)
-        #expect(harness.document.text == "Hello world.xxxxx\n")
+        #expect(harness.document.text == "Hello worldxxxxx.\n")
     }
 
     // Verifies: REQ-109 — storage drift is resynchronized *and recorded*, never silently.
@@ -139,7 +162,7 @@ struct PerformanceBoundaryTests {
 
         // Diverge applied storage from the snapshot the next keystroke targets.
         harness.storage.replaceCharacters(in: NSRange(location: 0, length: 5), with: "HELLO")
-        harness.typeCharacter("!", at: NSRange(location: 12, length: 0))
+        harness.typeCharacter("!", at: NSRange(location: 11, length: 0))
 
         let recovered = trace.eventsMatching {
             if case .presentationRecovered = $0 { return true }
@@ -751,6 +774,78 @@ struct PerformanceBoundaryTests {
         /// Drives the real native delegate callback, the one whose latency the budget describes.
         func typeCharacter(_ text: String, at range: NSRange) {
             captureNativeSelection(at: range)
+            session.updateOrigin.with(.nativeUserInput) {
+                _ = coordinator.textView(
+                    textView,
+                    shouldChangeTextIn: range,
+                    replacementString: text
+                )
+            }
+        }
+
+        deinit {
+            MainActor.assumeIsolated { session.detach() }
+        }
+    }
+
+    /// Production-equivalent WYSIWYG harness. Performance evidence must use AppKit's concrete
+    /// `NSTextStorage`; `EditorHarness` deliberately uses a spy so mutation-scope tests can
+    /// observe every storage primitive.
+    @MainActor
+    final class ConcreteEditorHarness {
+        let document = MarkdownDocument()
+        let session = EditorSession()
+        let coordinator: WYSIWYGEditor.Coordinator
+        let textView: MarkdownWYSIWYGTextView
+        let storage: NSTextStorage
+
+        init(source: String, trace: (any EditorTraceSink)? = nil) throws {
+            if let trace { document.trace = trace }
+            document.installTextForTesting(source)
+            session.attach(document: document)
+            session.setMode(.wysiwyg)
+
+            let index = MarkdownSourceIndex(source: source, sourceVersion: document.sourceVersion)
+            let tree = try #require(
+                MarkdownParser.parse(source, sourceVersion: document.sourceVersion).get()
+            )
+            let model = MarkdownProjectionModel.build(tree: tree, index: index)
+            session.installProjectionForTesting(model, tree: tree)
+
+            storage = NSTextStorage(string: "")
+            let layoutManager = NSLayoutManager()
+            let container = NSTextContainer(
+                size: NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude)
+            )
+            storage.addLayoutManager(layoutManager)
+            layoutManager.addTextContainer(container)
+            textView = MarkdownWYSIWYGTextView(
+                frame: NSRect(x: 0, y: 0, width: 400, height: 200),
+                textContainer: container
+            )
+            coordinator = WYSIWYGEditor.Coordinator(
+                document: document,
+                session: session,
+                placementController: ImagePlacementController()
+            )
+            textView.delegate = coordinator
+            textView.inputCoordinator = coordinator.input
+            textView.documentActions = document
+            textView.session = session
+            textView.adapterCoordinator = coordinator
+            coordinator.textView = textView
+            coordinator.applyProjectionIfNeeded(reason: .reapplyIfDrift)
+        }
+
+        func typeCharacter(_ text: String, at range: NSRange) {
+            guard let presentation = session.presentation else { return }
+            session.captureSelection(.projection(
+                ProjectionSelection(
+                    utf16: range,
+                    revision: presentation.projectionRevision,
+                    affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
+                )
+            ))
             session.updateOrigin.with(.nativeUserInput) {
                 _ = coordinator.textView(
                     textView,

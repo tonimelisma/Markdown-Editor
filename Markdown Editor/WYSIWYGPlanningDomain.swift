@@ -17,7 +17,8 @@ enum WYSIWYGPlanningDomain {
         presentation: PresentationSnapshot,
         tree: MarkdownTree?,
         grouping: MutationGrouping,
-        intent: IntentContext? = nil
+        intent: IntentContext? = nil,
+        classification: ProjectionSelectionClass? = nil
     ) -> SemanticEditResult {
         guard presentation.sourceRevision.value == snapshot.sourceVersion,
               selection.range.revision.snapshotID == presentation.id else {
@@ -25,7 +26,7 @@ enum WYSIWYGPlanningDomain {
         }
         let projection = presentation.asProjectionModel
         let selectionRange = selection.range.utf16
-        let classification = ProjectionSelectionClassifier.classify(
+        let classification = classification ?? ProjectionSelectionClassifier.classify(
             selection: selectionRange,
             affinity: selection.affinity,
             snapshot: presentation
@@ -144,7 +145,26 @@ enum WYSIWYGPlanningDomain {
                     intent: intent
                 )
             }
-            guard let sourceRange = SemanticEditEngine.sourceRange(for: classification, affinity: selection.affinity)
+            let deletionSourceRange: NSRange?
+            if selection.range.utf16.length == 0 {
+                guard selection.range.utf16.location > 0 else { return .refused(.invalidRange) }
+                let deletionRange = (projection.renderedString as NSString).rangeOfComposedCharacterSequence(
+                    at: selection.range.utf16.location - 1
+                )
+                deletionSourceRange = {
+                    guard case .exact(let sourceRange) = projection.coordinateMap.sourceRange(
+                        forProjection: deletionRange,
+                        affinity: selection.affinity
+                    ) else { return nil }
+                    return sourceRange
+                }()
+            } else {
+                deletionSourceRange = SemanticEditEngine.sourceRange(
+                    for: classification,
+                    affinity: selection.affinity
+                )
+            }
+            guard let sourceRange = deletionSourceRange
             else { return SemanticEditEngine.refusal(for: classification) }
             if sourceRange.length > 0 {
                 return SemanticEditEngine.commit(

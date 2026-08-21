@@ -217,6 +217,28 @@ final class ParseCoordinator {
                 let imageResolutionTotal = imageResolutionDuration
                     &+ (DispatchTime.now().uptimeNanoseconds &- imageCacheLookupStart)
                 let applicationStart = DispatchTime.now().uptimeNanoseconds
+                if let provisional = session.presentation,
+                   provisional.sourceRevision == authoritative.sourceRevision,
+                   provisional.locationGeneration == authoritative.locationGeneration,
+                   provisional != authoritative {
+                    // COR-71: a local transition disagreed with the pinned authority. Do not
+                    // silently replace an editable provisional snapshot; record a fault, make
+                    // WYSIWYG unavailable, and rebuild from canonical source in this same
+                    // reconciliation turn. Source remains available throughout.
+                    document?.trace?.record(route: .presentationRecovered, .presentationRecovered(
+                        snapshotID: provisional.id.value,
+                        sourceRevision: provisional.sourceRevision.value,
+                        reason: .patchUnprovable
+                    ))
+                    session.presentation = nil
+                    session.authoritativeTree = nil
+                    session.updateWYSIWYGModeState {
+                        $0.availability = .waitingForCurrentProjection(
+                            SourceRevision(value: snapshot.sourceVersion)
+                        )
+                        $0.selection = nil
+                    }
+                }
                 if session.presentation?.sourceRevision.value == authoritative.sourceRevision.value {
                     session.updateOrigin.with(.programmaticPresentation) {
                         session.installPresentation(authoritative, tree: tree, provisional: false, intent: intent)

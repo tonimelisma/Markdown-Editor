@@ -609,15 +609,73 @@ final class EditorSession: ObservableObject {
         )
         let editStart = DispatchTime.now().uptimeNanoseconds
         let state = editorStateSnapshot(intentID: intent.id)
-        let plannedOutcome = EditorSemanticWorker.sync(intent: intent) {
-            SemanticEditEngine.plan(
+        let plannedOutcome: EditorEditOutcome
+        let isOrdinaryNativeReplacement = inputRoute == .wysiwygReplacement
+            || inputRoute == .markedText
+        let isTypingCommand: Bool
+        switch command {
+        case .insertText, .deleteBackward:
+            isTypingCommand = true
+        default:
+            isTypingCommand = false
+        }
+        let nativeClassification: ProjectionSelectionClass? = {
+            guard isOrdinaryNativeReplacement,
+                  isTypingCommand,
+                  case .projection(let projectionSelection) = selection,
+                  let presentation = state.presentation else { return nil }
+            return ProjectionSelectionClassifier.classify(
+                selection: projectionSelection.range.utf16,
+                affinity: projectionSelection.affinity,
+                snapshot: presentation
+            )
+        }()
+        let localClassification: ProjectionSelectionClass? = {
+            guard inputRoute == .markedText,
+                  case .syntheticInsertion(.atSourceLocation(let location)) = nativeClassification,
+                  case .projection(let projectionSelection) = selection,
+                  let presentation = state.presentation,
+                  case .exact(let sourceRange) = presentation.coordinateMap.sourceRange(
+                      forProjection: projectionSelection.range.utf16,
+                      affinity: projectionSelection.affinity
+                  ),
+                  sourceRange == NSRange(location: location, length: 0) else {
+                return nativeClassification
+            }
+            // IME commit is a separately declared local branch in COR-71. A block-end synthetic
+            // anchor may still be an exact source insertion point; preserve the ordinary
+            // synthetic refusal matrix and use that proof only for the composition transaction.
+            return .identityText(sourceRange: sourceRange)
+        }()
+        if isOrdinaryNativeReplacement,
+           case .projection(_) = selection,
+           isTypingCommand,
+           let presentation = state.presentation,
+           let classification = localClassification,
+           LocalTransitionDomain.classify(classification) != .taskMarker {
+            // COR-71: this route is deliberately synchronous but parser-free. The closed local
+            // domain either produces a complete identity transition or refuses before owner
+            // mutation; authoritative reconciliation is scheduled only after an accepted edit.
+            plannedOutcome = LocalTransitionDomain.plan(
                 request,
                 snapshot: state.source,
-                presentation: state.presentation,
+                presentation: presentation,
                 tree: state.tree,
                 nextSnapshotID: state.nextPresentationID,
-                intent: intent
+                intent: intent,
+                classification: classification
             )
+        } else {
+            plannedOutcome = EditorSemanticWorker.sync(intent: intent) {
+                SemanticEditEngine.plan(
+                    request,
+                    snapshot: state.source,
+                    presentation: state.presentation,
+                    tree: state.tree,
+                    nextSnapshotID: state.nextPresentationID,
+                    intent: intent
+                )
+            }
         }
         let semanticInput = EditorSemanticInput(
             request: request,

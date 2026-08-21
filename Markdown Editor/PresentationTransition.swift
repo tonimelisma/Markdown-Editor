@@ -8,6 +8,12 @@ import Foundation
 /// Exact synchronous update from one presentation snapshot to the next.
 ///
 /// // REQ-091; ARC-005: validated before commit; non-failable after source commit.
+nonisolated enum PresentationTransitionProof: Sendable, Equatable {
+    case authoritativeDiff
+    case localIdentity
+    case boundedLocalScope
+}
+
 nonisolated struct PresentationTransition: Sendable, Equatable {
     let fromSnapshotID: PresentationSnapshot.ID
     let nextSnapshot: PresentationSnapshot
@@ -17,6 +23,7 @@ nonisolated struct PresentationTransition: Sendable, Equatable {
     /// Canonical source produced by an authoritative structural rebuild. Local identity patches
     /// leave this nil because their existing atom splice is the proof of the next projection.
     let sourceAfter: String?
+    let proof: PresentationTransitionProof
 
     init(
         fromSnapshotID: PresentationSnapshot.ID,
@@ -24,7 +31,8 @@ nonisolated struct PresentationTransition: Sendable, Equatable {
         projectionReplacementRange: NSRange,
         projectionReplacement: String,
         selectionAfter: ProjectionSelection,
-        sourceAfter: String? = nil
+        sourceAfter: String? = nil,
+        proof: PresentationTransitionProof = .authoritativeDiff
     ) {
         self.fromSnapshotID = fromSnapshotID
         self.nextSnapshot = nextSnapshot
@@ -32,6 +40,7 @@ nonisolated struct PresentationTransition: Sendable, Equatable {
         self.projectionReplacement = projectionReplacement
         self.selectionAfter = selectionAfter
         self.sourceAfter = sourceAfter
+        self.proof = proof
     }
 }
 
@@ -94,7 +103,8 @@ nonisolated enum PresentationTransitionPlanner {
         nextSourceRevision: SourceRevision,
         nextSourceUTF16Count: Int,
         nextSnapshotID: PresentationSnapshot.ID,
-        affinity: SelectionAffinity
+        affinity: SelectionAffinity,
+        proof: PresentationSnapshot.ConstructionProof = .authoritative
     ) -> PresentationTransition? {
         let rendered = snapshot.renderedString as NSString
         guard projectionRange.location >= 0,
@@ -157,6 +167,15 @@ nonisolated enum PresentationTransitionPlanner {
             sourceDelta: sourceDelta
         )
         let nextMarkers = shiftListMarkers(snapshot.listMarkers, edited: projectionRange, delta: projectionDelta)
+        guard let nextBlocks = shiftBlocks(
+            snapshot.blocks,
+            editedProjection: projectionRange,
+            projectionDelta: projectionDelta,
+            editedSource: sourceRange,
+            sourceDelta: sourceDelta
+        ) else {
+            return nil
+        }
 
         let next = PresentationSnapshot.make(
             id: nextSnapshotID,
@@ -166,9 +185,11 @@ nonisolated enum PresentationTransitionPlanner {
             runs: nextRuns,
             attachments: nextAttachments,
             tables: nextTables,
+            blocks: nextBlocks,
             listMarkers: nextMarkers,
             atoms: nextAtoms,
-            sourceUTF16Count: nextSourceUTF16Count
+            sourceUTF16Count: nextSourceUTF16Count,
+            proof: proof
         )
 
         let selection = ProjectionSelection(
@@ -176,12 +197,19 @@ nonisolated enum PresentationTransitionPlanner {
             revision: next.projectionRevision,
             affinity: affinity
         )
+        let transitionProof: PresentationTransitionProof
+        switch proof {
+        case .locallyProven: transitionProof = .localIdentity
+        case .boundedLocallyProven: transitionProof = .boundedLocalScope
+        case .authoritative: transitionProof = .authoritativeDiff
+        }
         return PresentationTransition(
             fromSnapshotID: snapshot.id,
             nextSnapshot: next,
             projectionReplacementRange: projectionRange,
             projectionReplacement: visibleReplacement,
-            selectionAfter: selection
+            selectionAfter: selection,
+            proof: transitionProof
         )
     }
 
@@ -514,6 +542,48 @@ nonisolated enum PresentationTransitionPlanner {
                 )
             }
             return nil
+        }
+    }
+
+    private static func shiftBlocks(
+        _ blocks: [PresentationBlock],
+        editedProjection: NSRange,
+        projectionDelta: Int,
+        editedSource: NSRange,
+        sourceDelta: Int
+    ) -> [PresentationBlock]? {
+        blocks.compactMap { block in
+            let range = block.projectionRange
+            if NSMaxRange(range) <= editedProjection.location {
+                return block
+            }
+            if range.location >= NSMaxRange(editedProjection) {
+                return PresentationBlock(
+                    nodeID: block.nodeID,
+                    projectionRange: NSRange(
+                        location: range.location + projectionDelta,
+                        length: range.length
+                    ),
+                    sourceRange: block.sourceRange.map {
+                        shiftSourceRange($0, edited: editedSource, delta: sourceDelta)
+                    },
+                    kind: block.kind
+                )
+            }
+            guard range.location <= editedProjection.location,
+                  NSMaxRange(range) >= NSMaxRange(editedProjection) else {
+                return nil
+            }
+            let newLength = range.length + projectionDelta
+            guard newLength >= 0 else { return nil }
+            return PresentationBlock(
+                nodeID: block.nodeID,
+                projectionRange: NSRange(location: range.location, length: newLength),
+                sourceRange: block.sourceRange.map {
+                    shiftSourceRange($0, edited: editedSource, delta: sourceDelta)
+                },
+                kind: block.kind
+            )
         }
     }
 

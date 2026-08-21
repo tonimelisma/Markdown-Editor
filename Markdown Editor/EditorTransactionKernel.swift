@@ -790,6 +790,35 @@ nonisolated enum EditorTransactionKernel {
                     <= (transition.nextSnapshot.renderedString as NSString).length else {
                 return .invalidRange
             }
+
+            // COR-71 architecture boundary: a local identity transition carries its atom/range
+            // preservation proof from the planner. Reconstructing the complete rendered string
+            // here would turn the native callback back into a whole-document scan. The common
+            // source, revision, identity, and selection checks above remain mandatory; the local
+            // proof only replaces the redundant rendered-string equality checks below.
+            if transition.proof == .localIdentity {
+                let selected = selection.range.utf16
+                let replacement = transition.projectionReplacementRange
+                let selectedWithinReplacement: Bool
+                if selected.length == 0 {
+                    selectedWithinReplacement = selected.location >= replacement.location
+                        && selected.location <= NSMaxRange(replacement)
+                } else {
+                    selectedWithinReplacement = selected.location >= replacement.location
+                        && NSMaxRange(selected) <= NSMaxRange(replacement)
+                }
+                guard selectedWithinReplacement else { return .invalidIdentity }
+                switch request.command {
+                case .insertText(let text):
+                    guard transition.projectionReplacement == text else { return .contentMismatch }
+                case .deleteBackward:
+                    guard transition.projectionReplacement.isEmpty else { return .contentMismatch }
+                default:
+                    return .invalidIdentity
+                }
+                return nil
+            }
+
             let projected = rendered.replacingCharacters(
                 in: transition.projectionReplacementRange,
                 with: transition.projectionReplacement

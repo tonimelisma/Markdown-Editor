@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-091",
+  "mutations": [
+    {
+      "rationale": "Replacing the computed deleted projection range with the collapsed caret range leaves the rendered snapshot unchanged after a backward deletion.",
+      "file": "Markdown Editor/LocalTransitionDomain.swift",
+      "find": "                projectionRange: transitionRange,",
+      "replace": "                projectionRange: projectionSelection.range.utf16,",
+      "expect_red": ["collapsedBackwardDeletionUpdatesRenderedText"]
+    }
+  ]
+}
