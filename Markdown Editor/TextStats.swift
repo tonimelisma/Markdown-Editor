@@ -67,14 +67,23 @@ actor TextStatsComputer {
 final class LiveCountOwner: ObservableObject {
     @Published private(set) var counts = TextStats.Counts(words: 0, characters: 0)
 
-    private let statsComputer = TextStatsComputer()
+    private let countOperation: @Sendable (String) async -> TextStats.Counts?
     private var latestRequestedRevision: UInt64 = 0
+
+    init() {
+        let statsComputer = TextStatsComputer()
+        countOperation = { snapshot in await statsComputer.counts(for: snapshot) }
+    }
+
+    init(countOperation: @escaping @Sendable (String) async -> TextStats.Counts?) {
+        self.countOperation = countOperation
+    }
 
     var displayLabel: String { counts.displayLabel }
 
     func update(snapshot: String, revision: UInt64) async {
         latestRequestedRevision = max(latestRequestedRevision, revision)
-        let next = await statsComputer.counts(for: snapshot)
+        let next = await countOperation(snapshot)
         guard !Task.isCancelled,
               revision == latestRequestedRevision,
               let next else { return }

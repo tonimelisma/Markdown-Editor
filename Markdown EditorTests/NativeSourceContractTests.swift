@@ -113,7 +113,13 @@ struct NativeSourceContractTests {
         source.setSelectedRange(NSRange(location: 0, length: 0))
         let findNext = NSMenuItem()
         findNext.tag = 2 // NSFindPanelActionNext
+        source.setSelectedRange(NSRange(location: 0, length: 6))
+        let setSearchString = NSMenuItem()
+        setSearchString.tag = 7 // NSTextFinderActionSetSearchString
+        source.performTextFinderAction(setSearchString)
+        source.setSelectedRange(NSRange(location: 0, length: 0))
         source.performFindPanelAction(findNext)
+        #expect(source.selectedRange() == NSRange(location: 0, length: 6))
 
         // The production view delegates Find to AppKit. Exercise the framework's finder client
         // directly as the headless component proof; a hidden window cannot provide the find-bar
@@ -176,6 +182,17 @@ struct NativeSourceContractTests {
         #expect(owner.displayLabel == "3 words · 11 characters")
         await owner.update(snapshot: "one", revision: 2)
         #expect(owner.displayLabel == "1 words · 3 characters")
+        let delayedOwner = LiveCountOwner { snapshot in
+            if snapshot == "old" { try? await Task.sleep(for: .milliseconds(50)) }
+            return TextStats.counts(snapshot)
+        }
+        let oldRevision = Task { @MainActor in
+            await delayedOwner.update(snapshot: "old", revision: 1)
+        }
+        await Task.yield()
+        await delayedOwner.update(snapshot: "new", revision: 2)
+        await oldRevision.value
+        #expect(delayedOwner.displayLabel == "1 words · 3 characters")
 
         let contentView = try String(contentsOf: sourceURL("Markdown Editor/ContentView.swift"), encoding: .utf8)
         #expect(contentView.contains(".task(id: document.sourceVersion)"))
