@@ -59,4 +59,17 @@ struct IncrementalSourceHighlighterTests {
         #expect(patch.tokens.allSatisfy { $0.range.location >= 0 && NSMaxRange($0.range) <= length })
         #expect(SourceLineIndex(source: source).lines.map(\.length) == [12, 8])
     }
+
+    // Verifies: REQ-041/043 — multiline GFM strikethrough state crosses a soft line break and
+    // terminates on the matching delimiter without requiring a whole-source lexer.
+    @Test func multilineStrikethroughStatePropagatesAcrossLines() async throws {
+        let source = "before ~~first line\nsecond line~~ after\n"
+        let highlighter = IncrementalSourceHighlighter()
+        let patch = try await highlighter.highlight(source: source, editedRange: nil, sourceRevision: 4, intentID: nil)
+        let ns = source as NSString
+        let first = ns.range(of: "~~first line")
+        let second = ns.range(of: "second line~~")
+        #expect(patch.tokens.contains { $0.style == .strikethrough && NSIntersectionRange($0.range, first).length == first.length })
+        #expect(patch.tokens.contains { $0.style == .strikethrough && NSIntersectionRange($0.range, second).length == second.length })
+    }
 }

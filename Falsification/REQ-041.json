@@ -7,6 +7,13 @@
       "find": "        let localTokens = try await lineHighlighter.tokens(for: text)",
       "replace": "        let localTokens: [Token] = []",
       "expect_red": ["fenceStatePropagatesAndClosesOnMatchingFence"]
+    },
+    {
+      "rationale": "Removing the carried multiline strikethrough state leaves the second line unstyled.",
+      "file": "Markdown Editor/IncrementalSourceHighlighter.swift",
+      "find": "        let crossLineStrike = Self.crossLineStrikethrough(\n            in: local,\n            contentEnd: contentEnd,\n            incomingOpen: incoming.strikethroughOpen,\n            range: range\n        )",
+      "replace": "        let crossLineStrike: (outgoingOpen: Bool, tokens: [Token]) = (false, [])",
+      "expect_red": ["multilineStrikethroughStatePropagatesAcrossLines"]
     }
   ]
 }

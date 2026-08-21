@@ -12,11 +12,13 @@ import Foundation
 actor IncrementalSourceHighlighter {
     private var cache: [SourceLexedLine] = []
     private var cachedSource: String = ""
+    private var cachedIndex = SourceLineIndex(source: "")
     private let lineHighlighter = MarkdownHighlighter()
 
     func reset() {
         cache.removeAll(keepingCapacity: true)
         cachedSource = ""
+        cachedIndex = SourceLineIndex(source: "")
     }
 
     func highlight(
@@ -25,10 +27,16 @@ actor IncrementalSourceHighlighter {
         sourceRevision: UInt64,
         intentID: IntentID?
     ) async throws -> SourceHighlightPatch {
-        let index = SourceLineIndex(source: source)
+        let index = SourceLineIndex.updating(
+            source: source,
+            previousSource: cachedSource,
+            previous: cachedIndex,
+            editedRange: editedRange
+        )
         guard !index.lines.isEmpty else {
             cache = []
             cachedSource = source
+            cachedIndex = index
             return SourceHighlightPatch(
                 sourceRevision: sourceRevision,
                 sourceUTF16Count: index.sourceUTF16Count,
@@ -42,7 +50,7 @@ actor IncrementalSourceHighlighter {
 
         let ns = source as NSString
         let oldCache = cache
-        let oldIndex = SourceLineIndex(source: cachedSource)
+        let oldIndex = cachedIndex
         let startLine: Int
         if oldCache.isEmpty {
             startLine = 0
@@ -71,7 +79,7 @@ actor IncrementalSourceHighlighter {
             next.append(lexed)
 
             let old = oldCache.indices.contains(line) ? oldCache[line] : nil
-            let changed = old != lexed
+            let changed = old.map { !$0.hasSameLexicalResult(as: lexed) } ?? true
             if changed {
                 changedRanges.append(range)
                 changedTokens.append(contentsOf: lexed.tokens)
@@ -87,16 +95,17 @@ actor IncrementalSourceHighlighter {
                oldIndex.lines.count == index.lines.count,
                line < index.lines.count,
                old != nil,
-               old?.text == lexed.text,
-               old?.incoming == lexed.incoming,
-               old?.outgoing == lexed.outgoing {
-                next.append(contentsOf: oldCache[line...])
+               old!.hasSameLexicalResult(as: lexed) {
+                next.append(contentsOf: oldCache[line...].enumerated().map { offset, cachedLine in
+                    cachedLine.rebased(to: index.lines[line + offset])
+                })
                 break
             }
         }
 
         cache = next
         cachedSource = source
+        cachedIndex = index
         return SourceHighlightPatch(
             sourceRevision: sourceRevision,
             sourceUTF16Count: index.sourceUTF16Count,
@@ -142,16 +151,78 @@ actor IncrementalSourceHighlighter {
         }
 
         let localTokens = try await lineHighlighter.tokens(for: text)
+        let crossLineStrike = Self.crossLineStrikethrough(
+            in: local,
+            contentEnd: contentEnd,
+            incomingOpen: incoming.strikethroughOpen,
+            range: range
+        )
         let tokens = localTokens.map {
             Token(range: NSRange(location: range.location + $0.range.location, length: $0.range.length), style: $0.style)
         }
+        let outgoing = SourceLexState(fence: nil, strikethroughOpen: crossLineStrike.outgoingOpen)
         return SourceLexedLine(
             text: text,
             range: range,
             incoming: incoming,
-            outgoing: .initial,
-            tokens: tokens
+            outgoing: outgoing,
+            tokens: tokens + crossLineStrike.tokens
         )
+    }
+
+    private static func crossLineStrikethrough(
+        in text: NSString,
+        contentEnd: Int,
+        incomingOpen: Bool,
+        range: NSRange
+    ) -> (outgoingOpen: Bool, tokens: [Token]) {
+        guard contentEnd > 0 else { return (false, []) }
+
+        func isDoubleTilde(at index: Int) -> Bool {
+            guard index + 1 < contentEnd,
+                  text.character(at: index) == 0x7E,
+                  text.character(at: index + 1) == 0x7E,
+                  (index == 0 || text.character(at: index - 1) != 0x7E),
+                  (index + 2 >= contentEnd || text.character(at: index + 2) != 0x7E) else { return false }
+            var slashCount = 0
+            var cursor = index - 1
+            while cursor >= 0, text.character(at: cursor) == 0x5C { slashCount += 1; cursor -= 1 }
+            return slashCount.isMultiple(of: 2)
+        }
+
+        func nextDelimiter(after start: Int) -> Int? {
+            guard start < contentEnd else { return nil }
+            for index in start..<contentEnd where isDoubleTilde(at: index) {
+                return index
+            }
+            return nil
+        }
+
+        if incomingOpen {
+            if let closer = nextDelimiter(after: 0) {
+                return (
+                    false,
+                    [Token(range: NSRange(location: range.location, length: closer + 2), style: .strikethrough)]
+                )
+            }
+            return (
+                true,
+                [Token(range: NSRange(location: range.location, length: contentEnd), style: .strikethrough)]
+            )
+        }
+
+        guard let opener = nextDelimiter(after: 0),
+              opener + 2 < contentEnd,
+              !Self.isWhitespace(text.character(at: opener + 2)) else { return (false, []) }
+        guard nextDelimiter(after: opener + 2) == nil else { return (false, []) }
+        return (
+            true,
+            [Token(range: NSRange(location: range.location + opener, length: contentEnd - opener), style: .strikethrough)]
+        )
+    }
+
+    private static func isWhitespace(_ character: unichar) -> Bool {
+        character == 0x20 || character == 0x09 || character == 0x0A || character == 0x0D
     }
 
     private static func contentEnd(in text: NSString) -> Int {

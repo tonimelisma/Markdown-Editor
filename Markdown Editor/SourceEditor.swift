@@ -253,7 +253,8 @@ enum SourceEditor {
             guard expectedVersion == version,
                   patch.sourceRevision == document.sourceVersion,
                   let textView,
-                  textView.string == expectedText,
+                  patch.sourceUTF16Count == textView.textStorage?.length,
+                  Self.utf16Equal(textView.string, expectedText),
                   let storage = textView.textStorage else {
                 return
             }
@@ -279,6 +280,10 @@ enum SourceEditor {
             )
             lastStyledText = expectedText
             pendingStyleRange = nil
+        }
+
+        private static func utf16Equal(_ lhs: String, _ rhs: String) -> Bool {
+            Array(lhs.utf16) == Array(rhs.utf16)
         }
 
         // REQ-040/041/043/047–051: style via NSTextStorage attributes — display only.

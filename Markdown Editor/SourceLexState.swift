@@ -16,8 +16,14 @@ nonisolated struct SourceLexState: Sendable, Equatable {
     }
 
     let fence: Fence?
+    let strikethroughOpen: Bool
 
-    static let initial = SourceLexState(fence: nil)
+    static let initial = SourceLexState(fence: nil, strikethroughOpen: false)
+
+    init(fence: Fence?, strikethroughOpen: Bool = false) {
+        self.fence = fence
+        self.strikethroughOpen = strikethroughOpen
+    }
 }
 
 nonisolated struct SourceLexedLine: Sendable, Equatable {
@@ -26,4 +32,26 @@ nonisolated struct SourceLexedLine: Sendable, Equatable {
     let incoming: SourceLexState
     let outgoing: SourceLexState
     let tokens: [Token]
+
+    func rebased(to newRange: NSRange) -> SourceLexedLine {
+        let delta = newRange.location - range.location
+        return SourceLexedLine(
+            text: text,
+            range: newRange,
+            incoming: incoming,
+            outgoing: outgoing,
+            tokens: tokens.map { token in
+                Token(
+                    range: NSRange(location: token.range.location + delta, length: token.range.length),
+                    style: token.style
+                )
+            }
+        )
+    }
+
+    func hasSameLexicalResult(as other: SourceLexedLine) -> Bool {
+        guard text == other.text, incoming == other.incoming, outgoing == other.outgoing else { return false }
+        let rebased = rebased(to: other.range)
+        return rebased.tokens == other.tokens
+    }
 }

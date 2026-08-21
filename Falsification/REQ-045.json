@@ -7,6 +7,13 @@
       "find": "            if !oldCache.isEmpty,",
       "replace": "            if false,",
       "expect_red": ["ordinaryEditStopsAtStableTail"]
+    },
+    {
+      "rationale": "Removing the UTF-16 snapshot length guard allows a canonically equivalent but range-distinct storage value to receive stale attributes.",
+      "file": "Markdown Editor/SourceEditor.swift",
+      "find": "                  patch.sourceUTF16Count == textView.textStorage?.length,",
+      "replace": "                  true,",
+      "expect_red": ["productionIncrementalPatchRejectsDifferentUTF16Snapshot"]
     }
   ]
 }
