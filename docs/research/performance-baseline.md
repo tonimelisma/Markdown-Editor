@@ -2,7 +2,7 @@
 
 - **Authority:** Evidence only
 - **First researched:** 2026-08-13
-- **Last verified:** 2026-08-13
+- **Last verified:** 2026-08-20
 - **Refresh when:** app, OS, architecture, corpus, scenario, or benchmark-driver changes.
 Host: Tonis-MacBook-Pro.local
 OS: macOS 27.0
@@ -10,7 +10,7 @@ OS build: 26A5406e
 Architecture: arm64
 Configuration: Release
 Xcode: Xcode 27.0; Build version 27A5228h
-Corpus digest: 1c1ea8a5f6ccf7d1617a8655cf274f94e4661e73ec5b2e77208f89b85984061c
+Corpus digest: ef3427c5680dda16896c7980751583a2e237da12ba6f67222dae5f9f84fca048
 Corpus/action authority: PerformanceCorpus.swift and BenchmarkDriver.swift
 Method: Scripts/benchmark.sh builds the Release binary, passes a parameter-only manifest, and verifies the exact Swift-owned 6 x 2 x 9 matrix plus per-case action contracts.
 Warmup: 1.5 s per case
