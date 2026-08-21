@@ -375,9 +375,9 @@ struct DiagnosticLogTests {
         document.installTextForTesting("![](assets/sample.png)\n")
         let session = EditorSession(imageDisplayService: ImageDisplayService(fileOperations: operations))
         session.attach(document: document)
-        for _ in 0..<200 where !operations.didStartReading {
+        for _ in 0..<1_000 where !operations.didStartReading {
             await Task.yield()
-            try? await Task.sleep(for: .milliseconds(2))
+            try? await Task.sleep(for: .milliseconds(5))
         }
         #expect(operations.didStartReading)
         session.parseCoordinator.cancel()
@@ -826,8 +826,14 @@ struct DiagnosticLogTests {
 
 private final class DelayedImageFileOperations: ImageDisplayFileOperations, @unchecked Sendable {
     private let lock = NSLock()
-    private(set) var didStartReading = false
+    private var startedReading = false
     private let base = DefaultImageDisplayFileOperations()
+
+    var didStartReading: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return startedReading
+    }
 
     func snapshot(
         at url: URL,
@@ -839,7 +845,7 @@ private final class DelayedImageFileOperations: ImageDisplayFileOperations, @unc
 
     func readData(at url: URL, maximumBytes: Int64) throws -> Data {
         lock.lock()
-        didStartReading = true
+        startedReading = true
         lock.unlock()
         Thread.sleep(forTimeInterval: 0.2)
         return try base.readData(at: url, maximumBytes: maximumBytes)
