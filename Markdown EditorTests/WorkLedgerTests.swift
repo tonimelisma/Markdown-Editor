@@ -285,24 +285,42 @@ struct COR69IntentMeasurementTests {
         document.trace = trace
         let session = EditorSession()
         session.attach(document: document)
-        await Task.yield()
+
+        // `.parseCancelled` is emitted only from inside the detached parse task, at its
+        // cancellation checkpoints. Cancelling before that task exists makes `cancel()` drop the
+        // pending scheduler request instead, so no task ever runs and the event can never be
+        // emitted. A single `Task.yield()` did not guarantee the task had started, which is why
+        // this failed under parallel load and passed in isolation — and why widening the
+        // observation window did not help: by then the outcome was already decided.
+        //
+        // Wait for the parse to actually be in flight, then cancel it.
+        await waitUntil { trace.events.contains { if case .parseStarted = $0 { return true }; return false } }
+        #expect(
+            trace.events.contains { if case .parseStarted = $0 { return true }; return false },
+            "parse never started, so there was nothing to cancel; events: \(trace.events)"
+        )
+
         session.parseCoordinator.cancel()
-        // 3_000 × 2 ms, matching the bounded waits below. The previous 500 (≈1 s) was shorter
-        // than a cold parse of this ~1.2 MB fixture under parallel test load, so the loop expired
-        // before cancellation was observed and the suite failed intermittently while the test
-        // passed in isolation. Still bounded: a genuinely missing record still fails.
-        for _ in 0..<3_000 where !trace.events.contains(where: {
-            if case .parseCancelled = $0 { return true }
-            return false
-        }) {
-            await Task.yield()
-            try? await Task.sleep(for: .milliseconds(2))
-        }
+
+        await waitUntil { trace.events.contains { if case .parseCancelled = $0 { return true }; return false } }
         #expect(trace.events.contains {
             if case .parseCancelled = $0 { return true }
             return false
         }, "events: \(trace.events)")
         session.detach()
+    }
+
+    /// Polls `condition` on the main actor until it holds or the bound elapses. Bounded, so a
+    /// condition that never becomes true still fails the caller's `#expect` rather than hanging.
+    private func waitUntil(
+        timeoutSeconds: Double = 10,
+        _ condition: () -> Bool
+    ) async {
+        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(timeoutSeconds * 1_000_000_000)
+        while !condition() && DispatchTime.now().uptimeNanoseconds < deadline {
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(2))
+        }
     }
 
     // Verifies: REQ-109 — the real WYSIWYG adapter records recovery when its applied TextKit
