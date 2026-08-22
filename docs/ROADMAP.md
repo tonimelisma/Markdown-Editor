@@ -245,9 +245,15 @@ return to discovery; do not improvise an architecture change.
     `Scripts/test-verify-smoke-log.sh` — the nine rejected fixtures proving the smoke verifier
     still discriminates — had stopped being run by the gate when `check.sh` replaced
     `full-check.sh`; REQ-098's proof could have passed vacuously. Both closed.
-13. ⚪ **COR-80 — Property testing and real corpora.**
-    ([plan](plans/COR-80-property-testing-and-real-corpora.md)) Adds deterministic generators,
-    shrinkers, independent oracles, and traceable CommonMark/GFM examples after core seams stabilize.
+13. ✅ **COR-80 — Property testing and real corpora.**
+    REQ-132 is `Done`. Deterministic generators over closed input dimensions, a bounded
+    Markdown-aware shrinker, independent oracles, and 1,324 examples imported verbatim from the
+    CommonMark 0.31.2 and GFM 0.29 specifications with version, licence, SHA-256 and a committed
+    refresh command (`Scripts/import-spec-corpus.py`). The imported corpus drives the same
+    structural properties as the generated one; the specs' expected HTML is deliberately **not**
+    imported, because this app is an editor rather than a renderer and an unasserted expectation is
+    decorative evidence. The generated corpus found two real lexer defects, repaired in COR-84; the
+    spec corpus independently confirms the repair across syntax no generator here produces.
 14. ✅ **COR-81 — Accessibility, contrast, and display preferences.**
     REQ-032, REQ-129 and REQ-141 are `Done`. `EditorColorCatalog` replaced twenty direct
     system-colour references with one closed role enum, which is what made contrast measurable at
