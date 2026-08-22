@@ -32,3 +32,5 @@ Current evidence:
 - [Performance baseline](performance-baseline.md)
 - `COR-80-incremental-lexer-parity.md` — two reproduced incremental/full lexer
   parity divergences found by generated property testing; evidence only.
+- `COR-81-contrast-conformance.md` — measured WCAG ratios for every declared colour
+  role in Light/Dark; two roles below bound. Evidence only.

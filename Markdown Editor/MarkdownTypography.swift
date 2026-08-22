@@ -44,23 +44,23 @@ struct MarkdownTypography {
     var baseFont: NSFont { bodyFont }
 
     var baseAttributes: [NSAttributedString.Key: Any] {
-        [.font: bodyFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraphStyle()]
+        [.font: bodyFont, .foregroundColor: EditorColorCatalog.color(.primaryText), .paragraphStyle: paragraphStyle()]
     }
 
     func attributes(for style: TokenStyle) -> [NSAttributedString.Key: Any] {
         switch style {
-        case .heading(let level): return [.font: font(for: level), .foregroundColor: NSColor.labelColor]
+        case .heading(let level): return [.font: font(for: level), .foregroundColor: EditorColorCatalog.color(.primaryText)]
         case .bold: return [.font: NSFont.systemFont(ofSize: baseFontSize, weight: .bold)]
         case .italic: return [.font: NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)]
-        case .inlineCode, .table: return [.font: inlineCodeFont(), .foregroundColor: NSColor.secondaryLabelColor]
-        case .codeBlock: return [.font: monoFont, .foregroundColor: NSColor.labelColor,
-                                  .backgroundColor: NSColor.quaternaryLabelColor.withAlphaComponent(0.18)]
-        case .link, .image: return [.foregroundColor: NSColor.linkColor]
+        case .inlineCode, .table: return [.font: inlineCodeFont(), .foregroundColor: EditorColorCatalog.color(.secondaryText)]
+        case .codeBlock: return [.font: monoFont, .foregroundColor: EditorColorCatalog.color(.primaryText),
+                                  .backgroundColor: EditorColorCatalog.color(.codeBackground).withAlphaComponent(0.18)]
+        case .link, .image: return [.foregroundColor: EditorColorCatalog.color(.link)]
         case .listMarker, .taskMarker, .thematicBreak, .blockquote:
-            return [.foregroundColor: NSColor.secondaryLabelColor]
+            return [.foregroundColor: EditorColorCatalog.color(.secondaryText)]
         case .strikethrough:
             return [.strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                    .foregroundColor: NSColor.secondaryLabelColor]
+                    .foregroundColor: EditorColorCatalog.color(.secondaryText)]
         }
     }
 
@@ -102,7 +102,7 @@ struct MarkdownTypography {
         block.setContentWidth(100, type: .percentageValueType)
         block.setWidth(Self.quoteRuleWidth, type: .absoluteValueType, for: .border, edge: .minX)
         block.setWidth(Self.quoteRulePadding, type: .absoluteValueType, for: .padding, edge: .minX)
-        block.setBorderColor(NSColor.separatorColor, for: .minX)
+        block.setBorderColor(EditorColorCatalog.color(.separator), for: .minX)
         return block
     }
 
@@ -111,7 +111,7 @@ struct MarkdownTypography {
         let block = CodeTextBlock()
         block.setContentWidth(100, type: .percentageValueType)
         block.setWidth(Self.codeBlockPadding, type: .absoluteValueType, for: .padding)
-        block.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.18)
+        block.backgroundColor = EditorColorCatalog.color(.codeBackground).withAlphaComponent(0.18)
         return block
     }
 }
