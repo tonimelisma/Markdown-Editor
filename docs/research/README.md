@@ -30,3 +30,5 @@ Current evidence:
 - [COR-71 — Stage 0 local-transition probe](COR-71-stage0-local-transition-probe.md)
 - [COR-71 — Release performance evidence](COR-71-release-performance.md)
 - [Performance baseline](performance-baseline.md)
+- `COR-80-incremental-lexer-parity.md` — two reproduced incremental/full lexer
+  parity divergences found by generated property testing; evidence only.
