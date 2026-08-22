@@ -52,9 +52,10 @@ fi
 
 printf '%s\n' '── leak smoke (smoke-test.sh under leaks -atExit)'
 # `leaks` stays alive analysing the process after the app exits, and smoke-test.sh's exit bound is
-# measured against the launched pid — which is now `leaks`. Give that bound room for the analysis;
-# SMOKE_EXIT_SECONDS raises it to its 70 s ceiling. Without this the smoke run kills a healthy
-# analysis and reports "app did not exit in time", describing the wrapper rather than the app.
+# measured against the launched pid — which is now `leaks`. Give that bound room for the analysis:
+# SMOKE_WAIT_LOOPS overrides the derived value outright, because the derived one clamps at 700
+# loops (70 s) and the analysis exceeds that on a loaded machine. Observed failing at the clamp
+# immediately after a full test run. Still a bound — 3000 loops is 300 s, not "wait forever".
 #
 # MallocStackLogging is deliberately NOT set: it is inherited by every child process the script
 # spawns (sleep, rm, bash), which floods the report the parser then has to read. Backtraces are a
@@ -62,6 +63,8 @@ printf '%s\n' '── leak smoke (smoke-test.sh under leaks -atExit)'
 # investigating one.
 SMOKE_DERIVED_DATA="$derived/smoke" \
 SMOKE_EXIT_SECONDS="${SMOKE_EXIT_SECONDS:-60}" \
+SMOKE_WAIT_LOOPS="${SMOKE_WAIT_LOOPS:-3000}" \
+SMOKE_VERIFIER_EXTRA_ARGS="--allow-fault mainActorStall" \
 SMOKE_LAUNCH_WRAPPER="leaks -atExit --" \
     "$repo_root/Scripts/smoke-test.sh" >"$report" 2>&1
 wrapper_status=$?

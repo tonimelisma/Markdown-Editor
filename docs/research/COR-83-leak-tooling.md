@@ -58,6 +58,21 @@ each of those failure shapes, so the parser is shown to discriminate rather than
 
 The raw report is retained at `$CHECK_DERIVED_DATA/leaks/report.txt` for inspection.
 
+## Two properties of the wrapper, both found by running it rather than by reasoning
+
+Both are recorded because each one first appeared as a failure that described the *measurement*
+rather than the application, and both are admitted by name rather than by loosening a check.
+
+- **`leaks` outlives the app.** It stays alive analysing after the process exits, and
+  `smoke-test.sh`'s exit bound is measured against the launched pid — which under the wrapper is
+  `leaks`. The derived bound clamps at 700 loops (70 s) and the analysis exceeded it on a loaded
+  machine, reporting "app did not exit in time". `SMOKE_WAIT_LOOPS` overrides the derived value;
+  the wrapper states 3000 (300 s). Still a bound.
+- **`leaks` causes a main-actor stall.** It suspends the target task to walk its memory, and the
+  app's own watchdog correctly reports that. The same run took 6 s unwrapped and 95 s under the
+  wrapper. `SMOKE_VERIFIER_EXTRA_ARGS="--allow-fault mainActorStall"` admits that one fault by
+  name; every other fault stays fatal and a zero leak count is still required.
+
 ## Not automated in the ordinary gate
 
 `Scripts/check.sh` does not run the leak check by default: it adds roughly a further app launch and

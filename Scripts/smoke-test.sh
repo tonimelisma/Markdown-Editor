@@ -72,13 +72,18 @@ fixture="$workdir/$(basename "$fixture")"
 # plus a bounded margin before declaring a lifecycle failure; a fixed ten-second poll made the
 # documented override fail by killing a healthy verifier before it could emit runEnd.
 smoke_exit_seconds="${SMOKE_EXIT_SECONDS:-6}"
-smoke_wait_loops="$(awk -v seconds="$smoke_exit_seconds" 'BEGIN {
+# SMOKE_WAIT_LOOPS overrides the derived bound outright. Needed by Scripts/leak-smoke.sh: under
+# `leaks -atExit` the pid being waited on is `leaks`, which stays alive analysing the process after
+# the app has exited, and that analysis can exceed the 700-loop (70 s) ceiling on a loaded machine.
+# Raising SMOKE_EXIT_SECONDS cannot help, because the ceiling clamps it. This stays a bound: the
+# caller states a larger one for a slower wrapper rather than the bound being removed.
+smoke_wait_loops="${SMOKE_WAIT_LOOPS:-$(awk -v seconds="$smoke_exit_seconds" 'BEGIN {
     if (seconds !~ /^[0-9]+([.][0-9]+)?$/ || seconds <= 0) seconds = 2
     loops = int((seconds + 10) * 10 + 0.999)
     if (loops < 100) loops = 100
     if (loops > 700) loops = 700
     print loops
-}')"
+}')}"
 
 # SMOKE_LAUNCH_WRAPPER lets a caller run the app under an analysis tool without duplicating this
 # launch. Scripts/leak-smoke.sh sets it to `leaks -atExit --`; wrapping *this script* instead would
@@ -134,5 +139,12 @@ echo "smoke: launch→exit took $((launch_end - launch_start))s"
 # reconciliation loop, so a nine-fold regression passed silently. This run also performs two
 # edits, each of which legitimately produces further host updates.
 host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-8}"
+# SMOKE_VERIFIER_EXTRA_ARGS lets a wrapper admit a fault it provably causes, without this script
+# growing knowledge of every wrapper. Scripts/leak-smoke.sh passes `--allow-fault mainActorStall`,
+# because `leaks` suspends the target task to walk its memory — observed turning a 6 s run into 95 s.
+# Deliberately not a general escape hatch: every value has to be a flag verify-smoke-log.py already
+# defines, and each one names the fault it admits rather than disabling the check.
+# shellcheck disable=SC2086
 python3 "$repo_root/Scripts/verify-smoke-log.py" \
-    "$run_file" "$host_update_threshold" --label smoke --expect-edits --allow-orphaned-intents
+    "$run_file" "$host_update_threshold" --label smoke --expect-edits --allow-orphaned-intents \
+    ${SMOKE_VERIFIER_EXTRA_ARGS:-}
