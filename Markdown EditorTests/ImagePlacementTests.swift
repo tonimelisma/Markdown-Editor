@@ -428,6 +428,106 @@ struct ImageBatchPreflightTests {
             )
         }
     }
+
+    // Verifies: REQ-062 — a pasteboard item carrying only bitmap data, with no supported file and
+    // no promise, is encoded as PNG. Liveness for the fallback: this route had no proof at all,
+    // so nothing discriminated an `encodeBitmapPNG` that silently staged the original bytes.
+    @Test func bitmapOnlyClaimIsEncodedAsPNG() async throws {
+        let tiff = try makeImageData(type: .tiff)
+        #expect(ImageAssetPolicy.detectRepresentation(from: tiff) == nil, "fixture must not already be PNG")
+
+        let artifacts = try await ImageBatchPreflight.stage(
+            claims: [.bitmapData(tiff, providerName: "image.png", declaredType: .tiff)]
+        )
+
+        let artifact = try #require(artifacts.first)
+        defer { try? FileManager.default.removeItem(at: artifact.stagingURL.deletingLastPathComponent()) }
+        #expect(artifacts.count == 1)
+        #expect(artifact.representation == .png)
+
+        // Assert on the staged bytes, not on the declared representation: the file must really be
+        // a PNG on disk, because that is what gets copied to `assets/`.
+        let staged = try Data(contentsOf: artifact.stagingURL)
+        #expect(staged.prefix(8) == Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+        #expect(staged != tiff, "TIFF input must be re-encoded, not staged verbatim")
+        #expect(artifact.sha256Hex == ImageAssetPolicy.sha256Hex(staged))
+        #expect(artifact.byteCount == staged.count)
+    }
+
+    // Verifies: REQ-061/062 — bitmap data that is already PNG is staged byte-for-byte rather than
+    // re-encoded, so the exact-copy guarantee is not quietly lost through the bitmap route.
+    @Test func bitmapClaimAlreadyPNGIsCopiedUnchanged() async throws {
+        let png = try makePNGData(seed: 7)
+
+        let artifacts = try await ImageBatchPreflight.stage(
+            claims: [.bitmapData(png, providerName: "image.png", declaredType: .png)]
+        )
+
+        let artifact = try #require(artifacts.first)
+        defer { try? FileManager.default.removeItem(at: artifact.stagingURL.deletingLastPathComponent()) }
+        #expect(artifact.representation == .png)
+        #expect(try Data(contentsOf: artifact.stagingURL) == png)
+        #expect(artifact.sha256Hex == ImageAssetPolicy.sha256Hex(png))
+    }
+
+    // Verifies: REQ-077 — a directory, and therefore a package (a directory with the bundle bit),
+    // is refused as a non-regular source. REQ-077 claims symlinks, aliases, packages, and
+    // non-regular sources; only the symlink case was proved.
+    @Test func rejectsDirectoryAndPackageSource() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let plainDirectory = dir.appendingPathComponent("plain.png", isDirectory: true)
+        try FileManager.default.createDirectory(at: plainDirectory, withIntermediateDirectories: true)
+        await #expect(throws: ImagePlacementError.nonRegularSource) {
+            _ = try await ImageBatchPreflight.stage(
+                claims: [.fileURL(plainDirectory, providerName: "plain.png", declaredType: .png)]
+            )
+        }
+
+        // A package is a directory that Finder presents as one file; it must not become a source.
+        let package = dir.appendingPathComponent("bundle.png", isDirectory: true)
+        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+        try makePNGData().write(to: package.appendingPathComponent("Contents"))
+        await #expect(throws: ImagePlacementError.nonRegularSource) {
+            _ = try await ImageBatchPreflight.stage(
+                claims: [.fileURL(package, providerName: "bundle.png", declaredType: .png)]
+            )
+        }
+    }
+
+    // Verifies: REQ-077 — a macOS alias file is a regular file whose bytes are bookmark data, not
+    // image data. It must be refused rather than silently resolved to its target, which would copy
+    // bytes the user never pointed at.
+    @Test func rejectsAliasSource() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let real = dir.appendingPathComponent("real.png")
+        try makePNGData().write(to: real)
+
+        let alias = dir.appendingPathComponent("alias.png")
+        let bookmark = try real.bookmarkData(options: .suitableForBookmarkFile)
+        try URL.writeBookmarkData(bookmark, to: alias)
+
+        // The alias resolves to a valid PNG, so a route that followed it would succeed. It must not.
+        await #expect(throws: ImagePlacementError.self) {
+            _ = try await ImageBatchPreflight.stage(
+                claims: [.fileURL(alias, providerName: "alias.png", declaredType: .png)]
+            )
+        }
+    }
+
+    // Verifies: REQ-062/063 — bitmap data that decodes to no image is rejected rather than staged
+    // as a zero-byte or partial asset.
+    @Test func corruptBitmapClaimIsRejected() async throws {
+        await #expect(throws: ImagePlacementError.unsupportedOrCorrupt) {
+            _ = try await ImageBatchPreflight.stage(
+                claims: [.bitmapData(Data([0x00, 0x01, 0x02, 0x03]), providerName: "image.png", declaredType: .tiff)]
+            )
+        }
+    }
 }
 
 struct CanonicalAssetReferenceTests {
