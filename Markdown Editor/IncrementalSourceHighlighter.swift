@@ -231,8 +231,16 @@ actor IncrementalSourceHighlighter {
         let crossLineStrike = Self.crossLineStrikethrough(in: local, contentEnd: contentEnd, incomingStart: incoming.strikethroughStart, range: range)
         let tokens = resolvedTokens.map { Token(range: NSRange(location: range.location + $0.range.location, length: $0.range.length), style: $0.style) }
         let outgoing = SourceLexState(fence: nil, strikethroughStart: crossLineStrike.outgoingStart)
+        // REQ-041/045: the whole-text lexer skips any strikethrough overlapping an exclusive range
+        // — fenced code and inline code — via `overlapsAny`. The cross-line path bypassed that, so
+        // a `~~…~~` span overlapping inline code produced a token the full relex does not. Apply
+        // the same precedence, using the same helper, rather than a second notion of "covered".
+        let exclusiveRanges = tokens
+            .filter { $0.style == .inlineCode || $0.style == .codeBlock }
+            .map(\.range)
         let additionalCrossLineTokens = crossLineStrike.tokens.filter { crossToken in
-            !tokens.contains { $0.style == crossToken.style && $0.range == crossToken.range }
+            if MarkdownHighlighter.overlapsAny(crossToken.range, exclusiveRanges) { return false }
+            return !tokens.contains { $0.style == crossToken.style && $0.range == crossToken.range }
         }
         let mergedTokens = tokens + additionalCrossLineTokens
         return SourceLexedLine(

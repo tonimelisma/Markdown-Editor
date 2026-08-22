@@ -523,6 +523,16 @@ ordinary files the user owns and can read, delete, or ignore.
 
 There is no second instrumentation route. `os_log` is not used for editor events.
 
+**Source highlighting is line-oriented throughout (COR-84).** Every inline rule in
+`MarkdownHighlighter` excludes newlines from its content class, so no inline token spans a line
+boundary. This is what makes `IncrementalSourceHighlighter` able to re-lex a bounded set of lines
+and still agree with a full relex, asserted over the generated corpus. The accepted limit: a link
+whose text spans a source line is not highlighted as a link in Source mode. WYSIWYG projection is
+cmark-driven and unaffected. Strikethrough is the one construct that legitimately carries state
+across lines, and it has exactly one implementation — the whole-text scanner's precedence rule
+(`overlapsAny` against fenced and inline code) is applied by the incremental path rather than
+re-derived.
+
 **Observed production route:** every diagnostic record carries its closed route name and a
 `productionRoutePipe` channel marker, so a record written by an encoding probe or a test fixture is
 distinguishable from one emitted by a real production route. `Scripts/verify-smoke-log.py` reads

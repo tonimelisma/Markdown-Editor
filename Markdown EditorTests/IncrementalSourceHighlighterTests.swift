@@ -269,4 +269,53 @@ struct IncrementalSourceHighlighterTests {
         }
     }
 
+
+    // Verifies: REQ-041/045 — COR-84 regression 1: an unclosed `[` must not pair with a `](` on a
+    // later line. The full lexer's link-text class admitted a newline while every other inline rule
+    // excluded it, so it emitted a token spanning a newline that a line-local incremental lexer
+    // structurally cannot reproduce. Minimized by `Shrinker` from a 233-character generated
+    // document to these two lines.
+    @Test func unclosedBracketDoesNotPairAcrossALineBoundary() async throws {
+        let source = "- [x\\*delta\\_\\`\n![x](assets/x.png) x *x*"
+        let tokens = try await MarkdownHighlighter().tokens(for: source)
+        let ns = source as NSString
+        for token in tokens {
+            let text = ns.substring(with: token.range)
+            #expect(
+                !text.contains("\n"),
+                "\(token.style) spans a newline: \(NSStringFromRange(token.range)) = \(text.debugDescription)"
+            )
+        }
+    }
+
+    // Verifies: REQ-041/045 — COR-84 regression 2: a cross-line strikethrough overlapping inline
+    // code must be suppressed, because the whole-text lexer skips any strikethrough overlapping an
+    // exclusive range. The incremental cross-line path bypassed that precedence and emitted a token
+    // the full relex does not.
+    @Test func crossLineStrikethroughOverlappingInlineCodeIsSuppressed() async throws {
+        let source = "> ~~alpha~~ \\*beta\\_\\` gamma\n> ~~alpha~~ \\*beta\\_\\` gamma"
+        let highlighter = IncrementalSourceHighlighter()
+        _ = try await highlighter.highlight(source: source, editedRange: nil, sourceRevision: 1, intentID: nil)
+
+        let ns = source as NSString
+        let insertAt = ns.range(of: "~~alpha~~", options: .backwards).location + 7
+        let mutable = NSMutableString(string: source)
+        mutable.replaceCharacters(in: NSRange(location: insertAt, length: 0), with: "```")
+        let edited = mutable as String
+
+        let patch = try await highlighter.highlight(
+            source: edited,
+            editedRange: NSRange(location: insertAt, length: 3),
+            sourceRevision: 2,
+            intentID: nil
+        )
+        let full = try await MarkdownHighlighter().tokens(for: edited)
+
+        for changed in patch.changedRanges {
+            let incremental = TokenCanonicalization.canonical(TokenCanonicalization.clipped(patch.tokens, to: changed))
+            let expected = TokenCanonicalization.canonical(TokenCanonicalization.clipped(full, to: changed))
+            #expect(incremental == expected, "disagreement in \(NSStringFromRange(changed))")
+        }
+    }
+
 }

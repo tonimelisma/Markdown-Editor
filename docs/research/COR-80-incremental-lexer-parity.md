@@ -1,5 +1,10 @@
 # COR-80 — Incremental/full lexer parity divergences
 
+> **Repaired by COR-84 on 2026-08-22.** Both divergences below are fixed and the property now
+> asserts zero disagreement. Retained because the two mechanisms — a newline-admitting character
+> class, and a second implementation of a precedence rule — are the kind that recur, and because
+> the minimized fixtures are now named regression tests.
+
 - **Authority:** evidence only. Not architecture, not a repair plan.
 - **First researched:** 2026-08-22
 - **Last verified:** 2026-08-22
