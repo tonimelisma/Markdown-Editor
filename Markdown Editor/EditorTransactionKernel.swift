@@ -20,6 +20,102 @@ nonisolated enum EditorInputRoute: String, CaseIterable, Sendable, Equatable {
     case undoRedo
     case modeChange
     case reconciliation
+
+    /// The owner/origin/transition contract for the native callback route.
+    ///
+    /// // REQ-052/083/084/086/087/093/094; ARC-002–013: every callback has one owner and
+    /// // an explicit state transition. The matrix is executable in
+    /// // `EditorTransactionKernelTests.nativeCallbackContractIsClosed`.
+    var contract: EditorInputContract {
+        switch self {
+        case .sourceReplacement:
+            return EditorInputContract(
+                owner: .sourceEditor,
+                acceptedOrigins: [.nativeUserInput],
+                transition: .sourceMutation
+            )
+        case .wysiwygReplacement:
+            return EditorInputContract(
+                owner: .wysiwygEditor,
+                acceptedOrigins: [.nativeUserInput],
+                transition: .sourceAndPresentationMutation
+            )
+        case .markedText:
+            return EditorInputContract(
+                owner: .compositionCoordinator,
+                acceptedOrigins: [.nativeUserInput, .composition],
+                transition: .compositionLifecycle
+            )
+        case .semanticCommand:
+            return EditorInputContract(
+                owner: .commandController,
+                acceptedOrigins: [.nativeUserInput],
+                transition: .sourceAndPresentationMutation
+            )
+        case .checkbox:
+            return EditorInputContract(
+                owner: .wysiwygEditor,
+                acceptedOrigins: [.nativeUserInput],
+                transition: .sourceAndPresentationMutation
+            )
+        case .imageReference:
+            return EditorInputContract(
+                owner: .imagePlacement,
+                acceptedOrigins: [.nativeUserInput],
+                transition: .sourceMutation
+            )
+        case .undoRedo:
+            return EditorInputContract(
+                owner: .documentUndoManager,
+                acceptedOrigins: [.history],
+                transition: .historyAndSelection
+            )
+        case .modeChange:
+            return EditorInputContract(
+                owner: .editorSession,
+                acceptedOrigins: [.nativeUserInput],
+                transition: .modeState
+            )
+        case .reconciliation:
+            return EditorInputContract(
+                owner: .editorHost,
+                acceptedOrigins: [.nativeUserInput, .programmaticPresentation],
+                transition: .reconciliation
+            )
+        }
+    }
+}
+
+/// The closed native-input ownership vocabulary. These are responsibilities, not object names:
+/// adapters capture native state, while the session/document owners commit canonical effects.
+nonisolated enum EditorInputOwner: String, CaseIterable, Sendable, Equatable {
+    case sourceEditor
+    case wysiwygEditor
+    case compositionCoordinator
+    case commandController
+    case imagePlacement
+    case documentUndoManager
+    case editorSession
+    case editorHost
+}
+
+nonisolated enum EditorInputTransition: String, CaseIterable, Sendable, Equatable {
+    case sourceMutation
+    case sourceAndPresentationMutation
+    case compositionLifecycle
+    case historyAndSelection
+    case modeState
+    case reconciliation
+}
+
+nonisolated struct EditorInputContract: Sendable, Equatable {
+    let owner: EditorInputOwner
+    let acceptedOrigins: Set<EditorUpdateOrigin>
+    let transition: EditorInputTransition
+
+    func accepts(origin: EditorUpdateOrigin) -> Bool {
+        acceptedOrigins.contains(origin)
+    }
 }
 
 nonisolated struct EditorReplacementInput: Sendable, Equatable {

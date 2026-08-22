@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-094",
+  "mutations": [
+    {
+      "rationale": "Running mode application for an unchanged mode would re-enter reconciliation and mutate session-owned state.",
+      "file": "Markdown Editor/EditorHost.swift",
+      "find": "            guard lastAppliedMode != mode else { return }",
+      "replace": "            guard lastAppliedMode == mode else { return }",
+      "expect_red": ["unchangedModeReconciliationMutatesNoSessionState"]
+    }
+  ]
+}

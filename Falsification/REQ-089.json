@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-089",
+  "mutations": [
+    {
+      "rationale": "Emitting an undeclared payload symbol would violate the closed diagnostic vocabulary even though the source value type remains unchanged.",
+      "file": "Markdown Editor/DiagnosticValue.swift",
+      "find": "        case .symbol(let symbol): return \"\\\"\\(symbol.rawValue)\\\"\"",
+      "replace": "        case .symbol: return \"\\\"document-content\\\"\"",
+      "expect_red": ["diagnosticPayloadHasNoStringCase"]
+    }
+  ]
+}

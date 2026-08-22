@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-079",
+  "mutations": [
+    {
+      "rationale": "Removing the injected opener call would make a directly clicked WYSIWYG link inert.",
+      "file": "Markdown Editor/WYSIWYGEditor.swift",
+      "find": "            session.openURL(url)\n            return true",
+      "replace": "            return false",
+      "expect_red": ["testWYSIWYGLinkClickUsesSessionOpener"]
+    }
+  ]
+}

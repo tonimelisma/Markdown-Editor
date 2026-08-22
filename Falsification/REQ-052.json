@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-052",
+  "mutations": [
+    {
+      "rationale": "Assigning the WYSIWYG view as the Source view would collapse the two persistent native editor identities.",
+      "file": "Markdown Editor/EditorHost.swift",
+      "find": "            sourceText = sText",
+      "replace": "            sourceText = wText",
+      "expect_red": ["bothEditorsRetainIdentityAcrossModeToggles"]
+    }
+  ]
+}

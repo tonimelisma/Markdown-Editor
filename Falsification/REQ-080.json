@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-080",
+  "mutations": [
+    {
+      "rationale": "Accepting an unescaped pipe would stop protecting the existing table cell structure.",
+      "file": "Markdown Editor/SemanticEditPlanners.swift",
+      "find": "        if containsUnescapedPipe(text) || text.contains(\"\\n\") || text.contains(\"\\r\") {",
+      "replace": "        if false || text.contains(\"\\n\") || text.contains(\"\\r\") {",
+      "expect_red": ["nativeTableTypingRoutesThroughTablePlanner"]
+    }
+  ]
+}

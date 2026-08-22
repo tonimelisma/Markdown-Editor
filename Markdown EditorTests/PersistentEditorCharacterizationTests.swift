@@ -131,6 +131,21 @@ struct PersistentEditorCharacterizationTests {
         // Without a projection model, WYSIWYG mapping is unavailable.
         let projection: MarkdownProjectionModel? = nil
         #expect(projection == nil)
+
+        let document = MarkdownDocument()
+        document.installTextForTesting("plain source\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        let placement = ImagePlacementController()
+        let coordinator = WYSIWYGEditor.Coordinator(
+            document: document,
+            session: session,
+            placementController: placement
+        )
+        let textView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
+        coordinator.textView = textView
+        coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
+        #expect(textView.isEditable == false)
     }
 
     // Verifies: REQ-084 — composition completes once; stale refuses.

@@ -1,0 +1,12 @@
+{
+  "requirement": "REQ-086",
+  "mutations": [
+    {
+      "rationale": "Replacing the session-owned Source selection with an empty range would lose the mode-local caret and selection on restoration.",
+      "file": "Markdown Editor/EditorHost.swift",
+      "find": "                        [NSValue(range: sourceState.selection.range.utf16)],",
+      "replace": "                        [NSValue(range: NSRange(location: 0, length: 0))],",
+      "expect_red": ["eachModeRestoresOwnSelectionAndScroll"]
+    }
+  ]
+}

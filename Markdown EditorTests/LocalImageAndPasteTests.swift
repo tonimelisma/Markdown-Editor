@@ -40,6 +40,31 @@ final class LocalImageAndPasteTests: XCTestCase {
         ])
     }
 
+    // Verifies: REQ-079 — a native WYSIWYG link callback opens the injected URL and accepts
+    // arbitrary supported URL schemes without consuming the edit route.
+    @MainActor
+    func testWYSIWYGLinkClickUsesSessionOpener() {
+        let document = MarkdownDocument()
+        let session = EditorSession()
+        let placement = ImagePlacementController()
+        var opened: URL?
+        session.openURL = { opened = $0 }
+        let coordinator = WYSIWYGEditor.Coordinator(
+            document: document,
+            session: session,
+            placementController: placement
+        )
+
+        let handled = coordinator.textView(
+            NSTextView(),
+            clickedOnLink: URL(string: "mailto:a@b.test")!,
+            at: 0
+        )
+
+        XCTAssertTrue(handled)
+        XCTAssertEqual(opened?.absoluteString, "mailto:a@b.test")
+    }
+
     // Verifies: REQ-082 — Add Image routes through window-scoped EditorActionRouter.
     @MainActor
     func testAddImageRoutesThroughPlacementClaims() async {
