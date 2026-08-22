@@ -246,6 +246,48 @@ struct NativeSourceContractTests {
         func scrollRangeToVisible(_ range: NSRange) {}
     }
 
+    // Verifies: REQ-093 — while no valid WYSIWYG presentation exists, Source stays *available*.
+    //
+    // REQ-093 promises three things: WYSIWYG becomes unavailable, no stale rich content is exposed,
+    // and Source keeps working. The first two were proved
+    // (`projectionMappingRefusesWithoutPresentation`, `repeatedLoadsNeverReuseRevisionOrOldPresentation`)
+    // and the third — the only one that is a capability rather than a refusal — was not. A build in
+    // which losing the projection also froze the Source editor would have satisfied every cited
+    // proof, which is the REQ-058 shape CLAUDE.md section 3 records.
+    @Test func sourceStaysEditableWhileWYSIWYGHasNoPresentation() throws {
+        let fixture = try makeFixture(source: "alpha bravo\n")
+        fixture.session.clearProjectionForTesting()
+
+        // Precondition: WYSIWYG really is unavailable, so this is the state the requirement is about.
+        if case .waitingForCurrentProjection = fixture.session.wysiwygModeState.availability {
+            // expected
+        } else {
+            Issue.record("expected WYSIWYG to be unavailable, got \(fixture.session.wysiwygModeState.availability)")
+        }
+
+        let insertAt = NSRange(location: 5, length: 0)
+        fixture.session.updateSourceModeState { $0.selection = SourceSelection(utf16: insertAt) }
+        fixture.textView.setSelectedRange(insertAt)
+        let beforeRevision = fixture.document.sourceVersion
+
+        #expect(fixture.coordinator.textView(
+            fixture.textView,
+            shouldChangeTextIn: insertAt,
+            replacementString: "X"
+        ), "the Source editor refused an ordinary edit while WYSIWYG was unavailable")
+        fixture.storage.replaceCharacters(in: insertAt, with: "X")
+        fixture.textView.setSelectedRange(NSRange(location: 6, length: 0))
+        fixture.coordinator.textDidChange(Notification(name: NSText.didChangeNotification, object: fixture.textView))
+
+        // The edit reached canonical source through the ordinary route, and history still works.
+        #expect(fixture.document.text == "alphaX bravo\n")
+        #expect(fixture.document.sourceVersion == beforeRevision + 1)
+        #expect(fixture.document.undoManager?.canUndo == true)
+
+        fixture.document.undoManager?.undo()
+        #expect(fixture.document.text == "alpha bravo\n")
+    }
+
     private func makeFixture(source: String) throws -> Fixture {
         let document = MarkdownDocument()
         document.installTextForTesting(source)
