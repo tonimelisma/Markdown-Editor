@@ -48,6 +48,17 @@ printf 'tests: ~%s passed, %s failed\n' \
     "$(grep -acE 'Test case .* failed' "$log" 2>/dev/null || true)"
 
 if (( run_smoke )); then
+    # The smoke verifier is REQ-098's proof, so it has to be shown to still discriminate: these
+    # fixtures are nine deliberately broken logs it must reject. Without this, a verifier that
+    # silently stopped checking would let every smoke run pass vacuously. Cheap — pure Python.
+    printf '%s\n' '── smoke-verifier fixtures'
+    if ! ./Scripts/test-verify-smoke-log.sh >"$derived/verifier-fixtures.log" 2>&1; then
+        failures=$((failures + 1))
+        tail -20 "$derived/verifier-fixtures.log" >&2
+    else
+        echo "verifier fixtures: PASS"
+    fi
+
     printf '%s\n' '── smoke (launches the built app on a fixture)'
     if ! SMOKE_DERIVED_DATA="$derived/smoke" ./Scripts/smoke-test.sh >"$derived/smoke.log" 2>&1; then
         failures=$((failures + 1))
