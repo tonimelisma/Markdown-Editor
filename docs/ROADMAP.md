@@ -264,10 +264,17 @@ return to discovery; do not improvise an architecture change.
     over the live editor view, to leave source and history untouched, and to paginate under forced
     TextKit layout; window scope is proved by driving every command through one of two bound
     controllers and asserting the other document is untouched.
-16. ⚪ **COR-83 — Release lifecycle and visual conformance.**
-    ([plan](plans/COR-83-release-lifecycle-and-visual-conformance.md)) Uses an explicit Stage 0 tool
-    decision for leak evidence, closes deterministic owner lifetimes, and verifies real layout over
-    the declared semantic/appearance/width/scale/preference matrix.
+16. ✅ **COR-83 — Release lifecycle and visual conformance.**
+    REQ-142 is `Done`. Stage 0 selected row 1 of the plan's decision table — `leaks -atExit`
+    preserves app exit (`runEnd` still written) and yields a machine-parseable count, reproduced
+    three times; `xctrace` was not pursued because the table selects the first matching row.
+    `Scripts/leak-smoke.sh` composes `smoke-test.sh` through a new `SMOKE_LAUNCH_WRAPPER` seam
+    rather than duplicating its launch — wrapping the *script* analyses bash, not the app, which is
+    the first thing that went wrong. The parser is fixture-tested against six report shapes.
+    Closing the increment also found the screenshot verifier failing on a `workLedger` fault: the
+    capture path terminates the app mid-open, and the ledger honestly reported the cancelled intent.
+    Admitted with the documented `--allow-orphaned-intents`, which admits only records whose data
+    marks them orphaned.
 
 ## Post-MVP backlog
 

@@ -80,11 +80,15 @@ smoke_wait_loops="$(awk -v seconds="$smoke_exit_seconds" 'BEGIN {
     print loops
 }')"
 
+# SMOKE_LAUNCH_WRAPPER lets a caller run the app under an analysis tool without duplicating this
+# launch. Scripts/leak-smoke.sh sets it to `leaks -atExit --`; wrapping *this script* instead would
+# analyse bash rather than the app, which is exactly the mistake it prevents. Unquoted on purpose:
+# it is a command prefix, and empty must expand to nothing.
 LLVM_PROFILE_FILE="$logdir/smoke-%p.profraw" \
 MARKDOWN_EDITOR_SMOKE_EXIT_SECONDS="$smoke_exit_seconds" \
 MARKDOWN_EDITOR_SMOKE_EXERCISE_EDITS=1 \
 MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$logdir" \
-    "$binary" -ApplePersistenceIgnoreState YES --diagnostic-smoke-exit "$fixture" &
+    ${SMOKE_LAUNCH_WRAPPER:-} "$binary" -ApplePersistenceIgnoreState YES --diagnostic-smoke-exit "$fixture" &
 app_pid=$!
 
 # Poll for the run file rather than sleeping a fixed amount.
