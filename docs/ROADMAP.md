@@ -221,9 +221,15 @@ return to discovery; do not improvise an architecture change.
    Gives the pinned dialect one traceable fixture and range contract across parser, highlighter,
    projection, and encoder. The full gate passed with 528 tests, 80 Done rows verified against 471
    executed tests, and 50 production trace events. The approved plan is deleted with delivery.
-10. ⚪ **COR-77 — WYSIWYG ownership, IME, selection, and undo.**
-    ([plan](plans/COR-77-wysiwyg-ownership-ime-and-selection.md)) Closes native callback ownership,
-    composition, selection, history, mode, and reconciliation through the transaction kernel.
+10. ✅ **COR-77 — WYSIWYG ownership, IME, selection, and undo.**
+    All eleven requirements are `Done` on 88 anchored proofs. The audit found ownership,
+    composition, selection, history and reconciliation already covered — the plan's step 1
+    ("enumerate every native callback… assign origin and allowed transition") had been attempted
+    as a declarative `EditorInputRoute.contract` table that no production code read, mirrored by a
+    test that restated it; that table was deleted in #68 rather than kept. One real hole remained:
+    REQ-093 promises three things and only its two refusal halves were proved, so a build in which
+    losing the projection also froze the Source editor satisfied every cited proof. Its liveness
+    half now has `sourceStaysEditableWhileWYSIWYGHasNoPresentation`.
 11. ✅ **COR-78 — Image placement transaction.**
     All seventeen placement requirements are `Done` on observed proofs. The audit found the
     implementation sound and two genuine holes: REQ-062's bitmap-to-PNG fallback had no proof at
