@@ -102,6 +102,12 @@ nonisolated struct PartialPublishRollback: Error, Sendable {
 }
 
 nonisolated enum AssetDirectoryStore {
+    /// REQ-065: the one spelling of the shared sibling asset directory. It was previously a bare
+    /// literal repeated at seven sites across two files, so changing one — the lease key, the
+    /// coordination hint, the mkdir, the open, or either rollback — would have silently
+    /// disagreed with the rest instead of failing.
+    static let directoryName = "assets"
+
     static func publish(
         artifacts: [StagedImageArtifact],
         documentURL: URL,
@@ -119,7 +125,7 @@ nonisolated enum AssetDirectoryStore {
         let key = StorageLeaseKey(
             device: parentIdentity.device,
             inode: parentIdentity.inode,
-            childName: "assets"
+            childName: Self.directoryName
         )
         let hold = await leaseRegistry.acquire(key)
         defer { hold.release() }
@@ -164,7 +170,7 @@ nonisolated enum AssetDirectoryStore {
                         let parentFD = open(parent, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
                         if parentFD >= 0 {
                             defer { close(parentFD) }
-                            _ = unlinkat(parentFD, "assets", AT_REMOVEDIR)
+                            _ = unlinkat(parentFD, Self.directoryName, AT_REMOVEDIR)
                         }
                     }
                 }
@@ -179,7 +185,7 @@ nonisolated enum AssetDirectoryStore {
         parentIdentity: DocumentParentIdentity
     ) throws -> AssetPublishResult {
         let parentURL = URL(fileURLWithPath: parentPath)
-        let assetsURL = parentURL.appendingPathComponent("assets", isDirectory: true)
+        let assetsURL = parentURL.appendingPathComponent(Self.directoryName, isDirectory: true)
         var coordinatorError: NSError?
         var publishError: Error?
         var publishResult: AssetPublishResult?
@@ -217,14 +223,14 @@ nonisolated enum AssetDirectoryStore {
         var createdAssetsIdentity: FileIdentity?
         let assetsFD: Int32
         let existing = openat(
-            parentFD, "assets",
+            parentFD, Self.directoryName,
             O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW_ANY | O_RESOLVE_BENEATH
         )
         if existing >= 0 {
             assetsFD = existing
         } else {
-            try POSIXFileOps.mkdiratChild(parentFD: parentFD, name: "assets")
-            assetsFD = try POSIXFileOps.openChildDirectory(parentFD: parentFD, name: "assets")
+            try POSIXFileOps.mkdiratChild(parentFD: parentFD, name: Self.directoryName)
+            assetsFD = try POSIXFileOps.openChildDirectory(parentFD: parentFD, name: Self.directoryName)
             createdAssetsIdentity = try POSIXFileOps.fstatIdentity(assetsFD)
         }
         defer { close(assetsFD) }
@@ -308,7 +314,7 @@ nonisolated enum AssetDirectoryStore {
                     $0 != "." && $0 != ".." && !$0.hasPrefix(".md-editor-") && !$0.hasPrefix(".pin-")
                 }
                 if visible.isEmpty {
-                    _ = unlinkat(parentFD, "assets", AT_REMOVEDIR)
+                    _ = unlinkat(parentFD, Self.directoryName, AT_REMOVEDIR)
                 }
             }
             // REQ-101: this rollback happens before the failure ever reaches the controller, so

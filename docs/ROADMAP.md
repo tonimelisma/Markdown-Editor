@@ -224,9 +224,13 @@ return to discovery; do not improvise an architecture change.
 10. ⚪ **COR-77 — WYSIWYG ownership, IME, selection, and undo.**
     ([plan](plans/COR-77-wysiwyg-ownership-ime-and-selection.md)) Closes native callback ownership,
     composition, selection, history, mode, and reconciliation through the transaction kernel.
-11. ⚪ **COR-78 — Image placement transaction.**
-    ([plan](plans/COR-78-image-placement-transaction.md)) Proves all entry routes share one ordered,
-    exact-copy, contained, rollback-safe transaction.
+11. ✅ **COR-78 — Image placement transaction.**
+    All seventeen placement requirements are `Done` on observed proofs. The audit found the
+    implementation sound and two genuine holes: REQ-062's bitmap-to-PNG fallback had no proof at
+    all, and REQ-077 claimed symlinks, aliases, packages and non-regular sources were rejected
+    while only symlinks were proved. Also added the case-variant collision proof REQ-067 needed
+    and the ordering proof REQ-070 promised. `AssetDirectoryStore.directoryName` replaces the
+    `assets` literal that was repeated at seven sites across two files.
 12. ⚪ **COR-79 — Diagnostics and process lifecycle.**
     ([plan](plans/COR-79-diagnostics-and-process-lifecycle.md)) Completes alert/placement diagnostics
     and process smoke using production-route evidence only.
