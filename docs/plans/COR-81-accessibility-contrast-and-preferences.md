@@ -1,6 +1,19 @@
 # COR-81 — Accessibility, contrast, and display preferences
 
-- **Status:** Approved; not implemented
+- **Status:** Approved; partially implemented (2026-08-22).
+  **Delivered:** `EditorColorCatalog` with a closed `EditorColorRole` enum, replacing twenty direct
+  system-colour references across two files; `ContrastConformanceTests` (WCAG 2.1 arithmetic over
+  every role in Aqua/DarkAqua plus Increase Contrast, alpha composited onto the real surface);
+  `DisplayPreferencePolicyTests` (colour literals outside the catalog, motion/translucency pairing,
+  and the REQ-140 text-scaling absence — with the colour detector self-tested). REQ-141 is `Done`.
+  REQ-139 is `Correction`: two roles measure below their bound, recorded in
+  `../research/COR-81-contrast-conformance.md`, and the fix is a VISION appearance decision.
+
+  **Remaining:** `MarkdownAccessibilityModel` and the AppKit accessibility elements for heading,
+  paragraph, list/item, quote, code, table/cell and raw HTML (REQ-129), and the keyboard-reachability
+  matrix (`KeyboardCommandMatrixTests`) that REQ-032 needs. Thematic break, task checkbox, image,
+  link, and both editor views already expose roles and labels; the closed per-block model does not
+  exist yet.
 - **Delivers:** REQ-032, REQ-129, REQ-139, REQ-141
 Architecture impact: none; establishes reserved ARC-025, ARC-Q21, ARC-Q23, and ARC-Q25
 Blockers: COR-76, COR-77

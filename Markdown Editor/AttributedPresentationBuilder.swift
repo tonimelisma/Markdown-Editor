@@ -160,7 +160,7 @@ enum AttributedPresentationBuilder {
                 attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
             case .code:
                 monospaced = true
-                attrs[.backgroundColor] = NSColor.quaternaryLabelColor.withAlphaComponent(0.18)
+                attrs[.backgroundColor] = EditorColorCatalog.color(.codeBackground).withAlphaComponent(0.18)
             case .codeBlock:
                 // REQ-107; COR-28: monospaced only. The block's `NSTextBlock` container already
                 // supplies the background and padding; adding the inline run background here is
@@ -169,7 +169,7 @@ enum AttributedPresentationBuilder {
             case .link:
                 break
             case .blockQuote, .literalFallback:
-                attrs[.foregroundColor] = NSColor.secondaryLabelColor
+                attrs[.foregroundColor] = EditorColorCatalog.color(.secondaryText)
                 if case .literalFallback = style { monospaced = true }
             }
         }
@@ -195,7 +195,7 @@ enum AttributedPresentationBuilder {
 
         if let destination = run.linkDestination, let url = URL(string: destination) {
             attrs[.link] = url
-            attrs[.foregroundColor] = NSColor.linkColor
+            attrs[.foregroundColor] = EditorColorCatalog.color(.link)
             attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
         }
         return attrs
@@ -227,7 +227,7 @@ enum AttributedPresentationBuilder {
             style.paragraphSpacingBefore = spacing.before
             style.paragraphSpacing = spacing.after
             if level >= 6 {
-                storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: range)
+                storage.addAttribute(.foregroundColor, value: EditorColorCatalog.color(.secondaryText), range: range)
             }
         case .listItem(_, let nesting, _):
             let depth = CGFloat(nesting)
@@ -262,7 +262,7 @@ enum AttributedPresentationBuilder {
             style.paragraphSpacing = typography.blockSpacing
         case .literalHTML:
             storage.addAttribute(.font, value: typography.monoFont, range: range)
-            storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: range)
+            storage.addAttribute(.foregroundColor, value: EditorColorCatalog.color(.secondaryText), range: range)
         }
         // Paragraph styles are copied per block and installed only after all values are set, so
         // a style already inside storage is never mutated in place.
@@ -353,7 +353,7 @@ enum AttributedPresentationBuilder {
                 startingColumn: cell.column,
                 columnSpan: 1
             )
-            block.setBorderColor(NSColor.separatorColor)
+            block.setBorderColor(EditorColorCatalog.color(.separator))
             block.setWidth(0.5, type: .absoluteValueType, for: .border)
             block.setWidth(4, type: .absoluteValueType, for: .padding)
             let paragraph = typography.paragraphStyle()
@@ -457,7 +457,7 @@ final class ThematicRuleAttachmentCell: NSTextAttachmentCell {
 
     nonisolated override func draw(withFrame cellFrame: NSRect, in controlView: NSView?) {
         MainActor.assumeIsolated {
-            NSColor.separatorColor.setStroke()
+            EditorColorCatalog.color(.separator).setStroke()
             let line = NSBezierPath()
             line.move(to: NSPoint(x: cellFrame.minX, y: cellFrame.midY))
             line.line(to: NSPoint(x: cellFrame.maxX, y: cellFrame.midY))
@@ -505,11 +505,11 @@ final class MissingImageAttachmentCell: NSTextAttachmentCell {
 
     nonisolated override func draw(withFrame cellFrame: NSRect, in controlView: NSView?) {
         MainActor.assumeIsolated {
-            NSColor.quaternaryLabelColor.setFill()
+            EditorColorCatalog.color(.codeBackground).setFill()
             NSBezierPath(roundedRect: cellFrame, xRadius: 3, yRadius: 3).fill()
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: Self.labelFont,
-                .foregroundColor: NSColor.secondaryLabelColor
+                .foregroundColor: EditorColorCatalog.color(.secondaryText)
             ]
             // `draw(at:)` never wraps, so the label cannot be silently truncated by the cell's
             // own single-line height.
@@ -545,7 +545,7 @@ final class TaskCheckboxAttachmentCell: NSTextAttachmentCell {
     nonisolated override func draw(withFrame cellFrame: NSRect, in controlView: NSView?) {
         MainActor.assumeIsolated {
             let box = NSBezierPath(roundedRect: cellFrame.insetBy(dx: 1, dy: 1), xRadius: 2, yRadius: 2)
-            NSColor.controlAccentColor.setStroke()
+            EditorColorCatalog.color(.accent).setStroke()
             box.lineWidth = 1.2
             box.stroke()
             if checked {
