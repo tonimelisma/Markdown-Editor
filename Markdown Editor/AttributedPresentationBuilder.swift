@@ -353,7 +353,7 @@ enum AttributedPresentationBuilder {
                 startingColumn: cell.column,
                 columnSpan: 1
             )
-            block.setBorderColor(EditorColorCatalog.color(.separator))
+            block.setBorderColor(EditorColorCatalog.color(.structuralRule))
             block.setWidth(0.5, type: .absoluteValueType, for: .border)
             block.setWidth(4, type: .absoluteValueType, for: .padding)
             let paragraph = typography.paragraphStyle()
@@ -457,7 +457,7 @@ final class ThematicRuleAttachmentCell: NSTextAttachmentCell {
 
     nonisolated override func draw(withFrame cellFrame: NSRect, in controlView: NSView?) {
         MainActor.assumeIsolated {
-            EditorColorCatalog.color(.separator).setStroke()
+            EditorColorCatalog.color(.structuralRule).setStroke()
             let line = NSBezierPath()
             line.move(to: NSPoint(x: cellFrame.minX, y: cellFrame.midY))
             line.line(to: NSPoint(x: cellFrame.maxX, y: cellFrame.midY))

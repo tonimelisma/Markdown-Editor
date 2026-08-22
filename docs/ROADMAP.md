@@ -276,6 +276,20 @@ return to discovery; do not improvise an architecture change.
     Admitted with the documented `--allow-orphaned-intents`, which admits only records whose data
     marks them orphaned.
 
+17. ✅ **COR-84 — Incremental/full lexer parity repair.** (2026-08-22)
+    Both divergences COR-80 found are fixed and REQ-041/REQ-045 are `Done`. The link and image
+    rules admitted a newline while every other inline rule excluded one, so an unclosed `[` paired
+    with a `](` on a later line — 24 of 30 cases, fixed by two character classes. The remaining case
+    was the incremental cross-line strikethrough path bypassing the precedence filter the whole-text
+    lexer applies against fenced and inline code. The pinned baseline is deleted; parity is now
+    asserted at zero over the generated corpus.
+18. ✅ **COR-85 — Contrast repair.** (2026-08-22)
+    REQ-139 is `Done`. `secondaryText` resolves to `labelColor` at 60% alpha (5.74:1 Light, 6.77:1
+    Dark) and `structuralRule` — renamed from `separator`, because it draws thematic breaks, table
+    borders and the block-quote bar, which are content — resolves to `systemGray` (3.26:1 / 5.81:1).
+    Colours were chosen by measuring candidates, not by judgement. The pinned violation set is
+    deleted. Recorded as an approved appearance change in `VISION.md`.
+
 ## Post-MVP backlog
 
 These are ideas, not commitments. Each requires research, explicit requirements, and approval.

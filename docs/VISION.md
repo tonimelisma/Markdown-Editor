@@ -171,3 +171,18 @@ corpus, sample count, median, and p95.
 
 - Direct download, signed with a Developer ID and notarized by Apple.
 - Not sandboxed for now. App Sandbox remains a future distribution decision.
+
+## Appearance and contrast (COR-85, 2026-08-22)
+
+Every colour the editor paints is a declared role in `EditorColorCatalog`, and every role meets its
+WCAG 2.1 bound in both Light and Dark — 4.5:1 for text, 3:1 for the rules and marks that carry
+content. Two consequences are deliberate and visible:
+
+- De-emphasised text (block quotes, table headers, list markers) is `labelColor` at 60% alpha
+  rather than `secondaryLabelColor`, which measured 3.95:1 in Light and carries running prose.
+- Thematic breaks, table borders and the block-quote bar use `systemGray` rather than
+  `separatorColor`. They are **content** — a thematic break is the rendering of `---` — and
+  `separatorColor` is a decorative hairline measuring 1.25:1.
+
+Contrast is a product constraint here, not a preference: a rule the reader cannot see is lost
+content. New colour roles are measured before they ship.

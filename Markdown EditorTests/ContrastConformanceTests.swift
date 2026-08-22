@@ -63,34 +63,14 @@ struct ContrastConformanceTests {
         _ = previous
     }
 
-    /// Roles that do **not** currently meet their WCAG 2.1 bound, with the measured ratio.
-    ///
-    /// Pinned rather than excluded, for the reason given in `PropertyTests`: a filter only fails
-    /// when things get worse, while a baseline also fails when they get better and so forces the
-    /// list down in the same change that fixes anything.
-    ///
-    /// Both entries are real and are recorded in `docs/research/COR-81-contrast-conformance.md`:
-    ///
-    /// - `secondaryText` in Light is 3.95:1 against the window background, below the 4.5:1 bound
-    ///   for normal text. It carries block-quote text, table header text and list markers.
-    /// - `separator` is 1.25:1 in Light and 1.34:1 in Dark, far below the 3:1 component bound. It
-    ///   draws thematic breaks and table borders, which are *content* — `---` is a Markdown
-    ///   construct the reader is meant to perceive — not decoration.
-    ///
-    /// Fixing either needs a product decision about the approved appearance, which VISION owns, so
-    /// REQ-139 is `Correction` with a reproduced counterexample rather than `Done`.
-    private static let knownContrastViolations: Set<String> = [
-        "secondaryText@NSAppearanceNameAqua",
-        "separator@NSAppearanceNameAqua",
-        "separator@NSAppearanceNameDarkAqua"
-    ]
-
-    // Verifies: REQ-139 — every declared colour role is measured against the surface it is drawn
-    // on, in Light and Dark, and the set of roles failing their WCAG bound is exactly the pinned
-    // set. The enumeration is `EditorColorRole.allCases`, so a new role fails this test until its
-    // contrast is measured: the requirement quantifies over "any declared semantic color role",
-    // which a hand-picked list of three would not discharge.
-    @Test func colorRoleContrastMatchesTheDeclaredConformanceSet() {
+    // Verifies: REQ-139 — every declared colour role meets its WCAG 2.1 bound against the surface
+    // it is drawn on, in Light and Dark. The enumeration is `EditorColorRole.allCases`, so a new
+    // role fails this test until its contrast is measured: the requirement quantifies over "any
+    // declared semantic color role", which a hand-picked list of three would not discharge.
+    //
+    // This carried a pinned `knownContrastViolations` set of three until COR-85. The set is deleted
+    // rather than emptied, because conformance is now an assertion and not a place to park a defect.
+    @Test func everyColorRoleMeetsItsContrastBound() {
         var violations: Set<String> = []
         var measured: [String] = []
 
@@ -111,11 +91,9 @@ struct ContrastConformanceTests {
         }
 
         #expect(
-            violations == Self.knownContrastViolations,
+            violations.isEmpty,
             """
-            contrast conformance changed.
-            unexpected new violations: \(violations.subtracting(Self.knownContrastViolations).sorted())
-            fixed (remove from the pinned set): \(Self.knownContrastViolations.subtracting(violations).sorted())
+            \(violations.count) colour role(s) below their WCAG bound: \(violations.sorted())
             measured: \(measured.sorted().joined(separator: ", "))
             """
         )
