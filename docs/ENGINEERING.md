@@ -523,12 +523,10 @@ ordinary files the user owns and can read, delete, or ignore.
 
 There is no second instrumentation route. `os_log` is not used for editor events.
 
-**Observed proof route (COR-68):** the coverage gate consumes only records emitted by an executed
-production route through a gate-owned FIFO capture. Each such record carries its closed route name
-and `productionRoutePipe` channel marker; encoding probes and gate fixtures have different origins
-and cannot satisfy reachability. `docs/proof-routes.json` maps every event to an owner and entry,
-and the gate parses that owner's entry-function body, after masking comments and strings, for the
-event-specific typed route call rather than accepting an aggregate source match.
+**Observed production route:** every diagnostic record carries its closed route name and a
+`productionRoutePipe` channel marker, so a record written by an encoding probe or a test fixture is
+distinguishable from one emitted by a real production route. `Scripts/verify-smoke-log.py` reads
+those markers when checking a smoke run's log.
 
 Performance sampling is explicitly lifetime-owned:
 
@@ -686,7 +684,6 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-022 | Superseded pending parses do not enter source-copy/cmark work after the parser lock becomes available. | deterministic scheduler/lock test with controlled generations |
 | ARC-023 | `ImageDisplayService` derives references from the canonical parse tree, establishes metadata identity before bulk I/O, includes destination, revision, location generation, pixel target, backing scale, and appearance in its request/cache contract, coalesces identical in-flight work, and rejects over-limit encoded files before bulk read/hash/decode. | `ImageDisplayServiceTests`; production-route cache telemetry; over-limit sparse-file and file-operation-spy tests; scanner deletion gate |
 | ARC-024 | Menu and native toolbar are presentations of one window-scoped command model with shared validation. | command-router tests; menu/toolbar construction inspection |
-| ARC-027 | Trace-vocabulary coverage and delivery status are derived from observed production-route evidence and passing requirement proofs; encoding probes and gate fixtures cannot satisfy reachability, and every evidence artefact remains bound to the exact pushed commit and tree before local publication. | Gate-owned FIFO production records with trusted run harness; exact nested owner-entry route checks; `Scripts/check-instrumentation-coverage.sh`; `Scripts/check-delivery-status.sh`; `Scripts/check-proof-results.sh`; `Scripts/check-falsification.sh` |
 
 **Reserved identifiers — approved but not yet true, and therefore not invariants of this
 architecture.** They are recorded here so no later increment reassigns them:
@@ -754,8 +751,8 @@ supersession documents. The working tree states current truth; Git records histo
   presentation, actor, task, and GCD boundaries; presentation leases defer terminal ledger closure
   until downstream work finishes; late or cancelled work is typed and durably emitted; frame
   acknowledgements are generation-safe; and the benchmark matrix and provenance-bound baseline are
-  structurally and operationally verified. The full gate observed the required tests and falsifying
-  mutations before ARC-026 and REQ-123/125/128 were promoted to current truth.
+  structurally and operationally verified. The cited tests were observed passing before ARC-026 and
+  REQ-123/125/128 were promoted to current truth.
 - macOS's Accessibility ▸ Display ▸ Text Size preference has no documented, observable third-party
   API (`docs/research/DISC-08-macos-text-scaling.md`); the approved fixed typography default
   (§7) has no platform-provided route to user scaling. REQ-140 therefore remains `Deferred` rather

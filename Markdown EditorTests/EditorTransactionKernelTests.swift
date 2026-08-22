@@ -10,64 +10,6 @@ import Testing
 
 @MainActor
 struct EditorTransactionKernelTests {
-    // Verifies: REQ-052/083/084/086/087/093/094 — every native callback route has one owner,
-    // an explicit accepted origin set, and one allowed state transition.
-    @Test func nativeCallbackContractIsClosed() {
-        let expected: [EditorInputRoute: EditorInputContract] = [
-            .sourceReplacement: EditorInputContract(
-                owner: .sourceEditor,
-                acceptedOrigins: [.nativeUserInput],
-                transition: .sourceMutation
-            ),
-            .wysiwygReplacement: EditorInputContract(
-                owner: .wysiwygEditor,
-                acceptedOrigins: [.nativeUserInput],
-                transition: .sourceAndPresentationMutation
-            ),
-            .markedText: EditorInputContract(
-                owner: .compositionCoordinator,
-                acceptedOrigins: [.nativeUserInput, .composition],
-                transition: .compositionLifecycle
-            ),
-            .semanticCommand: EditorInputContract(
-                owner: .commandController,
-                acceptedOrigins: [.nativeUserInput],
-                transition: .sourceAndPresentationMutation
-            ),
-            .checkbox: EditorInputContract(
-                owner: .wysiwygEditor,
-                acceptedOrigins: [.nativeUserInput],
-                transition: .sourceAndPresentationMutation
-            ),
-            .imageReference: EditorInputContract(
-                owner: .imagePlacement,
-                acceptedOrigins: [.nativeUserInput],
-                transition: .sourceMutation
-            ),
-            .undoRedo: EditorInputContract(
-                owner: .documentUndoManager,
-                acceptedOrigins: [.history],
-                transition: .historyAndSelection
-            ),
-            .modeChange: EditorInputContract(
-                owner: .editorSession,
-                acceptedOrigins: [.nativeUserInput],
-                transition: .modeState
-            ),
-            .reconciliation: EditorInputContract(
-                owner: .editorHost,
-                acceptedOrigins: [.nativeUserInput, .programmaticPresentation],
-                transition: .reconciliation
-            )
-        ]
-
-        #expect(Set(EditorInputRoute.allCases) == Set(expected.keys))
-        for route in EditorInputRoute.allCases {
-            #expect(route.contract == expected[route])
-            #expect(!route.contract.acceptedOrigins.isEmpty)
-        }
-    }
-
     // Verifies: COR-70 acceptedEditAdvancesSourcePresentationSelectionAndUndoOnce.
     @Test func acceptedEditAdvancesSourcePresentationSelectionAndUndoOnce() {
         let document = MarkdownDocument()

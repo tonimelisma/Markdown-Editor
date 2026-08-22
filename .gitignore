@@ -23,15 +23,9 @@ DerivedData/
 # LLVM_PROFILE_FILE into their own temp dirs; this covers an ordinary `xcodebuild test`.
 *.profraw
 
-# Scripts/fast-check.sh local build output
-.fast-check-build/
-.fast-check-build.log
+# Scripts/check.sh local build output
+.build/check.log
 
-# Push-policy gate receipt and full-check artifacts
-.gate-receipt.json
-.gate-receipt.json.tmp.*
-.full-check-build/
-.full-check-build.log
 
 # Scripts/benchmark.sh Release build output. Every sibling build directory was already listed;
 # this one was missing because the script had never been run to completion.
@@ -54,3 +48,6 @@ Pods/
 Carthage/Build/
 .perf-suite-build/
 .perf-suite.log
+
+# Local gate artifact from the retired push-policy gate
+.gate-receipt.json

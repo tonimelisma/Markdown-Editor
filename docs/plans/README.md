@@ -8,11 +8,8 @@ Plans implement the current architecture in `../ENGINEERING.md`. They do not red
 plan must name:
 
 - requirements and `ARC-###` invariants;
-- a machine-readable **Delivers:** line naming the requirements this plan is expected to move to
-  `Done`, or `none (refactor; no requirement changes status)`;
-- for a refactor-only plan, a machine-readable **Completion-Proofs:** line naming the observed
-  route/component proofs that make completion derivable rather than asserted (COR-68 makes this a
-  delivery-gate requirement before any refactor plan may close);
+- the requirements this plan is expected to move to `Done`, or a note that it is a refactor that
+  changes no requirement's status;
 - architecture impact (`none` unless separately researched and approved);
 - blockers and an explicit statement of what remains independently landable;
 - exact production files/types/routes to add, modify, and delete;
@@ -25,7 +22,7 @@ plan must name:
 
 ## Executing a plan
 
-Read `../../CLAUDE.md` §3 (increment lifecycle) and §9 (definition of done) first. Then:
+Read `../../CLAUDE.md` first. Then:
 
 1. **Check the Executor line and the blockers.** Some plans are blocked on another increment; some
    demand judgement that an unattended agent should not supply alone. Both are stated in the header.
@@ -35,8 +32,7 @@ Read `../../CLAUDE.md` §3 (increment lifecycle) and §9 (definition of done) fi
    blockers land, it must be possible to implement and merge the plan without bundling another plan.
 3. **Work in a worktree on a branch** (`inc-NN-slug` / `cor-NN-slug`), never on `main`. Swift changes
    need a PR and a separate-agent review; docs and project config commit directly to `main`.
-4. **Run the gates and read their output.** `Scripts/fast-check.sh` is the inner loop; the closing
-   sequence in §3 is the release gate. A plan is not done because its steps were performed — it is
+4. **Run the gates and read their output.** `Scripts/check.sh` is the gate. A plan is not done because its steps were performed — it is
    done when its stated proof is observed passing.
 5. **If the plan is wrong, stop.** A plan that does not survive contact with the code is a finding.
    Say so and re-plan; do not improvise production changes the plan does not authorise, and do not

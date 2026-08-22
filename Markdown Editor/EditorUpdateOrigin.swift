@@ -8,7 +8,7 @@ import Foundation
 /// Why an AppKit text/selection callback is firing.
 ///
 /// // REQ-083/084; ARC-013: only native user input closes typing groups.
-nonisolated enum EditorUpdateOrigin: CaseIterable, Hashable, Sendable {
+nonisolated enum EditorUpdateOrigin: Sendable, Equatable {
     case nativeUserInput
     case programmaticPresentation
     case selectionRestoration
