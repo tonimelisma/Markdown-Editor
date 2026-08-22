@@ -33,13 +33,21 @@ actor MarkdownHighlighter {
         // Image: focused CommonMark destination forms — angled `<…>`, optional title,
         // backslash escapes, and up to one nested level of balanced parentheses (REQ-050).
         // Not a complete nested-grammar parser.
+        //
+        // REQ-041/045: the link-text class excludes `\n`, like every other inline rule below. It
+        // did not, and an unclosed `[` on one line then paired with a `](` on a later one —
+        // producing a token spanning a newline that the line-local incremental lexer structurally
+        // cannot reproduce, which is 24 of the 30 divergences COR-80 found. The accepted
+        // consequence is that a link whose text spans a source line is not highlighted as a link;
+        // this inline layer is line-oriented throughout, and WYSIWYG projection is cmark-driven
+        // and unaffected.
         let imagePattern = #"""
-        !\[[^\]]*\]\(\s*(?:<[^>\n]*>|(?:[^()\s\\]|\\.|(\((?:[^()\s\\]|\\.|\([^()\s\\]*\))*\)))+)(?:\s+(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\((?:[^)\\]|\\.)*\)))?\s*\)
+        !\[[^\]\n]*\]\(\s*(?:<[^>\n]*>|(?:[^()\s\\]|\\.|(\((?:[^()\s\\]|\\.|\([^()\s\\]*\))*\)))+)(?:\s+(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\((?:[^)\\]|\\.)*\)))?\s*\)
         """#.trimmingCharacters(in: .whitespacesAndNewlines)
 
         rules = [
             Rule(regex: re(imagePattern), style: .image, skipIfExclusiveCovered: true),
-            Rule(regex: re(#"\[[^\]]*\]\([^)\s]*\)"#), style: .link, skipIfExclusiveCovered: true),
+            Rule(regex: re(#"\[[^\]\n]*\]\([^)\s]*\)"#), style: .link, skipIfExclusiveCovered: true),
             Rule(regex: re(#"\*\*[^\n]+?\*\*"#), style: .bold, skipIfExclusiveCovered: true),
             Rule(regex: re(#"__[^\n]+?__"#), style: .bold, skipIfExclusiveCovered: true),
             Rule(regex: re(#"(?<![*\w])\*(?!\*)[^\n*]+?\*(?!\*)"#), style: .italic, skipIfExclusiveCovered: true),
@@ -358,7 +366,7 @@ actor MarkdownHighlighter {
         return end
     }
 
-    private nonisolated static func overlapsAny(_ range: NSRange, _ others: [NSRange]) -> Bool {
+    nonisolated static func overlapsAny(_ range: NSRange, _ others: [NSRange]) -> Bool {
         others.contains { NSIntersectionRange(range, $0).length > 0 }
     }
 }

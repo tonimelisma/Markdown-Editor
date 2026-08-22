@@ -105,35 +105,15 @@ struct PropertyTests {
         }
     }
 
-    /// The number of (document, edit) pairs on which incremental lexing currently disagrees with a
-    /// fresh full relex. **This number may only ever go down.**
-    ///
-    /// It is a visible baseline rather than a filter, because the alternative — excluding the
-    /// dimensions that fail until the property is green — is how a suite ends up asserting only
-    /// what already works. Two distinct divergences make up this count, both characterised in
-    /// `docs/research/COR-80-incremental-lexer-parity.md`:
-    ///
-    /// - **Cross-line bracket matching (24 cases, malformed input).** Minimized by `Shrinker` to
-    ///   two lines — `- [x\\*delta\\_\\`` then `![x](assets/x.png) x *x*` — which still reproduce.
-    ///   The full lexer matches a
-    ///   link/image bracket construct across a line boundary, pairing an unclosed `[` with a `](`
-    ///   on a later line. A line-local incremental lexer structurally cannot produce that token.
-    /// - **Stale cross-line strikethrough carry (6 cases, valid input).** After an edit that
-    ///   changes line topology — inserting a fence marker or a newline — the incremental lexer
-    ///   keeps a `~~` run the full relex no longer sees.
-    ///
-    /// REQ-041 and REQ-045 promise this parity and are `Correction` because of these findings.
-    /// Repairing either one lowers this number and turns this test red until the baseline is
-    /// updated, which is the point.
-    private static let knownParityDivergences = 30
-
-    // Verifies: REQ-132 — incremental lexing is compared against a *fresh full* lexer over the
-    // whole declared corpus, and the set of disagreements is pinned. The oracle is a brand-new
-    // `MarkdownHighlighter`, which shares no state with the incremental one.
+    // Verifies: REQ-041/045/132 — incremental lexing agrees with a *fresh full* relex over the
+    // whole declared corpus, everywhere. The oracle is a brand-new `MarkdownHighlighter`, which
+    // shares no state with the incremental one.
     //
-    // This property is what found both divergences above. Neither was reachable from the
+    // This property found both divergences COR-84 repaired, and neither was reachable from the
     // hand-written fixtures in `IncrementalSourceHighlighterTests`, whose edits sit at the tail of
-    // three-line documents where the changed range covers everything after it.
+    // three-line documents where the changed range covers everything after it. It carried a pinned
+    // `knownParityDivergences = 30` until the repair; the constant is deleted rather than lowered
+    // to zero, because agreement is now an assertion and not a baseline to hold a defect at.
     @Test func incrementalHighlightingMatchesAFullRelexAfterEveryEditKind() async throws {
         let corpus = GeneratedMarkdown.corpus(seedsPerCell: 1)
         var rng = DeterministicRNG(seed: 0xC0_8000)
@@ -181,12 +161,9 @@ struct PropertyTests {
         }
 
         #expect(
-            divergences.count == Self.knownParityDivergences,
+            divergences.isEmpty,
             """
-            incremental/full lexer parity changed: \(divergences.count) divergences, \
-            baseline \(Self.knownParityDivergences).
-            If this went UP, a new defect was introduced. If it went DOWN, a repair landed and the \
-            baseline must be lowered in the same change.
+            incremental lexing disagreed with a full relex in \(divergences.count) case(s):
             \(divergences.joined(separator: "\n"))
             """
         )
