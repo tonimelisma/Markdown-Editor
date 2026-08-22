@@ -221,9 +221,8 @@ struct PersistentEditorCharacterizationTests {
             placementController: placement
         )
         let textView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
-        let input = WYSIWYGEditor.WYSIWYGInputCoordinator()
-        input.allowingMarkedText = true
-        textView.inputCoordinator = input
+        coordinator.input.allowingMarkedText = true
+        textView.inputCoordinator = coordinator.input
         coordinator.textView = textView
 
         let before = document.text
