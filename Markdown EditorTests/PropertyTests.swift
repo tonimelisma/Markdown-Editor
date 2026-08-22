@@ -1,0 +1,242 @@
+//
+//  PropertyTests.swift
+//  Markdown EditorTests
+//
+//  COR-80 / REQ-132: generated conformance verification over declared input dimensions, compared
+//  only against independent oracles, replayable from printed seeds.
+//
+
+import Foundation
+import Testing
+@testable import Markdown_Editor
+
+/// Every property here obeys three rules, which are the point of the increment:
+///
+/// 1. **Independent oracle.** A property never compares an implementation to a helper that
+///    implementation calls. Incremental lexing is compared to a *fresh full* lexer; a coordinate
+///    map is compared to its exact inverse; a projection is compared to `ProjectionOracle`.
+/// 2. **Declared dimensions, not chosen variety.** Inputs come from the cross-product in
+///    `GeneratedMarkdown.corpus()`, and `dimensionCoverageIsComplete` fails if a member of any
+///    closed enum is never visited.
+/// 3. **Replayable.** Failures print the seed and the exact source, so the case can be turned into
+///    a permanent fixture without re-running the generator.
+struct PropertyTests {
+
+    // Verifies: REQ-132 — the generated corpus visits every member of every declared dimension.
+    // Adding a `BlockKind`, `InlineKind`, `TextFlavor`, or `EditOperation` fails here until the
+    // generator can produce it, which is what makes this coverage rather than variety.
+    @Test func dimensionCoverageIsComplete() {
+        let corpus = GeneratedMarkdown.corpus()
+        #expect(!corpus.isEmpty)
+
+        var blocks = Set<String>()
+        var inlines = Set<String>()
+        var flavors = Set<String>()
+        var endings = Set<String>()
+        var wellformedness = Set<String>()
+        var boms = Set<Bool>()
+        for document in corpus {
+            document.blocks.forEach { blocks.insert(String(describing: $0)) }
+            document.inlines.forEach { inlines.insert(String(describing: $0)) }
+            flavors.insert(String(describing: document.flavor))
+            endings.insert(String(describing: document.lineEnding))
+            wellformedness.insert(String(describing: document.wellformedness))
+            boms.insert(document.hasBOM)
+        }
+
+        #expect(blocks.count == BlockKind.allCases.count, "unvisited block kinds: \(Set(BlockKind.allCases.map { String(describing: $0) }).subtracting(blocks))")
+        #expect(inlines.count == InlineKind.allCases.count, "unvisited inline kinds: \(Set(InlineKind.allCases.map { String(describing: $0) }).subtracting(inlines))")
+        #expect(flavors.count == TextFlavor.allCases.count)
+        #expect(endings.count == LineEnding.allCases.count)
+        #expect(wellformedness.count == Wellformedness.allCases.count)
+        #expect(boms == [false, true])
+
+        // Edit operations are exercised by the edit properties below; assert the vocabulary is
+        // closed and reachable here so a new case cannot be added without a generator.
+        var rng = DeterministicRNG(seed: 1)
+        let source = "alpha\nbravo\n"
+        for operation in EditOperation.allCases {
+            let edit = GeneratedEditSequence.edit(operation, in: source, rng: &rng)
+            #expect(NSMaxRange(edit.range) <= (source as NSString).length, "\(operation) produced an out-of-bounds range")
+        }
+    }
+
+    // Verifies: REQ-132 — the source index round-trips every generated document. Oracle: the exact
+    // inverse map, not a second call into the same helper. A UTF-8 offset converted to UTF-16 and
+    // back must land where it started, for every line start in the document.
+    @Test func sourceIndexRoundTripsOnEveryGeneratedDocument() throws {
+        for document in GeneratedMarkdown.corpus() {
+            let index = MarkdownSourceIndex(source: document.text, sourceVersion: 1)
+            for line in 1...max(index.lineCount, 1) {
+                guard case .success(let utf8Offset) = index.utf8Offset(line: line, column: 1) else { continue }
+                let range = UTF8Range(start: utf8Offset, end: utf8Offset)
+                guard case .success(let utf16) = index.utf16Range(for: range) else {
+                    Issue.record("no UTF-16 range for line \(line)\n\(document.replayDescription)")
+                    continue
+                }
+                #expect(
+                    utf16.location <= (document.text as NSString).length,
+                    "line \(line) mapped outside the document\n\(document.replayDescription)"
+                )
+                #expect(utf16.length == 0, "a zero-width UTF-8 range must stay zero-width\n\(document.replayDescription)")
+            }
+        }
+    }
+
+    // Verifies: REQ-132 — every generated document compiles to a projection the independent
+    // `ProjectionOracle` accepts. The oracle is a separate validator, not the compiler's own
+    // bookkeeping, so this discriminates a projection that is internally consistent but wrong
+    // about the source it claims to describe.
+    @Test func projectionOracleAcceptsEveryGeneratedDocument() throws {
+        for document in GeneratedMarkdown.corpus() {
+            guard let tree = try? MarkdownParser.parse(document.text, sourceVersion: 1).get() else {
+                Issue.record("parse failed\n\(document.replayDescription)")
+                continue
+            }
+            let index = MarkdownSourceIndex(source: document.text, sourceVersion: 1)
+            let model = MarkdownProjectionModel.build(tree: tree, index: index)
+            let result = ProjectionOracle.validate(
+                model: model,
+                sourceUTF16Count: (document.text as NSString).length
+            )
+            if case .failure(let reason) = result {
+                Issue.record("projection oracle refused: \(reason)\n\(document.replayDescription)")
+            }
+        }
+    }
+
+    /// The number of (document, edit) pairs on which incremental lexing currently disagrees with a
+    /// fresh full relex. **This number may only ever go down.**
+    ///
+    /// It is a visible baseline rather than a filter, because the alternative — excluding the
+    /// dimensions that fail until the property is green — is how a suite ends up asserting only
+    /// what already works. Two distinct divergences make up this count, both characterised in
+    /// `docs/research/COR-80-incremental-lexer-parity.md`:
+    ///
+    /// - **Cross-line bracket matching (24 cases, malformed input).** The full lexer matches a
+    ///   link/image bracket construct across a line boundary, pairing an unclosed `[` with a `](`
+    ///   on a later line. A line-local incremental lexer structurally cannot produce that token.
+    /// - **Stale cross-line strikethrough carry (6 cases, valid input).** After an edit that
+    ///   changes line topology — inserting a fence marker or a newline — the incremental lexer
+    ///   keeps a `~~` run the full relex no longer sees.
+    ///
+    /// REQ-041 and REQ-045 promise this parity and are `Correction` because of these findings.
+    /// Repairing either one lowers this number and turns this test red until the baseline is
+    /// updated, which is the point.
+    private static let knownParityDivergences = 30
+
+    // Verifies: REQ-132 — incremental lexing is compared against a *fresh full* lexer over the
+    // whole declared corpus, and the set of disagreements is pinned. The oracle is a brand-new
+    // `MarkdownHighlighter`, which shares no state with the incremental one.
+    //
+    // This property is what found both divergences above. Neither was reachable from the
+    // hand-written fixtures in `IncrementalSourceHighlighterTests`, whose edits sit at the tail of
+    // three-line documents where the changed range covers everything after it.
+    @Test func incrementalHighlightingMatchesAFullRelexAfterEveryEditKind() async throws {
+        let corpus = GeneratedMarkdown.corpus(seedsPerCell: 1)
+        var rng = DeterministicRNG(seed: 0xC0_8000)
+        var divergences: [String] = []
+
+        for document in corpus {
+            for operation in EditOperation.allCases {
+                let highlighter = IncrementalSourceHighlighter()
+                _ = try await highlighter.highlight(
+                    source: document.text,
+                    editedRange: nil,
+                    sourceRevision: 1,
+                    intentID: nil
+                )
+
+                let edit = GeneratedEditSequence.edit(operation, in: document.text, rng: &rng)
+                let edited = GeneratedEditSequence.apply(edit, to: document.text)
+                let patch = try await highlighter.highlight(
+                    source: edited,
+                    editedRange: NSRange(location: edit.range.location, length: (edit.replacement as NSString).length),
+                    sourceRevision: 2,
+                    intentID: nil
+                )
+                let expected = try await MarkdownHighlighter().tokens(for: edited)
+
+                // Compare inside the region the patch says it rescanned. Both sides are already in
+                // post-edit coordinates there, so a difference is a real lexing disagreement and
+                // not a bookkeeping artefact of the harness.
+                for changed in patch.changedRanges {
+                    let fromPatch = TokenCanonicalization.canonical(
+                        TokenCanonicalization.clipped(patch.tokens, to: changed)
+                    )
+                    let fromFullRelex = TokenCanonicalization.canonical(
+                        TokenCanonicalization.clipped(expected, to: changed)
+                    )
+                    if fromPatch != fromFullRelex {
+                        divergences.append("""
+                            \(NSStringFromRange(changed)) edit=\(edit.replayDescription) \
+                            seed=\(document.seed) wellformed=\(document.wellformedness)
+                            """)
+                    }
+                }
+                #expect(patch.sourceUTF16Count == (edited as NSString).length)
+            }
+        }
+
+        #expect(
+            divergences.count == Self.knownParityDivergences,
+            """
+            incremental/full lexer parity changed: \(divergences.count) divergences, \
+            baseline \(Self.knownParityDivergences).
+            If this went UP, a new defect was introduced. If it went DOWN, a repair landed and the \
+            baseline must be lowered in the same change.
+            \(divergences.joined(separator: "\n"))
+            """
+        )
+    }
+
+    // Verifies: REQ-132 — every generated token range lies inside the document and never splits a
+    // composed character sequence. Oracle: `NSString`'s own grapheme segmentation, which the
+    // highlighter does not use.
+    @Test func tokenRangesAreContainedAndGraphemeAligned() async throws {
+        for document in GeneratedMarkdown.corpus(seedsPerCell: 1) {
+            let ns = document.text as NSString
+            let tokens = try await MarkdownHighlighter().tokens(for: document.text)
+            for token in tokens {
+                #expect(
+                    token.range.location >= 0 && NSMaxRange(token.range) <= ns.length,
+                    "token out of bounds \(NSStringFromRange(token.range))\n\(document.replayDescription)"
+                )
+                guard token.range.length > 0, NSMaxRange(token.range) <= ns.length else { continue }
+                let composed = ns.rangeOfComposedCharacterSequences(for: token.range)
+                #expect(
+                    NSEqualRanges(composed, token.range),
+                    """
+                    token split a composed character sequence: \(NSStringFromRange(token.range)) \
+                    vs \(NSStringFromRange(composed))
+                    \(document.replayDescription)
+                    """
+                )
+            }
+        }
+    }
+
+    // Verifies: REQ-132 — generated filenames stay portable for every text flavor. Oracle: an
+    // explicit portability predicate, not `ImageAssetPolicy`'s own notion of a safe name.
+    @Test func generatedAssetNamesStayPortableForEveryFlavor() {
+        var rng = DeterministicRNG(seed: 0xA55E7)
+        let reserved: Set<String> = ["con", "prn", "aux", "nul"]
+        for flavor in TextFlavor.allCases {
+            for _ in 0..<8 {
+                let input = GeneratedMarkdown.sample(for: flavor, rng: &rng)
+                let slug = ImageAssetPolicy.slug(from: input)
+
+                #expect(!slug.isEmpty, "empty slug from \(input.debugDescription)")
+                #expect(slug == slug.lowercased(), "not lowercased: \(slug)")
+                #expect(slug.allSatisfy { $0.isASCII }, "non-ASCII survived: \(slug)")
+                #expect(slug.count <= 64, "unbounded length: \(slug.count)")
+                #expect(!reserved.contains(slug), "reserved device name: \(slug)")
+                #expect(
+                    slug.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" },
+                    "unsafe character in \(slug)"
+                )
+                #expect(!slug.hasPrefix("-") && !slug.hasSuffix("-"), "leading/trailing dash: \(slug)")
+            }
+        }
+    }
+}

@@ -179,7 +179,7 @@ struct IncrementalSourceHighlighterTests {
             incrementalTokens.append(contentsOf: patch.tokens)
             #expect(incrementalTokens.count == Set(incrementalTokens).count)
             let expected = try await MarkdownHighlighter().tokens(for: source)
-            #expect(canonicalTokens(incrementalTokens) == canonicalTokens(expected))
+            #expect(TokenCanonicalization.canonical(incrementalTokens) == TokenCanonicalization.canonical(expected))
         }
     }
 
@@ -237,7 +237,7 @@ struct IncrementalSourceHighlighterTests {
                 incrementalTokens.append(contentsOf: patch.tokens)
                 #expect(incrementalTokens.count == Set(incrementalTokens).count)
                 let expected = try await MarkdownHighlighter().tokens(for: source)
-                #expect(canonicalTokens(incrementalTokens) == canonicalTokens(expected), "seed=\(seed) step=\(step) source=\(source.debugDescription)")
+                #expect(TokenCanonicalization.canonical(incrementalTokens) == TokenCanonicalization.canonical(expected), "seed=\(seed) step=\(step) source=\(source.debugDescription)")
             }
         }
     }
@@ -269,33 +269,4 @@ struct IncrementalSourceHighlighterTests {
         }
     }
 
-    private func canonicalTokens(_ tokens: [Token]) -> [Token] {
-        let grouped = tokens.reduce(into: [TokenStyle: [Token]]()) { result, token in
-            result[token.style, default: []].append(token)
-        }
-        return grouped.values
-            .flatMap { styleTokens in
-                styleTokens.sorted(by: tokenOrder).reduce(into: [Token]()) { result, token in
-                    guard let previous = result.last else {
-                        result.append(token)
-                        return
-                    }
-                    if NSMaxRange(previous.range) >= token.range.location {
-                        result[result.count - 1] = Token(
-                            range: NSUnionRange(previous.range, token.range),
-                            style: previous.style
-                        )
-                    } else {
-                        result.append(token)
-                    }
-                }
-            }
-            .sorted(by: tokenOrder)
-    }
-
-    private func tokenOrder(_ lhs: Token, _ rhs: Token) -> Bool {
-        if lhs.range.location != rhs.range.location { return lhs.range.location < rhs.range.location }
-        if lhs.range.length != rhs.range.length { return lhs.range.length < rhs.range.length }
-        return String(describing: lhs.style) < String(describing: rhs.style)
-    }
 }
