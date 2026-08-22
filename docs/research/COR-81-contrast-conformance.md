@@ -1,5 +1,12 @@
 # COR-81 — WCAG contrast conformance of the approved appearance
 
+> **Repaired by COR-85 on 2026-08-22.** `secondaryText` now resolves to `labelColor` at 60% alpha
+> (5.74:1 Light, 6.77:1 Dark) and the role formerly called `separator` is `structuralRule`,
+> resolving to `systemGray` (3.26:1 Light, 5.81:1 Dark). Every role now meets its bound and the
+> pinned violation set is deleted. Retained because the measurements below are what the choice was
+> made from, and because the reasoning — that a thematic break is content, not chrome — is the part
+> that would otherwise be re-litigated.
+
 - **Authority:** evidence only. Not a product decision and not a repair plan.
 - **First researched:** 2026-08-22
 - **Last verified:** 2026-08-22

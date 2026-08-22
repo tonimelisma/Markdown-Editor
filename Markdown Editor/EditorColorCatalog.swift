@@ -23,13 +23,21 @@ nonisolated enum EditorColorRole: String, CaseIterable, Sendable {
     /// Ordinary body text and headings.
     case primaryText
     /// Block-quote text, table header text, list markers, and other de-emphasised content.
+    ///
+    /// Not `secondaryLabelColor`: that measures 3.95:1 against the window in Light, below the
+    /// 4.5:1 bound for normal text, and it carries running block-quote prose. See COR-85.
     case secondaryText
     /// Link and image reference text.
     case link
     /// Code-block and inline-code backgrounds, and the task checkbox fill.
     case codeBackground
-    /// Rules, table borders, block-quote bars, thematic breaks.
-    case separator
+    /// Thematic breaks, table borders, and the block-quote bar.
+    ///
+    /// Named for what it draws rather than for `NSColor.separatorColor`, because all three are
+    /// **content**: a thematic break is the rendering of `---`, a construct the reader is meant to
+    /// perceive, and table borders carry the table's structure. `separatorColor` is designed as a
+    /// decorative hairline and measures 1.25:1 in Light — invisible to many readers. See COR-85.
+    case structuralRule
     /// The checked task checkbox mark.
     case accent
 
@@ -38,7 +46,7 @@ nonisolated enum EditorColorRole: String, CaseIterable, Sendable {
     var isTextRole: Bool {
         switch self {
         case .primaryText, .secondaryText, .link: return true
-        case .codeBackground, .separator, .accent: return false
+        case .codeBackground, .structuralRule, .accent: return false
         }
     }
 }
@@ -48,10 +56,14 @@ enum EditorColorCatalog {
     static func color(_ role: EditorColorRole) -> NSColor {
         switch role {
         case .primaryText: return .labelColor
-        case .secondaryText: return .secondaryLabelColor
+        // Measured: 5.74:1 Light, 6.77:1 Dark — clears the 4.5:1 text bound with margin while
+        // staying clearly de-emphasised against full `labelColor` at 14.94:1. `secondaryLabelColor`
+        // was 3.95:1 in Light. Alpha over the window background, so appearance still resolves it.
+        case .secondaryText: return NSColor.labelColor.withAlphaComponent(0.6)
         case .link: return .linkColor
         case .codeBackground: return .quaternaryLabelColor
-        case .separator: return .separatorColor
+        // Measured: 3.26:1 Light, 5.81:1 Dark — clears the 3:1 component bound in both.
+        case .structuralRule: return .systemGray
         case .accent: return .controlAccentColor
         }
     }

@@ -102,7 +102,7 @@ struct MarkdownTypography {
         block.setContentWidth(100, type: .percentageValueType)
         block.setWidth(Self.quoteRuleWidth, type: .absoluteValueType, for: .border, edge: .minX)
         block.setWidth(Self.quoteRulePadding, type: .absoluteValueType, for: .padding, edge: .minX)
-        block.setBorderColor(EditorColorCatalog.color(.separator), for: .minX)
+        block.setBorderColor(EditorColorCatalog.color(.structuralRule), for: .minX)
         return block
     }
 
