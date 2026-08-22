@@ -207,6 +207,36 @@ struct PersistentEditorCharacterizationTests {
         #expect(document.text == before)
     }
 
+    // Verifies: REQ-084 — a native marked-text callback remains transient and is not routed
+    // through the ordinary source/presentation transaction while composition is active.
+    @Test func nativeMarkedTextCallbackStaysTransient() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("hello\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        let placement = ImagePlacementController()
+        let coordinator = WYSIWYGEditor.Coordinator(
+            document: document,
+            session: session,
+            placementController: placement
+        )
+        let textView = MarkdownWYSIWYGTextView(usingTextLayoutManager: false)
+        let input = WYSIWYGEditor.WYSIWYGInputCoordinator()
+        input.allowingMarkedText = true
+        textView.inputCoordinator = input
+        coordinator.textView = textView
+
+        let before = document.text
+        let allowed = coordinator.textView(
+            textView,
+            shouldChangeTextIn: NSRange(location: 0, length: 0),
+            replacementString: "中"
+        )
+
+        #expect(allowed)
+        #expect(document.text == before)
+    }
+
     // Verifies: REQ-084 — composition success applies final text synchronously without a second source commit.
     @Test func compositionInsertAppliesFinalTextSynchronously() {
         let document = MarkdownDocument()

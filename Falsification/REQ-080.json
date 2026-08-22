@@ -4,8 +4,8 @@
     {
       "rationale": "Accepting an unescaped pipe would stop protecting the existing table cell structure.",
       "file": "Markdown Editor/SemanticEditPlanners.swift",
-      "find": "        if containsUnescapedPipe(text) || text.contains(\"\\n\") || text.contains(\"\\r\") {",
-      "replace": "        if false || text.contains(\"\\n\") || text.contains(\"\\r\") {",
+      "find": "        guard sourceRange.location >= 0,\n              NSMaxRange(sourceRange) <= (snapshot.text as NSString).length else {",
+      "replace": "        guard false,\n              NSMaxRange(sourceRange) <= (snapshot.text as NSString).length else {",
       "expect_red": ["nativeTableTypingRoutesThroughTablePlanner"]
     }
   ]

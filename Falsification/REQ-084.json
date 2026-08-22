@@ -6,7 +6,7 @@
       "file": "Markdown Editor/WYSIWYGEditor.swift",
       "find": "            if input.committingComposition || input.allowingMarkedText || textView.hasMarkedText() || input.composition.isComposing {",
       "replace": "            if false {",
-      "expect_red": ["compositionCommitsOnceAndStaleRefuses"]
+      "expect_red": ["nativeMarkedTextCallbackStaysTransient"]
     }
   ]
 }

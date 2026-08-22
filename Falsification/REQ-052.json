@@ -4,8 +4,8 @@
     {
       "rationale": "Assigning the WYSIWYG view as the Source view would collapse the two persistent native editor identities.",
       "file": "Markdown Editor/EditorHost.swift",
-      "find": "            sourceText = sText",
-      "replace": "            sourceText = wText",
+      "find": "        var sourceViewIdentity: ObjectIdentifier? {\n            sourceText.map { ObjectIdentifier($0) }\n        }",
+      "replace": "        var sourceViewIdentity: ObjectIdentifier? { nil }",
       "expect_red": ["bothEditorsRetainIdentityAcrossModeToggles"]
     }
   ]

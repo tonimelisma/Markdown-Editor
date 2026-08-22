@@ -4,8 +4,8 @@
     {
       "rationale": "Reversing the history direction at the document owner would fail to restore canonical source across a mode change.",
       "file": "Markdown Editor/MarkdownDocument.swift",
-      "find": "            EditorHistoryInput(patch: patch, direction: direction)",
-      "replace": "            EditorHistoryInput(patch: patch, direction: direction == .undo ? .redo : .undo)",
+      "find": "            replacement: patch.before",
+      "replace": "            replacement: patch.after",
       "expect_red": ["testUndoAcrossModesRestoresSource"]
     }
   ]
