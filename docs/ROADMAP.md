@@ -248,10 +248,15 @@ return to discovery; do not improvise an architecture change.
 13. ⚪ **COR-80 — Property testing and real corpora.**
     ([plan](plans/COR-80-property-testing-and-real-corpora.md)) Adds deterministic generators,
     shrinkers, independent oracles, and traceable CommonMark/GFM examples after core seams stabilize.
-14. ⚪ **COR-81 — Accessibility, contrast, and display preferences.**
-    ([plan](plans/COR-81-accessibility-contrast-and-preferences.md)) Gives every semantic and command
-    route direct AppKit accessibility proof and closes color/preference policy. REQ-140 remains
-    Deferred until a new platform API or separately approved product requirement exists.
+14. ✅ **COR-81 — Accessibility, contrast, and display preferences.**
+    REQ-032, REQ-129 and REQ-141 are `Done`. `EditorColorCatalog` replaced twenty direct
+    system-colour references with one closed role enum, which is what made contrast measurable at
+    all; `MarkdownAccessibilityModel` is a closed role matrix over `PresentationBlockKind`, wired
+    into the production accessibility elements rather than left declarative — mutating it reddens
+    an existing behaviour test as well as its own. REQ-139 is `Correction` with measured
+    counterexamples: `secondaryText` at 3.95:1 and `separator` at 1.25:1 Light / 1.34:1 Dark,
+    recorded in `research/COR-81-contrast-conformance.md`; the fix is a VISION appearance decision.
+    REQ-140 remains Deferred, now with `noTextScalingAPIIsAdopted` proving the deferral honest.
 15. ⚪ **COR-82 — macOS citizenship.**
     ([plan](plans/COR-82-macos-citizenship.md)) Characterizes already integrated window/shortcut work,
     then completes printing, command organization, list continuation, caret links, and window scope.

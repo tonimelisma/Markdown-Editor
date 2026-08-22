@@ -466,8 +466,14 @@ final class ThematicRuleAttachmentCell: NSTextAttachmentCell {
         }
     }
 
-    nonisolated override func accessibilityRole() -> NSAccessibility.Role? { .staticText }
-    nonisolated override func accessibilityLabel() -> String? { "Thematic break" }
+    // REQ-129: role and description come from `MarkdownAccessibilityModel`, so the closed matrix
+    // is what assistive technology actually receives rather than a parallel hard-coded answer.
+    nonisolated override func accessibilityRole() -> NSAccessibility.Role? {
+        MarkdownAccessibilityModel.descriptor(for: .thematicBreak).role
+    }
+    nonisolated override func accessibilityLabel() -> String? {
+        MarkdownAccessibilityModel.descriptor(for: .thematicBreak).roleDescription
+    }
 }
 
 @MainActor
@@ -565,9 +571,20 @@ final class TaskCheckboxAttachmentCell: NSTextAttachmentCell {
         }
     }
 
-    nonisolated override func accessibilityRole() -> NSAccessibility.Role? { .checkBox }
-    nonisolated override func accessibilityLabel() -> String? { label.isEmpty ? "Task" : label }
-    nonisolated override func accessibilityValue() -> Any? { checked ? 1 : 0 }
+    // REQ-129: the role and the checked state come from the closed matrix; only the label is
+    // document text, which reaches assistive technology through this element and nowhere else.
+    private nonisolated var taskDescriptor: MarkdownAccessibilityDescriptor {
+        MarkdownAccessibilityModel.descriptor(
+            for: .listItem(kind: .bullet, nesting: 0, task: true),
+            isChecked: checked
+        )
+    }
+
+    nonisolated override func accessibilityRole() -> NSAccessibility.Role? { taskDescriptor.role }
+    nonisolated override func accessibilityLabel() -> String? {
+        label.isEmpty ? taskDescriptor.roleDescription : label
+    }
+    nonisolated override func accessibilityValue() -> Any? { (taskDescriptor.checked ?? false) ? 1 : 0 }
 
     nonisolated override func accessibilityPerformPress() -> Bool {
         MainActor.assumeIsolated { onPress?() }
@@ -593,7 +610,10 @@ final class ResolvedImageAttachmentCell: NSTextAttachmentCell {
         MainActor.assumeIsolated { descriptionText.isEmpty ? nil : descriptionText }
     }
 
-    nonisolated override func accessibilityRole() -> NSAccessibility.Role? { .image }
+    // REQ-129: role from the closed matrix.
+    nonisolated override func accessibilityRole() -> NSAccessibility.Role? {
+        MarkdownAccessibilityModel.descriptor(for: .image).role
+    }
 
     /// TextKit supplies the actual line fragment at layout time. Keep the image inside that
     /// measure as well as the document-wide maximum, preserving its intrinsic aspect ratio.
