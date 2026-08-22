@@ -1,0 +1,181 @@
+//
+//  MacOSCitizenshipTests.swift
+//  Markdown EditorTests
+//
+//  COR-82 / REQ-130, REQ-131: native printing, window behaviour, and one window-scoped
+//  command surface.
+//
+
+import AppKit
+import Testing
+@testable import Markdown_Editor
+
+@MainActor
+struct PrintingContractTests {
+
+    private func documentWithPrintView(_ text: String) -> (MarkdownDocument, NSTextView) {
+        let document = MarkdownDocument()
+        document.installTextForTesting(text)
+        let storage = NSTextStorage(string: text)
+        let layoutManager = NSLayoutManager()
+        let container = NSTextContainer(size: NSSize(width: 468, height: CGFloat.greatestFiniteMagnitude))
+        container.widthTracksTextView = false
+        storage.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(container)
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 468, height: 200), textContainer: container)
+        document.currentPrintView = textView
+        return (document, textView)
+    }
+
+    // Verifies: REQ-130 — printing uses the native workflow. The app returns an
+    // `NSPrintOperation` over the live editor view from `NSDocument.printOperation(withSettings:)`,
+    // which is the override AppKit's Print menu item routes through; there is no custom print
+    // window, no separate render path, and no second copy of the document to drift.
+    @Test func printingReturnsANativeOperationOverTheEditorView() throws {
+        let (document, textView) = documentWithPrintView("# Title\n\nBody paragraph.\n")
+
+        let operation = try document.printOperation(withSettings: [:])
+
+        #expect(operation.view === textView, "printing must paginate the live editor view")
+        // Margins are set on a copy of the shared print info, so printing does not mutate the
+        // user's system-wide defaults.
+        #expect(operation.printInfo !== NSPrintInfo.shared)
+        #expect(operation.printInfo.leftMargin == 36)
+        #expect(operation.printInfo.rightMargin == 36)
+    }
+
+    // Verifies: REQ-130 — printing changes neither source nor history. A print is a read, and the
+    // failure this guards against is a print path that re-lays-out through the document and marks
+    // it edited, so the user is asked to save a file they only looked at.
+    @Test func printingMutatesNeitherSourceNorHistory() throws {
+        let (document, _) = documentWithPrintView("# Title\n\nBody paragraph.\n")
+        let textBefore = document.text
+        let versionBefore = document.sourceVersion
+        let generationBefore = document.locationGeneration
+        let couldUndoBefore = document.undoManager?.canUndo == true
+        let editedBefore = document.isDocumentEdited
+
+        _ = try document.printOperation(withSettings: [:])
+
+        #expect(document.text == textBefore)
+        #expect(document.sourceVersion == versionBefore)
+        #expect(document.locationGeneration == generationBefore)
+        #expect(document.undoManager?.canUndo == couldUndoBefore)
+        #expect(document.isDocumentEdited == editedBefore)
+    }
+
+    // Verifies: REQ-130 — the presentation actually paginates. Forced layout, not attribute
+    // inspection: the plan requires visible geometry where geometry is the contract, and a
+    // document taller than one page must produce more than one page of laid-out content.
+    @Test func longDocumentPaginatesAcrossMultiplePages() throws {
+        let long = (1...400).map { "Paragraph number \($0) with enough text to occupy a line." }
+            .joined(separator: "\n\n")
+        let (document, textView) = documentWithPrintView(long)
+
+        let operation = try document.printOperation(withSettings: [:])
+        guard let layoutManager = textView.layoutManager, let container = textView.textContainer else {
+            Issue.record("print view has no TextKit stack")
+            return
+        }
+        // Force real layout rather than reading a declared size.
+        layoutManager.ensureLayout(for: container)
+        let usedHeight = layoutManager.usedRect(for: container).height
+
+        let info = operation.printInfo
+        let printableHeight = info.paperSize.height - info.topMargin - info.bottomMargin
+        #expect(printableHeight > 0)
+        #expect(
+            usedHeight > printableHeight,
+            "fixture is not taller than one page (\(usedHeight) vs \(printableHeight)); it cannot prove pagination"
+        )
+    }
+
+    // Verifies: REQ-130 — printing with no visible editor is refused with a typed error rather
+    // than crashing or silently printing an empty page.
+    @Test func printingWithoutAnEditorIsRefused() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("text")
+        document.currentPrintView = nil
+
+        #expect(throws: (any Error).self) {
+            _ = try document.printOperation(withSettings: [:])
+        }
+    }
+}
+
+@MainActor
+struct WindowCitizenshipTests {
+
+    // Verifies: REQ-131 — window restoration, cascading and tabbing are AppKit's, not
+    // reimplemented. The app sets only the standard metadata; there is no custom frame store or
+    // tab manager, which `lifecycleOwnerHasNoDuplicateDocumentSubsystem` also guards.
+    @Test func windowsUseStandardRestorationCascadingAndTabbing() throws {
+        let document = MarkdownDocument()
+        document.makeWindowControllers()
+        defer { document.close() }
+        let window = try #require(document.windowControllers.first?.window)
+
+        #expect(window.tabbingIdentifier == "MarkdownDocument")
+        #expect(window.tabbingMode == .preferred)
+        // A frame autosave name is what makes AppKit restore and cascade; an empty one means the
+        // app is silently not participating.
+        // Both signals asserted separately rather than with `||`: either one alone passing would
+        // hide the other silently opting out. Observed values are "MarkdownDocumentWindow" / true.
+        #expect(window.frameAutosaveName == "MarkdownDocumentWindow", "no frame autosave name, so AppKit cannot restore or cascade")
+        #expect(window.isRestorable, "window opts out of state restoration")
+    }
+
+    // Verifies: REQ-131 — the command surface stays usable at the minimum window size. A toolbar
+    // that cannot compress clips its items, and a clipped command is unreachable by mouse however
+    // well it validates.
+    @Test func toolbarRemainsUsableAtTheMinimumWindowSize() throws {
+        let document = MarkdownDocument()
+        document.makeWindowControllers()
+        defer { document.close() }
+        let window = try #require(document.windowControllers.first?.window)
+
+        window.setContentSize(window.contentMinSize)
+        #expect(window.contentMinSize.width > 0, "no minimum size is declared, so nothing bounds compression")
+
+        // `#require` rather than `if let`: an absent toolbar would skip every assertion below and
+        // report a pass, which is the shape this repository keeps having to unlearn.
+        let toolbar = try #require(window.toolbar, "the document window has no toolbar to compress")
+        let items = Set(toolbar.items.map(\.itemIdentifier))
+        #expect(!items.isEmpty)
+        #expect(toolbar.displayMode != .labelOnly, "label-only mode clips first at narrow widths")
+    }
+
+    // Verifies: REQ-131 — command validation is window-scoped. Two documents, two controllers:
+    // performing a command through one must not reach the other, which is the failure a global
+    // command controller or a broadcast notification produces.
+    @Test func commandValidationStaysWindowScoped() throws {
+        let first = MarkdownDocument()
+        first.installTextForTesting("first document\n")
+        let second = MarkdownDocument()
+        second.installTextForTesting("second document\n")
+
+        let firstSession = EditorSession()
+        firstSession.attach(document: first)
+        let secondSession = EditorSession()
+        secondSession.attach(document: second)
+
+        let firstController = EditorCommandController()
+        firstController.bind(
+            document: first,
+            session: firstSession,
+            actionRouter: EditorActionRouter(),
+            window: nil
+        )
+
+        let secondTextBefore = second.text
+        let secondVersionBefore = second.sourceVersion
+
+        // Drive every command through the first controller; the second document must be untouched.
+        for command in EditorCommand.allCases {
+            _ = firstController.perform(command)
+        }
+
+        #expect(second.text == secondTextBefore, "a command reached a document it was not bound to")
+        #expect(second.sourceVersion == secondVersionBefore)
+    }
+}

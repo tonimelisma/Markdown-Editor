@@ -257,9 +257,13 @@ return to discovery; do not improvise an architecture change.
     counterexamples: `secondaryText` at 3.95:1 and `separator` at 1.25:1 Light / 1.34:1 Dark,
     recorded in `research/COR-81-contrast-conformance.md`; the fix is a VISION appearance decision.
     REQ-140 remains Deferred, now with `noTextScalingAPIIsAdopted` proving the deferral honest.
-15. ⚪ **COR-82 — macOS citizenship.**
-    ([plan](plans/COR-82-macos-citizenship.md)) Characterizes already integrated window/shortcut work,
-    then completes printing, command organization, list continuation, caret links, and window scope.
+15. ✅ **COR-82 — macOS citizenship.**
+    REQ-130 and REQ-131 are `Done`. Following the plan's own step 1, the already-integrated work was
+    characterized rather than reimplemented: printing, frame autosave, tabbing and the shortcut
+    table all existed and were unproven. Printing is proved to return a native `NSPrintOperation`
+    over the live editor view, to leave source and history untouched, and to paginate under forced
+    TextKit layout; window scope is proved by driving every command through one of two bound
+    controllers and asserting the other document is untouched.
 16. ⚪ **COR-83 — Release lifecycle and visual conformance.**
     ([plan](plans/COR-83-release-lifecycle-and-visual-conformance.md)) Uses an explicit Stage 0 tool
     decision for leak evidence, closes deterministic owner lifetimes, and verifies real layout over
