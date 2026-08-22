@@ -44,6 +44,23 @@ incremental: []
 `{3, 13}` is `[x\*elta\_\`` plus the trailing newline — the match reaches the `](` on the third
 line. Confirmed by direct inspection of the offsets, not inferred.
 
+### Minimized regression fixture
+
+`Shrinker` reduces the 233-character generated document to two lines that still reproduce, which is
+what makes the mechanism legible rather than merely recorded:
+
+```markdown
+- [x\*delta\_\`
+![x](assets/x.png) x *x*
+```
+
+Edit: delete one character at UTF-16 offset 7. The same fixture reproduces under
+`deleteBackwardOne`, `deleteRange`, and `insertAtDocumentStart`, with and without a leading BOM —
+so the BOM and the specific edit are incidental and the unclosed bracket is the cause.
+
+Enforcement is `PropertyTests.knownParityDivergences`, which fails if the count moves in either
+direction. This fixture is the readable form of what that number counts.
+
 ## Divergence 2 — stale cross-line strikethrough carry (6 cases, valid input)
 
 After an edit that changes line topology — `insertFenceMarker` or `insertNewline` — the
