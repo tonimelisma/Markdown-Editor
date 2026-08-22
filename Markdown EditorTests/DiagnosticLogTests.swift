@@ -78,8 +78,6 @@ struct DiagnosticLogTests {
         return text.split(separator: "\n").map(String.init)
     }
 
-    // Verifies: REQ-135 — this existing closed mapping matrix is also emitted through the
-    // production JSON-lines sink when the coverage gate requests a test-run artefact.
     // Verifies: REQ-089; ARC-016 — the payload value type has no string case, so document
     // content, URLs, filenames, and paths are unrepresentable rather than merely omitted.
     @Test func diagnosticPayloadHasNoStringCase() {
@@ -246,8 +244,9 @@ struct DiagnosticLogTests {
         #expect(event?["origin"] as? String == DiagnosticEvidenceOrigin.productionRoute.rawValue)
     }
 
-    // Verifies: REQ-135 — an encoding probe remains visibly non-production evidence even when it
-    // emits a complete symbolic vocabulary.
+    // Verifies: REQ-099 — an encoding probe's records stay visibly non-production even when it
+    // emits a complete symbolic vocabulary, so the vocabulary check cannot be satisfied by a probe
+    // rather than by a route a real run actually takes.
     @Test func encodingProbeRecordsCannotMasqueradeAsProductionRoute() async {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
         let sink = JSONLinesEditorTrace.makeEncodingProbe(log: log)
