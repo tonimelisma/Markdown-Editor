@@ -1,0 +1,1 @@
+{"requirement":"REQ-048","mutations":[{"rationale":"Disabling double-tilde parsing must turn the formal strikethrough proof red.","file":"Markdown Editor/FormalGFMDialect.swift","find":"Int32(CMARK_OPT_STRIKETHROUGH_DOUBLE_TILDE)","replace":"Int32(0)","expect_red":["FormalGFMContractTests"]}]}

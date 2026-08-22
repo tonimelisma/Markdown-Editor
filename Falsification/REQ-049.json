@@ -1,0 +1,1 @@
+{"requirement":"REQ-049","mutations":[{"rationale":"Treating every empty-destination link as an unsupported footnote marker must corrupt the numeric footnote fallback contract.","file":"Markdown Editor/FormalGFMDialect.swift","find":"return !label.isEmpty && label.allSatisfy(\\.isNumber)","replace":"return true","expect_red":["FormalGFMContractTests"]}]}

@@ -225,6 +225,22 @@ nonisolated struct MarkdownSourceIndex: Sendable {
         }
     }
 
+    /// cmark's link position omits the empty `()` destination when it has no URL. Extend only
+    /// that same-line, byte-exact spelling so source-backed links retain the complete source.
+    func extendingEmptyDestination(_ position: SourcePosition) -> SourcePosition? {
+        guard position.isKnown,
+              let range = try? utf8Range(for: position).get(),
+              range.end + 2 <= utf8Count else { return nil }
+        let bytes = Array(source.utf8)
+        guard bytes[range.end] == 0x28, bytes[range.end + 1] == 0x29 else { return nil }
+        return SourcePosition(
+            startLine: position.startLine,
+            startColumn: position.startColumn,
+            endLine: position.endLine,
+            endColumn: position.endColumn + 2
+        )
+    }
+
     /// Slice corresponding to an exact UTF-16 NSRange.
     func substring(utf16 range: NSRange) -> Result<String, SourceMappingFailure> {
         guard range.location >= 0, range.length >= 0, NSMaxRange(range) <= utf16Count else {

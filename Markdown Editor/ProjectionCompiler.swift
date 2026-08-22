@@ -144,8 +144,12 @@ private nonisolated struct CompilerBuilder {
             emitInlineChildren(node, styleStack: styleStack + [.strong])
         case .strikethrough:
             emitInlineChildren(node, styleStack: styleStack + [.strikethrough])
-        case .link(let destination, _):
-            emitLinkedChildren(node, styleStack: styleStack + [.link], destination: destination)
+        case .link(let destination, _, let preservesLiteralSource):
+            if preservesLiteralSource, let source = substring(of: node) {
+                appendLiteralFallback(source, node: node, styles: styleStack)
+            } else {
+                emitLinkedChildren(node, styleStack: styleStack + [.link], destination: destination)
+            }
 
         case .image(let destination, _):
             let blockStart = utf16Length

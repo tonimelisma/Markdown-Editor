@@ -73,7 +73,7 @@ nonisolated enum MarkdownNodeKind: Sendable, Equatable {
     case htmlInline(literal: String)
     case emphasis
     case strong
-    case link(destination: String, title: String)
+    case link(destination: String, title: String, preservesLiteralSource: Bool)
     case image(destination: String, title: String)
     case strikethrough
     case table(columnCount: Int, alignments: [TableAlignment])
@@ -102,5 +102,6 @@ nonisolated enum MarkdownParseFailure: Error, Sendable, Equatable {
     case cancelled
     case allocationFailed
     case extensionUnavailable(String)
+    case unsupportedExtension(String)
     case emptyDocumentNode
 }

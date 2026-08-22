@@ -15,17 +15,17 @@ import cmark_gfm_extensions
 /// // REQ-085: parsing is synchronous and runs off-main on immutable source.
 nonisolated enum MarkdownParser {
     /// Exact pinned revision string for tests / attribution.
-    static let pinnedRevision = "5d9bdaa4228b381639fff09403e39a04926e2dbe"
+    static let pinnedRevision = FormalGFMDialect.pinnedRevision
 
     /// Enabled formal-GFM extension names (exact set).
-    static let enabledExtensions = ["table", "tasklist", "strikethrough", "autolink", "tagfilter"]
+    static let enabledExtensions = FormalGFMDialect.enabledExtensions
 
     /// cmark-gfm global registration / parse is not concurrent-safe.
     private static let parseLock = Mutex(false)
 
     /// Parser option bits: double-tilde strikethrough only; no smart/table-span extras.
     static var parserOptions: Int32 {
-        Int32(CMARK_OPT_STRIKETHROUGH_DOUBLE_TILDE)
+        FormalGFMDialect.parserOptions
     }
 
     /// Parse Markdown into an immutable Swift value tree.
@@ -46,10 +46,10 @@ nonisolated enum MarkdownParser {
             var bytes = Array(source.utf8)
             return bytes.withUnsafeMutableBufferPointer { buffer in
                 guard let base = buffer.baseAddress else {
-                    return parseUTF8Unlocked("", byteCount: 0, sourceVersion: sourceVersion)
+                    return parseUTF8Unlocked("", byteCount: 0, sourceVersion: sourceVersion, source: "")
                 }
                 return base.withMemoryRebound(to: CChar.self, capacity: buffer.count) { cPtr in
-                    parseUTF8Unlocked(cPtr, byteCount: buffer.count, sourceVersion: sourceVersion)
+                    parseUTF8Unlocked(cPtr, byteCount: buffer.count, sourceVersion: sourceVersion, source: source)
                 }
             }
         }
@@ -91,7 +91,8 @@ nonisolated enum MarkdownParser {
         sourceVersion: UInt64
     ) -> Result<MarkdownTree, MarkdownParseFailure> {
         parseLock.withLock { _ in
-            parseUTF8Unlocked(bytes, byteCount: byteCount, sourceVersion: sourceVersion)
+            let source = String(decoding: (0..<byteCount).map { UInt8(bitPattern: bytes[$0]) }, as: UTF8.self)
+            return parseUTF8Unlocked(bytes, byteCount: byteCount, sourceVersion: sourceVersion, source: source)
         }
     }
 
@@ -108,7 +109,8 @@ nonisolated enum MarkdownParser {
     private static func parseUTF8Unlocked(
         _ bytes: UnsafePointer<CChar>,
         byteCount: Int,
-        sourceVersion: UInt64
+        sourceVersion: UInt64,
+        source: String
     ) -> Result<MarkdownTree, MarkdownParseFailure> {
         cmark_gfm_core_extensions_ensure_registered()
 
@@ -131,7 +133,8 @@ nonisolated enum MarkdownParser {
         defer { cmark_node_free(document) }
 
         var nextID: UInt64 = 1
-        guard let root = convert(document, nextID: &nextID) else {
+        let sourceIndex = MarkdownSourceIndex(source: source, sourceVersion: sourceVersion)
+        guard let root = convert(document, nextID: &nextID, sourceIndex: sourceIndex) else {
             return .failure(.emptyDocumentNode)
         }
         return .success(MarkdownTree(sourceVersion: sourceVersion, root: root))
@@ -142,6 +145,9 @@ nonisolated enum MarkdownParser {
         byteCount: Int,
         extensions: [String]
     ) -> Result<String, MarkdownParseFailure> {
+        if let unsupported = extensions.first(where: { !FormalGFMDialect.accepts(extensions: [$0]) }) {
+            return .failure(.unsupportedExtension(unsupported))
+        }
         cmark_gfm_core_extensions_ensure_registered()
 
         // Parse options always include double-tilde strikethrough; smart/extras stay off.
@@ -178,12 +184,13 @@ nonisolated enum MarkdownParser {
 
     private static func convert(
         _ node: UnsafeMutablePointer<cmark_node>,
-        nextID: inout UInt64
+        nextID: inout UInt64,
+        sourceIndex: MarkdownSourceIndex
     ) -> MarkdownNode? {
         let id = MarkdownNodeID(rawValue: nextID)
         nextID &+= 1
 
-        let position = SourcePosition(
+        let originalPosition = SourcePosition(
             startLine: Int(cmark_node_get_start_line(node)),
             startColumn: Int(cmark_node_get_start_column(node)),
             endLine: Int(cmark_node_get_end_line(node)),
@@ -191,6 +198,12 @@ nonisolated enum MarkdownParser {
         )
 
         let type = cmark_node_get_type(node)
+        let position: SourcePosition
+        if type == CMARK_NODE_LINK, literalString(cmark_node_get_url(node)).isEmpty {
+            position = sourceIndex.extendingEmptyDestination(originalPosition) ?? originalPosition
+        } else {
+            position = originalPosition
+        }
         let typeName = String(cString: cmark_node_get_type_string(node))
 
         let kind: MarkdownNodeKind
@@ -239,9 +252,21 @@ nonisolated enum MarkdownParser {
         case CMARK_NODE_STRONG:
             kind = .strong
         case CMARK_NODE_LINK:
+            let destination = literalString(cmark_node_get_url(node))
+            let preservesLiteralSource: Bool
+            switch sourceIndex.substring(position: position) {
+            case .success(let source):
+                preservesLiteralSource = FormalGFMDialect.preservesUnsupportedLinkLiteral(
+                    source: source,
+                    destination: destination
+                )
+            case .failure:
+                preservesLiteralSource = false
+            }
             kind = .link(
-                destination: literalString(cmark_node_get_url(node)),
-                title: literalString(cmark_node_get_title(node))
+                destination: destination,
+                title: literalString(cmark_node_get_title(node)),
+                preservesLiteralSource: preservesLiteralSource
             )
         case CMARK_NODE_IMAGE:
             kind = .image(
@@ -271,7 +296,7 @@ nonisolated enum MarkdownParser {
         var children: [MarkdownNode] = []
         var child = cmark_node_first_child(node)
         while let current = child {
-            if let converted = convert(current, nextID: &nextID) {
+            if let converted = convert(current, nextID: &nextID, sourceIndex: sourceIndex) {
                 children.append(converted)
             }
             child = cmark_node_next(current)
