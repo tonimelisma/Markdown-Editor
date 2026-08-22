@@ -23,7 +23,15 @@ nonisolated enum FormalGFMDialect {
     }
 
     static func preservesUnsupportedLinkLiteral(source: String, destination: String) -> Bool {
-        let footnoteLike = source.hasPrefix("[^") && (source.hasSuffix("]") || source.hasSuffix("]()"))
-        return destination.isEmpty && footnoteLike
+        // cmark presents an empty-destination CommonMark link and a footnote-like marker with
+        // the same link node shape. The formal contract reserves the numeric marker spelling for
+        // the unsupported footnote-writing fallback; named empty-destination links stay core.
+        guard destination.isEmpty, source.hasPrefix("[^"),
+              source.hasSuffix("]") || source.hasSuffix("]()") else {
+            return false
+        }
+        let labelLength = source.hasSuffix("]()") ? 3 : 1
+        let label = source.dropFirst(2).dropLast(labelLength)
+        return !label.isEmpty && label.allSatisfy(\.isNumber)
     }
 }

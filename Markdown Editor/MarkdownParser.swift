@@ -190,7 +190,7 @@ nonisolated enum MarkdownParser {
         let id = MarkdownNodeID(rawValue: nextID)
         nextID &+= 1
 
-        let position = SourcePosition(
+        let originalPosition = SourcePosition(
             startLine: Int(cmark_node_get_start_line(node)),
             startColumn: Int(cmark_node_get_start_column(node)),
             endLine: Int(cmark_node_get_end_line(node)),
@@ -198,6 +198,12 @@ nonisolated enum MarkdownParser {
         )
 
         let type = cmark_node_get_type(node)
+        let position: SourcePosition
+        if type == CMARK_NODE_LINK, literalString(cmark_node_get_url(node)).isEmpty {
+            position = sourceIndex.extendingEmptyDestination(originalPosition) ?? originalPosition
+        } else {
+            position = originalPosition
+        }
         let typeName = String(cString: cmark_node_get_type_string(node))
 
         let kind: MarkdownNodeKind
