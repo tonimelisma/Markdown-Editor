@@ -25,12 +25,10 @@ Current evidence:
 - [Image portability and safety](image-portability-and-safety.md)
 - [Native Markdown typography](native-markdown-typography.md)
 - [DISC-01 — Semantic selection anchor vs scoped ARC-009](DISC-01-semantic-selection-anchor.md)
-- [COR-62 — Proof-floor audit](COR-62-proof-floor-audit.md)
 - [DISC-08 — Does AppKit's Dynamic Type route reach this app's editor content?](DISC-08-macos-text-scaling.md)
 - [COR-71 — Stage 0 local-transition probe](COR-71-stage0-local-transition-probe.md)
 - [COR-71 — Release performance evidence](COR-71-release-performance.md)
 - [Performance baseline](performance-baseline.md)
-- `COR-80-incremental-lexer-parity.md` — two reproduced incremental/full lexer
-  parity divergences found by generated property testing; evidence only.
-- `COR-81-contrast-conformance.md` — measured WCAG ratios for every declared colour
-  role in Light/Dark; two roles below bound. Evidence only.
+- [COR-80 — Incremental/full lexer parity divergences](COR-80-incremental-lexer-parity.md)
+- [COR-81 — WCAG contrast conformance of the approved appearance](COR-81-contrast-conformance.md)
+- [COR-83 — Stage 0 process leak tooling decision](COR-83-leak-tooling.md)
