@@ -59,6 +59,9 @@ tools_dir="$(mktemp -d)"
 # belongs — it is gitignored and never committed. Override with SMOKE_SCREENSHOT_OUT.
 out="${SMOKE_SCREENSHOT_OUT:-$(mktemp -d)/smoke-screenshot.png}"
 cleanup() {
+    # The run log is otherwise destroyed with the temp dir, which makes a diagnostics failure here
+    # impossible to investigate without editing this script. Opt in to keep it.
+    if [[ -n "${SMOKE_SCREENSHOT_KEEP_LOGS:-}" ]]; then cp -R "$logdir/." "$SMOKE_SCREENSHOT_KEEP_LOGS/" 2>/dev/null || true; fi
     rm -rf "$logdir" "$tools_dir" "${workdir:-}"
     [[ "$cleanup_derived" -eq 1 ]] && rm -rf "$derived"
     [[ -n "${wake_pid:-}" ]] && kill -0 "$wake_pid" 2>/dev/null && kill "$wake_pid" 2>/dev/null
@@ -278,8 +281,16 @@ host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-4}"
 # while it reads the window surface, so the watchdog reports the measurement apparatus rather
 # than the application. Scripts/smoke-test.sh runs the same app with no capture and tolerates
 # nothing, so a real stall still fails a gate.
+# --allow-orphaned-intents: unlike smoke-test.sh, which waits for the app's own bounded
+# self-termination, this script captures a frame and then terminates the app at a fixed moment. That
+# cancels whatever the documentOpen intent still had in flight, and the work ledger correctly reports
+# the orphan as a fault. Observed record: scope=documentOpen, orphaned=true, orphanReason=cancelled,
+# lateWork=false — the ledger closed cleanly and nothing landed afterwards, so this is the harness's
+# doing rather than a leak. The flag admits only workLedger records whose data marks them orphaned;
+# every ordinary fault stays fatal.
 python3 "$repo_root/Scripts/verify-smoke-log.py" \
-    "$run_file" "$host_update_threshold" --label smoke-screenshot --allow-fault mainActorStall
+    "$run_file" "$host_update_threshold" --label smoke-screenshot \
+    --allow-fault mainActorStall --allow-orphaned-intents
 diagnostics_status=$?
 
 if [[ "$capture_failed" -eq 1 ]]; then
