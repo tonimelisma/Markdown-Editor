@@ -4,8 +4,8 @@
     {
       "rationale": "Appending a token that extends past the input is the forbidden out-of-bounds lexical range defect.",
       "file": "Markdown Editor/MarkdownHighlighter.swift",
-      "find": "return result",
-      "replace": "return result + [Token(range: NSRange(location: 0, length: nsText.length + 1), style: .heading(level: 1))]",
+      "find": "        try Task.checkCancellation()\n        return result\n    }\n\n    /// Seeds line-local cache entries",
+      "replace": "        try Task.checkCancellation()\n        return result + [Token(range: NSRange(location: 0, length: nsText.length + 1), style: .heading(level: 1))]\n    }\n\n    /// Seeds line-local cache entries",
       "expect_red": ["rangesWithinBounds"]
     }
   ]
