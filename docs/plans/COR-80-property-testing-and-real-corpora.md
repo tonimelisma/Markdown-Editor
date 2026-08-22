@@ -5,11 +5,15 @@
   recorded in `../research/COR-80-incremental-lexer-parity.md`; per step 4 below the increment
   stopped rather than repairing them, and REQ-041/REQ-045 are back to `Correction`.
 
-  **Remaining:** (a) import the upstream CommonMark/GFM examples with version, source URL, license,
-  digest and refresh command — not done, because fetching them is a network download that needs
-  explicit approval; (b) shrinkers, which the delivered generators do not yet have (failures are
-  replayable from their printed seed, but not minimized automatically). REQ-132 stays `Correction`
-  until (a) lands.
+  **Shrinkers delivered (2026-08-22).** `Shrinker` applies a fixed Markdown-aware reduction ladder,
+  sync and async, bounded by an evaluation budget and deterministic. It reduced the cross-line
+  bracket divergence from a 233-character generated document to two lines that still reproduce; the
+  minimized fixture is in `../research/COR-80-incremental-lexer-parity.md`. Its own proofs cover
+  reduction, property preservation, determinism, and budget termination.
+
+  **Remaining:** import the upstream CommonMark/GFM examples with version, source URL, license,
+  digest and refresh command. Not done, because fetching them is a network download that needs
+  explicit approval. REQ-132 stays `Correction` until it lands — the generated half is complete.
 - **Delivers:** REQ-132
 Architecture impact: none
 Blockers: COR-71, COR-72, COR-73, COR-76, COR-77, COR-78

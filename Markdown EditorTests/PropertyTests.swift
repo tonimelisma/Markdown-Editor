@@ -113,7 +113,9 @@ struct PropertyTests {
     /// what already works. Two distinct divergences make up this count, both characterised in
     /// `docs/research/COR-80-incremental-lexer-parity.md`:
     ///
-    /// - **Cross-line bracket matching (24 cases, malformed input).** The full lexer matches a
+    /// - **Cross-line bracket matching (24 cases, malformed input).** Minimized by `Shrinker` to
+    ///   two lines — `- [x\\*delta\\_\\`` then `![x](assets/x.png) x *x*` — which still reproduce.
+    ///   The full lexer matches a
     ///   link/image bracket construct across a line boundary, pairing an unclosed `[` with a `](`
     ///   on a later line. A line-local incremental lexer structurally cannot produce that token.
     /// - **Stale cross-line strikethrough carry (6 cases, valid input).** After an edit that
@@ -188,6 +190,46 @@ struct PropertyTests {
             \(divergences.joined(separator: "\n"))
             """
         )
+    }
+
+    // Verifies: REQ-132 — the shrinker actually reduces, terminates, and preserves the property it
+    // was given. A shrinker that returned its input unchanged would satisfy "minimized fixture" in
+    // name only, and one that lost the failing property would produce a fixture that proves nothing.
+    @Test func shrinkerReducesWhilePreservingTheFailingProperty() {
+        let original = (1...40).map { "line \($0) the quick brown fox" }.joined(separator: "\n")
+        // A property that only cares about one marker line: everything else is removable.
+        let minimized = Shrinker.minimize(original) { $0.contains("line 7 ") }
+
+        #expect(minimized.contains("line 7 "), "shrinking lost the property it was minimizing")
+        #expect(minimized.count < original.count, "shrinker returned something no smaller")
+        #expect(
+            minimized.components(separatedBy: "\n").count <= 3,
+            "expected a near-minimal fixture, got \(minimized.components(separatedBy: "\n").count) lines"
+        )
+        // Filler text is replaced with a marker, so the fixture shows structure not noise.
+        #expect(!minimized.contains("quick brown fox"))
+    }
+
+    // Verifies: REQ-132 — shrinking is deterministic: the same failure minimizes to the same
+    // fixture every time, so a committed regression fixture is reproducible rather than whatever
+    // that run happened to find.
+    @Test func shrinkingIsDeterministic() {
+        let original = GeneratedMarkdown.corpus(seedsPerCell: 1)[3].text
+        let property: (String) -> Bool = { $0.contains("|") || $0.contains("#") }
+        let first = Shrinker.minimize(original, stillFails: property)
+        let second = Shrinker.minimize(original, stillFails: property)
+        #expect(first == second)
+    }
+
+    // Verifies: REQ-132 — a shrinker cannot run unboundedly. A property that always reports failure
+    // would otherwise let the ladder evaluate forever and hang the suite instead of failing it.
+    @Test func shrinkingRespectsItsEvaluationBudget() {
+        let original = (1...200).map { "line \($0)" }.joined(separator: "\n")
+        let minimized = Shrinker.minimize(original, budget: 10) { _ in true }
+        #expect(!minimized.isEmpty)
+        // With a budget of 10 it cannot have reached the true minimum, which is the point: it
+        // stopped rather than ran.
+        #expect(minimized.components(separatedBy: "\n").count > 1)
     }
 
     // Verifies: REQ-132 — every generated token range lies inside the document and never splits a
