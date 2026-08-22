@@ -287,7 +287,11 @@ struct COR69IntentMeasurementTests {
         session.attach(document: document)
         await Task.yield()
         session.parseCoordinator.cancel()
-        for _ in 0..<500 where !trace.events.contains(where: {
+        // 3_000 × 2 ms, matching the bounded waits below. The previous 500 (≈1 s) was shorter
+        // than a cold parse of this ~1.2 MB fixture under parallel test load, so the loop expired
+        // before cancellation was observed and the suite failed intermittently while the test
+        // passed in isolation. Still bounded: a genuinely missing record still fails.
+        for _ in 0..<3_000 where !trace.events.contains(where: {
             if case .parseCancelled = $0 { return true }
             return false
         }) {

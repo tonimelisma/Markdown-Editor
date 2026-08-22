@@ -55,19 +55,12 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
     let document: UInt64?
     /// Set only on a `repeated` summary: the event whose repeats were collapsed.
     let collapsedEvent: DiagnosticEventName?
-    /// Evidence provenance used by executable proof gates. Lifecycle records may omit it;
-    /// ordinary records always carry an explicit origin.
+    /// Where this record came from. Lifecycle records may omit it; ordinary records always
+    /// carry an explicit origin, so a test fixture's record is distinguishable from a real one.
     let origin: DiagnosticEvidenceOrigin?
-    /// The production route's closed event name. Present only for observed production-route
-    /// records, so a route checker can compare evidence with the reviewed map.
+    /// The production route's closed event name. Present only on records emitted by a real
+    /// production route.
     let productionRoute: DiagnosticEventName?
-    /// Present only on records written through the gate-owned production evidence channel.
-    let evidenceChannel: String?
-    /// Trusted harness identity supplied by the owning diagnostic run, never inferred from a
-    /// copied log filename.
-    let evidenceHarness: String?
-    /// Random capture-session identity supplied by the gate and checked against its sidecar.
-    let evidenceSession: String?
     let data: [(key: DiagnosticField, value: DiagnosticValue)]
 
     init(
@@ -81,9 +74,6 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
         collapsedEvent: DiagnosticEventName? = nil,
         origin: DiagnosticEvidenceOrigin? = .gateFixture,
         productionRoute: DiagnosticEventName? = nil,
-        evidenceChannel: String? = nil,
-        evidenceHarness: String? = nil,
-        evidenceSession: String? = nil,
         data: [(key: DiagnosticField, value: DiagnosticValue)] = []
     ) {
         self.wallClock = wallClock
@@ -96,9 +86,6 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
         self.collapsedEvent = collapsedEvent
         self.origin = origin
         self.productionRoute = productionRoute
-        self.evidenceChannel = evidenceChannel
-        self.evidenceHarness = evidenceHarness
-        self.evidenceSession = evidenceSession
         self.data = data
     }
 
@@ -111,9 +98,6 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
             && lhs.collapsedEvent == rhs.collapsedEvent
             && lhs.origin == rhs.origin
             && lhs.productionRoute == rhs.productionRoute
-            && lhs.evidenceChannel == rhs.evidenceChannel
-            && lhs.evidenceHarness == rhs.evidenceHarness
-            && lhs.evidenceSession == rhs.evidenceSession
             && lhs.data.count == rhs.data.count
             && zip(lhs.data, rhs.data).allSatisfy { $0.key == $1.key && $0.value == $1.value }
     }
@@ -142,15 +126,6 @@ nonisolated struct DiagnosticRecord: Sendable, Equatable {
         }
         if let productionRoute {
             parts.append("\"route\":\"\(productionRoute.rawValue)\"")
-        }
-        if let evidenceChannel {
-            parts.append("\"channel\":\"\(evidenceChannel)\"")
-        }
-        if let evidenceHarness {
-            parts.append("\"harness\":\"\(evidenceHarness)\"")
-        }
-        if let evidenceSession {
-            parts.append("\"session\":\"\(evidenceSession)\"")
         }
         if !data.isEmpty {
             let fields = data.map { "\"\($0.key.rawValue)\":\($0.value.jsonFragment)" }

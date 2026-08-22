@@ -35,7 +35,6 @@ nonisolated struct DiagnosticRunHeader: Sendable, Equatable {
     let buildVersion: String
     let osVersion: String
     let processID: Int32
-    let evidenceSession: String?
 
     init(
         runID: String,
@@ -44,8 +43,7 @@ nonisolated struct DiagnosticRunHeader: Sendable, Equatable {
         shortVersion: String,
         buildVersion: String,
         osVersion: String,
-        processID: Int32,
-        evidenceSession: String? = nil
+        processID: Int32
     ) {
         self.runID = runID
         self.startedAt = startedAt
@@ -54,7 +52,6 @@ nonisolated struct DiagnosticRunHeader: Sendable, Equatable {
         self.buildVersion = buildVersion
         self.osVersion = osVersion
         self.processID = processID
-        self.evidenceSession = evidenceSession
     }
 
     /// // REQ-095: encoded rather than interpolated. `osVersion` and the bundle versions are
@@ -69,7 +66,6 @@ nonisolated struct DiagnosticRunHeader: Sendable, Equatable {
                 let build: String
                 let os: String
                 let pid: Int32
-                let session: String?
             }
             let v: Int
             let ev: String
@@ -88,8 +84,7 @@ nonisolated struct DiagnosticRunHeader: Sendable, Equatable {
                 version: shortVersion,
                 build: buildVersion,
                 os: osVersion,
-                pid: processID,
-                session: evidenceSession
+                pid: processID
             )
         )
         let encoder = JSONEncoder()
@@ -208,9 +203,6 @@ final class DiagnosticLog {
 
     private let startUptimeNanos: UInt64
     private let writeCoordinator: DiagnosticWriteCoordinator
-    /// Production route records are copied to the gate-owned FIFO by this internal writer. The
-    /// writer is not addressable through the editor trace protocol or an evidence-origin argument.
-    private let coverageRecorder: JSONLinesEditorTrace.ProductionRouteCoverageRecorder?
     private var durabilityTask: Task<Void, Never>?
     private var closed = false
     private var suddenTerminationDisabled = false
@@ -245,8 +237,7 @@ final class DiagnosticLog {
             shortVersion: (bundle?["CFBundleShortVersionString"] as? String) ?? "0",
             buildVersion: (bundle?["CFBundleVersion"] as? String) ?? "0",
             osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
-            processID: ProcessInfo.processInfo.processIdentifier,
-            evidenceSession: nil
+            processID: ProcessInfo.processInfo.processIdentifier
         )
         try? FileManager.default.createDirectory(
             at: directory,
@@ -271,7 +262,6 @@ final class DiagnosticLog {
             reservedTerminalBytes: terminalReservation
         )
         writeCoordinator = DiagnosticWriteCoordinator(sink: sink)
-        coverageRecorder = JSONLinesEditorTrace.ProductionRouteCoverageRecorder(hostKind: hostKind)
         startUptimeNanos = DispatchTime.now().uptimeNanoseconds
         // A document app with no dirty documents is eligible for sudden termination: the process
         // is killed without `applicationWillTerminate`, so the terminating record never lands and
@@ -353,10 +343,9 @@ final class DiagnosticLog {
         )
     }
 
-    /// The only application API that can produce production-route evidence. The route is a
-    /// closed event identifier supplied by the production owner, never a caller-controlled
-    /// evidence-origin argument. The record is copied to the gate-owned FIFO by the internal
-    /// recorder only after the typed route identity matches the event.
+    /// The only application API that produces production-route records. The route is a closed
+    /// event identifier supplied by the production owner, never a caller-controlled argument,
+    /// and the record is written only when the typed route identity matches the event.
     func recordProduction(
         _ event: DiagnosticEventName,
         level: DiagnosticLevel = .debug,
@@ -395,16 +384,6 @@ final class DiagnosticLog {
     ) {
         guard !closed else { return }
         let uptime = Double(DispatchTime.now().uptimeNanoseconds - startUptimeNanos) / 1_000_000_000
-
-        if let route, origin == .productionRoute {
-            coverageRecorder?.record(
-                event: event,
-                level: level,
-                category: category,
-                route: route,
-                data: data
-            )
-        }
 
         // REQ-096: a defect firing every run-loop pass must produce bounded evidence — but a
         // fault is the evidence, so it is never collapsed away.
