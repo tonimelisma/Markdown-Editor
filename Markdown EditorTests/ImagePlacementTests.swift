@@ -303,6 +303,167 @@ struct AssetDirectoryStoreTests {
         }
     }
 
+    // Verifies: REQ-065 — `assets/` is created only when an image is actually placed. The
+    // requirement's refusal half (a symlinked `assets/`) was proved; its liveness and laziness
+    // halves were not, so nothing discriminated an implementation that created the directory
+    // eagerly beside every document.
+    @Test func assetsDirectoryIsCreatedOnlyWhenAnImageIsPlaced() async throws {
+        let png = try makePNGData()
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let doc = dir.appendingPathComponent("note.md")
+        try Data("# just text\n".utf8).write(to: doc)
+        let assets = dir.appendingPathComponent("assets", isDirectory: true)
+
+        #expect(!FileManager.default.fileExists(atPath: assets.path), "no image placed yet")
+
+        let staging = dir.appendingPathComponent("stage", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        let staged = staging.appendingPathComponent("x")
+        try png.write(to: staged)
+        let result = try await AssetDirectoryStore.publish(
+            artifacts: [StagedImageArtifact(
+                stagingURL: staged,
+                providerName: "a.png",
+                representation: .png,
+                sha256Hex: ImageAssetPolicy.sha256Hex(png),
+                byteCount: png.count
+            )],
+            documentURL: doc
+        )
+
+        // Created on demand, as a visible sibling directory of the document — not hidden, not
+        // inside a container the user cannot see.
+        var isDirectory: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: assets.path, isDirectory: &isDirectory))
+        #expect(isDirectory.boolValue)
+        // The store reports a resolved path (/private/var/... for a /var/... temporary directory),
+        // so compare resolved paths rather than the spellings the test happened to construct.
+        let reportedAssets = URL(fileURLWithPath: result.assetsPath, isDirectory: true).resolvingSymlinksInPath()
+        #expect(reportedAssets.path == assets.resolvingSymlinksInPath().path)
+        #expect(reportedAssets.lastPathComponent == "assets")
+        #expect(
+            reportedAssets.deletingLastPathComponent().path
+                == doc.deletingLastPathComponent().resolvingSymlinksInPath().path,
+            "assets/ must be a sibling of the document"
+        )
+        #expect(!reportedAssets.lastPathComponent.hasPrefix("."), "the destination must be visible")
+        #expect(result.createdAssetsDirectory != nil, "this transaction created it")
+    }
+
+    // Verifies: REQ-070 — no source reference exists until every destination file is in place at
+    // its final contained path. This requirement had no proof at all: the ordering it promises is
+    // the whole point of the transaction, and nothing discriminated an implementation that
+    // inserted Markdown for a file that was never written.
+    @Test func everyPublishedFileExistsAtItsFinalPathBeforeMarkdownIsProduced() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let doc = dir.appendingPathComponent("note.md")
+        try Data().write(to: doc)
+        let staging = dir.appendingPathComponent("stage", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+
+        var artifacts: [StagedImageArtifact] = []
+        var expectedBytes: [Data] = []
+        for (index, type) in [UTType.png, .jpeg, .gif].enumerated() {
+            let bytes = try makeImageData(type: type, seed: UInt8(index + 1))
+            expectedBytes.append(bytes)
+            let staged = staging.appendingPathComponent("s\(index)")
+            try bytes.write(to: staged)
+            artifacts.append(StagedImageArtifact(
+                stagingURL: staged,
+                providerName: "shot.\(ImageRepresentation.fromImageIOType(type.identifier)?.canonicalExtension ?? "png")",
+                representation: try #require(ImageRepresentation.fromImageIOType(type.identifier)),
+                sha256Hex: ImageAssetPolicy.sha256Hex(bytes),
+                byteCount: bytes.count
+            ))
+        }
+
+        let result = try await AssetDirectoryStore.publish(artifacts: artifacts, documentURL: doc)
+
+        #expect(result.published.count == 3)
+        let assetsURL = URL(fileURLWithPath: result.assetsPath, isDirectory: true)
+        for (index, image) in result.published.enumerated() {
+            // The Markdown the transaction will insert names this file; the file must already be
+            // at that exact path, contained in assets/, with the exact staged bytes.
+            let final = assetsURL.appendingPathComponent(image.filename)
+            #expect(FileManager.default.fileExists(atPath: final.path), "\(image.filename) missing at final path")
+            #expect(image.destinationURL.path == final.path)
+            #expect(try Data(contentsOf: final) == expectedBytes[index])
+            #expect(image.markdown.contains("assets/\(image.filename)"))
+            #expect(final.deletingLastPathComponent().lastPathComponent == "assets")
+        }
+    }
+
+    // Verifies: REQ-067 — collision detection is case-insensitive, so on a case-insensitive
+    // filesystem a differently-cased existing asset is never overwritten. The existing proofs
+    // covered byte-identical reuse and hash suffixing, but nothing exercised a case-only clash —
+    // the case that silently destroys a user's file on the default macOS filesystem.
+    @Test func differentlyCasedExistingAssetIsNeverOverwritten() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let doc = dir.appendingPathComponent("note.md")
+        try Data().write(to: doc)
+
+        // A pre-existing asset the user put there, spelled with different case and different bytes.
+        let assets = dir.appendingPathComponent("assets", isDirectory: true)
+        try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
+        let existingBytes = try makeImageData(type: .png, seed: 200)
+        let existing = assets.appendingPathComponent("PHOTO.PNG")
+        try existingBytes.write(to: existing)
+
+        let incoming = try makeImageData(type: .png, seed: 9)
+        #expect(incoming != existingBytes)
+        let staging = dir.appendingPathComponent("stage", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        let staged = staging.appendingPathComponent("x")
+        try incoming.write(to: staged)
+
+        let result = try await AssetDirectoryStore.publish(
+            artifacts: [StagedImageArtifact(
+                stagingURL: staged,
+                providerName: "photo.png",
+                representation: .png,
+                sha256Hex: ImageAssetPolicy.sha256Hex(incoming),
+                byteCount: incoming.count
+            )],
+            documentURL: doc
+        )
+
+        let published = try #require(result.published.first)
+        #expect(published.filename.lowercased() != "photo.png", "must not reuse the case-variant name")
+        #expect(!published.wasReused)
+        // The user's file is byte-for-byte untouched.
+        #expect(try Data(contentsOf: existing) == existingBytes)
+        #expect(try Data(contentsOf: published.destinationURL) == incoming)
+    }
+
+    // Verifies: REQ-063 — one corrupt item rejects the entire user action. Nothing may be published
+    // for the items that were fine, because the requirement promises an all-or-nothing action
+    // rather than a partial insertion the user has to notice and undo.
+    @Test func oneCorruptItemRejectsTheWholeBatch() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let good = dir.appendingPathComponent("good.png")
+        try makePNGData().write(to: good)
+        let corrupt = dir.appendingPathComponent("corrupt.png")
+        try Data([0x00, 0x01, 0x02, 0x03]).write(to: corrupt)
+
+        await #expect(throws: ImagePlacementError.unsupportedOrCorrupt) {
+            _ = try await ImageBatchPreflight.stage(claims: [
+                .fileURL(good, providerName: "good.png", declaredType: .png),
+                .fileURL(corrupt, providerName: "corrupt.png", declaredType: .png)
+            ])
+        }
+
+        // The whole action is refused before publish, so no assets/ directory is ever created.
+        #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("assets").path))
+    }
+
     // Verifies: REQ-071 — later item failure rolls back earlier exclusive creates.
     @Test func rollsBackEarlierPublishesWhenLaterItemFails() async throws {
         let png = try makePNGData()
