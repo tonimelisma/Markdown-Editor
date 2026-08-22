@@ -13,7 +13,7 @@ import Testing
 /// // Verifies: REQ-113/058/108; ARC-024 — a command that reports `enabled` performs.
 ///
 /// This is a closed-set structural gate, the same shape
-/// `Scripts/check-instrumentation-coverage.sh` applies to `EditorTraceEvent`: every
+/// the closed-set rule applies to `EditorTraceEvent`: every
 /// `EditorCommand` must declare its expected behavior in **both** modes, so a newly added command
 /// fails the build until someone states what it does. Before COR-26, nine of twelve semantic
 /// commands had never been executed through the WYSIWYG route in any test, and four of them

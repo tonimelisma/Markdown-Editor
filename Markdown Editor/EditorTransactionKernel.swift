@@ -20,6 +20,7 @@ nonisolated enum EditorInputRoute: String, CaseIterable, Sendable, Equatable {
     case undoRedo
     case modeChange
     case reconciliation
+
 }
 
 nonisolated struct EditorReplacementInput: Sendable, Equatable {

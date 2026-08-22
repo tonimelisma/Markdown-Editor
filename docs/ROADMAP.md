@@ -25,7 +25,7 @@ The application currently includes:
   whose payloads cannot represent document content;
 - a hermetic diagnostics-directory override and process-level smoke verification
   (`Scripts/smoke-test.sh`) that a non-UI, structured-log-only exception to §4 permits;
-  a complete `EditorTraceEvent` vocabulary with `Scripts/check-instrumentation-coverage.sh`
+  a complete `EditorTraceEvent` vocabulary with `CommandLivenessMatrixTests`
   guarding against a future unrecorded event; document load and revert outcome instrumentation,
   and save-outcome instrumentation covering every save that determines a destination plus this
   app's own untitled-save bridge — a plain Cmd+S/Save-As panel cancellation is a known,
@@ -48,37 +48,37 @@ Affected requirements are marked `Correction`; new approved behavior is `Planned
 
 Delivery order:
 
-1. ✅ **COR-18 — Restore the proof floor.** (Delivers: REQ-088, REQ-104) Debug and Release tests compile and execute under complete concurrency checking, the
+1. ✅ **COR-18 — Restore the proof floor.** Debug and Release tests compile and execute under complete concurrency checking, the
    shared smoke verifier and typography-rich fixture pass, and the required passive application-window screenshot was captured and reviewed.
-2. ✅ **COR-19 — Diagnostic lifetime and shutdown.** (Delivers: REQ-095, REQ-096) `EditorSession` detaches its sampler and
+2. ✅ **COR-19 — Diagnostic lifetime and shutdown.** `EditorSession` detaches its sampler and
    subscriptions, diagnostics serialize directly through an off-main sink, and terminal durability
-   no longer waits for main-actor cleanup. Re-verified on observed `DiagnosticLogTests`/`DiagnosticLifetimeTests`/`ReconciliationInvariantTests` with falsifying mutations.
-3. ✅ **INC-05 — Semantic presentation and typography.** (Delivers: REQ-106) Semantic projection blocks drive the
+   no longer waits for main-actor cleanup.
+3. ✅ **INC-05 — Semantic presentation and typography.** Semantic projection blocks drive the
    approved typography, reading column, break semantics, list/task alignment, quote/code/table
-   treatments, bounded images, thematic separators, and literal HTML styling. Re-verified on observed `ParagraphGeometryTests`/`AttributedPresentationTests` with falsifying mutation.
-4. ✅ **COR-20 — Incremental TextKit application and honest latency.** (Delivers: REQ-103, REQ-109) Ordinary accepted WYSIWYG
+   treatments, bounded images, thematic separators, and literal HTML styling.
+4. ✅ **COR-20 — Incremental TextKit application and honest latency.** Ordinary accepted WYSIWYG
    edits now use validated range patches through `TextStorageApplier`, and performance sampling
    covers the complete native callback plus split parse, image, and application boundaries.
-5. ✅ **COR-21 — Latest-work scheduling and resource bounds.** (Delivers: REQ-076, REQ-081, REQ-112) Latest parse demand is bounded to
+5. ✅ **COR-21 — Latest-work scheduling and resource bounds.** Latest parse demand is bounded to
    the running request plus newest pending request, oversized encoded images are rejected from
-   metadata before bulk reads, and asset move checks use cmark-derived references. Re-verified on `LatestParseSchedulerTests`/`EncodedImageResourceTests`/`CanonicalAssetReferenceTests` with falsifying mutations.
-6. ✅ **INC-06 — Native command surface.** (Delivers: REQ-058, REQ-108) The document-embedded toolbar is replaced by one
+   metadata before bulk reads, and asset move checks use cmark-derived references.
+6. ✅ **INC-06 — Native command surface.** The document-embedded toolbar is replaced by one
    window-scoped command model, native toolbar, menu parity, shared validation, shortcuts, and a
    link-edit sheet.
-7. ✅ **COR-22 — Conformance and deletion sweep.** (Delivers: none) Every displaced route deleted, architecture
+7. ✅ **COR-22 — Conformance and deletion sweep.** Every displaced route deleted, architecture
    proofs rerun, requirements reconciled from evidence, both smoke gates green, Release
    performance evidence recorded, and REQ-104's screenshot captured and reviewed — a review that
    itself found and fixed a caret-shaped task checkmark and a blockquote laying out one character
    per line.
-8. ✅ **COR-23 — One patch route for every accepted WYSIWYG change.** (Delivers: REQ-109) Patch scope is derived from
+8. ✅ **COR-23 — One patch route for every accepted WYSIWYG change.** Patch scope is derived from
    the real difference between snapshots rather than a declared full-range replacement, so
    formatting commands, task presses, IME commits, and authoritative reconciliation use the
    bounded route. A newer snapshot with unchanged text refreshes only its changed semantic blocks,
    so ARC-Q16's allowlist stays at three full-replacement routes.
-9. ✅ **COR-24 — Reliable screenshot capture after display sleep.** (Delivers: none) The existing window-only
+9. ✅ **COR-24 — Reliable screenshot capture after display sleep.** The existing window-only
    REQ-104 verifier wakes and keeps the local display awake for its bounded run, retaining its
    exact-PID window selection and never falling back to a full-screen capture.
-10. ✅ **COR-25 — WYSIWYG list toggle over an ordinary paragraph.** (Delivers: REQ-058) The shared semantic command
+10. ✅ **COR-25 — WYSIWYG list toggle over an ordinary paragraph.** The shared semantic command
     route accepts an exactly mapped ordinary paragraph selection and applies its smallest proven
     list rewrite, without weakening refusal behavior for mixed or synthetic selections.
 
@@ -94,30 +94,30 @@ satisfied by a build in which four formatting commands reported `enabled` and si
 and nine of twelve semantic commands had never been executed through the WYSIWYG route — the
 product's default mode — in any test.
 
-1. ✅ **COR-26 — Enabled implies performable.** (Delivers: REQ-113) The post-command caret rule is one shared helper
+1. ✅ **COR-26 — Enabled implies performable.** The post-command caret rule is one shared helper
    on `SemanticPlannerGate` instead of arithmetic inlined at one of eleven call sites, so
    `paragraph`, `heading`, `blockQuote`, and `codeBlock` apply rather than refuse.
    `CommandLivenessMatrixTests` is the closed matrix that fails the build when a new command has
-   undeclared behavior in either mode. Re-verified with falsifying mutation.
-2. ✅ **COR-27 — TextKit paragraph geometry.** (Delivers: none) Spacing follows semantic boundaries rather than
+   undeclared behavior in either mode.
+2. ✅ **COR-27 — TextKit paragraph geometry.** Spacing follows semantic boundaries rather than
    every `\n`, so a hard break no longer lays out identically to a paragraph break and a fenced
    block no longer spaces its own lines apart. Proofs assert laid-out line-fragment geometry, not
    attribute values.
-3. ✅ **COR-28 — Rendered appearance conformance.** (Delivers: none) Fenced content carries `.codeBlock` rather
+3. ✅ **COR-28 — Rendered appearance conformance.** Fenced content carries `.codeBlock` rather
    than the inline `.code` tag, so the two treatments cannot compose; toolbar items carry SF
    Symbols instead of rendering blank; and the visual-review fixture can now discriminate a
    correct render from the failure mode ENGINEERING §7 forbids.
-4. ✅ **COR-29 — Instrumentation coverage and honest gates.** (Delivers: REQ-114, REQ-115) Typed image-resolution failures Re-verified with falsifying mutations.
+4. ✅ **COR-29 — Instrumentation coverage and honest gates.** Typed image-resolution failures
    reach the run log, process verification exercises an accepted insertion and an accepted
    command rather than only open-and-idle (19 records → 47), the idle-settle gate dropped from 20
-   to 8/4 against a measured-healthy 2, and layout is measured past the input callback. Re-verified with falsifying mutations.
-5. ✅ **COR-30 — Ownership, correctness, and cleanup sweep.** (Delivers: none) Affinity honoured in both
+   to 8/4 against a measured-healthy 2, and layout is measured past the input callback.
+5. ✅ **COR-30 — Ownership, correctness, and cleanup sweep.** Affinity honoured in both
    conversion directions, URL and location generation observed together, one word-count
    implementation, bounded sampler ring, oracle enforced in the WYSIWYG test seam, and
    repository hygiene.
 6. ↩️ **COR-31 — Process and traceability gates (historical implementation).** Forward traceability and the fast inner loop landed; COR-68 now owns the observed proof floor.
    requirement can no longer contradict an active increment, `CLAUDE.md` requires liveness proofs
-   and laid-out-geometry proofs, and `Scripts/fast-check.sh` is the short inner loop. Re-verified with falsifying mutations.
+   and laid-out-geometry proofs, and `Scripts/check.sh` is the loop.
 
 ## Delivered verification and decomposition history
 
@@ -126,9 +126,7 @@ editing, nested semantic geometry, block composition, source-index ownership, pa
 semantic-planning decomposition. Their implementation remains in current production and tests.
 
 Their old detailed delivery ledger is intentionally not repeated here: Git records the sequence, and
-current requirement truth lives in REQUIREMENTS. In particular, the earlier COR-35/COR-39 claims for
-the proof claims are now enforced by COR-68 because the 2026-08-12 audit found that current falsification could
-turn bookkeeping red without weakening production behavior. Likewise, typed quote/code containers,
+current requirement truth lives in REQUIREMENTS. Likewise, typed quote/code containers,
 semantic list-marker source fidelity, shortcut coverage, frame restoration, tabbing, and printing
 from the two unreachable checkpoint commits are present in main after squash integration. Their
 unreachable commit identities are not WIP and are not used as delivery evidence.
@@ -138,16 +136,16 @@ unreachable commit identities are not WIP and are not used as delivery evidence.
 A whole-codebase review on 2026-08-12 re-read the current implementation, tests, gates, plans, and
 recent commit history against VISION, ENGINEERING, and REQUIREMENTS. Existing green gates remain
 useful regression evidence, but they did not establish all claims they admitted. REQ-032 remains in
-Correction with its reproduced counterexample; no implementation was removed. COR-68 has closed
-REQ-099, REQ-117, REQ-118, REQ-135, and REQ-138 with observed production evidence and falsifying
-mutations. COR-69 has now closed REQ-123, REQ-125, and REQ-128 with the same evidence floor.
+Correction with its reproduced counterexample; no implementation was removed. COR-68 closed REQ-099 with observed
+production evidence, and COR-69 closed REQ-123, REQ-125, and REQ-128. The process requirements
+those increments also introduced (REQ-117/118/133–138) were retired on 2026-08-22 along with the
+gates that implemented them; see `docs/DECISIONS.md`.
 
 The review also found partially implemented or obsolete plans. Those plan files were removed as stale
 documentation, not as evidence of delivery. Correct parts already in main—including the
 squash-integrated semantic-presentation, shortcut, window, printing, and host-state checkpoint
-work—are characterized and retained by the replacement plans. COR-69's plan is removed only after its
-requirements, proofs, and falsifying mutations passed; the remaining pending plans are the active
-backlog. No historical patch is replayed.
+work—are characterized and retained by the replacement plans. COR-69's plan was removed only after its requirements and
+proofs were observed passing; the remaining pending plans are the active backlog. No historical patch is replayed.
 
 ### Target shape
 
@@ -177,77 +175,72 @@ owners, requirement set, route proofs, failure behavior, and deletion gate. An i
 not bundle the next plan to make its own proof pass. If observed code contradicts a plan, stop and
 return to discovery; do not improvise an architecture change.
 
-1. ✅ **COR-68 — Proof architecture v2.** (Delivers: REQ-099, REQ-117, REQ-118, REQ-135, REQ-138)
+1. ✅ **COR-68 — Proof architecture v2.**
    Separates encoding from production reachability, captures observed production records through a
    gate-owned FIFO, binds each route to its owner-specific typed production call, validates
-   falsification against production behavior, and gives refactor-only plans derived completion
-   evidence. Full gate observed passing: 437 tests, 50 emitted routes, 40 Done rows, 29/29 changed-
-   scope falsifications.
-2. ✅ **COR-69 — Intent measurement and honest benchmark.** (Delivers: REQ-123, REQ-125, REQ-128)
+   evidence. Full gate observed passing: 437 tests, 50 emitted routes, 40 Done rows.
+2. ✅ **COR-69 — Intent measurement and honest benchmark.**
    Carries explicit intent identity across concurrency boundaries, observes main-actor stalls with
    controlled clocks, and makes the shipping benchmark produce its provenance-bound baseline. The
-   final full gate observed 454 passing tests, 50 production trace routes, 35/35 falsifying mutations,
+   final full gate observed 454 passing tests, 50 production trace routes
    and a 108-case Release baseline; process smoke diagnostics also passed.
-3. ✅ **COR-70 — Editor transaction kernel.** (Delivers: none)
+3. ✅ **COR-70 — Editor transaction kernel.**
    Extracts one pure input-to-transaction/refusal seam and thins AppKit adapters without changing
    product behavior. Delivered with owner-state validation, atomic refusal behavior, and real
    source/WYSIWYG route proofs; the full gate observed 476 passing tests and zero failures.
-4. ✅ **COR-71 — Bounded WYSIWYG input.** (Delivers: REQ-090, REQ-091, REQ-092)
+4. ✅ **COR-71 — Bounded WYSIWYG input.**
    Removes whole-document parse/compile work from ordinary input while retaining synchronous
    source/presentation correctness. The closed local-transition matrix accepts only proven
    identity/atomic edits and source-boundary synthetic insertions, uses one bounded enclosing-block
    path for table cells, and keeps source-location synthetic/task-marker/ambiguous classes on their
    semantic or refusal routes. A completed IME transaction may use the local route when its
    captured block-end anchor maps exactly to a zero-length source insertion. Concrete Release corpus evidence observed callback p95
-   below 8 ms for every approved corpus case; all three requirement proofs and falsifying mutations
-   passed.
-5. ✅ **COR-72 — Incremental Source pipeline.** (Delivers: REQ-040, REQ-041, REQ-043, REQ-045)
+   below 8 ms for every approved corpus case;
+5. ✅ **COR-72 — Incremental Source pipeline.**
    Relexes invalidated lines until lexical state stabilizes and applies only matching bounded
    attribute patches. `SourceLexState` carries fenced-code state across CRLF/Unicode-safe
    `SourceLineIndex` ranges; superseded tasks are cancelled and stale patches apply nothing.
-6. ✅ **COR-73 — Image identity and decode service.** (Delivers: REQ-085)
+6. ✅ **COR-73 — Image identity and decode service.**
    Makes metadata identity the cache gate, decode a miss-only operation, and backing scale part of
    immutable request identity. `ImageDisplayServiceTests`, production-route telemetry, the full
-   non-performance Debug suite, and the serialized falsification gate passed; the approved plan is
+   non-performance Debug suite, and the approved plan is
    deleted on delivery.
-7. ✅ **COR-74 — Document files and lifecycle proof.** (Delivers: REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-013, REQ-014, REQ-015, REQ-017, REQ-019, REQ-020, REQ-021)
+7. ✅ **COR-74 — Document files and lifecycle proof.**
    The corrected lifecycle suite exercises a real edit, saved-content revert, New controller route,
    two-window tabs, production Open Recent menu construction, and recent URL registration. The final
-   full gate observed 514 tests passed, 33/33 selected mutations red, 50 production trace events,
+   full gate observed 514 tests passed, 50 production trace events,
    63 Done rows verified against 457 executed tests, and 31 increment rows resolved. The approved
    plan is deleted with delivery.
-8. ✅ **COR-75 — Native Source editor and privacy contracts.** (Delivers: REQ-010, REQ-011, REQ-012, REQ-022, REQ-030, REQ-031, REQ-044, REQ-046)
+8. ✅ **COR-75 — Native Source editor and privacy contracts.**
    Proves native editing liveness and the offline/account-free/telemetry-free boundary without
    custom platform substitutes. The focused contract run observed 42 tests passed in 3 suites.
-   The closing full gate observed 523 tests passed, 54 falsifying mutations red across 47 valid
-   manifests, 50 production trace events, 71 Done rows verified against 466 executed tests in 27
+   The closing full gate observed 523 tests passed, 50 production trace events, 71 Done rows verified against 466 executed tests in 27
    cited suites, and 31 increment rows resolved after the review-proof corrections. The approved
    plan is deleted with delivery.
-9. ✅ **COR-76 — Formal-GFM and Source contract.** (Delivers: REQ-047, REQ-048, REQ-049, REQ-050, REQ-053, REQ-054, REQ-055, REQ-056, REQ-059)
+9. ✅ **COR-76 — Formal-GFM and Source contract.**
    Gives the pinned dialect one traceable fixture and range contract across parser, highlighter,
-   projection, and encoder. The exact-head full gate passed with 528 tests, 25/25 falsifying
-   mutations, 80 Done rows verified against 471 executed tests in 31 cited suites, 50 production
-   trace events, and 31 increment rows resolved. The approved plan is deleted with delivery.
-10. ⚪ **COR-77 — WYSIWYG ownership, IME, selection, and undo.** (Delivers: REQ-052, REQ-079, REQ-080, REQ-082, REQ-083, REQ-084, REQ-086, REQ-087, REQ-089, REQ-093, REQ-094)
+   projection, and encoder. The full gate passed with 528 tests, 80 Done rows verified against 471
+   executed tests, and 50 production trace events. The approved plan is deleted with delivery.
+10. ⚪ **COR-77 — WYSIWYG ownership, IME, selection, and undo.**
     ([plan](plans/COR-77-wysiwyg-ownership-ime-and-selection.md)) Closes native callback ownership,
     composition, selection, history, mode, and reconciliation through the transaction kernel.
-11. ⚪ **COR-78 — Image placement transaction.** (Delivers: REQ-060, REQ-061, REQ-062, REQ-063, REQ-064, REQ-065, REQ-066, REQ-067, REQ-068, REQ-069, REQ-070, REQ-071, REQ-072, REQ-073, REQ-074, REQ-075, REQ-077)
+11. ⚪ **COR-78 — Image placement transaction.**
     ([plan](plans/COR-78-image-placement-transaction.md)) Proves all entry routes share one ordered,
     exact-copy, contained, rollback-safe transaction.
-12. ⚪ **COR-79 — Diagnostics and process lifecycle.** (Delivers: REQ-097, REQ-098, REQ-101, REQ-102)
+12. ⚪ **COR-79 — Diagnostics and process lifecycle.**
     ([plan](plans/COR-79-diagnostics-and-process-lifecycle.md)) Completes alert/placement diagnostics
     and process smoke using production-route evidence only.
-13. ⚪ **COR-80 — Property testing and real corpora.** (Delivers: REQ-132)
+13. ⚪ **COR-80 — Property testing and real corpora.**
     ([plan](plans/COR-80-property-testing-and-real-corpora.md)) Adds deterministic generators,
     shrinkers, independent oracles, and traceable CommonMark/GFM examples after core seams stabilize.
-14. ⚪ **COR-81 — Accessibility, contrast, and display preferences.** (Delivers: REQ-032, REQ-129, REQ-139, REQ-141)
+14. ⚪ **COR-81 — Accessibility, contrast, and display preferences.**
     ([plan](plans/COR-81-accessibility-contrast-and-preferences.md)) Gives every semantic and command
     route direct AppKit accessibility proof and closes color/preference policy. REQ-140 remains
     Deferred until a new platform API or separately approved product requirement exists.
-15. ⚪ **COR-82 — macOS citizenship.** (Delivers: REQ-130, REQ-131)
+15. ⚪ **COR-82 — macOS citizenship.**
     ([plan](plans/COR-82-macos-citizenship.md)) Characterizes already integrated window/shortcut work,
     then completes printing, command organization, list continuation, caret links, and window scope.
-16. ⚪ **COR-83 — Release lifecycle and visual conformance.** (Delivers: REQ-142)
+16. ⚪ **COR-83 — Release lifecycle and visual conformance.**
     ([plan](plans/COR-83-release-lifecycle-and-visual-conformance.md)) Uses an explicit Stage 0 tool
     decision for leak evidence, closes deterministic owner lifetimes, and verifies real layout over
     the declared semantic/appearance/width/scale/preference matrix.

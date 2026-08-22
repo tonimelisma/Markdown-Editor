@@ -1,1 +1,0 @@
-{"requirement":"REQ-059","mutations":[{"rationale":"Disabling the plain-text clipboard route must fail the rich/plain native paste proof.","file":"Markdown Editor/PastePolicy.swift","find":"return plain","replace":"return nil","expect_red":["nativePasteUsesPlainTextAndDiscreteUndo"]}]}
