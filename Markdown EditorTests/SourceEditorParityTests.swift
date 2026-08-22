@@ -206,7 +206,7 @@ struct SourceEditorParityTests {
         // reference here `textView` — and with it the storage/layoutManager/container graph's
         // only live text view — is deallocated at a nondeterministic point determined by ARC
         // timing, not by the test. Observed: `apply()`'s `textView` guard failed silently
-        // (`textViewNil=true`) in roughly 1-in-6 runs under `fast-check.sh`'s default parallel
+        // (`textViewNil=true`) in roughly 1-in-6 runs under the default parallel
         // test execution, and never under serial or isolated execution, which is exactly the
         // signature of "kept alive by luck until real time budget runs out."
         let textView: MarkdownSourceTextView
@@ -256,7 +256,7 @@ struct SourceEditorParityTests {
         // (through the attached layout manager, independent of anything this fixture does),
         // racing `Coordinator.version` against the test's own manual `apply(expectedVersion:...)`
         // call and making it a silent no-op on the rare occasions the real callback won the race
-        // — reproduced 1-in-3 to 1-in-4 runs under `fast-check.sh`'s default parallel test
+        // — reproduced 1-in-3 to 1-in-4 runs under the default parallel test
         // execution, never under serial or isolated execution. `coordinator.textView` still needs
         // to be set: `apply()` reads `textView.string`/`textView.textStorage` directly.
         coordinator.textView = textView

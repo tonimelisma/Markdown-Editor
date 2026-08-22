@@ -229,7 +229,7 @@ struct DiagnosticLogTests {
         }
 
         let requestedPath = ProcessInfo.processInfo.environment["EDITOR_TRACE_COVERAGE_LOG_DIR"]
-        // Fallback is kept for manual Xcode runs outside fast-check/full-check.
+        // Fallback is kept for manual Xcode runs outside Scripts/check.sh.
         // The test's ordinary diagnostic log follows this per-checkout directory. Production
         // route evidence is captured separately through the gate-owned FIFO in the same
         // checkout's deterministic .build directory.

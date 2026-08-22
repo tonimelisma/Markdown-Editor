@@ -40,7 +40,10 @@ if (( $? != 0 )); then
     failures=$((failures + 1))
     grep -aE "error:|Test case .* failed" "$log" | head -30 >&2
 fi
-printf 'tests: %s passed, %s failed\n' \
+# Indicative only. Parallel test output interleaves, so an occasional `passed` line is split
+# across writes and missed here; parameterized cases each emit their own line. xcodebuild's exit
+# status above is the authority on pass/fail — this number is for a sense of scale.
+printf 'tests: ~%s passed, %s failed\n' \
     "$(grep -acE 'Test case .* passed' "$log" 2>/dev/null || true)" \
     "$(grep -acE 'Test case .* failed' "$log" 2>/dev/null || true)"
 
