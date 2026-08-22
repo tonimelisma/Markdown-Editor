@@ -231,9 +231,14 @@ return to discovery; do not improvise an architecture change.
     while only symlinks were proved. Also added the case-variant collision proof REQ-067 needed
     and the ordering proof REQ-070 promised. `AssetDirectoryStore.directoryName` replaces the
     `assets` literal that was repeated at seven sites across two files.
-12. ⚪ **COR-79 — Diagnostics and process lifecycle.**
-    ([plan](plans/COR-79-diagnostics-and-process-lifecycle.md)) Completes alert/placement diagnostics
-    and process smoke using production-route evidence only.
+12. ✅ **COR-79 — Diagnostics and process lifecycle.**
+    REQ-097, REQ-098, REQ-101 and REQ-102 are `Done` on observed proofs. The audit found the alert
+    and placement diagnostics already closed matrices, and one real hole: REQ-097's proof covered
+    directory *resolution* but never the destructive half of its claim, so nothing showed a
+    verification run could not prune the user's production diagnostics. It also found that
+    `Scripts/test-verify-smoke-log.sh` — the nine rejected fixtures proving the smoke verifier
+    still discriminates — had stopped being run by the gate when `check.sh` replaced
+    `full-check.sh`; REQ-098's proof could have passed vacuously. Both closed.
 13. ⚪ **COR-80 — Property testing and real corpora.**
     ([plan](plans/COR-80-property-testing-and-real-corpora.md)) Adds deterministic generators,
     shrinkers, independent oracles, and traceable CommonMark/GFM examples after core seams stabilize.

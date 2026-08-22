@@ -745,6 +745,45 @@ struct DiagnosticLogTests {
     // Verifies: REQ-097 — an explicit override directory takes priority over both the
     // production and unit-test defaults, so verification runs cannot touch the user's own log
     // directory.
+    // Verifies: REQ-097 — the override is not merely honoured for the write path; a run under it
+    // must not prune the user's production directory. Pruning is the destructive half of this
+    // requirement ("cannot read, prune, or pollute"), and the resolution proof below cannot see
+    // it: resolution could be correct while `pruneRuns` was handed the production directory.
+    @Test func aRunUnderTheOverrideNeverPrunesTheProductionDirectory() throws {
+        let production = makeTemporaryDirectory()
+        let override = makeTemporaryDirectory()
+
+        // Fill the production directory past the retention bound with plausible run files.
+        var productionRuns: [URL] = []
+        for index in 0..<(DiagnosticLog.maximumRetainedRuns + 5) {
+            let url = production.appendingPathComponent(String(format: "run-2026010100000%02d-abc.jsonl", index))
+            try Data("{}\n".utf8).write(to: url)
+            productionRuns.append(url)
+        }
+        // And the override directory too, so we can tell pruning ran at all.
+        for index in 0..<(DiagnosticLog.maximumRetainedRuns + 5) {
+            let url = override.appendingPathComponent(String(format: "run-2026010100000%02d-def.jsonl", index))
+            try Data("{}\n".utf8).write(to: url)
+        }
+
+        let resolved = DiagnosticLog.defaultDirectory(
+            hostKind: .production,
+            environment: ["MARKDOWN_EDITOR_DIAGNOSTICS_DIR": override.path]
+        )
+        #expect(resolved.path == override.path)
+
+        DiagnosticLog.pruneRuns(in: resolved, keeping: DiagnosticLog.maximumRetainedRuns)
+
+        // The user's production diagnostics are untouched, every file still present.
+        for url in productionRuns {
+            #expect(FileManager.default.fileExists(atPath: url.path), "pruned a production run: \(url.lastPathComponent)")
+        }
+        // Pruning really did run — against the override directory only.
+        let remaining = try FileManager.default.contentsOfDirectory(atPath: override.path)
+            .filter { $0.hasPrefix("run-") && $0.hasSuffix(".jsonl") }
+        #expect(remaining.count == DiagnosticLog.maximumRetainedRuns)
+    }
+
     @Test func diagnosticsDirectoryHonoursEnvironmentOverride() {
         let override = makeTemporaryDirectory().path
         let productionResolved = DiagnosticLog.defaultDirectory(
