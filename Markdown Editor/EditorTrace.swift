@@ -399,18 +399,6 @@ protocol EditorTraceSink: AnyObject {
 @MainActor
 final class InMemoryEditorTrace: EditorTraceSink {
     private(set) var events: [EditorTraceEvent] = []
-    private let coverageLog: DiagnosticLog?
-
-    init() {
-        if let coveragePipeURL = JSONLinesEditorTrace.coveragePipeURL() {
-            coverageLog = DiagnosticLog(
-                directory: coveragePipeURL.deletingLastPathComponent(),
-                hostKind: .unitTest
-            )
-        } else {
-            coverageLog = nil
-        }
-    }
 
     func record(_ event: EditorTraceEvent) {
         events.append(event)
@@ -418,15 +406,6 @@ final class InMemoryEditorTrace: EditorTraceSink {
 
     func record(route: DiagnosticEventName, _ event: EditorTraceEvent) {
         events.append(event)
-        let mapped = JSONLinesEditorTrace.map(event)
-        guard mapped.name == route else { return }
-        coverageLog?.recordProduction(
-            mapped.name,
-            level: mapped.level,
-            category: mapped.category,
-            route: route,
-            data: mapped.data
-        )
     }
 
     func reset() {
