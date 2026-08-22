@@ -225,7 +225,7 @@ return to discovery; do not improvise an architecture change.
    plan is deleted with delivery.
 9. ✅ **COR-76 — Formal-GFM and Source contract.** (Delivers: REQ-047, REQ-048, REQ-049, REQ-050, REQ-053, REQ-054, REQ-055, REQ-056, REQ-059)
    Gives the pinned dialect one traceable fixture and range contract across parser, highlighter,
-   projection, and encoder. The exact-head full gate passed with 528 tests, 24/24 falsifying
+   projection, and encoder. The exact-head full gate passed with 528 tests, 25/25 falsifying
    mutations, 80 Done rows verified against 471 executed tests in 31 cited suites, 50 production
    trace events, and 31 increment rows resolved. The approved plan is deleted with delivery.
 10. ⚪ **COR-77 — WYSIWYG ownership, IME, selection, and undo.** (Delivers: REQ-052, REQ-079, REQ-080, REQ-082, REQ-083, REQ-084, REQ-086, REQ-087, REQ-089, REQ-093, REQ-094)
