@@ -19,6 +19,10 @@ struct UndoActionNameTests {
     @Test func everyActionNameIsUniqueAndPresentable() {
         let titles = UndoActionName.allCases.map(\.title)
         #expect(!titles.isEmpty)
+        // Compiler-guaranteed, not test-guaranteed: Swift rejects duplicate raw values, so a
+        // mutation introducing one fails to build rather than reddening here. Kept because it
+        // states the intent for a reader, and would become load-bearing if `title` ever stopped
+        // being the raw value. Falsification confirmed the distinction.
         #expect(Set(titles).count == titles.count, "two undo actions share a title")
         for title in titles {
             #expect(!title.isEmpty)
