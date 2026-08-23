@@ -123,20 +123,16 @@ nonisolated enum ImageBatchPreflight {
     private static func validateClaim(claimedExt: String, detected: ImageRepresentation) throws {
         guard !claimedExt.isEmpty else { return }
         let normalized = claimedExt.lowercased()
-        let supported: Set<String> = ["png", "jpg", "jpeg", "gif", "heic", "heif"]
+        let supported = ImageRepresentation.acceptedExtensions
         if !supported.contains(normalized) {
             throw ImagePlacementError.typeMismatch
         }
         // REQ-063: reject when claimed extension disagrees with detected content family.
-        let matches: Bool
-        switch detected {
-        case .png: matches = normalized == "png"
-        case .jpeg: matches = normalized == "jpg" || normalized == "jpeg"
-        case .gif: matches = normalized == "gif"
-        case .heic: matches = normalized == "heic"
-        case .heif: matches = normalized == "heif"
-        }
-        if !matches {
+        //
+        // // Compared through `ImageRepresentation.fromExtension` rather than a local switch, so
+        // // the extension-to-representation mapping has one owner and `jpg`/`jpeg` are treated as
+        // // one representation in exactly one place.
+        if ImageRepresentation.fromExtension(normalized) != detected {
             throw ImagePlacementError.typeMismatch
         }
     }

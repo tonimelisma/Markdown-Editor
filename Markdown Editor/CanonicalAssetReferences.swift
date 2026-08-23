@@ -30,7 +30,7 @@ nonisolated struct CanonicalAssetReferences: Equatable, Sendable {
                   destination.count > "assets/".count else { return nil }
             let filename = String(destination.dropFirst("assets/".count))
             let ext = URL(fileURLWithPath: filename).pathExtension.lowercased()
-            guard ["png", "jpg", "jpeg", "gif", "heic", "heif"].contains(ext),
+            guard ImageRepresentation.acceptedExtensions.contains(ext),
                   !filename.contains("/") else { return nil }
             return CanonicalAssetReference(
                 filename: filename,

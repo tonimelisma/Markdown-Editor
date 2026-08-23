@@ -59,7 +59,7 @@ enum ImagePasteboardClassifier {
 
     private static func isObviousImageURLClaim(_ url: URL) -> Bool {
         let ext = url.pathExtension.lowercased()
-        return ["png", "jpg", "jpeg", "gif", "heic", "heif"].contains(ext)
+        return ImageRepresentation.acceptedExtensions.contains(ext)
     }
 
     private static func isUnsupportedImageExtension(_ url: URL) -> Bool {

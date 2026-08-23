@@ -461,7 +461,7 @@ actor ImageDisplayService {
         let filename = String(destination.dropFirst("assets/".count))
         guard !filename.isEmpty, !filename.contains("/"), !filename.contains("\\") else { return nil }
         let ext = URL(fileURLWithPath: filename).pathExtension.lowercased()
-        guard ["png", "jpg", "jpeg", "gif", "heic", "heif"].contains(ext) else { return nil }
+        guard ImageRepresentation.acceptedExtensions.contains(ext) else { return nil }
         let assets = documentURL.deletingLastPathComponent()
             .appendingPathComponent(AssetDirectoryStore.directoryName, isDirectory: true).standardizedFileURL
         let candidate = assets.appendingPathComponent(filename).standardizedFileURL

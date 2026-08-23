@@ -12,7 +12,7 @@ import CryptoKit
 // REQ-061–068: pure representation detection, portable naming, and reference generation.
 // Nonisolated value types so policy can run off the main actor (REQ-077).
 
-nonisolated enum ImageRepresentation: String, Sendable, Hashable {
+nonisolated enum ImageRepresentation: String, Sendable, Hashable, CaseIterable {
     case png
     case jpeg
     case gif
@@ -26,6 +26,33 @@ nonisolated enum ImageRepresentation: String, Sendable, Hashable {
         case .gif: return "gif"
         case .heic: return "heic"
         case .heif: return "heif"
+        }
+    }
+
+    /// Every filename extension that names a supported representation, lowercased.
+    ///
+    /// // VISION names exactly PNG, JPEG, GIF, HEIC and HEIF. Before COR-92 the literal
+    /// // `["png", "jpg", "jpeg", "gif", "heic", "heif"]` appeared verbatim in four files and a
+    /// // fifth time as a `Set`, none of them derived from this enum — the same defect COR-78
+    /// // repaired for the `assets` directory name. Adding a representation now updates every
+    /// // call site, and a typo in one copy is no longer possible.
+    static let acceptedExtensions: Set<String> = {
+        var extensions = Set(allCases.map(\.canonicalExtension))
+        // `jpeg` is a second spelling of the same representation, not a sixth format, so it is
+        // stated once here rather than in each caller's array.
+        extensions.insert("jpeg")
+        return extensions
+    }()
+
+    /// The representation a filename extension names, if any.
+    static func fromExtension(_ ext: String) -> ImageRepresentation? {
+        switch ext.lowercased() {
+        case "png": return .png
+        case "jpg", "jpeg": return .jpeg
+        case "gif": return .gif
+        case "heic": return .heic
+        case "heif": return .heif
+        default: return nil
         }
     }
 
@@ -86,7 +113,7 @@ nonisolated enum ImageAssetPolicy {
         }
         if let claimed = claimedExtension?.lowercased(), !claimed.isEmpty {
             let normalized = claimed.hasPrefix(".") ? String(claimed.dropFirst()) : claimed
-            let supportedClaims: Set<String> = ["png", "jpg", "jpeg", "gif", "heic", "heif"]
+            let supportedClaims = ImageRepresentation.acceptedExtensions
             if !supportedClaims.contains(normalized) {
                 throw ImageAssetPolicyError.typeMismatch
             }
