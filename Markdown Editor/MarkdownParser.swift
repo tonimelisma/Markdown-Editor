@@ -28,53 +28,76 @@ nonisolated enum MarkdownParser {
         FormalGFMDialect.parserOptions
     }
 
-    /// The most recent successful parse, reused when the same source and version are requested
-    /// again.
+    /// Storage for the most recent successful parse.
     ///
     /// // COR-89: one semantic command parsed the same new text twice — once in
     /// // `SemanticEditPlanners.replaceValidated`, to check a postcondition against the resulting
     /// // tree, and again inside `AuthoritativePresentationBuilder.build` to produce the snapshot.
     /// // In Release that second parse was 4.4 ms (structuredProse) to 13.2 ms (tableDense) of
-    /// // main-actor wait, and it accounted for essentially all of the residue left after the
-    /// // authoritative build itself was memoised
-    /// // (`research/2026-08-22-semantic-command-main-actor-cost.md`, Finding 11).
+    /// // main-actor wait.
     /// //
-    /// // Sound for the same reason: `parse` is a pure function of `source` and `sourceVersion`
-    /// // given the pinned dialect and options, so serving the stored value is indistinguishable
-    /// // from recomputing it. Only successes are stored — a failure carries a reason that may
-    /// // depend on cancellation, which is not part of the key.
-    private static let memo = Mutex<(source: String, sourceVersion: UInt64, tree: MarkdownTree)?>(nil)
+    /// // Sound because `parse` is a pure function of `source` and `sourceVersion` given the
+    /// // pinned dialect and options, so serving the stored value is indistinguishable from
+    /// // recomputing it. Only successes are stored — a failure carries a reason that may depend
+    /// // on cancellation, which is not part of the key.
+    /// //
+    /// // An object rather than a global, because a single shared entry made every test that
+    /// // asserted on it race: any concurrent parse anywhere evicts it, so a test could observe a
+    /// // miss and pass for the wrong reason. Production uses `.shared`; a test that measures
+    /// // memo behaviour passes its own.
+    nonisolated final class ParseMemo: Sendable {
+        static let shared = ParseMemo()
 
-    /// Parses actually performed, for tests that assert how much work a route does.
-    /// Inventoried by `ProductionTestHookInventoryTests`.
-    private static let performedParses = Mutex<Int>(0)
+        private let entry = Mutex<(source: String, sourceVersion: UInt64, tree: MarkdownTree)?>(nil)
+        private let performed = Mutex<Int>(0)
 
-    static var performedParseCountForTesting: Int {
-        performedParses.withLock { $0 }
+        /// Parses actually performed against this memo.
+        var performedParseCount: Int { performed.withLock { $0 } }
+
+        func tree(source: String, sourceVersion: UInt64) -> MarkdownTree? {
+            guard let stored = entry.withLock({ $0 }),
+                  stored.sourceVersion == sourceVersion,
+                  stored.source == source else { return nil }
+            return stored.tree
+        }
+
+        func store(source: String, sourceVersion: UInt64, tree: MarkdownTree) {
+            entry.withLock { $0 = (source: source, sourceVersion: sourceVersion, tree: tree) }
+        }
+
+        func noteParsePerformed() { performed.withLock { $0 += 1 } }
+
+        /// Releases the retained tree. See `AuthoritativePresentationBuilder.releaseMemo()`.
+        func release() { entry.withLock { $0 = nil } }
+
+        func reset() {
+            release()
+            performed.withLock { $0 = 0 }
+        }
     }
+
+    static var performedParseCountForTesting: Int { ParseMemo.shared.performedParseCount }
+
+    static func resetParseMemoForTesting() { ParseMemo.shared.reset() }
 
     /// Releases the retained tree. See `AuthoritativePresentationBuilder.releaseMemo()`.
-    static func releaseMemo() {
-        memo.withLock { $0 = nil }
-    }
-
-    static func resetParseMemoForTesting() {
-        memo.withLock { $0 = nil }
-        performedParses.withLock { $0 = 0 }
-    }
+    static func releaseMemo() { ParseMemo.shared.release() }
 
     /// Parse Markdown into an immutable Swift value tree.
     static func parse(
         _ source: String,
         sourceVersion: UInt64,
         intent: IntentContext? = nil,
-        isCancelled: @Sendable () -> Bool = { false }
+        isCancelled: @Sendable () -> Bool = { false },
+        memo: ParseMemo = .shared
     ) -> Result<MarkdownTree, MarkdownParseFailure> {
-        if let entry = memo.withLock({ $0 }),
-           entry.sourceVersion == sourceVersion,
-           entry.source == source {
+        // Cancellation is answered before the memo, not after it. A memo must be invisible, and
+        // that includes the cancelled case: a caller that asked for a cancellable parse and was
+        // cancelled must still see `.cancelled`, whether or not this happens to hold the answer.
+        guard !isCancelled() else { return .failure(.cancelled) }
+        if let tree = memo.tree(source: source, sourceVersion: sourceVersion) {
             // A hit performs no parse, so it records none: the work ledger counts work.
-            return .success(entry.tree)
+            return .success(tree)
         }
         return parseLock.withLock { _ in
             // Cancellation is checked only at the parser boundary. Once cmark has entered its
@@ -84,7 +107,7 @@ nonisolated enum MarkdownParser {
             if let intent {
                 intent.recorder.add(intent) { $0.documentParses += 1 }
             }
-            performedParses.withLock { $0 += 1 }
+            memo.noteParsePerformed()
             var bytes = Array(source.utf8)
             let result: Result<MarkdownTree, MarkdownParseFailure> = bytes.withUnsafeMutableBufferPointer { buffer in
                 guard let base = buffer.baseAddress else {
@@ -95,7 +118,7 @@ nonisolated enum MarkdownParser {
                 }
             }
             if case .success(let tree) = result {
-                memo.withLock { $0 = (source: source, sourceVersion: sourceVersion, tree: tree) }
+                memo.store(source: source, sourceVersion: sourceVersion, tree: tree)
             }
             return result
         }

@@ -41,6 +41,12 @@ suite is trustworthy.
 - **A capability needs a proof that it works**, not only proofs that it refuses when it should.
   REQ-058 was satisfied for months by a build in which four formatting commands reported
   `enabled` and silently refused, because every cited proof asserted availability or refusal.
+- **A filtered test run that matches nothing reports success.**
+  `xcodebuild test -only-testing:"Target/SuiteName/functionName"` silently selects zero tests for
+  a Swift Testing `@Test` function and then prints `** TEST SUCCEEDED **`. A falsification run
+  that "passes" after a mutation is therefore ambiguous: either the test does not discriminate, or
+  it never ran. Filter to the **suite**, and confirm individual `Test case … passed/failed` lines
+  appear before believing either outcome.
 - **Where a set is closed** (`EditorCommand.allCases`, `EditorTraceEvent`), prefer a test that
   iterates it, so a new member fails the build until its behavior is declared. A hand-written
   list of examples omits the case nobody thought of.

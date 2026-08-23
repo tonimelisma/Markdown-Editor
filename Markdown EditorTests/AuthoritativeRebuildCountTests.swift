@@ -66,6 +66,12 @@ struct AuthoritativeRebuildCountTests {
     /// counter — the instrument that existed all along and that nothing had ever read.
     ///
     /// // Fails at 3 against the pre-COR-89 build.
+    /// // The counters are global, and this test runs no `await` between resetting them and
+    /// reading them, so no other `@MainActor` suite can interleave. An off-main suite
+    /// (`SpecCorpusTests` parses 1,324 examples) can still inflate the parse counter — but
+    /// inflation makes this test **fail**, never pass falsely, so the race is in the safe
+    /// direction. The mechanism itself is proved deterministically below, against memos this
+    /// suite owns.
     @Test func oneCommandPerformsOneAuthoritativeRebuild() {
         let fixture = Fixture()
         defer { fixture.tearDown() }
@@ -112,20 +118,22 @@ struct AuthoritativeRebuildCountTests {
     /// A parse memo hit must equal a fresh parse, which is what makes memoising it invisible.
     @Test func aParseMemoHitEqualsAFreshParse() {
         let source = "# Heading\n\n- a\n- b\n\n| x | y |\n|---|---|\n| 1 | 2 |\n"
-        MarkdownParser.resetParseMemoForTesting()
-        let fresh = try? MarkdownParser.parse(source, sourceVersion: 3).get()
-        let hit = try? MarkdownParser.parse(source, sourceVersion: 3).get()
-        MarkdownParser.resetParseMemoForTesting()
-        let rebuilt = try? MarkdownParser.parse(source, sourceVersion: 3).get()
+        // Its own memo, so no concurrently-running suite can evict the entry under it.
+        let memo = MarkdownParser.ParseMemo()
+        let fresh = try? MarkdownParser.parse(source, sourceVersion: 3, memo: memo).get()
+        let hit = try? MarkdownParser.parse(source, sourceVersion: 3, memo: memo).get()
+        let cold = MarkdownParser.ParseMemo()
+        let rebuilt = try? MarkdownParser.parse(source, sourceVersion: 3, memo: cold).get()
         #expect(fresh != nil)
         #expect(hit == fresh)
         #expect(rebuilt == fresh, "the parser is not a pure function of its key; memoising it is unsound")
+        #expect(memo.performedParseCount == 1, "the second call re-parsed instead of hitting")
 
         // A different version of identical text is a different key, so it is parsed again.
-        MarkdownParser.resetParseMemoForTesting()
-        _ = MarkdownParser.parse(source, sourceVersion: 1)
-        _ = MarkdownParser.parse(source, sourceVersion: 2)
-        #expect(MarkdownParser.performedParseCountForTesting == 2)
+        let versions = MarkdownParser.ParseMemo()
+        _ = MarkdownParser.parse(source, sourceVersion: 1, memo: versions)
+        _ = MarkdownParser.parse(source, sourceVersion: 2, memo: versions)
+        #expect(versions.performedParseCount == 2)
     }
 
     /// // Verifies: REQ-090 — closing a document releases what the memos retain.
@@ -168,6 +176,38 @@ struct AuthoritativeRebuildCountTests {
             MarkdownParser.performedParseCountForTesting > parsesBefore,
             "the parse memo survived close()"
         )
+    }
+
+    /// A memo hit must not swallow cancellation.
+    ///
+    /// // Verifies: REQ-085 — `parse` promises `.failure(.cancelled)` to a cancelled caller. When
+    /// the memo was consulted first, a cancelled caller whose answer happened to be stored got
+    /// `.success` instead. Harmless in the one production caller, which re-checks
+    /// `Task.isCancelled` immediately afterwards, but a memo that changes an observable contract
+    /// is not a memo — it is a behaviour change wearing one.
+    @Test func aCancelledParseIsCancelledEvenOnAMemoHit() {
+        let source = "# Cancel me\n\nBody.\n"
+        let memo = MarkdownParser.ParseMemo()
+
+        // Populate this memo, and prove it is populated — otherwise the assertion below could
+        // pass because the call *missed* and hit the parser's own cancellation guard, which is
+        // exactly how the first version of this test passed while proving nothing.
+        #expect((try? MarkdownParser.parse(source, sourceVersion: 1, memo: memo).get()) != nil)
+        #expect(memo.tree(source: source, sourceVersion: 1) != nil, "the memo is not populated")
+
+        let cancelled = MarkdownParser.parse(
+            source, sourceVersion: 1, isCancelled: { true }, memo: memo
+        )
+        guard case .failure(let reason) = cancelled else {
+            Issue.record("a cancelled parse returned success from the memo")
+            return
+        }
+        #expect(reason == .cancelled)
+
+        // The memo is otherwise intact: an uncancelled caller still gets the stored tree.
+        let before = memo.performedParseCount
+        #expect((try? MarkdownParser.parse(source, sourceVersion: 1, memo: memo).get()) != nil)
+        #expect(memo.performedParseCount == before)
     }
 
     /// Memoisation must not survive a change of source, or a stale projection would be served for

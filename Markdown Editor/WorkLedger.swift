@@ -149,6 +149,16 @@ nonisolated final class IntentRecorder: @unchecked Sendable {
     }
 
     private func report(context: IntentContext, ledger: WorkLedger, orphaned: Bool, reason: DiagnosticSymbol?) {
+        // An installed reporter is an *observer*, not an alternative sink, so it is notified
+        // whichever destination the record goes to.
+        //
+        // // Until COR-92 the durable writer returned early and a reporter installed by
+        // // `setReporter` was silently never called. Installing an observer and having it never
+        // // fire, with no error, is the shape of failure this repository exists to prevent: a
+        // // test that measured work through it would pass while measuring nothing.
+        if let reporter = reporterState.withLock({ $0 }) {
+            reporter(context, ledger, orphaned, reason)
+        }
         let destination = durableWriter.withLock { $0 }
         if let writer = destination.writer {
             let start = destination.startUptimeNanos
@@ -168,10 +178,7 @@ nonisolated final class IntentRecorder: @unchecked Sendable {
             }
             return
         }
-        if let reporter = reporterState.withLock({ $0 }) {
-            reporter(context, ledger, orphaned, reason)
-            return
-        }
+        if reporterState.withLock({ $0 }) != nil { return }
         Task { @MainActor in
             guard let log = DiagnosticLog.shared else { return }
             log.recordProduction(.workLedger, level: orphaned ? .fault : .debug, category: .diagnostics, route: .workLedger,
