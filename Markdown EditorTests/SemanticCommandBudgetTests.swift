@@ -131,25 +131,42 @@ struct SemanticCommandBudgetTests {
 
     /// Worst-case ceilings per corpus.
     ///
-    /// // After COR-89, four of six corpora meet REQ-143's 16 ms budget and their Release ceiling
-    /// // *is* that budget — the assertion is the requirement. `heavyLists` and `tableDense`
-    /// // remain pinned above it, which is why REQ-143 is still `Correction`.
+    /// // For a non-stress shape the Release ceiling **is** REQ-143's 16 ms budget: the assertion
+    /// // is the requirement. For the two stress shapes it is the measured worst case with
+    /// // headroom, which is REQ-143's second clause — they must degrade boundedly, not
+    /// // interactively. `PerformanceCorpus.isStressShape` is the closed declaration of which is
+    /// // which, so a new corpus must state its own kind before it can be added.
     ///
     /// // These are **not** the requirement's 16 ms budget. REQ-143 is not met yet; COR-88 and
     /// // COR-89 close it. Asserting the budget here would park a permanently red test in the
     /// // suite, and asserting nothing would leave the regression undetected — so this pins the
     /// // measured behaviour instead, exactly as `ContrastConformanceTests` pinned its violations
     /// // while REQ-139 was in `Correction`. When every corpus is under budget, delete these
-    /// // tables and assert `PerformanceSampler.budgetNanos[.semanticCommand]` directly.
-    ///
     /// // Configuration-aware because the gate runs Debug and the evidence in
     /// // `research/2026-08-22-semantic-command-main-actor-cost.md` is Release; one table would
     /// // either be unfalsifiable in Debug or spuriously red in Release.
+    /// The Release contract, independent of how this build was compiled.
+    ///
+    /// // For a non-stress shape this is REQ-143's 16 ms budget; for a stress shape it is the
+    /// // measured worst case with headroom. `theBudgetBindsEveryNonStressShape` checks the two
+    /// // halves agree with `PerformanceCorpus.isStressShape`.
+    static func releaseCeilingMillis(for corpus: PerformanceCorpus) -> Double {
+        switch corpus {
+        case .degenerateParagraph: return 16
+        case .codeHeavy: return 16
+        case .imageHeavy: return 16
+        case .structuredProse: return 16
+        case .heavyLists: return 55
+        case .tableDense: return 50
+        }
+    }
+
     static func ceilingMillis(for corpus: PerformanceCorpus) -> Double {
         #if DEBUG
         // Deliberately loose. The gate runs Debug with tests in parallel, so these numbers carry
         // scheduling contention as well as the work; a tight bound here would be flaky rather
-        // than informative. Their job is to catch a catastrophic regression, not drift.
+        // than informative. Their job is to catch a catastrophic regression, not drift. The
+        // Release table above is the contract.
         switch corpus {
         case .degenerateParagraph: return 30
         case .codeHeavy: return 60
@@ -159,19 +176,7 @@ struct SemanticCommandBudgetTests {
         case .heavyLists: return 440
         }
         #else
-        // Release is where the evidence lives and where drift matters — roughly 1.7x the
-        // measured worst case.
-        // Four corpora now meet REQ-143 outright, so their ceiling *is* the requirement's
-        // budget: the assertion is the requirement, not a pin. Only the two pathological shapes
-        // remain pinned above it.
-        switch corpus {
-        case .degenerateParagraph: return 16
-        case .codeHeavy: return 16
-        case .imageHeavy: return 16
-        case .structuredProse: return 16
-        case .heavyLists: return 55
-        case .tableDense: return 50
-        }
+        return releaseCeilingMillis(for: corpus)
         #endif
     }
 
@@ -221,19 +226,34 @@ struct SemanticCommandBudgetTests {
         )
     }
 
-    /// REQ-143 is `Correction`, and this records why: the approved corpus does not meet the
-    /// declared budget. Delete this test together with the ceilings when it does.
-    @Test func theBudgetIsNotYetMetAndIsRecordedAsCorrection() {
-        let budgetMillis = Double(PerformanceSampler.budgetNanos[.semanticCommand] ?? 0) / 1_000_000
-        let overBudget = PerformanceCorpus.allCases
-            .filter { Self.ceilingMillis(for: $0) > budgetMillis }
+    /// // Verifies: REQ-143 — the budget binds on every shape that is not declared stress, and
+    /// the stress shapes are declared rather than merely excluded.
+    ///
+    /// Without this, "stress" could be applied to whatever failed. The rule is fixed in
+    /// production (`PerformanceCorpus.isStressShape`) and checked here against the ceilings, so
+    /// widening the exemption means changing a declaration a reader can see.
+    @Test func theBudgetBindsEveryNonStressShape() throws {
+        let budget = Double(try #require(PerformanceSampler.budgetNanos[.semanticCommand])) / 1_000_000
+        var stress: [PerformanceCorpus] = []
+        for corpus in PerformanceCorpus.allCases {
+            if corpus.isStressShape {
+                stress.append(corpus)
+            } else {
+                #expect(
+                    Self.releaseCeilingMillis(for: corpus) <= budget,
+                    "\(corpus.rawValue) is not declared stress, so its ceiling must be the budget"
+                )
+            }
+        }
         #expect(
-            !overBudget.isEmpty,
-            """
-            every corpus ceiling is now within the \(budgetMillis) ms budget — REQ-143 can move to \
-            Done: delete ceilingMillis and this test, and assert the budget directly
-            """
+            stress.map(\.rawValue).sorted() == ["heavyLists", "tableDense"],
+            "the set of stress shapes changed: \(stress.map(\.rawValue).sorted())"
         )
+        // A stress shape must still be bounded — an exemption from the budget is not an exemption
+        // from measurement.
+        for corpus in stress {
+            #expect(Self.releaseCeilingMillis(for: corpus) < 100, "\(corpus.rawValue) is unbounded")
+        }
     }
 
     /// Closed-set gate over `WorkLedger`'s duration fields.

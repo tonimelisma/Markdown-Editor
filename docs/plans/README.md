@@ -16,8 +16,11 @@ change has no rollback behavior, and inventing a section for it produces ceremon
 2. **What is the smallest change that fixes the cause rather than the symptom?** Name the files,
    types, and routes — including what gets **deleted**, since this repo keeps no displaced paths.
 3. **What proof turns red if this is wrong?** `CLAUDE.md` §3's question, asked once, in the plan.
-4. **What must a human decide?** Blockers, architecture approval, product judgement. If nothing,
-   say so. This is the **Executor** line: who may implement it and what judgement it demands.
+4. **What decisions does this make, and on what criteria?** Blockers, architecture changes,
+   product judgement. Decide them by `CLAUDE.md` §7's method — criteria, alternatives, ranking,
+   choice — and record the ones with consequences in `docs/DECISIONS.md`. Do not hand a decision
+   back as a question. This is also the **Executor** line: who may implement it and what judgement
+   it demands.
 
 Add anything else the increment genuinely has — ordered phases, instrumentation, failure behavior,
 a deletion gate — when it has one. Nothing here is a required heading, and no gate enforces this
@@ -28,7 +31,7 @@ format. A format enforced by a gate is a format that gets satisfied by an artifa
 Read `../../CLAUDE.md` first. Then:
 
 1. **Check the Executor line and the blockers.** Some plans are blocked on another increment; some
-   demand judgement an unattended agent should not supply alone.
+   demand judgement, which the executor supplies by `CLAUDE.md` §7's method rather than by asking.
 2. **Take them in ROADMAP order.** The order encodes real dependencies. After its named blockers
    land, a plan must be implementable and mergeable without bundling another plan.
 3. **Work in a worktree on a branch** (`inc-NN-slug` / `cor-NN-slug`), never on `main`. Swift

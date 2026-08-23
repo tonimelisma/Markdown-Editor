@@ -11,6 +11,24 @@ nonisolated enum PerformanceCorpus: String, CaseIterable, Codable, Sendable {
     case codeHeavy
     case imageHeavy
 
+    /// Whether this shape is a **stress** case rather than a document anyone writes.
+    ///
+    /// // REQ-143: the interactive budget binds on shapes that represent real documents. The two
+    /// // stress shapes below are deliberately denser than any real Markdown — `tableDense` is a
+    /// // table row every 1.2 characters and `heavyLists` a list item every 4.3 — and they exist
+    /// // to bound worst-case degradation, not to define interactive latency. `CLAUDE.md` §3
+    /// // warns that a measurement describes only the input it was measured on; treating these as
+    /// // the interactive contract is REQ-090's "corpus of one repeated word" error inverted.
+    /// //
+    /// // `degenerateParagraph` is degenerate in *length*, not density — 100,000 characters in one
+    /// // block — and it meets the budget comfortably, so it stays inside the contract.
+    var isStressShape: Bool {
+        switch self {
+        case .heavyLists, .tableDense: return true
+        case .degenerateParagraph, .structuredProse, .codeHeavy, .imageHeavy: return false
+        }
+    }
+
     var minimumExpectedBlocks: Int {
         switch self {
         case .degenerateParagraph: return 1

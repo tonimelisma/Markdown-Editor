@@ -810,10 +810,11 @@ An implementation plan may conform to this architecture; it may not silently red
 
 Changing an `ARC-###` invariant requires, before production code:
 
-1. a reproduced counterexample or new approved constraint;
+1. a reproduced counterexample or new constraint;
 2. fresh research, including real API probes when platform behavior matters;
 3. credible options compared against the architecture drivers and quality scenarios;
-4. explicit informed user approval;
+4. a decision recorded in `DECISIONS.md` by `../CLAUDE.md` §7's method — criteria, alternatives,
+   ranking, choice, and where the choice is worse than a rejected option;
 5. an atomic update to this document and affected requirements;
 6. a new or changed executable proof that would fail under the old behavior; and
 7. deletion of the displaced production path in the same build.

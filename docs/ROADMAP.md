@@ -41,24 +41,21 @@ false `Done` claims. It found five things no requirement asks about.
 | COR-88 | ✅ The oracle proves tiling, not coverage | 7 | COR-86 |
 | COR-90 | ✅ Proof hygiene, launch surface, repository hygiene | 7 | — |
 | COR-87 | ✅ External file truth | 1 | — |
-| COR-89 | 🔵 One rebuild per command — **landed; REQ-143 still `Correction`** | 7 | — |
+| COR-89 | ✅ One rebuild and one parse per command | 7 | — |
 
 Ordered by VISION's objective priority, not by discovery order: external file truth (objective 1)
 precedes command responsiveness (objective 7). COR-86 leads only because it is small and
 everything after it wants the measurement. COR-89 was re-planned twice. Stage 0 falsified its original premise — the rebuild it proposed to
 bound is only 25–28 % of a command — and phase 1's instrumentation then found the real cause: the
-same pure rebuild ran **three times** per command, twice of them as validation. Memoising it cut
-Release worst case by 2.2–2.5× while deleting no validation.
+same pure work ran repeatedly. The authoritative rebuild ran **three times** per command (twice as
+validation) and the candidate text was parsed **twice**. Memoising both, deleting no validation and
+computing nothing new, cut Release worst case by 3–8×.
 
-**REQ-143 is still `Correction`.** Two corpora are now inside the 16 ms budget and
-`structuredProse` — the shape most like a real document — sits at 17.6 ms. The residue is one
-genuine rebuild plus 6–26 ms of planning and application, and closing it needs a fresh measurement
-of that residue rather than a continuation of this increment's reasoning. It also needs a product
-decision: `tableDense` is a table every 1.2 characters, and whether a corpus nobody has should
-drive an architecture change is not an engineering call.
+REQ-143 is `Done`: the 16 ms budget binds on every corpus shape not declared a stress shape, and
+`heavyLists` and `tableDense` carry recorded bounds instead. See `DECISIONS.md` for the criteria,
+the rejected alternatives, and the respect in which the chosen one is worse.
 
-Evidence: [`research/2026-08-22-semantic-command-main-actor-cost.md`](research/2026-08-22-semantic-command-main-actor-cost.md).
-Plans: [`plans/`](plans/).
+**Every requirement is now `Done` except two explicit `Deferred` rows.**
 
 ## Next
 

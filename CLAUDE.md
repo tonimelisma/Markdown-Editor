@@ -103,9 +103,10 @@ hand-maintained second copy of the code rots silently. Nothing enforces this mec
 ## 6. Architecture changes
 
 An implementation plan cannot redefine architecture. Changing an `ARC-###` invariant needs a
-reproduced counterexample or a new approved constraint, real API evidence where behavior is not
-documented, explicit user approval, an atomic update to ENGINEERING and affected requirements, a
-test that discriminates the new contract, and deletion of the displaced path in the same change.
+reproduced counterexample or a new constraint, real API evidence where behavior is not documented,
+a decision recorded in `docs/DECISIONS.md` by the §7 method, an atomic update to ENGINEERING and
+affected requirements, a test that discriminates the new contract, and deletion of the displaced
+path in the same change.
 
 No supersession documents, no indefinite migrations, no compatibility layers.
 
@@ -116,8 +117,23 @@ specs. Approval is specific; silence is not consent.
 
 An explicit request to implement an approved plan, or to repair something broken that you found
 while doing it, authorizes the ordinary work: code, tests, the gate, branches, PRs, merges,
-cleanup. Do not stop to re-ask. Ask when a new decision would change the product or the
-architecture, or materially widen the scope.
+cleanup. Do not stop to re-ask.
+
+**Decide, do not ask.** When a decision arises — including one that changes the product, changes
+the architecture, or widens the scope — work it out and make it. Do not hand it back as a
+question. The method:
+
+1. **State the criteria** the decision turns on, derived from `docs/VISION.md`'s objective
+   ordering and evaluation section rather than invented for the occasion.
+2. **List the real alternatives**, including the one you expect to reject and the one that is
+   simply "do nothing".
+3. **Rank them against the criteria**, explicitly, including where the ranking is close.
+4. **Choose**, and record the choice in `docs/DECISIONS.md` with the reasoning — especially any
+   respect in which the chosen option is worse than a rejected one.
+
+A decision that turns out badly is recoverable; Git is the archive and DECISIONS says what was
+believed at the time. Stopping to ask is not free — it stalls the work and pushes judgement onto
+someone who asked for the work precisely so they would not have to make it.
 
 A user correction is durable: update this file or the authoritative doc in the same change,
 sweep the docs it contradicts, and do not keep the displaced rule anywhere.
