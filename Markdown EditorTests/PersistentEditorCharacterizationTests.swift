@@ -804,8 +804,7 @@ struct PersistentEditorCharacterizationTests {
     /// The measured span is the delegate callback itself, so it contains semantic planning,
     /// source commit, the attributed patch, the attachment update, and selection restoration.
     /// Timing `EditorSession.perform` alone would exclude every TextKit cost the budget is about.
-    @Test func nativeInputCallbackP95Under8ms() throws {
-#if !DEBUG
+    @Test func nativeInputCallbackP95Under8ms() async throws {
         // Performance evidence must use AppKit's concrete NSTextStorage, not the spy storage
         // used by mutation-scope tests. The closed corpus enumeration prevents a fast degenerate
         // document from standing in for structured blocks, tables, code, lists, and attachments.
@@ -824,6 +823,7 @@ struct PersistentEditorCharacterizationTests {
             let harness = try PerformanceBoundaryTests.ConcreteEditorHarness(
                 source: lead + "\n\n" + corpus.source()
             )
+            await Task.yield()
             let source = harness.document.text
             let rendered = try #require(harness.session.presentation?.renderedString)
             #expect((rendered as NSString).length > (lead as NSString).length)
@@ -842,6 +842,12 @@ struct PersistentEditorCharacterizationTests {
                     break
                 }
                 if i >= 10 { samples.append(ms) }
+                // Hand the main actor back periodically. This test now runs in the gate rather
+                // than Release-only, and six corpora of fifty insertions occupy the main actor
+                // for about ten seconds in Debug — enough to starve the asynchronous
+                // image-placement suite past its fifteen-second timeout. The yield sits between
+                // samples, never inside the measured span.
+                if i % 10 == 9 { try? await Task.sleep(for: .milliseconds(2)) }
             }
             let evidence = recordPerformanceEvidence(
                 name: "wysiwyg-native-input-callback-\(corpus.rawValue)",
@@ -858,18 +864,22 @@ struct PersistentEditorCharacterizationTests {
                 // scoping REQ-143 uses and for the same reason — see `docs/DECISIONS.md`.
                 // Their cost is TextKit layout over 18,520 and 24,400 `NSTextBlock`s, which no
                 // change short of the approved block strategy can bring under 8 ms.
+                #if DEBUG
+                // Loose: the gate runs Debug with tests in parallel, so these carry scheduling
+                // contention. Their job here is to catch a catastrophic regression; the Release
+                // numbers below are the contract.
+                let ceiling: Double = corpus.isStressShape ? 200 : 60
+                #else
                 let ceiling: Double = corpus.isStressShape
                     ? (corpus == .heavyLists ? 30 : 22)
                     : 8
+                #endif
                 #expect(
                     p95 < ceiling,
                     "\(corpus.rawValue) p95=\(p95)ms exceeds \(ceiling)ms samples=\(evidence.samples.prefix(3))"
                 )
             }
         }
-#else
-        return
-        #endif
     }
 
     /// Non-gating characterization: splits the complete native callback into semantic planning
@@ -901,12 +911,17 @@ struct PersistentEditorCharacterizationTests {
             guard case .accepted = outcome else { break }
             if i >= 10 { planning.append(planMs) }
         }
-        _ = recordPerformanceEvidence(
+        let evidence = recordPerformanceEvidence(
             name: "wysiwyg-semantic-planning-only",
             corpus: source,
             warmups: 10,
             samples: planning
         )
+        // No threshold is asserted — but a characterization that collects nothing characterizes
+        // nothing. Without this the test could not fail at all, which is what
+        // `nativeInputCallbackP95Under8ms` turned out to be doing for two corpora: breaking out
+        // on a refusal and reporting an empty sample set.
+        #expect(evidence.samples.count == 40, "planning characterization collected no samples")
 #endif
     }
 
@@ -924,18 +939,18 @@ struct PersistentEditorCharacterizationTests {
             harness.typeCharacter("x", at: NSRange(location: i, length: 0))
             if i >= 5 { samples.append((CFAbsoluteTimeGetCurrent() - start) * 1000) }
         }
-        _ = recordPerformanceEvidence(
+        let evidence = recordPerformanceEvidence(
             name: "wysiwyg-native-input-callback-1M",
             corpus: harness.document.text,
             warmups: 5,
             samples: samples
         )
+        #expect(evidence.samples.count == 25, "1M characterization collected no samples")
 #endif
     }
 
     // Verifies: REQ-090 — mode toggle p95 < 16 ms (Release only).
     @Test func modeToggleP95Under16ms() {
-        #if !DEBUG
         let document = MarkdownDocument()
         document.installTextForTesting("# Title\n\nHello world\n")
         let session = EditorSession()
@@ -970,11 +985,13 @@ struct PersistentEditorCharacterizationTests {
         #expect(evidence.failures.isEmpty, "performance evidence failures: \(evidence.failures)")
         #expect(evidence.samples.count > 0)
         if let p95 = evidence.p95 {
-            #expect(p95 < 16.0, "p95=\(p95)ms samples=\(evidence.samples)")
+            #if DEBUG
+            let ceiling = 80.0
+            #else
+            let ceiling = 16.0
+            #endif
+            #expect(p95 < ceiling, "p95=\(p95)ms exceeds \(ceiling)ms samples=\(evidence.samples)")
         }
-        #else
-        return
-        #endif
     }
 }
 
