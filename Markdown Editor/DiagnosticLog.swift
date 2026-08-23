@@ -164,10 +164,6 @@ actor DiagnosticFileSink {
         return true
     }
 
-    var isTruncated: Bool {
-        truncated
-    }
-
     func close() {
         try? handle?.close()
         handle = nil
@@ -193,8 +189,6 @@ final class DiagnosticLog {
             ? 64 * 1024 * 1024
             : 8 * 1024 * 1024
     }
-    static let flushRecordThreshold = 64
-    static let flushInterval: Duration = .milliseconds(250)
     /// Above this count within one second, an identical event collapses into a summary.
     static let repeatCollapseThreshold = 20
 

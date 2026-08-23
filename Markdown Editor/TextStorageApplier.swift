@@ -178,14 +178,6 @@ final class TextStorageApplier: NSObject, NSTextStorageDelegate {
         hasKnownStorage = true
     }
 
-    /// Rebuilds everything after an explicit typography/theme identity change.
-    func applyTypographyChange(_ built: AttributedPresentation, to textView: NSTextView) {
-        guard let storage = textView.textStorage else { return }
-        track(storage)
-        withInternalMutation { replaceEverything(with: built, in: textView) }
-        hasKnownStorage = true
-    }
-
     private func track(_ storage: NSTextStorage) {
         if trackedStorage !== storage {
             trackedStorage = storage

@@ -303,7 +303,7 @@ Rules:
   provisional one — is applied as an attribute refresh that mutates no characters. The refresh
   rebuilds and reapplies only the semantic blocks whose runs, blocks, attachments, tables, or list
   markers differ; it does not build or invalidate an unrelated document range. This is why the
-  full-replacement allowlist stays at three routes rather than gaining a fourth.
+  full-replacement allowlist stays at two routes rather than gaining a third.
 - Every full replacement other than a first application records a typed `presentationRecovered`
   fault, so a rebuild can never be mistaken for an ordinary application. A failed proof from the
   native input callback or while applying a newer snapshot makes WYSIWYG unavailable until an
@@ -750,7 +750,7 @@ state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 | ARC-Q13 | Launching the built application on a rich fixture, capturing exactly one screenshot of only its own on-screen window, and closing it produces the same clean, bounded run log as ARC-Q12, plus one image containing no on-screen content outside that window. |
 | ARC-Q14 | Constructed attributed presentation proves the approved body, heading, paragraph, list, quote, code, table, thematic-break, image, and raw-HTML semantic styles in Light and Dark appearance without changing the rendered string or source. |
 | ARC-Q15 | At narrow, default, and wide constructed TextKit container widths, the reading measure/insets, hanging list indentation, nested depth, block spacing, and image bounds satisfy the approved typography tokens without clipped content. |
-| ARC-Q16 | One ordinary accepted WYSIWYG insertion performs one bounded attributed-storage edit and no full-storage replacement; initial load, recovery, and explicit typography change remain the only full-replacement routes. |
+| ARC-Q16 | One ordinary accepted WYSIWYG insertion performs one bounded attributed-storage edit and no full-storage replacement; initial load and recovery are the only full-replacement routes. (A third route for an explicit typography change was declared here and had no caller — user-selectable typography is post-MVP — so it was deleted rather than left as an invariant describing something that could not happen.) |
 | ARC-Q17 | Releasing or detaching 100 editor sessions leaves zero live sampler timers; a main-actor stall writes its threshold record before recovery; terminal close completes without waiting on a main-actor hop. |
 | ARC-Q18 | Given many revisions while one parse holds the parser lock, only the running revision and newest pending revision may enter parsing; all older pending revisions are discarded before source copy/cmark work. |
 | ARC-Q19 | A referenced regular image above 256 MiB is rejected before full read, mapping, hashing, or decode, while accepted images retain the 64 MiB decoded-cache bound. |

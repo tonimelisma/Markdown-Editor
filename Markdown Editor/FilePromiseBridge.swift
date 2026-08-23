@@ -78,13 +78,6 @@ nonisolated final class FilePromiseCallbackCollector: @unchecked Sendable {
         c?.resume(throwing: FilePromiseCollectorError.timedOut)
     }
 
-    /// Drain late callbacks after terminal failure without resuming again.
-    func drainLate(url: URL?, error: Error?) {
-        lock.lock()
-        defer { lock.unlock() }
-        received.append((url, error))
-    }
-
     var isComplete: Bool {
         lock.lock(); defer { lock.unlock() }
         return completed

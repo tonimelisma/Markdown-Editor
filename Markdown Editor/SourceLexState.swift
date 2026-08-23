@@ -20,8 +20,6 @@ nonisolated struct SourceLexState: Sendable, Equatable {
     /// location lets a later closer retroactively style the opener's cached lines.
     let strikethroughStart: Int?
 
-    var strikethroughOpen: Bool { strikethroughStart != nil }
-
     static let initial = SourceLexState(fence: nil, strikethroughStart: nil)
 
     init(fence: Fence?, strikethroughStart: Int? = nil) {

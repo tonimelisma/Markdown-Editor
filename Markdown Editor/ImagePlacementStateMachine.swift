@@ -33,9 +33,6 @@ nonisolated struct ImagePlacementState: Equatable, Sendable {
         }
     }
 
-    var isBusy: Bool {
-        phase != .idle
-    }
 }
 
 nonisolated enum ImagePlacementReducer {

@@ -23,10 +23,6 @@ final class EditorActionRouter: ObservableObject {
         pendingImageTarget = target
     }
 
-    func clearPendingImageTarget() {
-        pendingImageTarget = nil
-    }
-
     func handleAddImageClaims(_ claims: [ImageClaim], intentContext: IntentContext? = nil) {
         guard let placement, let document else {
             if let intentContext { intentContext.recorder.finish(intentContext) }

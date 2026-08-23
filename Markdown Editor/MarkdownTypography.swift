@@ -23,7 +23,6 @@ struct MarkdownTypography {
     nonisolated static let listIndent: CGFloat = 24
     nonisolated static let listMarkerGlyphs = ["•", "◦", "▪"]
     nonisolated static let quoteRuleWidth: CGFloat = 3
-    nonisolated static let quoteInset: CGFloat = 17
     nonisolated static let inlineCodeScale: CGFloat = 0.93
     nonisolated static let codeBlockPadding: CGFloat = 12
     nonisolated static let separatorHeight: CGFloat = 14

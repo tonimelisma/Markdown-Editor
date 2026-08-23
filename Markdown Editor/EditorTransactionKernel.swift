@@ -951,10 +951,3 @@ extension AcceptedEdit {
         )
     }
 }
-
-extension EditorTransactionReduction {
-    var acceptedTransaction: AcceptedEditorTransaction? {
-        guard case .accepted(let transaction) = self else { return nil }
-        return transaction
-    }
-}

@@ -466,8 +466,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         return activeTracker
     }
 
-    var activePlacementTrackingGeneration: Int { activeTrackingGeneration ?? 0 }
-
     func noteTrackedEdit(edited: NSRange, changeInLength: Int) {
         guard var tracker = activeTracker else { return }
         tracker.applyEdit(edited: edited, changeInLength: changeInLength)

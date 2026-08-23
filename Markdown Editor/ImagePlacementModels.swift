@@ -42,12 +42,6 @@ nonisolated enum ImagePlacementPhase: Equatable, Sendable {
     case failed
 }
 
-nonisolated enum ImagePlacementTerminal: Equatable, Sendable {
-    case committed
-    case cancelled
-    case failed(ImagePlacementError)
-}
-
 nonisolated enum ImageClaim: Sendable {
     case fileURL(URL, providerName: String?, declaredType: UTType?)
     case bitmapData(Data, providerName: String?, declaredType: UTType?)

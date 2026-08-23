@@ -626,12 +626,6 @@ final class EditorSession: ObservableObject {
         )
     }
 
-    /// Reduces a transient callback such as marked-text update/cancel without mutating source.
-    @discardableResult
-    func reduceTransientEditorInput(_ input: EditorInput) -> EditorTransactionReduction {
-        EditorTransactionKernel.reduce(input, state: editorStateSnapshot())
-    }
-
     /// Primary edit entry — returns accepted source+presentation transition or refusal.
     @discardableResult
     func perform(
