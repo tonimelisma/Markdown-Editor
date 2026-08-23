@@ -103,6 +103,46 @@ struct SpecCorpusTests {
         #expect(failures.isEmpty, "\(failures.count) example(s) failed:\n\(failures.prefix(10).joined(separator: "\n"))")
     }
 
+    /// COR-88 phase 1: the strengthening risk, retired before the oracle changes.
+    ///
+    /// The coverage-array oracle accepted out-of-order segments that happened to tile. Its tiling
+    /// replacement does not. That is a *strengthening*, so it can only ship if production never
+    /// emits out-of-order segments — and the pinned specification is the strongest available
+    /// evidence for that, covering reference definitions, tab expansion, nested containers and
+    /// all seven HTML block kinds that no generator here produces.
+    ///
+    /// // Verifies: REQ-132/054 — segments are emitted in ascending projection order.
+    @Test func everySpecExampleEmitsSegmentsInAscendingProjectionOrder() throws {
+        let manifest = try Self.loadManifest()
+        var failures: [String] = []
+        var segmentsSeen = 0
+
+        for example in manifest.examples {
+            guard let tree = try? MarkdownParser.parse(example.markdown, sourceVersion: 1).get() else {
+                continue
+            }
+            let index = MarkdownSourceIndex(source: example.markdown, sourceVersion: 1)
+            let model = MarkdownProjectionModel.build(tree: tree, index: index)
+            segmentsSeen += model.segments.count
+            var cursor = 0
+            for segment in model.segments {
+                let range = segment.projectionRange
+                if range.location != cursor {
+                    failures.append(
+                        "\(example.id): segment at \(range.location) does not continue from \(cursor)"
+                    )
+                    break
+                }
+                cursor = NSMaxRange(range)
+            }
+        }
+
+        // The detector proves itself: an empty corpus, or a corpus whose models carry no
+        // segments, would make the loop above vacuous.
+        #expect(segmentsSeen > 1_000, "only \(segmentsSeen) segments examined — the property would be vacuous")
+        #expect(failures.isEmpty, "\(failures.count) example(s) out of order:\n\(failures.prefix(10).joined(separator: "\n"))")
+    }
+
     // Verifies: REQ-132/051 — every token the source highlighter produces over the spec corpus lies
     // inside its document and never splits a composed character sequence. The oracle is `NSString`'s
     // own grapheme segmentation, which the highlighter does not use.

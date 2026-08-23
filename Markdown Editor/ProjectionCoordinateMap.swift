@@ -325,16 +325,3 @@ nonisolated struct ProjectionCoordinateMap: Sendable, Equatable {
         return NSRange(location: start, length: end - start)
     }
 }
-
-extension ProjectionSegment {
-    var projectionRange: NSRange {
-        switch self {
-        case .source(let projection, _, _, _),
-             .synthetic(let projection, _, _),
-             .literalFallback(let projection, _),
-             .uneditable(let projection, _):
-            return projection
-        }
-    }
-
-}

@@ -147,23 +147,23 @@ struct SemanticCommandBudgetTests {
         // scheduling contention as well as the work; a tight bound here would be flaky rather
         // than informative. Their job is to catch a catastrophic regression, not drift.
         switch corpus {
-        case .degenerateParagraph: return 200
-        case .codeHeavy: return 250
-        case .imageHeavy: return 500
-        case .structuredProse: return 600
+        case .degenerateParagraph: return 80
+        case .codeHeavy: return 180
+        case .imageHeavy: return 550
+        case .structuredProse: return 550
         case .tableDense: return 1400
-        case .heavyLists: return 1800
+        case .heavyLists: return 1200
         }
         #else
         // Release is where the evidence lives and where drift matters — roughly 1.7x the
         // measured worst case.
         switch corpus {
-        case .degenerateParagraph: return 30
-        case .codeHeavy: return 40
-        case .imageHeavy: return 70
-        case .structuredProse: return 80
-        case .heavyLists: return 190
-        case .tableDense: return 260
+        case .degenerateParagraph: return 20
+        case .codeHeavy: return 35
+        case .imageHeavy: return 75
+        case .structuredProse: return 75
+        case .heavyLists: return 160
+        case .tableDense: return 190
         }
         #endif
     }

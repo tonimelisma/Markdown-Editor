@@ -63,11 +63,19 @@ p50 22.0 / 31.2 / 66.4 / 79.3 / 181.6 / 182.8 ms in the same corpus order, max 1
 | tableDense | 29,280 | 18.3 | 4.2 | 0.0 | **80.9** |
 | heavyLists | 29,632 | 26.7 | 4.3 | 0.0 | **95.1** |
 
-### Finding 1 — the oracle costs more than the parse it validates
+### Finding 1 — the oracle costs more than the parse it validates *in Debug*
 
-`ProjectionOracle.validate` is the largest single cost in a formatting command, and on every
-corpus case it exceeds the cmark parse whose output it checks — 95.1 ms against 27.5 ms on
-`heavyLists`, a factor of 3.5.
+`ProjectionOracle.validate` is the largest single cost in a formatting command **as measured in
+Debug**, and on every corpus case it exceeds the cmark parse whose output it checks — 95.1 ms
+against 27.5 ms on `heavyLists`, a factor of 3.5.
+
+> **Corrected 2026-08-22, after COR-88 shipped.** This finding does not transfer to Release, and
+> the heading originally claimed it without qualification. Replacing the coverage array improved
+> Release worst-case cost by 0–25 % on the structured corpora, not the ~50 % this table implies —
+> see Finding 6. The array's per-character loop is dominated by bounds-checking and retain/release
+> that `-Onone` keeps and `-O` largely removes. **A phase breakdown taken in Debug attributes cost
+> to whatever `-Onone` punishes most, which is not what the user pays for.** The repair was still
+> correct and was kept, but on the strength of Finding 2, not this one.
 
 ### Finding 2 — the oracle's cost is driven by document length, not by segment count
 
@@ -139,6 +147,37 @@ because the vacuous version was green and looked like good news.
 **Consequence for COR-89.** Its decision gate is expected to open. Even if COR-88 removes the
 oracle entirely — roughly half the rebuild cost — `tableDense` and `heavyLists` remain far above
 16 ms.
+
+### Finding 6 — what COR-88 actually bought (measured 2026-08-22, after the repair)
+
+Worst of three commands through the production route, same fixture as Finding 4a.
+
+| corpus | Release before | Release after | Debug after |
+| --- | ---: | ---: | ---: |
+| degenerateParagraph | ~16 ms | **7.7 ms** | 26.1 ms |
+| codeHeavy | 17.8 ms | 16.4 ms | 68.9 ms |
+| structuredProse | 42.2 ms | 41.7 ms | 235.1 ms |
+| imageHeavy | 37.2 ms | 41.2 ms | 247.3 ms |
+| heavyLists | 103.0 ms | 92.3 ms | 559.3 ms |
+| tableDense | 145.6 ms | **109.0 ms** | 650.2 ms |
+
+`degenerateParagraph` — one block, two segments, 100,000 characters — halved, which is the
+signature of a length-driven cost being removed and is exactly what Finding 2 predicted. The
+structured corpora improved 0–25 %; `imageHeavy` moved within noise.
+
+**Two consequences.**
+
+1. The remaining cost is the parse, the projection model build, and atom construction, all
+   whole-document. COR-89's decision gate is **open**: `tableDense` at 109 ms and `heavyLists` at
+   92 ms are far from the 16 ms budget, and no amount of tightening inside the snapshot will
+   close that.
+2. **Two micro-optimisations named in COR-88's plan were not made.** The `ProjectionAtom.from` →
+   `toSegments` round-trip and the double `PresentationSnapshot` construction were justified by
+   the Debug sub-phase table (0.3–4.3 ms), which Finding 1's correction shows overstates Swift-heavy
+   phases. In Release both are well under a millisecond against a 109 ms total, and removing the
+   round-trip means adding a second parameter and a fallback path to `make` — apparatus bought
+   with a stale measurement. Recorded rather than done, per `docs/plans/README.md`: a plan that
+   does not survive contact with the code is a finding.
 
 ### Finding 5 — Release testability was disabled, so the number that matters was unobtainable
 

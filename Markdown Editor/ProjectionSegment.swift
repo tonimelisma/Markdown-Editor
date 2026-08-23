@@ -54,6 +54,24 @@ nonisolated enum ProjectionSegment: Sendable, Equatable {
     case uneditable(projection: NSRange, reason: ProjectionRefusal)
 }
 
+extension ProjectionSegment {
+    /// The projection range this segment covers, whatever its kind.
+    ///
+    /// // Lived in `ProjectionCoordinateMap.swift` until COR-88, which is not where a reader
+    /// // looks for an accessor on this type. `ProjectionOracle` re-derived the same value with
+    /// // its own `switch` rather than using it, and an omitted case there would have silently
+    /// // exempted a segment from validation.
+    var projectionRange: NSRange {
+        switch self {
+        case .source(let projection, _, _, _),
+             .synthetic(let projection, _, _),
+             .literalFallback(let projection, _),
+             .uneditable(let projection, _):
+            return projection
+        }
+    }
+}
+
 nonisolated enum SelectionAffinity: Sendable, Equatable {
     case upstream
     case downstream

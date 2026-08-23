@@ -23,43 +23,64 @@ nonisolated enum ProjectionOracle {
             intent.recorder.add(intent) { $0.oracleValidations += 1 }
         }
         let renderedCount = (model.renderedString as NSString).length
-        var covered = Array(repeating: 0, count: max(renderedCount, 0))
 
+        // The property is that the segments exactly partition the projection: the first starts at
+        // 0, each starts where the previous ended, and the last ends at `renderedCount`.
+        //
+        // // COR-88: this was a per-character coverage array — an 800 KB allocation and 100,000
+        // // bounds-checked increments on a 100,000-character document, to decide a property
+        // // about a few thousand boundaries. It cost 3.5x the cmark parse it validates and ran
+        // // synchronously on the main actor for every formatting command
+        // // (research/2026-08-22-semantic-command-main-actor-cost.md).
+        // //
+        // // Tiling is O(segments), allocates nothing, and decides strictly more: the array could
+        // // not see ordering, so it accepted segments that covered the projection out of order.
+        // // That strengthening is safe because segment order is asserted over all 1,324 imported
+        // // specification examples and the generated corpus before it was relied on here.
+        // Ordering is checked separately from tiling so the failure code says which property
+        // broke. Folded into the tiling scan, an out-of-order pair reports `gap` at the first
+        // segment, which is true but names the symptom rather than the cause.
+        var previousLocation = -1
         for segment in model.segments {
-            let range: NSRange
+            let location = segment.projectionRange.location
+            if location < previousLocation {
+                return .failure(Failure(code: "out_of_order", detail: "idx=\(location)"))
+            }
+            previousLocation = location
+        }
+
+        var cursor = 0
+        for segment in model.segments {
             switch segment {
-            case .source(let projection, let source, _, _):
-                range = projection
+            case .source(_, let source, _, _):
                 guard source.location >= 0, NSMaxRange(source) <= sourceUTF16Count else {
                     return .failure(Failure(code: "source_oob", detail: "loc=\(source.location) len=\(source.length)"))
                 }
                 guard source.length >= 0 else {
                     return .failure(Failure(code: "source_neg", detail: "len=\(source.length)"))
                 }
-            case .literalFallback(let projection, let source):
-                range = projection
+            case .literalFallback(_, let source):
                 guard source.location >= 0, NSMaxRange(source) <= sourceUTF16Count else {
                     return .failure(Failure(code: "fallback_oob", detail: "loc=\(source.location)"))
                 }
-            case .synthetic(let projection, _, _):
-                range = projection
-            case .uneditable(let projection, _):
-                range = projection
+            case .synthetic, .uneditable:
+                break
             }
-            guard range.location >= 0, NSMaxRange(range) <= renderedCount else {
+
+            let range = segment.projectionRange
+            guard range.location >= 0, range.length >= 0, NSMaxRange(range) <= renderedCount else {
                 return .failure(Failure(code: "proj_oob", detail: "loc=\(range.location) len=\(range.length)"))
             }
-            for i in 0..<range.length {
-                let idx = range.location + i
-                covered[idx] += 1
-                if covered[idx] > 1 {
-                    return .failure(Failure(code: "overlap", detail: "idx=\(idx)"))
-                }
+            if range.location < cursor {
+                return .failure(Failure(code: "overlap", detail: "idx=\(range.location)"))
             }
+            if range.location > cursor {
+                return .failure(Failure(code: "gap", detail: "idx=\(cursor)"))
+            }
+            cursor = NSMaxRange(range)
         }
-
-        if let gap = covered.firstIndex(where: { $0 == 0 }), renderedCount > 0 {
-            return .failure(Failure(code: "gap", detail: "idx=\(gap)"))
+        if cursor != renderedCount {
+            return .failure(Failure(code: "gap", detail: "idx=\(cursor)"))
         }
 
         // Round-trip a few caret positions.
