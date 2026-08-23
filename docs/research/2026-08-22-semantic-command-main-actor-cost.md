@@ -277,6 +277,30 @@ digest stored on the snapshot, and the residual gap — a caller handing `from` 
 a mismatched model — belongs in the test seam, where the full comparison costs nothing. That is
 the shape COR-30 already used when it put the projection oracle in the WYSIWYG test seam.
 
+### Finding 10 — what one rebuild per command bought (measured after COR-89)
+
+Worst of three commands through the production route, same fixture throughout.
+
+| corpus | before COR-89 | after | Debug after |
+| --- | ---: | ---: | ---: |
+| degenerateParagraph | 7.7 ms | **4.5 ms** | 14.2 ms |
+| codeHeavy | 16.4 ms | **6.6 ms** | 26.7 ms |
+| structuredProse | 41.7 ms | **17.6 ms** | 94.2 ms |
+| imageHeavy | 41.2 ms | **17.9 ms** | 78.8 ms |
+| heavyLists | 92.3 ms | **37.9 ms** | 203.6 ms |
+| tableDense | 109.0 ms | **52.6 ms** | 235.7 ms |
+
+Roughly 2.2–2.5× across the board, from deleting no validation and computing nothing new — only
+from not computing the same pure function three times. `degenerateParagraph` and `codeHeavy` are
+now inside the 16 ms budget; `structuredProse`, the corpus most like a real document, is at 17.6 ms
+and just outside it.
+
+**REQ-143 stays `Correction`.** The remaining cost is one genuine rebuild (11.3 ms on
+`structuredProse`, 26.9 ms on `tableDense`, Finding 7) plus 6–26 ms of planning and application.
+Closing the last of it needs a fresh measurement of that residue, not a continuation of this
+increment's reasoning — which is the discipline that produced this result and the two abandoned
+plans before it.
+
 ### Finding 5 — Release testability was disabled, so the number that matters was unobtainable
 
 `ENABLE_TESTABILITY = YES` occurs once in `project.pbxproj`, in the **app target's Debug

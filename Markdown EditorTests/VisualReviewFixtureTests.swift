@@ -120,6 +120,8 @@ struct ProductionTestHookInventoryTests {
             "trapsOnReconciliationViolation", // lets a suite provoke ARC-015 without trapping
             "recordForTesting",               // feeds FrameObserver's real callback without a display link
             "bumpGenerationWithoutCancellationForTesting", // delivers a completed parse as stale
+            "resetMemoForTesting",             // COR-89: cold-starts the authoritative build memo
+            "performedBuildCountForTesting",   // COR-89: whole-document rebuilds actually performed
         ]
         for hook in hooks {
             #expect(source.contains(hook), "inventoried hook \(hook) no longer exists")

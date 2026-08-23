@@ -430,9 +430,19 @@ projection editable while parsing runs is forbidden (§5). Deferring the answer 
 either a weaker acceptance rule or a visible editor freeze; blocking is the current, deliberate
 choice.
 
+**One rebuild per command.** `AuthoritativePresentationBuilder` memoises its last result, keyed by
+source, source revision, snapshot ID and location generation. Before COR-89 a single command built
+the whole document three times: once in the planner, then twice in
+`EditorTransactionKernel.validateAcceptedEdit` — reached from the kernel reduction and again from
+`MarkdownDocument.commitEditorTransaction` — each rebuilding to compare against the snapshot the
+planner had just produced. **Neither validation was removed.** `build` is a pure function of its
+key, so returning the memoised value is indistinguishable from recomputing it: a forged snapshot
+was never stored under the key, misses, and is rebuilt and rejected exactly as before.
+`AuthoritativeRebuildCountTests` asserts the count is one and reddens at three.
+
 **What it costs, and how that is bounded.** The wait is a whole-document index, parse, projection
-build and oracle validation. Measured p95 in Release over the approved corpus at 100,000 UTF-16
-units: 17.8 ms (codeHeavy) to 145.6 ms (tableDense) — see
+build and oracle validation. Measured worst case in Release over the approved corpus at 100,000
+UTF-16 units, after COR-89: 4.5 ms (degenerateParagraph) to 52.6 ms (tableDense) — see
 `research/2026-08-22-semantic-command-main-actor-cost.md`. `PerformanceSampler.Metric.semanticCommand`
 budgets the complete main-actor command path at 16 ms, and `WorkLedger.mainThreadBlockedNanos`
 records the worker's share of it. **REQ-143 is `Correction`:** the boundary is measured and
