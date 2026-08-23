@@ -41,16 +41,21 @@ false `Done` claims. It found five things no requirement asks about.
 | COR-88 | ✅ The oracle proves tiling, not coverage | 7 | COR-86 |
 | COR-90 | ✅ Proof hygiene, launch surface, repository hygiene | 7 | — |
 | COR-87 | ✅ External file truth | 1 | — |
-| COR-89 | 🔵 Bounded presentation application — **re-planned** | 7 | — |
+| COR-89 | 🔵 One rebuild per command — **landed; REQ-143 still `Correction`** | 7 | — |
 
 Ordered by VISION's objective priority, not by discovery order: external file truth (objective 1)
 precedes command responsiveness (objective 7). COR-86 leads only because it is small and
-everything after it wants the measurement. COR-89 carried an explicit gate that could have deleted it. The gate opened — and then Stage 0
-falsified the plan's premise. The authoritative rebuild it proposed to bound is only 25–28 % of a
-command, so eliminating it entirely would leave ~70 ms against a 16 ms budget. The increment was
-re-planned against presentation *application*, and its first phase is a measurement rather than a
-design, because this path has twice cost its time somewhere other than where it looked. REQ-143 is
-`Correction` until it lands.
+everything after it wants the measurement. COR-89 was re-planned twice. Stage 0 falsified its original premise — the rebuild it proposed to
+bound is only 25–28 % of a command — and phase 1's instrumentation then found the real cause: the
+same pure rebuild ran **three times** per command, twice of them as validation. Memoising it cut
+Release worst case by 2.2–2.5× while deleting no validation.
+
+**REQ-143 is still `Correction`.** Two corpora are now inside the 16 ms budget and
+`structuredProse` — the shape most like a real document — sits at 17.6 ms. The residue is one
+genuine rebuild plus 6–26 ms of planning and application, and closing it needs a fresh measurement
+of that residue rather than a continuation of this increment's reasoning. It also needs a product
+decision: `tableDense` is a table every 1.2 characters, and whether a corpus nobody has should
+drive an architecture change is not an engineering call.
 
 Evidence: [`research/2026-08-22-semantic-command-main-actor-cost.md`](research/2026-08-22-semantic-command-main-actor-cost.md).
 Plans: [`plans/`](plans/).
