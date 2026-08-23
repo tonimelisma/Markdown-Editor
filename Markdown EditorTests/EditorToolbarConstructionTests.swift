@@ -104,7 +104,8 @@ struct EditorToolbarConstructionTests {
         )
         #expect(!contentView.contains("EditorToolbar("))
         #expect(!contentView.contains("Button(\"Bold\""))
-        // Command surface reaches the window through the toolbar controller, not the content view.
-        #expect(contentView.contains("toolbarController.install(on: window)"))
+        // That the command surface instead reaches the window through the toolbar controller is
+        // proved by `eachWindowInstallsItsOwnToolbar` above, which installs one and inspects the
+        // window's real toolbar. Asserting the call's spelling here added nothing.
     }
 }

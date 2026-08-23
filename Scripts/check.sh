@@ -43,6 +43,12 @@ fi
 # Indicative only. Parallel test output interleaves, so an occasional `passed` line is split
 # across writes and missed here; parameterized cases each emit their own line. xcodebuild's exit
 # status above is the authority on pass/fail — this number is for a sense of scale.
+warnings="$(grep -acE 'warning:' "$log" 2>/dev/null || true)"
+if (( warnings > 0 )); then
+    # Incremental: already-compiled files emit nothing, so this undercounts. It is a drift
+    # signal, not a census — run a clean build when it moves.
+    printf 'warnings: %s (incremental build; run a clean build for a full count)\n' "$warnings"
+fi
 printf 'tests: ~%s passed, %s failed\n' \
     "$(grep -acE 'Test case .* passed' "$log" 2>/dev/null || true)" \
     "$(grep -acE 'Test case .* failed' "$log" 2>/dev/null || true)"
@@ -65,6 +71,18 @@ if (( run_smoke )); then
         tail -20 "$derived/verifier-fixtures.log" >&2
     else
         echo "verifier fixtures: PASS"
+    fi
+
+    printf '%s\n' '── docs'
+    if command -v npx >/dev/null 2>&1; then
+        if ! npx --yes markdownlint-cli2 >"$derived/markdownlint.log" 2>&1; then
+            failures=$((failures + 1))
+            tail -20 "$derived/markdownlint.log" >&2
+        else
+            echo "markdownlint: PASS"
+        fi
+    else
+        echo "markdownlint: SKIPPED (no npx)"
     fi
 
     printf '%s\n' '── smoke (launches the built app on a fixture)'

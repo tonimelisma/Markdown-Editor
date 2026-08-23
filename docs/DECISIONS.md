@@ -3,6 +3,23 @@
 Decisions with consequences. Newest first. This is not an archive of everything ever decided —
 it is the short list of things someone will otherwise re-litigate or accidentally undo.
 
+## 2026-08-22 — The deployment target is the current macOS, and only it
+
+**Decision.** `MACOSX_DEPLOYMENT_TARGET = 27.0`. The application does not run on any earlier
+release. Recorded because it was never written down, and a large audience decision that exists
+only as a build setting is exactly what this file is for.
+
+**Why it is defensible.** The app has no users yet, so there is no installed base to strand. The
+editor is built on TextKit, `NSDocument`, and the system appearance and accessibility APIs, and
+every back-release lowers the floor for all of them at once: availability guards, a second
+appearance path, and a second set of typography measurements. VISION ranks "one obvious path"
+and "ride the platform" above reach.
+
+**What would change it.** The first request from someone who cannot run it. Lowering the floor is
+a real increment — availability audit, a second measured typography baseline, and a CI matrix
+that does not exist yet — not a build-setting edit, and it should not be done casually because
+one person asked.
+
 ## 2026-08-22 — The planning apparatus was reduced
 
 **Decision.** `docs/plans/README.md`'s thirteen mandatory plan sections became four questions,

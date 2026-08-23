@@ -45,16 +45,49 @@ struct PrivacyBoundaryTests {
         #expect(entitlements.isEmpty)
     }
 
-    // Verifies: REQ-031 — diagnostic payloads are a closed, local-safe value set and cannot carry
-    // URLs, arbitrary data, or secret/account values.
-    @Test func diagnosticPayloadsAreClosedAndPrivacySafe() throws {
-        let source = try String(contentsOf: sourceURL("Markdown Editor/DiagnosticValue.swift"), encoding: .utf8)
-        #expect(source.contains("enum DiagnosticValue"))
-        #expect(source.contains("case int("))
-        #expect(source.contains("case bool("))
-        #expect(!source.contains("case string("))
-        #expect(!source.contains("case url("))
-        #expect(!source.contains("case data("))
+    // Verifies: REQ-031/089; ARC-016 — diagnostic payloads are a closed, local-safe value set and
+    // cannot carry document text, URLs, paths, or arbitrary data.
+    //
+    // // COR-90 replaced a source grep (`!source.contains("case string(")`) with this. The grep
+    // // asserted the *text* of DiagnosticValue.swift, so it proved nothing about behaviour, had
+    // // no self-check on its own needles, and would have passed had the needle been misspelled.
+    // // The switch below is compiler-enforced: adding a case to `DiagnosticValue` makes it
+    // // non-exhaustive and the test target stops building until someone declares what the new
+    // // case may carry.
+    @Test func diagnosticPayloadsCannotCarryFreeText() {
+        /// What a value is allowed to contribute to a payload.
+        enum Admissible { case numeric, closedVocabulary }
+
+        func classify(_ value: DiagnosticValue) -> Admissible {
+            switch value {
+            case .int, .uint, .double, .bool: return .numeric
+            case .symbol: return .closedVocabulary
+            }
+        }
+
+        // One representative of every case, so the classification above is exercised rather than
+        // merely compiled.
+        let samples: [DiagnosticValue] = [
+            .int(-1), .uint(2), .double(3.5), .bool(true), .symbol(.documentOpen),
+        ]
+        for sample in samples where classify(sample) == .numeric {
+            #expect(
+                !sample.jsonFragment.contains("\""),
+                "a numeric diagnostic value emitted a quoted fragment: \(sample.jsonFragment)"
+            )
+        }
+
+        // The only case that emits quoted text draws it from a closed enum, so the emitted text
+        // cannot originate from a document. Proved over the whole vocabulary, not one member.
+        #expect(!DiagnosticSymbol.allCases.isEmpty)
+        for symbol in DiagnosticSymbol.allCases {
+            let raw = symbol.rawValue
+            #expect(
+                !raw.isEmpty
+                    && raw.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" },
+                "DiagnosticSymbol.\(raw) is not a plain identifier and could smuggle text"
+            )
+        }
     }
 
     private func sourceURL(_ relativePath: String) -> URL {

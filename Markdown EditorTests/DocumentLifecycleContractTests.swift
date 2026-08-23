@@ -201,18 +201,6 @@ struct DocumentLifecycleContractTests {
     // Verifies: REQ-021 — the standard NSDocumentController route records a recently opened
     // document, while the app only supplies the required Clear Menu item.
     @Test func recentsUseTheStandardDocumentControllerRoute() throws {
-        let source = try String(
-            contentsOf: URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appendingPathComponent("Markdown Editor/Markdown_EditorApp.swift"),
-            encoding: .utf8
-        )
-
-        #expect(source.contains("withTitle: \"Open Recent\""))
-        #expect(source.contains("#selector(NSDocumentController.clearRecentDocuments(_:))"))
-        #expect(!source.contains("RecentDocumentStore"))
-
         let originalMenu = NSApp.mainMenu
         let menu = originalMenu ?? NSMenu(title: "Main")
         NSApp.mainMenu = menu
@@ -227,7 +215,13 @@ struct DocumentLifecycleContractTests {
         let appDelegate = MarkdownAppDelegate()
         appDelegate.ensureOpenRecentMenuItem()
         let openRecent = fileMenu.item(withTitle: "Open Recent")
-        #expect(openRecent?.submenu?.item(withTitle: "Clear Menu") != nil)
+        let clearMenu = openRecent?.submenu?.item(withTitle: "Clear Menu")
+        #expect(clearMenu != nil)
+        // The standard route, asserted on the constructed menu item rather than on the text of
+        // Markdown_EditorApp.swift: a nil target sends the action up the responder chain to
+        // NSDocumentController, which is what makes this AppKit's Recents rather than the app's.
+        #expect(clearMenu?.action == #selector(NSDocumentController.clearRecentDocuments(_:)))
+        #expect(clearMenu?.target == nil)
         defer {
             if !hadOpenRecent, let insertedOpenRecent = fileMenu.item(withTitle: "Open Recent") {
                 fileMenu.removeItem(insertedOpenRecent)
@@ -262,24 +256,30 @@ struct DocumentLifecycleContractTests {
     // Verifies: REQ-013/015/019 — the lifecycle boundary is one NSDocument owner with serialized
     // framework I/O and one URL/location-generation route, not an app shadow subsystem.
     @Test func lifecycleOwnerHasNoDuplicateDocumentSubsystem() throws {
-        let source = try String(
+        // Uniqueness and absence only. The five `override func` presence assertions this test
+        // used to carry are covered behaviourally elsewhere — `documentControllerOpenAndSaveRoundTrip`
+        // and `readRejectsInvalidUTF8` call those overrides, and
+        // `requiredDocumentFileSelectorsAreDeclared` proves the document responds to the File
+        // selectors. Asserting their spelling here proved nothing and reddened on reformatting.
+        let allProduction = try productionSourceText()
+        // The detector proves itself: an empty or unreadable corpus would make every count below
+        // trivially zero and every `== 1` assertion fail loudly rather than silently pass — but a
+        // regex that stopped matching would not, so anchor on something certainly present.
+        #expect(allProduction.contains("final class MarkdownDocument"), "production source unreadable")
+        #expect(allProduction.components(separatedBy: "@Published private(set) var text").count - 1 == 1)
+        #expect(allProduction.components(separatedBy: "@Published private(set) var sourceVersion").count - 1 == 1)
+        #expect(allProduction.components(separatedBy: "@Published private(set) var locationGeneration").count - 1 == 1)
+        // Scoped to the document, not to all production: `DocumentActionInterface` declares the
+        // protocol requirement and `MarkdownDocument` implements it, so the whole-production count
+        // is legitimately two. The claim is that there is one *implementation*.
+        let documentSource = try String(
             contentsOf: URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
                 .appendingPathComponent("Markdown Editor/MarkdownDocument.swift"),
             encoding: .utf8
         )
-
-        let allProduction = try productionSourceText()
-        #expect(source.contains("override func save("))
-        #expect(source.contains("override func revert(toContentsOf"))
-        #expect(source.contains("override func read(from data:"))
-        #expect(source.contains("override func data(ofType"))
-        #expect(source.contains("override var fileURL"))
-        #expect(allProduction.components(separatedBy: "@Published private(set) var text").count - 1 == 1)
-        #expect(allProduction.components(separatedBy: "@Published private(set) var sourceVersion").count - 1 == 1)
-        #expect(allProduction.components(separatedBy: "@Published private(set) var locationGeneration").count - 1 == 1)
-        #expect(source.components(separatedBy: "var documentUndoManager").count - 1 == 1)
+        #expect(documentSource.components(separatedBy: "var documentUndoManager").count - 1 == 1)
         #expect(allProduction.components(separatedBy: "final class MarkdownDocument: NSDocument").count - 1 == 1)
         #expect(allProduction.range(of: #"\b(?:class|struct|actor|enum)\s+\w*(?:DocumentStore|DocumentManager|SourceStore|RevisionStore|UndoStore|TabManager|VersionStore|AutosaveStore)\b"#, options: .regularExpression) == nil)
     }

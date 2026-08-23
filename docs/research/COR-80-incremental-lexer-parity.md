@@ -33,7 +33,7 @@ incremental lexer is line-local by construction and cannot produce it.
 
 Smallest observed case (seed `7553996031648910705`, `deleteBackwardOne` at `{7, 1}`):
 
-```
+```markdown
 ﻿- [x\*delta\_\`
 
 ![the quick brown fox](assets/x.png) bravo charlie *bravo charlie*
@@ -41,12 +41,12 @@ Smallest observed case (seed `7553996031648910705`, `deleteBackwardOne` at `{7, 
 
 After the edit, inside changed range `{0, 16}`:
 
-```
+```text
 full relex : [Token(range: {3, 13}, style: .link)]
 incremental: []
 ```
 
-`{3, 13}` is `[x\*elta\_\`` plus the trailing newline — the match reaches the `](` on the third
+`{3, 13}` is `[x\*elta\_\`` plus the trailing newline — the match reaches the`](` on the third
 line. Confirmed by direct inspection of the offsets, not inferred.
 
 ### Minimized regression fixture
@@ -74,7 +74,7 @@ incremental lexer retains a `~~` run the full relex no longer produces. This is 
 
 Observed (seed `14222530701490724123`, `insertFenceMarker` at `{60, 0}`), inside `{53, 61}`:
 
-```
+```text
 incremental: [Token({55, 20}, .strikethrough), Token({62, 29}, .inlineCode)]
 full relex : [Token({62, 29}, .inlineCode)]
 ```

@@ -559,7 +559,8 @@ struct EditorStateOwnershipTests {
             "EditorCoordinateDomain",
             "EditorSelectionIntent",
             "DocumentIOText",
-            "DocumentLoadGate"
+            "DocumentLoadGate",
+            "RecentDocumentStore"      // COR-90: Recents are AppKit's, never an app-owned store
         ]
         for symbol in removedTypes {
             #expect(!haystack.contains("struct \(symbol)"), "found \(symbol)")

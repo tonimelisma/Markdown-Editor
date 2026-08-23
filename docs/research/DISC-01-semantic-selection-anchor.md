@@ -33,7 +33,8 @@ Reproducible method: throwaway Swift scripts in `/tmp` (`DISC01_POC.swift`, `DIS
 - **Method:** `MockBlock` with `projectionRange` simulating `PresentationBlock`; `enclosingBlock(at:in:)` finds smallest `NSLocationInRange` (or boundary) block. 8 fixtures (paragraph middle/0/end, two paragraphs, list, quote, code fence, heading).
 - **Result:** 8/8 `PASS`. Caret at `0` and at `renderedString.length` (boundary) both identify a block via `NSLocationInRange` + `NSMaxRange` tie-break; `tableCell` remains the only block that requires cell-granular mapping (already has `ProjectionSelectionClassifier.TableCell`).
 - **Raw output:**
-  ```
+
+```text
   PASS: paragraph caret in middle caret 5 -> paragraph
   PASS: paragraph caret at 0 caret 0 -> paragraph
   PASS: paragraph caret at end caret 11 -> paragraph
@@ -43,33 +44,39 @@ Reproducible method: throwaway Swift scripts in `/tmp` (`DISC01_POC.swift`, `DIS
   PASS: code block caret 5 -> codeBlock
   PASS: heading caret 3 -> heading
   ```
+
 - **What it proves:** `PresentationSnapshot.blocks.first(where: { NSLocationInRange(caret, $0.projectionRange) })` is total for caret-in-block without calling `ProjectionSelectionClassifier` or `ProjectionAtom` inverse mapping. `Reference: PresentationBlock.projectionRange`, `MarkdownProjectionModel`.
 
 ### POC-B — Anchor stability across line-reshaping and CRLF
 
 - **Method:** `NSString.lineRange(for:)` + `SemanticPlannerGate.trimmedLength` probing; `Anchor(blockID=42, offset=5)` for "First paragraph." rewritten to "# First paragraph.\n" (`String.lineRange(for:)` + `crlfAwareTrimmingNewline`).
 - **Result:**
-  ```
+
+```text
   lineRange for 0: {0, 17} -> 'First paragraph.\n'
   lineRange for 18: {17, 18} -> 'Second paragraph.\n'
   CRLF lineRange for 0: {0, 18} length 18
   contentLength of "# First paragraph.\n" -> 18 (not 19)
   contentLength CRLF -> 18 (not 20)
   ```
+
   `lineRange` groups `\r\n` as one line; `trimmedLength` drops `\n` then `\r` (CRLF-correct); `contentLength` therefore lands inside content, not on the boundary. Anchor offset 5 (`t` in `First`) survives both rewrites because content prefix is preserved up to chrome.
+
 - **What it proves:** `NSString.lineRange(for:)` for the identified block's source `NSRange` is stable across `BlockEditPlanner` rewrites (heading/list/quote/code fence); `Anchor(blockID, offsetInContent)` survives length change; generic `NSRange` does not. `Reference: MarkdownSourceIndex`, `PresentationBlock.nodeID`.
 
 ### POC-C — API probes for COR-26 defect and policy
 
 - **Method:** `NSLocationInRange` boundary probing + `SemanticPlannerGate.caretInsideContent` vs inlined `lineStart + replacement.length`.
 - **Result:**
-  ```
+
+```text
   Caret at 17 (inside first block): NSLocationInRange -> false (boundary, not inside)
   Caret at 18 (boundary): false but is NSEqualRange boundary
   Before COR-26: 11 inlined copies of lineStart+replacement.length placed caret at boundary (past \n) -> mappingFailure
   After COR-26: caretInsideContent places caret at lineStart+trimmedLength (inside content) -> success
   DISC-01: Even with caretInsideContent, planner still requires exact inverse mapping for SELECTION (not just caret). Scope ARC-009 would remove that for reshapesWholeLine.
   ```
+
 - **Online/policy:** `cmark-gfm` `node.firstChild`/`next` block tree and `MarkdownSourceIndex.utf8Range` remain off-main immutable snapshots (checked in `MarkdownSourceIndex.swift` + `MarkdownParser.swift`); block identification needs no `NSTextView`/`NSLayoutManager` (checked `AppKit` docs, no layout needed). Precedent: `ImagePlacementController` uses `MarkdownSourceIndex` + `CanonicalAssetReferences` derived from cmark tree, not regex.
 
 ### Additional evidence (not throwaway): existing test suite
@@ -94,7 +101,7 @@ Reproducible method: throwaway Swift scripts in `/tmp` (`DISC01_POC.swift`, `DIS
 ## Options and trade-offs
 
 | Option | Pro | Con |
-|---|---|---|
+| --- | --- | --- |
 | **1. Scope ARC-009** | Smallest doc/code change; keeps `NSRange`-based planning; reuses existing `SourceMutation.exact` | Still reasons about ranges; 11-site caret helper remains but becomes simpler |
 | **2. Semantic anchor** | Removes coordinate reasoning from planners entirely for `reshapesWholeLine`; anchor survives rewrite by construction | New type + two-way conversion (anchor↔source NSRange); migration of 4 planners |
 

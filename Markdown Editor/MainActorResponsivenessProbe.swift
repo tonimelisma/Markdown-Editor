@@ -22,7 +22,7 @@ private nonisolated enum MainActorProbeRelay {
     }
 
     static func remove(_ token: UUID) {
-        callbacks.withLock { $0.removeValue(forKey: token) }
+        _ = callbacks.withLock { $0.removeValue(forKey: token) }
     }
 }
 

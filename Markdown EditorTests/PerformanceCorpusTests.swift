@@ -85,24 +85,51 @@ func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
     }
 }
 
-// Verifies: REQ-128
-@Test func benchmarkDriverAssertsOnlyOnStructuredRecords() {
+// Verifies: REQ-128 — the benchmark driver reads structured records and never inspects the UI.
+//
+// // An *absence* proof, which `CLAUDE.md` §3 permits source inspection for — and unlike the
+// // version this replaces, its detector proves itself below rather than trusting that the
+// // needles would have matched. A misspelled needle previously passed silently.
+@Test func benchmarkDriverAssertsOnlyOnStructuredRecords() throws {
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-    let source = try! String(contentsOf: root.appendingPathComponent("Markdown Editor/BenchmarkDriver.swift"), encoding: .utf8)
+    let source = try String(
+        contentsOf: root.appendingPathComponent("Markdown Editor/BenchmarkDriver.swift"),
+        encoding: .utf8
+    )
+    // The detector works: a string that is certainly present is found.
+    #expect(source.contains("BenchmarkDriver"), "detector failed to match a certainly-present string")
     #expect(!source.contains("accessibility"))
     #expect(!source.contains("synthetic"))
 }
 
-// Verifies: REQ-128 — the shell passes a parameter-only manifest and never owns corpus text or
-// the action matrix.
-@Test func benchmarkShellUsesSwiftAuthority() throws {
-    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-    let source = try String(contentsOf: root.appendingPathComponent("Scripts/benchmark.sh"), encoding: .utf8)
-    #expect(source.contains("--benchmark-manifest"))
-    #expect(source.contains("os.replace"))
-    #expect(!source.contains("make_fixture"))
-    #expect(!source.contains("degenerateParagraph"))
-    #expect(!source.contains("typeProse typeInTable"))
+// Verifies: REQ-128 — the manifest carries matrix *parameters* only, so the shell harness cannot
+// own corpus text or the action matrix even if it tried.
+//
+// // COR-90 replaced a set of `contains` assertions on the text of `Scripts/benchmark.sh`. Those
+// // asserted the script's spelling rather than any behaviour, and would have reddened on a
+// // harmless edit while staying green if the script had smuggled corpus text through a channel
+// // the needles did not name. Encoding the type answers the real question: there is no field a
+// // corpus or a scenario list could travel in.
+@Test func benchmarkManifestCarriesParametersOnly() throws {
+    let manifest = BenchmarkDriver.Manifest(
+        durationSeconds: 2,
+        intervalMillis: 120,
+        sizes: [10_000, 100_000],
+        resultDirectory: URL(fileURLWithPath: "/tmp/results")
+    )
+    let data = try JSONEncoder().encode(manifest)
+    let object = try #require(
+        try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    )
+    #expect(
+        Set(object.keys) == ["durationSeconds", "intervalMillis", "sizes", "resultDirectory"],
+        "manifest gained a field: \(Set(object.keys).sorted())"
+    )
+
+    // `PerformanceCorpus` and `Scenario` remain the sole authorities for what runs, which is the
+    // other half of the claim and is proved by construction rather than by the script's text.
+    #expect(!PerformanceCorpus.allCases.isEmpty)
+    #expect(!BenchmarkDriver.Scenario.allCases.isEmpty)
 }
 
 // Verifies: REQ-128 — malformed benchmark outcomes cannot be admitted as evidence.

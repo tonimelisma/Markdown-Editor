@@ -147,6 +147,14 @@ struct MarkdownDocumentTests {
         #expect(MarkdownAppDelegate.requiredDocumentSelectors.contains("saveDocument:"))
         #expect(MarkdownAppDelegate.requiredDocumentSelectors.contains("saveDocumentAs:"))
         #expect(MarkdownAppDelegate.requiredDocumentSelectors.contains("revertDocumentToSaved:"))
+        // Liveness: the list is a declaration, and a declaration that names a selector nothing
+        // implements would satisfy every assertion above while leaving File ▸ Save dead.
+        for name in MarkdownAppDelegate.requiredDocumentSelectors {
+            #expect(
+                MarkdownDocument.instancesRespond(to: Selector(name)),
+                "MarkdownDocument does not respond to declared selector \(name)"
+            )
+        }
     }
 }
 

@@ -12,7 +12,7 @@
 
 Both tools named by the plan are present:
 
-```
+```text
 /usr/bin/leaks            (leaks --atExit -- <command>)
 xcrun xctrace version     27.0 (27A5228h)
 ```

@@ -15,6 +15,17 @@ nonisolated protocol FrameClock: AnyObject, Sendable {
 }
 
 /// Real macOS display-link source. Only the callback box crosses Core Video's opaque pointer.
+///
+/// // `CVDisplayLink` is deprecated as of macOS 15 in favour of
+/// // `NSScreen.displayLink(target:selector:)`, and this type deliberately keeps it. The
+/// // replacement vends a `CADisplayLink` that is driven by a run loop, so its callback runs on
+/// // the thread that scheduled it — for the main run loop, the main thread. This observer exists
+/// // to detect main-actor hitches, so a callback that is itself blocked by the stall it is
+/// // measuring is blind exactly when it matters. The protocol above states the requirement:
+/// // "the callback is never required to run on the main actor."
+/// //
+/// // Revisit if AppKit provides an off-main display-cadence source. Until then the deprecation
+/// // warnings this type emits are expected; see `ENGINEERING.md` §16.
 nonisolated final class DisplayLinkFrameClock: FrameClock, @unchecked Sendable {
     private final class CallbackBox: @unchecked Sendable {
         let callback: @Sendable (FrameClockTick) -> Void

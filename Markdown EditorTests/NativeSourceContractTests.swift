@@ -193,12 +193,6 @@ struct NativeSourceContractTests {
         await delayedOwner.update(snapshot: "new", revision: 2)
         await oldRevision.value
         #expect(delayedOwner.displayLabel == "1 words · 3 characters")
-
-        let contentView = try String(contentsOf: sourceURL("Markdown Editor/ContentView.swift"), encoding: .utf8)
-        #expect(contentView.contains(".task(id: document.sourceVersion)"))
-        #expect(contentView.contains("await countOwner.update(snapshot: document.text, revision: document.sourceVersion)"))
-        #expect(contentView.contains("Text(countOwner.displayLabel)"))
-        #expect(!contentView.contains("TextStats.wordCount"))
     }
 
     // Verifies: REQ-010/011/022 — programmatic display styling is attribute-only and creates no
@@ -308,10 +302,6 @@ struct NativeSourceContractTests {
         textView.delegate = coordinator
         coordinator.textView = textView
         return Fixture(document: document, session: session, coordinator: coordinator, storage: storage, textView: textView)
-    }
-
-    private func sourceURL(_ relativePath: String) -> URL {
-        URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(relativePath)
     }
 
 }

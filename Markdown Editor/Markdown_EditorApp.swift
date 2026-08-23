@@ -62,6 +62,45 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         "revertDocumentToSaved:",
     ]
 
+    /// Every launch argument and environment variable this application reads.
+    ///
+    /// // COR-90: the diagnostic and benchmark entry points are real product surface — the
+    /// // shipping binary honours all of them — and until this list existed no requirement
+    /// // described them and nothing enumerated them. They are deliberately *not* compiled out
+    /// // of Release: `Scripts/benchmark.sh` builds Release, so REQ-090's evidence comes from
+    /// // the configuration that ships, which is the point.
+    /// //
+    /// // The safety property is not that these are absent but that none of them can mutate a
+    /// // document without `--diagnostic-smoke-exit`, an argument no ordinary launch supplies.
+    /// // `LaunchSurfaceTests` proves the list is complete and that property holds.
+    /// // REQ-144.
+    enum LaunchSurface {
+        /// Arguments that select a non-editing mode of operation.
+        static let arguments = [
+            "--benchmark",
+            "--benchmark-manifest",
+            "--corpus",
+            "--duration",
+            "--interval-ms",
+            "--size",
+            "--diagnostic-smoke-exit",
+        ]
+
+        /// Environment variables read anywhere in the application.
+        static let environmentVariables = [
+            "MARKDOWN_EDITOR_BENCHMARK",
+            "MARKDOWN_EDITOR_DIAGNOSTICS_DIR",
+            "MARKDOWN_EDITOR_FRAME_OBSERVER",
+            "MARKDOWN_EDITOR_SMOKE_EXERCISE_EDITS",
+            "MARKDOWN_EDITOR_SMOKE_EXIT_SECONDS",
+            "MARKDOWN_EDITOR_SMOKE_WINDOW_HEIGHT",
+        ]
+
+        /// The subset that can cause the application to modify document content on its own.
+        /// Each is additionally gated on `isSmokeRun`.
+        static let documentMutating = ["MARKDOWN_EDITOR_SMOKE_EXERCISE_EDITS"]
+    }
+
     /// True when the app binary is hosted by XCTest / Swift Testing.
     nonisolated static var isRunningUnitTests: Bool {
         let env = ProcessInfo.processInfo.environment

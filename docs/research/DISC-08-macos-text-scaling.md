@@ -71,6 +71,7 @@ wants in-app control independent of this OS limitation.
   finding before assuming the OS side is still closed.
 
 Sources:
+
 - [NSFont.TextStyle — Apple Developer Documentation](https://developer.apple.com/documentation/appkit/nsfont/textstyle)
 - [NSFont.TextStyleOptionKey — Apple Developer Documentation](https://developer.apple.com/documentation/appkit/nsfont/textstyleoptionkey)
 - [How do you support Preferred Font Size / Dynamic Type on macOS? — Apple Developer Forums](https://developer.apple.com/forums/thread/818858)

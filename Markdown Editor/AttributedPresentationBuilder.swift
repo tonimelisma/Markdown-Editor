@@ -240,7 +240,7 @@ enum AttributedPresentationBuilder {
             // without a second indentation mechanism disagreeing with it.
             // Composed: a code block inside a quote keeps both containers. Depth is total
             // enclosing quote depth; existing quote blocks from outer quotes are preserved.
-            let existingBlocks = style.textBlocks ?? []
+            let existingBlocks = style.textBlocks
             let existingQuoteCount = existingBlocks.filter { Self.isQuoteBlock($0) }.count
             let needed = max(1, depth) - existingQuoteCount
             if needed > 0 {
@@ -250,7 +250,7 @@ enum AttributedPresentationBuilder {
             }
             style.paragraphSpacing = typography.blockSpacing
         case .codeBlock:
-            let existingBlocks = style.textBlocks ?? []
+            let existingBlocks = style.textBlocks
             style.textBlocks = existingBlocks + [typography.codeBlock()]
             style.paragraphSpacing = typography.blockSpacing
             storage.addAttribute(.font, value: typography.monoFont, range: range)
@@ -390,7 +390,7 @@ enum AttributedPresentationBuilder {
             let nodeID = attachment.nodeID
             cell.onPress = { onTaskPress?(nodeID) }
             nsAttachment.attachmentCell = cell
-        case .image(let destination, let description):
+        case .image(_, let description):
             if let image = images[attachment.nodeID] {
                 nsAttachment.attachmentCell = ResolvedImageAttachmentCell(image: image, description: description)
                 let maxWidth = MarkdownTypography.maximumReadingMeasure

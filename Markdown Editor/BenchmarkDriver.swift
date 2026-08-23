@@ -336,7 +336,7 @@ enum BenchmarkDriver {
             await waitForBenchmarkPresentation(session: session, document: document)
             // Discard work caused by installing the next fixture or by the preceding case. A
             // case's metrics must describe its own scenario, not cross-case reconciliation.
-            session.performanceSampler?.drainSummaries()
+            _ = session.performanceSampler?.drainSummaries()
             if configuration.scenario == .typeProse {
                 guard let sourceCoordinator = sourceCoordinator(in: controller.presentingWindow?.contentView) else {
                     fatalError("benchmark: source coordinator is not attached to the editor window")
@@ -350,7 +350,7 @@ enum BenchmarkDriver {
                 // The initial cache seed measures document-open styling, not ordinary typing.
                 // Drain it before scenario actions so sourceHighlightCompute evidence describes
                 // the incremental edit route promised by COR-72.
-                session.performanceSampler?.drainSummaries()
+                _ = session.performanceSampler?.drainSummaries()
             }
             var counters = Counters()
             let deadline = ContinuousClock.now + configuration.duration
