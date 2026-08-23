@@ -102,8 +102,19 @@ nonisolated enum AuthoritativePresentationBuilder {
         return built
     }
 
-    /// Drops the memo. Tests that assert on how much work a route performs need a cold start;
-    /// production never needs this, because a new key supersedes the old entry.
+    /// Releases the retained snapshot.
+    ///
+    /// // A one-entry memo still retains one whole source string and one whole snapshot after the
+    /// // document that produced them has closed. That is not a correctness problem — a new key
+    /// // supersedes it — but holding several megabytes for a document the user closed is exactly
+    /// // the kind of quiet retention `Scripts/leak-smoke.sh` exists to catch. Called from
+    /// // `MarkdownDocument.close()`.
+    static func releaseMemo() {
+        memo.withLock { $0 = nil }
+    }
+
+    /// Drops the memo and the build counter. Tests that assert on how much work a route performs
+    /// need a cold start.
     static func resetMemoForTesting() {
         memo.withLock { $0 = nil }
         performedBuilds.withLock { $0 = 0 }

@@ -53,6 +53,11 @@ nonisolated enum MarkdownParser {
         performedParses.withLock { $0 }
     }
 
+    /// Releases the retained tree. See `AuthoritativePresentationBuilder.releaseMemo()`.
+    static func releaseMemo() {
+        memo.withLock { $0 = nil }
+    }
+
     static func resetParseMemoForTesting() {
         memo.withLock { $0 = nil }
         performedParses.withLock { $0 = 0 }

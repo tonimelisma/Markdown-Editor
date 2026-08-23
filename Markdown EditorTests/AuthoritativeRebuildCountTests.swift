@@ -128,6 +128,48 @@ struct AuthoritativeRebuildCountTests {
         #expect(MarkdownParser.performedParseCountForTesting == 2)
     }
 
+    /// // Verifies: REQ-090 — closing a document releases what the memos retain.
+    ///
+    /// A one-entry memo is not a leak, but it holds one whole source, tree and snapshot, and a
+    /// closed document leaving megabytes resident is the quiet retention the leak smoke run
+    /// exists to catch.
+    @Test func closingADocumentReleasesTheMemos() throws {
+        AuthoritativePresentationBuilder.resetMemoForTesting()
+        MarkdownParser.resetParseMemoForTesting()
+
+        let document = MarkdownDocument()
+        document.installTextForTesting("# Retained\n\nBody text.\n")
+        _ = MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion)
+        _ = AuthoritativePresentationBuilder.build(
+            source: document.text,
+            sourceRevision: document.sourceVersion,
+            snapshotID: PresentationSnapshot.ID(value: 99),
+            locationGeneration: 0
+        )
+        let buildsBefore = AuthoritativePresentationBuilder.performedBuildCountForTesting
+        let parsesBefore = MarkdownParser.performedParseCountForTesting
+
+        document.close()
+
+        // A repeat request after close must do the work again, which is observable proof the
+        // entries were released rather than merely unreferenced.
+        _ = MarkdownParser.parse(document.text, sourceVersion: document.sourceVersion)
+        _ = AuthoritativePresentationBuilder.build(
+            source: document.text,
+            sourceRevision: document.sourceVersion,
+            snapshotID: PresentationSnapshot.ID(value: 99),
+            locationGeneration: 0
+        )
+        #expect(
+            AuthoritativePresentationBuilder.performedBuildCountForTesting > buildsBefore,
+            "the snapshot memo survived close()"
+        )
+        #expect(
+            MarkdownParser.performedParseCountForTesting > parsesBefore,
+            "the parse memo survived close()"
+        )
+    }
+
     /// Memoisation must not survive a change of source, or a stale projection would be served for
     /// a document that has moved on.
     @Test func adifferentSourceIsRebuiltRatherThanServedFromTheMemo() {

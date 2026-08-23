@@ -669,6 +669,11 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     override func close() {
         trace?.record(route: .documentClosed, .documentClosed(sourceRevision: sourceVersion))
         detachUndoCheckpointObserver()
+        // COR-89's memos retain one source, tree and snapshot. Correctness does not depend on
+        // clearing them — a new key supersedes the entry — but a closed document should not leave
+        // megabytes resident.
+        AuthoritativePresentationBuilder.releaseMemo()
+        MarkdownParser.releaseMemo()
         super.close()
     }
 
