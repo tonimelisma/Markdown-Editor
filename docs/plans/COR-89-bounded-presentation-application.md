@@ -1,6 +1,14 @@
-# COR-89 — Bounded presentation application
+# COR-89 — One authoritative rebuild per command
 
-> **Re-planned 2026-08-22.** This file replaces *COR-89 — Bounded authoritative rebuild*, whose
+> **Re-planned twice on 2026-08-22.** First from *bounded authoritative rebuild* — Stage 0 showed
+> the rebuild is only 25–28 % of a command. Then again, when phase 1's instrumentation found the
+> actual cause: the rebuild runs **three times** per command, twice of them as validation. The
+> target is the duplication, not the cost of a single rebuild.
+>
+> The original re-plan text is kept below because its phase-1-before-design discipline is what
+> found this, and because its decision table records three designs that measurement rejected.
+>
+> **Superseded framing.** This file replaces *COR-89 — Bounded authoritative rebuild*, whose
 > premise Stage 0 falsified. That plan proposed reducing the parse/projection rebuild; the rebuild
 > turned out to be 25–28 % of the command, so eliminating it entirely would still leave ~70 ms
 > against a 16 ms budget. Recorded rather than quietly rewritten, per `docs/plans/README.md`: a
@@ -35,7 +43,33 @@ What Stage 0 established:
 
 That last point is a defect in its own right and phase 1 fixes it first.
 
-## Phase 1 — make the path self-describing, before designing anything
+## The fix, now that phase 1 has run
+
+`AuthoritativePresentationBuilder.build` is called three times per command
+(research Finding 9): once by the planner, and twice by `validateAcceptedEdit` — reached from
+`EditorTransactionKernel.reduce` and again from `MarkdownDocument.commitEditorTransaction`. Both
+validations rebuild the whole document to compare against the snapshot the planner just produced.
+
+1. **Bind the snapshot to its source cheaply.** Store `ConstructionProof` and a source digest on
+   `PresentationSnapshot`. Validation then checks provenance, oracle validity, digest, length and
+   revision in O(source) hashing rather than O(document) rebuilding.
+2. **Keep the strong check where it is free.** The rebuild-and-compare moves into the test seam,
+   enabled for the whole test suite, so `ownerRejectsForgedStructuralAndCheckboxTransactions` and
+   every other owner-boundary proof still exercise it. This is the shape COR-30 used for the
+   projection oracle.
+3. **Do not delete the second validation.** Once it is O(1) it costs nothing to run twice, and the
+   document revalidating what it is handed is the invariant COR-70 established.
+
+Expected: three builds to one. `structuredProse` ≈ 16 ms, `tableDense` ≈ 40 ms.
+
+**Risk to state plainly.** Provenance is weaker than recomputation: `.authoritative` is set by
+`PresentationSnapshot.from`, which `EditorSession`, `ParseCoordinator` and several tests call
+directly. The digest closes the source binding; the residual gap is a caller handing `from` a
+correct source with a mismatched model, and that is exactly what the test-seam comparison covers.
+If the digest cannot be made to bind tightly enough, **stop** — a cheaper proof that proves less is
+not an acceptable trade in this repository.
+
+## Phase 1 — make the path self-describing, before designing anything (done)
 
 The remaining ~70 ms is known to be in presentation *application*, and not known to be in any
 particular part of it. Three candidates, each with a different fix:

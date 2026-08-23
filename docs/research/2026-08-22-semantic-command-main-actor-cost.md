@@ -233,6 +233,50 @@ the next measurement has to separate patch derivation from `NSTextStorage` appli
 scoped attributed styling. Two of the app's own metrics not firing on its most expensive
 interactive path is itself a finding: it is why this had to be measured by hand.
 
+### Finding 9 — the root cause: three whole-document rebuilds per command, two of them validation
+
+Phase timing inside `EditorSession.perform`, Release, milliseconds:
+
+| corpus | plan | reduce | commit | install | total |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| structuredProse | 16.5 | 12.1 | 13.0 | 0.1 | 41.7 |
+| heavyLists | 35.5 | 28.6 | 28.9 | 0.1 | 93.1 |
+| tableDense | 39.5 | 26.5 | 27.0 | 0.1 | 93.1 |
+
+Three roughly equal thirds. A counter on `AuthoritativePresentationBuilder.build` shows **exactly
+three calls per command**, and a captured call stack attributes each:
+
+1. `SemanticEditEngine.planAuthoritativeTransition` — the planner building the next snapshot. This
+   is the real work.
+2. `validateAcceptedEdit` ← `reduceSemantic` ← `reduceCore` ← `EditorTransactionKernel.reduce` ←
+   `EditorSession.perform`.
+3. `validateAcceptedEdit` ← `validateAcceptedTransaction` ←
+   `MarkdownDocument.commitEditorTransaction` ← `EditorSession.perform`.
+
+**Builds 2 and 3 are the same validation of the same transaction against the same state, run
+twice**, and each rebuilds the whole document to compare its result against the snapshot the
+planner already produced. The session reduces and then commits the reduced transaction, and both
+halves validate.
+
+The validation is deliberate and load-bearing — it is COR-70's owner-boundary proof, and
+`ownerRejectsForgedStructuralAndCheckboxTransactions` covers it. It is not deletable. But it is
+the clearest possible instance of the rule COR-91 added to `CLAUDE.md` §3: **a proof that costs
+more than the thing it proves.** Here the proof *is* the thing, recomputed — twice — on the main
+actor while the user waits.
+
+**This, not bounded reparse, is what COR-89 must fix.** Reducing three builds to one puts
+`structuredProse` — the corpus most like a real document — at roughly 16 ms, and the pathological
+table corpus near 40 ms.
+
+**Constraint discovered while designing the fix.** `PresentationSnapshot.ConstructionProof` is
+stored nowhere, and `.authoritative` is set by `PresentationSnapshot.from`, which
+`EditorSession`, `ParseCoordinator` and several tests call directly. Provenance alone is therefore
+weaker than rebuild-and-compare: it says "built by `from`", not "built by
+`AuthoritativePresentationBuilder` from this exact source". Closing that cheaply needs a source
+digest stored on the snapshot, and the residual gap — a caller handing `from` a correct source with
+a mismatched model — belongs in the test seam, where the full comparison costs nothing. That is
+the shape COR-30 already used when it put the projection oracle in the WYSIWYG test seam.
+
 ### Finding 5 — Release testability was disabled, so the number that matters was unobtainable
 
 `ENABLE_TESTABILITY = YES` occurs once in `project.pbxproj`, in the **app target's Debug
