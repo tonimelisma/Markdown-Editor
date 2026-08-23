@@ -1,50 +1,49 @@
 # Plans
 
-This directory contains only approved, unimplemented production plans. Several plans may coexist
-while waiting to be built. A plan is deleted in the same change that completes its implementation;
-Git retains the historical plan.
+This directory contains approved, unimplemented production plans. Several may coexist. A plan is
+deleted when its work merges — **as tidying, never as evidence**. Delivery evidence is one thing
+only: observed gate output, quoted. See `../DECISIONS.md` for why that distinction is load-bearing.
 
-Plans implement the current architecture in `../ENGINEERING.md`. They do not redefine it. Every
-plan must name:
+Plans implement the current architecture in `../ENGINEERING.md`. They do not redefine it.
 
-- requirements and `ARC-###` invariants;
-- the requirements this plan is expected to move to `Done`, or a note that it is a refactor that
-  changes no requirement's status;
-- architecture impact (`none` unless separately researched and approved);
-- blockers and an explicit statement of what remains independently landable;
-- exact production files/types/routes to add, modify, and delete;
-- ordered implementation phases;
-- automated non-UI proof;
-- instrumentation and performance evidence;
-- failure and rollback behavior;
-- a deletion/conformance gate proving no displaced path remains; and
-- an **Executor** line saying who may implement it and what judgement it demands.
+## What a plan must answer
+
+Four questions. **Write only what the increment actually has** — a plan for a one-line build-setting
+change has no rollback behavior, and inventing a section for it produces ceremony, not thought.
+
+1. **What is broken, and what is the evidence?** A reproduced defect, a measurement, or a
+   requirement with no proof. Not "we should".
+2. **What is the smallest change that fixes the cause rather than the symptom?** Name the files,
+   types, and routes — including what gets **deleted**, since this repo keeps no displaced paths.
+3. **What proof turns red if this is wrong?** `CLAUDE.md` §3's question, asked once, in the plan.
+4. **What must a human decide?** Blockers, architecture approval, product judgement. If nothing,
+   say so. This is the **Executor** line: who may implement it and what judgement it demands.
+
+Add anything else the increment genuinely has — ordered phases, instrumentation, failure behavior,
+a deletion gate — when it has one. Nothing here is a required heading, and no gate enforces this
+format. A format enforced by a gate is a format that gets satisfied by an artifact.
 
 ## Executing a plan
 
 Read `../../CLAUDE.md` first. Then:
 
 1. **Check the Executor line and the blockers.** Some plans are blocked on another increment; some
-   demand judgement that an unattended agent should not supply alone. Both are stated in the header.
-2. **Take them in ROADMAP order.** The order encodes real dependencies. A plan is independent when it
-   is one reviewable, revertible vertical outcome with explicit inputs, owners, proofs, and deletion
-   gates—not when it pretends shared architectural prerequisites do not exist. After its named
-   blockers land, it must be possible to implement and merge the plan without bundling another plan.
-3. **Work in a worktree on a branch** (`inc-NN-slug` / `cor-NN-slug`), never on `main`. Swift changes
-   need a PR and a separate-agent review; docs and project config commit directly to `main`.
-4. **Run the gates and read their output.** `Scripts/check.sh` is the gate. A plan is not done because its steps were performed — it is
-   done when its stated proof is observed passing.
+   demand judgement an unattended agent should not supply alone.
+2. **Take them in ROADMAP order.** The order encodes real dependencies. After its named blockers
+   land, a plan must be implementable and mergeable without bundling another plan.
+3. **Work in a worktree on a branch** (`inc-NN-slug` / `cor-NN-slug`), never on `main`. Swift
+   changes need a PR and a separate-agent review; docs and project config commit directly to `main`.
+4. **Run the gate and read its output.** `Scripts/check.sh`. A plan is not done because its steps
+   were performed — it is done when its stated proof is observed passing.
 5. **If the plan is wrong, stop.** A plan that does not survive contact with the code is a finding.
    Say so and re-plan; do not improvise production changes the plan does not authorise, and do not
    commit a placeholder to keep the sequence moving. On 2026-08-10 ten increments were committed as
    one-line stubs rather than reported as not-started, and the ROADMAP recorded them as delivered.
-6. **Characterize before replacing.** Existing production behavior may already contain part of a
-   retired plan (for example, the squash-integrated window and semantic-presentation checkpoints).
-   Keep proven correct code, add missing route evidence, and replace only a reproduced defect. Never
-   replay a historical patch or plan merely because its commit is unreachable after a squash.
+6. **Characterize before replacing.** Existing production behavior may already satisfy part of a
+   plan. Keep proven correct code, add missing route evidence, and replace only a reproduced defect.
 
 ### `file.swift:NNN` references are indicative; symbols are authoritative
 
 Plans cite line numbers to make a construct findable. Line numbers drift. If a citation no longer
-lands on what its surrounding prose describes, trust the description and the symbol name, and fix the
-citation in the same change. A citation that has drifted is not a licence to guess at what was meant.
+lands on what its surrounding prose describes, trust the description and the symbol name, and fix
+the citation in the same change.

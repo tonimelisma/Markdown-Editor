@@ -44,6 +44,16 @@ suite is trustworthy.
 - **Where a set is closed** (`EditorCommand.allCases`, `EditorTraceEvent`), prefer a test that
   iterates it, so a new member fails the build until its behavior is declared. A hand-written
   list of examples omits the case nobody thought of.
+- **Every recorded measurement carries a bound.** `WorkLedger.mainThreadBlockedNanos` was
+  computed, serialized and written to every run log for months, and compared against nothing. An
+  unbounded measurement is not evidence — it is the *appearance* of evidence, which is worse than
+  none, because it makes the area look examined. If a number is worth computing at runtime, it is
+  worth a threshold; if no threshold can be named, do not compute it.
+- **A proof is cheaper than the thing it proves.** `ProjectionOracle.validate` cost 3.5× the cmark
+  parse it validated, on the main actor, on every formatting command — a property about a few
+  thousand segment boundaries proved with a 100,000-element array. When a check is asymptotically
+  more expensive than its subject, suspect the check of being badly posed before concluding that
+  correctness is expensive. The repair was a *stronger* proof that cost 1% as much.
 - **A measurement describes only the input it was measured on.** REQ-090 promised a p95 under
   8 ms and was satisfied by a corpus of one repeated word — 100,000 characters containing no
   heading, list, or table, which parses as a single paragraph. The number was real and described
@@ -80,12 +90,15 @@ Code and tests are canonical. The specs describe current intent.
 | `docs/plans/` | Approved, not-yet-implemented plans |
 
 Rewrite or delete stale text in the change that makes it stale. No "superseded" banners, no
-archive — Git is the archive. Delete a plan when you implement it. **A plan's absence proves
-nothing about whether anything was built**; only working, tested code does. In August 2026 ten
-increments were marked delivered by deleting their plans, having built one comment line each.
+archive — Git is the archive. Delete a plan when its work merges, **as tidying, never as
+evidence**: delivery evidence is observed gate output, quoted. In August 2026 ten increments were
+marked delivered by deleting their plans, having built one comment line each, which is why
+deletion is no longer a signal at all.
 
-Keep a `// Verifies: REQ-###` comment on tests that prove a specific requirement. It is a useful
-cross-reference, not an enforced schema.
+Keep a `// Verifies: REQ-###` comment on tests that prove a specific requirement. **That comment
+is the traceability mapping** — it lives next to the proof and survives refactoring. REQUIREMENTS
+names tests as a convenience for the reader and deliberately does not name production types; a
+hand-maintained second copy of the code rots silently. Nothing enforces this mechanically.
 
 ## 6. Architecture changes
 
