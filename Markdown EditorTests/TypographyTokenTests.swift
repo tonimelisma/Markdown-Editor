@@ -19,6 +19,9 @@ struct TypographyTokenTests {
         #expect(MarkdownTypography.paragraphSpacingEm == 0.7)
         #expect(MarkdownTypography.listIndent == 24)
         #expect(MarkdownTypography.headingPointSizes == [30, 24, 20, 17, 15, 13])
+        // Not a VISION-approved figure like the others, but a visual token all the same: it was a
+        // bare 0.18 at three sites until COR-92 named it, and an unpinned token can drift silently.
+        #expect(MarkdownTypography.codeBackgroundAlpha == 0.18)
     }
 
     @Test func typographyUsesAdaptiveSystemValues() {

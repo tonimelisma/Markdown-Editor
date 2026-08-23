@@ -24,6 +24,12 @@ struct MarkdownTypography {
     nonisolated static let listMarkerGlyphs = ["•", "◦", "▪"]
     nonisolated static let quoteRuleWidth: CGFloat = 3
     nonisolated static let inlineCodeScale: CGFloat = 0.93
+    /// Alpha applied to `codeBackground` wherever code is tinted.
+    ///
+    /// // A visual token, so it lives here with the others. It was written as a bare `0.18` at
+    /// // three sites — twice in this file and once in `AttributedPresentationBuilder` — which is
+    /// // the same shape of defect COR-81 repaired by giving every colour a named role.
+    nonisolated static let codeBackgroundAlpha: CGFloat = 0.18
     nonisolated static let codeBlockPadding: CGFloat = 12
     nonisolated static let separatorHeight: CGFloat = 14
 
@@ -53,7 +59,7 @@ struct MarkdownTypography {
         case .italic: return [.font: NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)]
         case .inlineCode, .table: return [.font: inlineCodeFont(), .foregroundColor: EditorColorCatalog.color(.secondaryText)]
         case .codeBlock: return [.font: monoFont, .foregroundColor: EditorColorCatalog.color(.primaryText),
-                                  .backgroundColor: EditorColorCatalog.color(.codeBackground).withAlphaComponent(0.18)]
+                                  .backgroundColor: EditorColorCatalog.color(.codeBackground).withAlphaComponent(Self.codeBackgroundAlpha)]
         case .link, .image: return [.foregroundColor: EditorColorCatalog.color(.link)]
         case .listMarker, .taskMarker, .thematicBreak, .blockquote:
             return [.foregroundColor: EditorColorCatalog.color(.secondaryText)]
@@ -110,7 +116,7 @@ struct MarkdownTypography {
         let block = CodeTextBlock()
         block.setContentWidth(100, type: .percentageValueType)
         block.setWidth(Self.codeBlockPadding, type: .absoluteValueType, for: .padding)
-        block.backgroundColor = EditorColorCatalog.color(.codeBackground).withAlphaComponent(0.18)
+        block.backgroundColor = EditorColorCatalog.color(.codeBackground).withAlphaComponent(Self.codeBackgroundAlpha)
         return block
     }
 }

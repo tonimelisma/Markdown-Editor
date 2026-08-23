@@ -160,7 +160,7 @@ enum AttributedPresentationBuilder {
                 attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
             case .code:
                 monospaced = true
-                attrs[.backgroundColor] = EditorColorCatalog.color(.codeBackground).withAlphaComponent(0.18)
+                attrs[.backgroundColor] = EditorColorCatalog.color(.codeBackground).withAlphaComponent(MarkdownTypography.codeBackgroundAlpha)
             case .codeBlock:
                 // REQ-107; COR-28: monospaced only. The block's `NSTextBlock` container already
                 // supplies the background and padding; adding the inline run background here is
