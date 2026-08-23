@@ -36,17 +36,18 @@ false `Done` claims. It found five things no requirement asks about.
 
 | # | Increment | Objective | Blockers |
 | --- | --- | --- | --- |
-| COR-91 | 🔵 Retire the planning apparatus | process | — |
-| COR-86 | 🔵 Release measurability and a bounded main actor | 7 | — |
-| COR-87 | ⚪ External file truth | 1 | — |
-| COR-88 | ⚪ The oracle proves tiling, not coverage | 7 | COR-86 |
-| COR-89 | ⚪ Bounded authoritative rebuild — **conditional** | 7 | COR-88 (decision gate) |
-| COR-90 | ⚪ Proof hygiene and harness containment | 7 | — |
+| COR-91 | ✅ Retire the planning apparatus | process | — |
+| COR-86 | ✅ Release measurability and a bounded main actor | 7 | — |
+| COR-88 | ✅ The oracle proves tiling, not coverage | 7 | COR-86 |
+| COR-90 | ✅ Proof hygiene, launch surface, repository hygiene | 7 | — |
+| COR-87 | 🔵 External file truth | 1 | — |
+| COR-89 | 🔵 Bounded authoritative rebuild — **gate is open** | 7 | COR-88 |
 
 Ordered by VISION's objective priority, not by discovery order: external file truth (objective 1)
 precedes command responsiveness (objective 7). COR-86 leads only because it is small and
-everything after it wants the measurement. COR-89 carries an explicit gate that can delete it —
-if Release measurement after COR-88 comes in under budget, it is not built.
+everything after it wants the measurement. COR-89 carried an explicit gate that could have deleted it. **The gate is open:** after COR-88,
+Release worst case is 109 ms (`tableDense`) and 92 ms (`heavyLists`) against a 16 ms budget, so
+the bounded rebuild is needed. REQ-143 is `Correction` until it lands.
 
 Evidence: [`research/2026-08-22-semantic-command-main-actor-cost.md`](research/2026-08-22-semantic-command-main-actor-cost.md).
 Plans: [`plans/`](plans/).
