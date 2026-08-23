@@ -89,6 +89,45 @@ struct AuthoritativeRebuildCountTests {
         )
     }
 
+    /// // Verifies: REQ-143 — the same new text is parsed once, not once per validator.
+    ///
+    /// `SemanticEditPlanners.replaceValidated` parses the candidate text to check a postcondition,
+    /// and `AuthoritativePresentationBuilder.build` parses the same text again to produce the
+    /// snapshot. Fails at 2 against the pre-COR-89 build.
+    @Test func oneCommandParsesItsCandidateTextOnce() {
+        let fixture = Fixture()
+        defer { fixture.tearDown() }
+        fixture.selectLead()
+        #expect(fixture.controller.perform(.bold) == .accepted)
+
+        AuthoritativePresentationBuilder.resetMemoForTesting()
+        MarkdownParser.resetParseMemoForTesting()
+        fixture.selectLead()
+        #expect(fixture.controller.perform(.bold) == .accepted)
+
+        let parses = MarkdownParser.performedParseCountForTesting
+        #expect(parses <= 1, "one command performed \(parses) cmark parses of its candidate text")
+    }
+
+    /// A parse memo hit must equal a fresh parse, which is what makes memoising it invisible.
+    @Test func aParseMemoHitEqualsAFreshParse() {
+        let source = "# Heading\n\n- a\n- b\n\n| x | y |\n|---|---|\n| 1 | 2 |\n"
+        MarkdownParser.resetParseMemoForTesting()
+        let fresh = try? MarkdownParser.parse(source, sourceVersion: 3).get()
+        let hit = try? MarkdownParser.parse(source, sourceVersion: 3).get()
+        MarkdownParser.resetParseMemoForTesting()
+        let rebuilt = try? MarkdownParser.parse(source, sourceVersion: 3).get()
+        #expect(fresh != nil)
+        #expect(hit == fresh)
+        #expect(rebuilt == fresh, "the parser is not a pure function of its key; memoising it is unsound")
+
+        // A different version of identical text is a different key, so it is parsed again.
+        MarkdownParser.resetParseMemoForTesting()
+        _ = MarkdownParser.parse(source, sourceVersion: 1)
+        _ = MarkdownParser.parse(source, sourceVersion: 2)
+        #expect(MarkdownParser.performedParseCountForTesting == 2)
+    }
+
     /// Memoisation must not survive a change of source, or a stale projection would be served for
     /// a document that has moved on.
     @Test func adifferentSourceIsRebuiltRatherThanServedFromTheMemo() {

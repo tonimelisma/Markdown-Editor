@@ -301,6 +301,49 @@ Closing the last of it needs a fresh measurement of that residue, not a continua
 increment's reasoning — which is the discipline that produced this result and the two abandoned
 plans before it.
 
+### Finding 11 — the second duplicate: the candidate text was parsed twice
+
+With the authoritative build memoised, `reduce` and `commit` fell to ~0.0–0.8 ms and essentially
+the whole command sat in `plan`. Subtracting the single rebuild left 4.9 ms (structuredProse),
+7.9 ms (heavyLists) and 15.3 ms (tableDense) — which matches the Release cmark parse cost from
+Finding 7 (4.4 / 8.2 / 13.2 ms) almost exactly.
+
+The cause: `SemanticEditPlanners.replaceValidated` parses the candidate text to evaluate a
+postcondition against the resulting tree, and `AuthoritativePresentationBuilder.build` then parses
+**the same text again** to produce the snapshot. Memoising `MarkdownParser.parse` on
+`(source, sourceVersion)` removes the second one, on the same purity argument.
+
+### Finding 12 — where REQ-143 stands after COR-89
+
+Release worst case, through the production command route:
+
+| corpus | before COR-89 | after | inside the 16 ms budget |
+| --- | ---: | ---: | :---: |
+| degenerateParagraph | 7.7 ms | **2.2 ms** | ✅ |
+| codeHeavy | 16.4 ms | **6.6 ms** | ✅ |
+| imageHeavy | 41.2 ms | **12.3 ms** | ✅ |
+| structuredProse | 41.7 ms | **13.1 ms** | ✅ |
+| tableDense | 109.0 ms | **30.9 ms** | ✗ |
+| heavyLists | 92.3 ms | **34.7 ms** | ✗ |
+
+Against the original pre-COR-88 measurements this is 3–8×, achieved by deleting no validation and
+computing nothing new — only by not computing the same two pure functions repeatedly.
+
+**Four of six corpora now meet REQ-143, and their ceiling in
+`SemanticCommandBudgetTests` is the budget itself rather than a pin.** The two that do not are
+`heavyLists` (18,520 blocks) and `tableDense` (24,400 blocks), and both are now dominated by the
+*single* remaining authoritative rebuild — 26.5 ms and 26.9 ms respectively (Finding 7). **No
+further deduplication can close them**: there is nothing left to deduplicate. Reaching 16 ms on
+those shapes requires making one rebuild cheaper, which is bounded reparse — the design Stage 0
+rejected as insufficient when it was the *only* proposal, and which is now the *only* remaining
+one.
+
+That is a product decision rather than an engineering one, and it is recorded in
+`docs/plans/COR-89-*`: `tableDense` is a table every 1.2 characters and `heavyLists` a list item
+every 4.3 characters. `CLAUDE.md` §3 warns that a measurement describes only the input it was
+measured on — REQ-090 was once satisfied by a corpus of one repeated word, and treating these two
+as binding is the same error inverted.
+
 ### Finding 5 — Release testability was disabled, so the number that matters was unobtainable
 
 `ENABLE_TESTABILITY = YES` occurs once in `project.pbxproj`, in the **app target's Debug

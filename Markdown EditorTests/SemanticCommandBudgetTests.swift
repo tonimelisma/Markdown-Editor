@@ -129,7 +129,11 @@ struct SemanticCommandBudgetTests {
     /// // Raise this only once REQ-143 is `Done`.
     static let sampleCount = 3
 
-    /// Measured worst-case ceilings per corpus, while REQ-143 is `Correction`.
+    /// Worst-case ceilings per corpus.
+    ///
+    /// // After COR-89, four of six corpora meet REQ-143's 16 ms budget and their Release ceiling
+    /// // *is* that budget — the assertion is the requirement. `heavyLists` and `tableDense`
+    /// // remain pinned above it, which is why REQ-143 is still `Correction`.
     ///
     /// // These are **not** the requirement's 16 ms budget. REQ-143 is not met yet; COR-88 and
     /// // COR-89 close it. Asserting the budget here would park a permanently red test in the
@@ -147,23 +151,26 @@ struct SemanticCommandBudgetTests {
         // scheduling contention as well as the work; a tight bound here would be flaky rather
         // than informative. Their job is to catch a catastrophic regression, not drift.
         switch corpus {
-        case .degenerateParagraph: return 40
-        case .codeHeavy: return 80
-        case .imageHeavy: return 220
-        case .structuredProse: return 250
-        case .tableDense: return 600
-        case .heavyLists: return 550
+        case .degenerateParagraph: return 30
+        case .codeHeavy: return 60
+        case .imageHeavy: return 170
+        case .structuredProse: return 200
+        case .tableDense: return 480
+        case .heavyLists: return 440
         }
         #else
         // Release is where the evidence lives and where drift matters — roughly 1.7x the
         // measured worst case.
+        // Four corpora now meet REQ-143 outright, so their ceiling *is* the requirement's
+        // budget: the assertion is the requirement, not a pin. Only the two pathological shapes
+        // remain pinned above it.
         switch corpus {
-        case .degenerateParagraph: return 10
-        case .codeHeavy: return 15
-        case .imageHeavy: return 32
-        case .structuredProse: return 32
-        case .heavyLists: return 70
-        case .tableDense: return 95
+        case .degenerateParagraph: return 16
+        case .codeHeavy: return 16
+        case .imageHeavy: return 16
+        case .structuredProse: return 16
+        case .heavyLists: return 55
+        case .tableDense: return 50
         }
         #endif
     }

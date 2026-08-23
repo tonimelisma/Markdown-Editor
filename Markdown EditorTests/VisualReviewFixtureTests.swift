@@ -122,6 +122,8 @@ struct ProductionTestHookInventoryTests {
             "bumpGenerationWithoutCancellationForTesting", // delivers a completed parse as stale
             "resetMemoForTesting",             // COR-89: cold-starts the authoritative build memo
             "performedBuildCountForTesting",   // COR-89: whole-document rebuilds actually performed
+            "resetParseMemoForTesting",        // COR-89: cold-starts the cmark parse memo
+            "performedParseCountForTesting",   // COR-89: cmark parses actually performed
         ]
         for hook in hooks {
             #expect(source.contains(hook), "inventoried hook \(hook) no longer exists")

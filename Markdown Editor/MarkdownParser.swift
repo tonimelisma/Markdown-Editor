@@ -28,6 +28,36 @@ nonisolated enum MarkdownParser {
         FormalGFMDialect.parserOptions
     }
 
+    /// The most recent successful parse, reused when the same source and version are requested
+    /// again.
+    ///
+    /// // COR-89: one semantic command parsed the same new text twice — once in
+    /// // `SemanticEditPlanners.replaceValidated`, to check a postcondition against the resulting
+    /// // tree, and again inside `AuthoritativePresentationBuilder.build` to produce the snapshot.
+    /// // In Release that second parse was 4.4 ms (structuredProse) to 13.2 ms (tableDense) of
+    /// // main-actor wait, and it accounted for essentially all of the residue left after the
+    /// // authoritative build itself was memoised
+    /// // (`research/2026-08-22-semantic-command-main-actor-cost.md`, Finding 11).
+    /// //
+    /// // Sound for the same reason: `parse` is a pure function of `source` and `sourceVersion`
+    /// // given the pinned dialect and options, so serving the stored value is indistinguishable
+    /// // from recomputing it. Only successes are stored — a failure carries a reason that may
+    /// // depend on cancellation, which is not part of the key.
+    private static let memo = Mutex<(source: String, sourceVersion: UInt64, tree: MarkdownTree)?>(nil)
+
+    /// Parses actually performed, for tests that assert how much work a route does.
+    /// Inventoried by `ProductionTestHookInventoryTests`.
+    private static let performedParses = Mutex<Int>(0)
+
+    static var performedParseCountForTesting: Int {
+        performedParses.withLock { $0 }
+    }
+
+    static func resetParseMemoForTesting() {
+        memo.withLock { $0 = nil }
+        performedParses.withLock { $0 = 0 }
+    }
+
     /// Parse Markdown into an immutable Swift value tree.
     static func parse(
         _ source: String,
@@ -35,7 +65,13 @@ nonisolated enum MarkdownParser {
         intent: IntentContext? = nil,
         isCancelled: @Sendable () -> Bool = { false }
     ) -> Result<MarkdownTree, MarkdownParseFailure> {
-        parseLock.withLock { _ in
+        if let entry = memo.withLock({ $0 }),
+           entry.sourceVersion == sourceVersion,
+           entry.source == source {
+            // A hit performs no parse, so it records none: the work ledger counts work.
+            return .success(entry.tree)
+        }
+        return parseLock.withLock { _ in
             // Cancellation is checked only at the parser boundary. Once cmark has entered its
             // synchronous C call it cannot safely be interrupted, but a cancelled waiter must
             // not copy its source or enter cmark after the lock becomes available.
@@ -43,8 +79,9 @@ nonisolated enum MarkdownParser {
             if let intent {
                 intent.recorder.add(intent) { $0.documentParses += 1 }
             }
+            performedParses.withLock { $0 += 1 }
             var bytes = Array(source.utf8)
-            return bytes.withUnsafeMutableBufferPointer { buffer in
+            let result: Result<MarkdownTree, MarkdownParseFailure> = bytes.withUnsafeMutableBufferPointer { buffer in
                 guard let base = buffer.baseAddress else {
                     return parseUTF8Unlocked("", byteCount: 0, sourceVersion: sourceVersion, source: "")
                 }
@@ -52,6 +89,10 @@ nonisolated enum MarkdownParser {
                     parseUTF8Unlocked(cPtr, byteCount: buffer.count, sourceVersion: sourceVersion, source: source)
                 }
             }
+            if case .success(let tree) = result {
+                memo.withLock { $0 = (source: source, sourceVersion: sourceVersion, tree: tree) }
+            }
+            return result
         }
     }
 
