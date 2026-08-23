@@ -71,7 +71,7 @@ how delivered behavior is verified. Current architecture is in
 | ID | Requirement (EARS) | Inc | Status | Verified by |
 | ---- | -------------------- | ----- | -------- | ------------- |
 | REQ-030 | The system shall perform all editing offline, with no network access. | INC-01 / COR-75 | Done | test `productionBoundaryRejectsNetworkAccountAndAnalyticsCapabilities` |
-| REQ-031 | The system shall collect no telemetry and require no account. | INC-01 / COR-75 | Done | test `productionBoundaryRejectsNetworkAccountAndAnalyticsCapabilities`; test `diagnosticPayloadsAreClosedAndPrivacySafe` |
+| REQ-031 | The system shall collect no telemetry and require no account. | INC-01 / COR-75 | Done | test `productionBoundaryRejectsNetworkAccountAndAnalyticsCapabilities`; test `diagnosticPayloadsCannotCarryFreeText` |
 | REQ-032 | The system shall be operable via VoiceOver and full keyboard control. | INC-01 / COR-07 / COR-81 | Done | test `everyCommandIsKeyboardReachable` (matrix over `EditorCommand.allCases`), `noTwoCommandsShareAShortcut`, plus the REQ-129 role matrix. VoiceOver itself is not driven — `CLAUDE.md` §4 forbids screen automation; roles/values are proved on directly constructed elements |
 
 ---
