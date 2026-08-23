@@ -179,6 +179,60 @@ structured corpora improved 0–25 %; `imageHeavy` moved within noise.
    with a stale measurement. Recorded rather than done, per `docs/plans/README.md`: a plan that
    does not survive contact with the code is a finding.
 
+### Finding 7 — COR-89's premise is falsified: the rebuild is a minority of the command
+
+Stage 0 for COR-89, measured in Release on 2026-08-22 after COR-88. Same corpora, mean of five
+iterations per phase, calling the production entry points directly.
+
+| corpus | index | cmark parse | projection model | snapshot | oracle | **rebuild total** | **whole command** |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| degenerateParagraph | 0.1 | 1.4 | 0.0 | 0.0 | 0.00 | **1.5** | 6.3 |
+| codeHeavy | 0.1 | 1.1 | 2.3 | 1.3 | 0.05 | **4.8** | 16.3 |
+| imageHeavy | 0.1 | 3.5 | 2.6 | 4.1 | 0.29 | **10.3** | 36.8 |
+| structuredProse | 0.1 | 4.4 | 3.3 | 3.5 | 0.30 | **11.3** | 40.2 |
+| heavyLists | 0.1 | 8.2 | 8.3 | 9.9 | 1.14 | **26.5** | 94.6 |
+| tableDense | 0.1 | 13.2 | 8.2 | 5.4 | 0.85 | **26.9** | 96.7 |
+
+**The whole authoritative rebuild is 25–28 % of the command.** COR-89 proposed bounded reparse
+with structural sharing to reduce it. Even reducing it to *zero* leaves ~70 ms on `tableDense`
+against a 16 ms budget, so the increment as planned cannot close REQ-143. Its premise came from
+the Debug phase table, which Finding 1's correction already showed misattributes cost.
+
+Also note the oracle after COR-88: **0.00–1.14 ms**, from 20.5–95.1 ms in Debug before it. The
+reformulation is worth far more than the Release end-to-end numbers suggested, because the cost it
+removed was concentrated in the configuration where it was measured.
+
+### Finding 8 — where the rest of the command goes
+
+Two measurements narrow it.
+
+A full `AttributedPresentationBuilder.build` over each corpus, Release:
+
+| corpus | rendered chars | blocks | full attributed build |
+| --- | ---: | ---: | ---: |
+| degenerateParagraph | 100,000 | 1 | 0.6 ms |
+| codeHeavy | 70,856 | 2,084 | 38.8 ms |
+| imageHeavy | 33,345 | 7,695 | 75.7 ms |
+| structuredProse | 60,872 | 2,174 | 105.3 ms |
+| heavyLists | 79,636 | 18,520 | 208.5 ms |
+| tableDense | 29,280 | 24,400 | 300.4 ms |
+
+The cost is driven by **block count, not character count** — `degenerateParagraph` is the longest
+document and the cheapest by two orders of magnitude, at 0.6 ms for one block, while `tableDense`
+is the shortest and the most expensive at 300 ms for 24,400 blocks. Roughly 12 µs per block.
+
+A command costs far *less* than a full build (96.7 ms against 300.4 ms on `tableDense`), which is
+COR-23's bounded patch route working as designed. Draining every `PerformanceSampler` metric after
+one command shows only `semanticCommand` firing — `authoritativeApplication` and
+`layoutApplication` are not sampled on this path, so the remaining ~70 ms is unattributed by the
+app's own instrumentation.
+
+**Conclusion.** The dominant cost is presentation *application* — deriving the patch between two
+whole snapshots and applying it — not the rebuild. COR-89 must be re-planned against that, and
+the next measurement has to separate patch derivation from `NSTextStorage` application from
+scoped attributed styling. Two of the app's own metrics not firing on its most expensive
+interactive path is itself a finding: it is why this had to be measured by hand.
+
 ### Finding 5 — Release testability was disabled, so the number that matters was unobtainable
 
 `ENABLE_TESTABILITY = YES` occurs once in `project.pbxproj`, in the **app target's Debug

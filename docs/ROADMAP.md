@@ -40,14 +40,17 @@ false `Done` claims. It found five things no requirement asks about.
 | COR-86 | ✅ Release measurability and a bounded main actor | 7 | — |
 | COR-88 | ✅ The oracle proves tiling, not coverage | 7 | COR-86 |
 | COR-90 | ✅ Proof hygiene, launch surface, repository hygiene | 7 | — |
-| COR-87 | 🔵 External file truth | 1 | — |
-| COR-89 | 🔵 Bounded authoritative rebuild — **gate is open** | 7 | COR-88 |
+| COR-87 | ✅ External file truth | 1 | — |
+| COR-89 | 🔵 Bounded presentation application — **re-planned** | 7 | — |
 
 Ordered by VISION's objective priority, not by discovery order: external file truth (objective 1)
 precedes command responsiveness (objective 7). COR-86 leads only because it is small and
-everything after it wants the measurement. COR-89 carried an explicit gate that could have deleted it. **The gate is open:** after COR-88,
-Release worst case is 109 ms (`tableDense`) and 92 ms (`heavyLists`) against a 16 ms budget, so
-the bounded rebuild is needed. REQ-143 is `Correction` until it lands.
+everything after it wants the measurement. COR-89 carried an explicit gate that could have deleted it. The gate opened — and then Stage 0
+falsified the plan's premise. The authoritative rebuild it proposed to bound is only 25–28 % of a
+command, so eliminating it entirely would leave ~70 ms against a 16 ms budget. The increment was
+re-planned against presentation *application*, and its first phase is a measurement rather than a
+design, because this path has twice cost its time somewhere other than where it looked. REQ-143 is
+`Correction` until it lands.
 
 Evidence: [`research/2026-08-22-semantic-command-main-actor-cost.md`](research/2026-08-22-semantic-command-main-actor-cost.md).
 Plans: [`plans/`](plans/).
