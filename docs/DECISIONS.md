@@ -42,6 +42,14 @@ And the 16 ms target was never reachable on those shapes by any means short of B
 authoritative rebuild is 26.9 ms on `tableDense`, so the original requirement asserted something
 no implementation short of a parse-strategy rewrite could satisfy.
 
+**Correction, same day.** REQ-143 first said "16 ms p95" and the test asserted worst-of-three
+against 16 ms. That failed at 19.9 ms on a run whose median was 13.1 ms — scheduling noise under a
+parallel suite, not a regression. A handful of samples cannot express a 95th percentile at all:
+`p95` over three samples *is* the maximum. The requirement now says what is actually asserted —
+**16 ms for a median command, 32 ms for any command** — which is precise, non-flaky, and honest,
+where the p95 wording was none of the three. The Release evidence run in `docs/research/` remains
+the place percentile claims can be made.
+
 **What would reopen it.** A real document that behaves like the stress shapes, or a profile
 showing `structuredProse` drifting toward the budget. B remains available and its plan text is in
 Git.

@@ -450,8 +450,9 @@ was never stored under the key, misses, and is rebuilt and rejected exactly as b
 build and oracle validation. Measured worst case in Release over the approved corpus at 100,000
 UTF-16 units, after COR-89: 2.2 ms (degenerateParagraph) to 34.7 ms (heavyLists) — see
 `research/2026-08-22-semantic-command-main-actor-cost.md`. Four of the six corpora meet the 16 ms
-budget; the two that do not are dominated by the single remaining rebuild, and closing them needs
-bounded reparse rather than further deduplication. `PerformanceSampler.Metric.semanticCommand`
+budget; the two that do not are declared stress shapes (`PerformanceCorpus.isStressShape`), are
+dominated by the single remaining rebuild, and would need bounded reparse rather than further
+deduplication — see `DECISIONS.md`. `PerformanceSampler.Metric.semanticCommand`
 budgets the complete main-actor command path at 16 ms, and `WorkLedger.mainThreadBlockedNanos`
 records the worker's share of it. **REQ-143 is `Correction`:** the boundary is measured and
 declared, and does not yet meet its bound.
