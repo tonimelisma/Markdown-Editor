@@ -382,6 +382,7 @@ extension PerformanceSampler.Metric {
         case .mainActorLatency: return .mainActorLatency
         case .sourceHighlightApplication: return .sourceHighlightApplication
         case .sourceHighlightCompute: return .sourceHighlightCompute
+        case .semanticCommand: return .semanticCommand
         }
     }
 }

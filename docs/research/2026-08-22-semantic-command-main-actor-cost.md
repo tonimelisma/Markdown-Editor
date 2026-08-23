@@ -5,8 +5,8 @@
 - **First researched:** 2026-08-22
 - **Last verified:** 2026-08-22
 - **Environment:** macOS 27.0 (build 26A5416b), Darwin 27.0.0, arm64. Xcode 27.0 (27A5228h).
-  **Debug, `SWIFT_OPTIMIZATION_LEVEL = -Onone`.** See *Limits* — the Release figure that matters
-  could not be taken.
+  Phase tables are **Debug, `-Onone`**. The end-to-end table is **Release**, taken after COR-86
+  restored `ENABLE_TESTABILITY` for that configuration.
 - **Method:** a temporary probe test, since deleted, called the production entry points directly
   on the main actor over every `PerformanceCorpus` case at its default 100,000-UTF-16 target.
   One warm-up parse, then 5 recorded iterations per case, each with a distinct `sourceVersion` and
@@ -110,7 +110,37 @@ With the oracle and the round-trip removed, the residue is genuine computation: 
 whole-document, for a command that changes one block. On `heavyLists`, 18,519 of 18,520 blocks are
 byte-identical before and after, differing only by a fixed offset.
 
-### Finding 5 — Release testability is disabled, so the number that matters is unobtainable
+### Finding 4a — the Release figure, measured end-to-end (added 2026-08-22, after COR-86)
+
+`SemanticCommandBudgetTests.semanticCommandStaysWithinBudget` drives `.bold` through the
+production `EditorCommandController` route — planning, reduction, commit, presentation install —
+on a document consisting of one ordinary lead paragraph followed by the corpus. Eight measured
+commands after one warm-up, each asserted `accepted`, p95 of the `semanticCommand` metric:
+
+| corpus | Release p95 | verdict against the 16 ms budget |
+| --- | ---: | --- |
+| degenerateParagraph | within budget | pass |
+| codeHeavy | 17.8 ms | fail |
+| imageHeavy | 37.2 ms | fail |
+| structuredProse | 42.2 ms | fail |
+| heavyLists | 103.0 ms | fail |
+| tableDense | 145.6 ms | fail |
+
+**Release optimization buys far less here than expected** — roughly 1.2–1.7× against the Debug
+phase totals, not the 3–5× assumed when this document was first written. The cost is dominated by
+work `-O` does not help much with: cmark's own C, allocation, and reference counting.
+
+A first version of this test selected a zero-length caret and passed on all six cases. `.bold`
+refuses an empty selection, so it was measuring refusals. The test now asserts every measured
+command returned `.accepted`, and the corpus-independent lead paragraph exists so that the
+selection is identical across shapes on which `.bold` would otherwise legitimately refuse. Noted
+because the vacuous version was green and looked like good news.
+
+**Consequence for COR-89.** Its decision gate is expected to open. Even if COR-88 removes the
+oracle entirely — roughly half the rebuild cost — `tableDense` and `heavyLists` remain far above
+16 ms.
+
+### Finding 5 — Release testability was disabled, so the number that matters was unobtainable
 
 `ENABLE_TESTABILITY = YES` occurs once in `project.pbxproj`, in the **app target's Debug
 configuration**. Every test uses `@testable import Markdown_Editor`, so
@@ -120,17 +150,23 @@ configuration**. Every test uses `@testable import Markdown_Editor`, so
 error: Unable to resolve Swift module dependency to a compatible module: 'Markdown_Editor'
 ```
 
-Two live claims depend on that working: ROADMAP COR-18 (*"Debug and Release tests compile and
+Two live claims depended on that working: ROADMAP COR-18 (*"Debug and Release tests compile and
 execute under complete concurrency checking"*) and REQ-090, which cites a focused Release run with
-six concrete p95 figures. Those figures cannot be reproduced today without a project change that
-was never recorded.
+six concrete p95 figures.
+
+**Repaired by COR-86:** `ENABLE_TESTABILITY = YES` now sits in the project-level Release
+configuration alongside the Debug one. It is deliberately set on the *shipping* configuration
+rather than on a separate benchmark configuration, so that the measured binary and the shipped
+binary are the same binary. The cost is a small, uniform inhibition of optimizations that rely on
+internal symbols not escaping; the benefit is that no measurement here describes a build nobody
+ships.
 
 ## Limits
 
-**These are Debug `-Onone` numbers and must not be quoted as shipping latency.** cmark is C and
-largely unaffected by Swift optimization; the Swift-heavy phases — the oracle's per-character
-loop, atom construction, projection model build — should improve substantially in Release. The
-ratios between phases are the durable part of this evidence; the absolute values are not.
+**The phase tables are Debug `-Onone` and must not be quoted as shipping latency.** Finding 4a
+supersedes them for absolute numbers; the phase tables remain the evidence for *where* the time
+goes, which is what the repairs are aimed at. Note that the measured Release/Debug ratio was
+1.2–1.7×, so the phase proportions are more transferable than first assumed.
 
 The corpus is the app's own approved corpus at 100,000 UTF-16 units. Per `CLAUDE.md` §3, that
 describes documents of that size and shape and nothing else. `degenerateParagraph` in particular
@@ -138,17 +174,18 @@ is 100,000 characters of one repeated word and parses as a single paragraph; it 
 because it *isolates* the length-driven component of the oracle, which is precisely what makes it
 informative rather than misleading in this instance.
 
-No measurement was taken of a command driven through the full production `EditorSession` route,
-so the figures exclude selection mapping, transaction reduction, TextKit application, and layout.
-The real user-visible latency is therefore **at least** these numbers, not at most.
+Finding 4a *is* driven through the full production route, so it includes selection mapping,
+transaction reduction, commit, and presentation install. It still excludes TextKit layout and
+draw, which `layoutApplication` budgets separately; real user-visible latency for a command is
+therefore **at least** 4a's numbers, not at most.
 
 ## Recommendations
 
 Kept separate from the findings above, and not authorized by this document.
 
-1. Restore `ENABLE_TESTABILITY` for Release and re-take REQ-090's evidence (COR-86).
-2. Give the main-actor block a budgeted `PerformanceSampler.Metric` so it is bounded rather than
-   merely recorded (COR-86).
+1. ~~Restore `ENABLE_TESTABILITY` for Release~~ — done, COR-86. Re-take REQ-090's own evidence.
+2. ~~Give the main-actor block a budgeted `PerformanceSampler.Metric`~~ — done, COR-86.
+   REQ-143 is `Correction` on the figures in Finding 4a.
 3. Reformulate the oracle as a tiling check and delete the round-trip and double construction
    (COR-88).
 4. Only then decide, from a Release measurement, whether bounded rebuild is needed (COR-89).

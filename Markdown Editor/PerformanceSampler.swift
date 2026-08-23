@@ -23,6 +23,13 @@ final class PerformanceSampler {
         case sourceHighlightApplication
         /// REQ-045: off-main incremental lexical computation, excluding attribute application.
         case sourceHighlightCompute
+        /// The complete main-actor cost of one semantic formatting command.
+        ///
+        /// // Measured across the whole command path in `EditorSession`, not around
+        /// // `EditorSemanticWorker.sync`, because the user waits for the whole path and only
+        /// // part of it is the worker. The work executes off-main; the main actor blocks on it,
+        /// // which is why "parsing is off-main" was never the property worth asserting.
+        case semanticCommand
     }
 
     /// p95 budget per metric, in nanoseconds.
@@ -42,6 +49,8 @@ final class PerformanceSampler {
         .mainActorLatency: 16_000_000,
         .sourceHighlightApplication: 8_000_000,
         .sourceHighlightCompute: 100_000_000,
+        // A frame, for the same reason as `layoutApplication`: main-actor work the user waits on.
+        .semanticCommand: 16_000_000,
     ]
     struct Summary: Equatable { let metric: Metric; let count: Int; let p50: UInt64; let p95: UInt64; let max: UInt64 }
 

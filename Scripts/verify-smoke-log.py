@@ -9,20 +9,17 @@ import sys
 from pathlib import Path
 
 
-# Mirrors PerformanceSampler.Metric. Kept explicit so a production rename that this file does
-# not follow fails the smoke run instead of quietly matching nothing.
-KNOWN_METRICS = {
-    "nativeInputCallback",
-    "modeTransition",
-    "parseProjection",
-    "imageResolution",
-    "authoritativeApplication",
-    "layoutApplication",
-    "mainActorLatency",
-    "sourceHighlightApplication",
-    "sourceHighlightCompute",
-}
-
+# Mirrors PerformanceSampler.Metric and PerformanceSampler.budgetNanos.
+#
+# Deliberately a hand-maintained second statement of a closed set, and deliberately kept: it is an
+# *independent* oracle that fails loudly the moment production drifts from it, which is what
+# separates it from the falsification manifests that rotted silently (see docs/DECISIONS.md).
+# Adding a metric in Swift without adding it here fails the smoke run, by design. The Swift side's
+# own agreement with REQUIREMENTS is asserted by PerformanceBudgetTests.
+#
+# One table, not two: KNOWN_METRICS and BUDGET_NANOS used to be separate structures that could
+# disagree with each other, and a metric present in the first but missing from the second was
+# silently exempt from its budget below.
 BUDGET_NANOS = {
     "nativeInputCallback": 8_000_000,
     "modeTransition": 16_000_000,
@@ -33,7 +30,10 @@ BUDGET_NANOS = {
     "mainActorLatency": 16_000_000,
     "sourceHighlightApplication": 8_000_000,
     "sourceHighlightCompute": 100_000_000,
+    "semanticCommand": 16_000_000,
 }
+
+KNOWN_METRICS = frozenset(BUDGET_NANOS)
 
 WORK_SCOPES = {"acceptedEdit", "reconciliation", "documentOpen", "modeTransition", "semanticCommand"}
 WORK_LEDGER_FIELDS = {

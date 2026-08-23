@@ -657,6 +657,22 @@ final class EditorSession: ObservableObject {
         default:
             isTypingCommand = false
         }
+        // The complete main-actor cost of one semantic formatting command — planning, reduction,
+        // commit and presentation install — because that whole path is what the user waits for.
+        //
+        // // Deliberately not scoped to `EditorSemanticWorker.sync`: the worker is one component
+        // // of the wait, and measuring the component rather than the wait is how a main-actor
+        // // block stayed invisible while "parsing is off-main" remained true. Typing is excluded
+        // // because `nativeInputCallback` already bounds it; measuring both would double-count
+        // // the same keystroke under two budgets.
+        defer {
+            if !isTypingCommand {
+                recordPerformance(
+                    .semanticCommand,
+                    durationNanos: DispatchTime.now().uptimeNanoseconds &- editStart
+                )
+            }
+        }
         let nativeClassification: ProjectionSelectionClass? = {
             guard isOrdinaryNativeReplacement,
                   isTypingCommand,

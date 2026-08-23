@@ -17,8 +17,11 @@ In priority order:
    accessibility semantics remain intact.
 4. **Interoperability:** formal GFM is the only generated Markdown dialect.
 5. **Deterministic failure:** ambiguity refuses atomically; no clamping, guessing, or partial edit.
-6. **Responsiveness:** synchronous edit translation stays below the interactive budget while
-   parsing and image work remains off-main.
+6. **Responsiveness:** no user-initiated interaction blocks the main actor beyond the interactive
+   budget, whichever thread the work executes on. Stated this way since COR-86: the earlier
+   phrasing ("parsing and image work remains off-main") constrained *where work runs*, and was
+   satisfied in full by a semantic command that dispatched a whole-document parse off-main and
+   then blocked the main actor waiting for it.
 7. **Maintainability:** one owner, one representation boundary, and one mutation route per concern.
 
 These priorities resolve trade-offs. A design that is faster but can misapply input is invalid.
@@ -405,6 +408,35 @@ Rules:
 - A parse task rechecks cancellation after acquiring the parser lock and before copying source or
   entering cmark. A superseded waiter performs no parse.
 - Swift 6 complete concurrency warnings are failures, including warnings in tests.
+
+## 9a. The synchronous semantic boundary
+
+`EditorSemanticWorker` is the only component in the application that blocks the main actor. It is
+documented here because for a long time it was not, and an undescribed blocking boundary is how
+driver 6 came to be phrased about thread placement rather than about waiting.
+
+**What it is.** A serial `DispatchQueue` at `.userInitiated`, plus `sync(intent:_:)`, which
+enqueues work and waits on a `DispatchSemaphore`. Re-entrant calls (a planner gate already running
+on the worker) execute inline rather than deadlocking on the serial queue.
+
+**Who uses it.** Discrete semantic commands that need an exact answer before the transaction can
+be accepted: `SemanticEditEngine`, `SemanticEditPlanners`, `WYSIWYGPlanningDomain`, and
+`AuthoritativePresentationBuilder`. **Ordinary typing never uses it** — that is `LocalTransitionDomain`,
+which is closed, conservative, and parser-free (§5).
+
+**Why it blocks rather than defers.** An accepted edit must carry a complete, oracle-validated
+presentation transition at the moment source is committed. Committing source and leaving the old
+projection editable while parsing runs is forbidden (§5). Deferring the answer therefore requires
+either a weaker acceptance rule or a visible editor freeze; blocking is the current, deliberate
+choice.
+
+**What it costs, and how that is bounded.** The wait is a whole-document index, parse, projection
+build and oracle validation. Measured p95 in Release over the approved corpus at 100,000 UTF-16
+units: 17.8 ms (codeHeavy) to 145.6 ms (tableDense) — see
+`research/2026-08-22-semantic-command-main-actor-cost.md`. `PerformanceSampler.Metric.semanticCommand`
+budgets the complete main-actor command path at 16 ms, and `WorkLedger.mainThreadBlockedNanos`
+records the worker's share of it. **REQ-143 is `Correction`:** the boundary is measured and
+declared, and does not yet meet its bound.
 
 ## 10. Undo and selection
 
