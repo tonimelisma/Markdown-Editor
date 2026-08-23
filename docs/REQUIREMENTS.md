@@ -55,7 +55,7 @@ how delivered behavior is verified. Current architecture is in
 | ID | Requirement (EARS) | Inc | Status | Verified by |
 | ---- | -------------------- | ----- | -------- | ------------- |
 | REQ-010 | The system shall provide plain-text editing of the document contents. | INC-01 / COR-75 | Done | test `nativeReplacementPreservesUnicodeAndDocumentUndoRoute`; test `nativePasteUsesPlainTextAndDiscreteUndo`; test `programmaticSourceStylingCannotCreateAnEdit` |
-| REQ-011 | The system shall support unlimited undo and redo of edits. | INC-01 / COR-05 / COR-75 | Done | test `nativeReplacementPreservesUnicodeAndDocumentUndoRoute`; test `undoRedoRestoresTextAndAdvancesVersion` |
+| REQ-011 | The system shall support unlimited undo and redo of edits. | INC-01 / COR-05 / COR-75 | Done | test `nativeReplacementPreservesUnicodeAndDocumentUndoRoute`; test `undoRedoRestoresTextAndAdvancesVersion`; test `everyActionNameIsUniqueAndPresentable`, `everySemanticCommandNameIsInTheVocabulary` (UndoActionNameTests) |
 | REQ-012 | The system shall integrate the macOS spell-checker. | INC-01 / COR-75 | Done | test `productionSourceEditorUsesNativeSpellAndFindServices` |
 
 ### C · Standard macOS behaviors

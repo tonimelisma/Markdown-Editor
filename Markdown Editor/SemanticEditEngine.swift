@@ -604,7 +604,7 @@ nonisolated enum SemanticEditEngine {
             snapshot: snapshot,
             range: markerRange,
             replacement: replacement,
-            action: "Toggle Task",
+            action: UndoActionName.toggleTask.title,
             grouping: .discrete,
             selectionBefore: sourceSelectionBefore,
             intent: intent

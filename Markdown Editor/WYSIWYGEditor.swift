@@ -1004,7 +1004,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             )
         case .fallthroughToNativeText, .unsupported:
             if case .unsupported = classification {
-                placementController?.presentAlert(.error("Unsupported or corrupt image."), reason: .pasteboardUnsupportedOrCorrupt)
+                placementController?.presentAlert(.error(ImagePlacementError.unsupportedOrCorrupt.userMessage), reason: .pasteboardUnsupportedOrCorrupt)
                 return
             }
             // REQ-059: always paste plain text even when RTF/HTML are available.
@@ -1066,7 +1066,7 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
             return true
         case .fallthroughToNativeText, .unsupported:
             if case .unsupported = classification {
-                placementController?.presentAlert(.error("Unsupported or corrupt image."), reason: .pasteboardUnsupportedOrCorrupt)
+                placementController?.presentAlert(.error(ImagePlacementError.unsupportedOrCorrupt.userMessage), reason: .pasteboardUnsupportedOrCorrupt)
                 return true
             }
             return super.performDragOperation(sender)

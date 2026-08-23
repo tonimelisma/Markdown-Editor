@@ -177,7 +177,7 @@ nonisolated enum InlineEditPlanner {
             snapshot: snapshot,
             range: range,
             replacement: replacement,
-            action: "Inline Code",
+            action: UndoActionName.inlineCode.title,
             grouping: grouping,
             selectionBefore: selectionBefore,
             intent: intent
@@ -203,7 +203,7 @@ nonisolated enum BlockEditPlanner {
         return transformLine(
             snapshot: snapshot,
             range: range,
-            action: "Heading",
+            action: UndoActionName.heading.title,
             grouping: grouping,
             selectionBefore: selectionBefore,
             intent: intent
@@ -228,7 +228,7 @@ nonisolated enum BlockEditPlanner {
         transformLine(
             snapshot: snapshot,
             range: range,
-            action: "Paragraph",
+            action: UndoActionName.paragraph.title,
             grouping: grouping,
             selectionBefore: selectionBefore,
             intent: intent
@@ -259,7 +259,7 @@ nonisolated enum BlockEditPlanner {
             snapshot: snapshot,
             range: line,
             replacement: replacement,
-            action: "Code Block",
+            action: UndoActionName.codeBlock.title,
             grouping: grouping,
             selectionBefore: selectionBefore,
             intent: intent,
@@ -378,7 +378,7 @@ nonisolated enum ListEditPlanner {
             snapshot: snapshot,
             range: line,
             replacement: replacement,
-            action: "Quote",
+            action: UndoActionName.quote.title,
             grouping: grouping,
             selectionBefore: selectionBefore,
             intent: intent,
@@ -411,7 +411,7 @@ nonisolated enum LinkEditPlanner {
                     snapshot: snapshot,
                     range: range,
                     replacement: text,
-                    action: "Remove Link",
+                    action: UndoActionName.removeLink.title,
                     grouping: grouping,
                     selectionBefore: selectionBefore,
                     intent: intent
@@ -426,7 +426,7 @@ nonisolated enum LinkEditPlanner {
             snapshot: snapshot,
             range: range,
             replacement: replacement,
-            action: "Link",
+            action: UndoActionName.link.title,
             grouping: grouping,
             selectionBefore: selectionBefore,
             intent: intent
@@ -524,7 +524,7 @@ nonisolated enum TableCellEditPlanner {
             snapshot: snapshot,
             range: sourceRange,
             replacement: text,
-            action: "Edit Cell",
+            action: UndoActionName.editCell.title,
             grouping: grouping,
             selectionBefore: selectionBefore,
             intent: intent

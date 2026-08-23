@@ -73,7 +73,7 @@ enum WYSIWYGPlanningDomain {
                 snapshot,
                 range: sourceRange,
                 replacement: markdown,
-                action: "Insert Image",
+                action: UndoActionName.insertImage.title,
                 grouping: .discrete,
                 selectionBefore: SourceSelection(utf16: sourceRange, affinity: selection.affinity),
                 intent: intent
@@ -125,7 +125,7 @@ enum WYSIWYGPlanningDomain {
                 snapshot,
                 range: sourceRange,
                 replacement: text,
-                action: "Typing",
+                action: UndoActionName.typing.title,
                 grouping: grouping,
                 selectionBefore: SourceSelection(utf16: sourceRange, affinity: selection.affinity),
                 intent: intent
@@ -171,7 +171,7 @@ enum WYSIWYGPlanningDomain {
                     snapshot,
                     range: sourceRange,
                     replacement: "",
-                    action: "Delete",
+                    action: UndoActionName.delete.title,
                     grouping: grouping,
                     selectionBefore: SourceSelection(utf16: sourceRange, affinity: selection.affinity),
                     intent: intent
@@ -182,7 +182,7 @@ enum WYSIWYGPlanningDomain {
                 snapshot,
                 range: NSRange(location: sourceRange.location - 1, length: 1),
                 replacement: "",
-                action: "Delete",
+                action: UndoActionName.delete.title,
                 grouping: grouping,
                 selectionBefore: SourceSelection(utf16: sourceRange, affinity: selection.affinity),
                 intent: intent

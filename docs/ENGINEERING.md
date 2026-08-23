@@ -799,6 +799,13 @@ architecture.** They are recorded here so no later increment reassigns them:
 | `ARC-Q25` | COR-81 (reduced motion/transparency/increase contrast) | that increment lands |
 | `ARC-Q26` | COR-83 (process lifecycle) | a Stage 0-selected deterministic tool proves zero process leaks |
 
+### ARC-028 — one undo vocabulary for both editors
+
+Every user-visible undo action name comes from `UndoActionName`. Source mode and WYSIWYG mode plan
+edits through separate domains, and the same operation must read the same way in the Edit menu
+from either; before COR-92 these were literals at nineteen sites across seven files with nothing
+tying the two domains' copies together. A new undoable operation names itself in that enum.
+
 ### ARC-027 — the document is the only filesystem observer
 
 External file events reach the application through `MarkdownDocument`'s `NSFilePresenter`

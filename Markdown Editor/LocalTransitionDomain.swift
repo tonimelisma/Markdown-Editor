@@ -303,7 +303,7 @@ nonisolated enum LocalTransitionDomain {
             range: sourceRange,
             replacement: sourceReplacement,
             selectionBefore: SourceSelection(utf16: sourceRange, affinity: selection.affinity),
-            actionName: "Typing",
+            actionName: UndoActionName.typing.title,
             grouping: request.grouping
         ), boundedCellOracle(
             mutation: mutation,

@@ -22,15 +22,15 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     // executor contexts under Swift 6; avoid any cross-type static access here.
 
     nonisolated override class var readableTypes: [String] {
-        ["net.daringfireball.markdown"]
+        [MarkdownContentType.identifier]
     }
 
     nonisolated override class var writableTypes: [String] {
-        ["net.daringfireball.markdown"]
+        [MarkdownContentType.identifier]
     }
 
     nonisolated override class func isNativeType(_ type: String) -> Bool {
-        type == "net.daringfireball.markdown"
+        type == MarkdownContentType.identifier
     }
 
     // MARK: - I/O snapshot (any thread)

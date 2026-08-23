@@ -29,7 +29,7 @@ enum SourcePlanningDomain {
                 snapshot,
                 range: range,
                 replacement: text,
-                action: "Typing",
+                action: UndoActionName.typing.title,
                 grouping: grouping,
                 selectionBefore: selectionBefore,
                 intent: intent
@@ -41,7 +41,7 @@ enum SourcePlanningDomain {
                     snapshot,
                     range: range,
                     replacement: "",
-                    action: "Delete",
+                    action: UndoActionName.delete.title,
                     grouping: grouping,
                     selectionBefore: selectionBefore,
                     intent: intent
@@ -52,7 +52,7 @@ enum SourcePlanningDomain {
                 snapshot,
                 range: NSRange(location: range.location - 1, length: 1),
                 replacement: "",
-                action: "Delete",
+                action: UndoActionName.delete.title,
                 grouping: grouping,
                 selectionBefore: selectionBefore,
                 intent: intent
@@ -63,7 +63,7 @@ enum SourcePlanningDomain {
                 snapshot: snapshot,
                 range: range,
                 delimiters: [("**", "**"), ("__", "__")],
-                action: "Bold",
+                action: UndoActionName.bold.title,
                 grouping: grouping,
                 selectionBefore: selectionBefore,
                 intent: intent
@@ -73,7 +73,7 @@ enum SourcePlanningDomain {
                 snapshot: snapshot,
                 range: range,
                 delimiters: [("*", "*"), ("_", "_")],
-                action: "Italic",
+                action: UndoActionName.italic.title,
                 grouping: grouping,
                 selectionBefore: selectionBefore,
                 intent: intent
@@ -83,7 +83,7 @@ enum SourcePlanningDomain {
                 snapshot: snapshot,
                 range: range,
                 delimiters: [("~~", "~~")],
-                action: "Strikethrough",
+                action: UndoActionName.strikethrough.title,
                 grouping: grouping,
                 selectionBefore: selectionBefore,
                 intent: intent
@@ -110,17 +110,17 @@ enum SourcePlanningDomain {
 
         case .toggleUnorderedList:
             return ListEditPlanner.toggle(
-                snapshot: snapshot, range: range, prefix: "- ", action: "Unordered List",
+                snapshot: snapshot, range: range, prefix: "- ", action: UndoActionName.unorderedList.title,
                 grouping: grouping, selectionBefore: selectionBefore, intent: intent
             )
         case .toggleOrderedList:
             return ListEditPlanner.toggle(
-                snapshot: snapshot, range: range, prefix: "1. ", action: "Ordered List",
+                snapshot: snapshot, range: range, prefix: "1. ", action: UndoActionName.orderedList.title,
                 grouping: grouping, selectionBefore: selectionBefore, intent: intent
             )
         case .toggleTaskList:
             return ListEditPlanner.toggle(
-                snapshot: snapshot, range: range, prefix: "- [ ] ", action: "Task List",
+                snapshot: snapshot, range: range, prefix: "- [ ] ", action: UndoActionName.taskList.title,
                 grouping: grouping, selectionBefore: selectionBefore, intent: intent
             )
         case .toggleBlockQuote:
@@ -145,7 +145,7 @@ enum SourcePlanningDomain {
                 snapshot,
                 range: range,
                 replacement: markdown,
-                action: "Insert Image",
+                action: UndoActionName.insertImage.title,
                 grouping: .discrete,
                 selectionBefore: selectionBefore,
                 intent: intent

@@ -146,7 +146,7 @@ enum SourceEditor {
                 replacement: replacement,
                 selectionBefore: selectionBefore,
                 selectionAfter: SourceSelection(utf16: NSRange(location: afterLocation, length: 0)),
-                actionName: grouping == .discrete ? "Paste" : "Typing",
+                actionName: grouping == .discrete ? UndoActionName.paste.title : UndoActionName.typing.title,
                 grouping: grouping
             )
             switch commitNativeMutation(mutation) {
@@ -463,7 +463,7 @@ final class MarkdownSourceTextView: NSTextView {
             range: range,
             replacement: markdown,
             selectionBefore: selectionBefore,
-            actionName: "Insert Image",
+            actionName: UndoActionName.insertImage.title,
             grouping: .discrete
         ) else {
             return
@@ -526,7 +526,7 @@ final class MarkdownSourceTextView: NSTextView {
             )
             case .fallthroughToNativeText, .unsupported:
             if case .unsupported = classification {
-                placementController?.presentAlert(.error("Unsupported or corrupt image."), reason: .pasteboardUnsupportedOrCorrupt)
+                placementController?.presentAlert(.error(ImagePlacementError.unsupportedOrCorrupt.userMessage), reason: .pasteboardUnsupportedOrCorrupt)
                 return
             }
             // REQ-059: prefer plain-text representation even when RTF/HTML is present.
@@ -578,7 +578,7 @@ final class MarkdownSourceTextView: NSTextView {
             return true
         case .fallthroughToNativeText, .unsupported:
             if case .unsupported = classification {
-                placementController?.presentAlert(.error("Unsupported or corrupt image."), reason: .pasteboardUnsupportedOrCorrupt)
+                placementController?.presentAlert(.error(ImagePlacementError.unsupportedOrCorrupt.userMessage), reason: .pasteboardUnsupportedOrCorrupt)
                 return true
             }
             return super.performDragOperation(sender)

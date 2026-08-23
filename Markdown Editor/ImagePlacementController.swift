@@ -427,7 +427,7 @@ final class ImagePlacementController: ObservableObject {
                 range: tracker.range,
                 replacement: markdown,
                 selectionBefore: selectionBefore,
-                actionName: "Insert Image",
+                actionName: UndoActionName.insertImage.title,
                 grouping: .discrete
             ) else {
                 await rollbackAndRecord(published)
