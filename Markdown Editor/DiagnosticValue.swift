@@ -165,6 +165,16 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case sourceHighlightApplication
     case sourceHighlightCompute
     case workLedger
+    // External file events and their outcomes (REQ-145–149).
+    case contentsChanged
+    case deleted
+    case moved
+    case clean
+    case dirty
+    case reloadPreservingSelection
+    case retainLocalEditsAsConflicted
+    case retainContentAfterDeletion
+    case followMove
     case frameStatistics
     case memoryFootprint
     case acceptedEdit

@@ -438,6 +438,46 @@ budgets the complete main-actor command path at 16 ms, and `WorkLedger.mainThrea
 records the worker's share of it. **REQ-143 is `Correction`:** the boundary is measured and
 declared, and does not yet meet its bound.
 
+## 9b. External file changes
+
+The product's first objective is trustworthy files, and its whole thesis is that there is no
+library: the user runs `git checkout`, edits in another editor, and syncs the folder. Until COR-87
+no requirement described what happens then, and `MarkdownDocument` overrode thirteen `NSDocument`
+members without one file-presenter callback among them. The behaviour was whatever AppKit
+inherited, and nobody had observed it.
+
+**Ownership.** `MarkdownDocument` is the only component that observes the filesystem for the
+document; no editor adapter does (`ARC-027`). `ExternalChangeDomain` is a pure, filesystem-free
+classifier, so the matrix is decided without I/O.
+
+**The matrix.** `ExternalChangeDomain.outcome(for:local:)` is total over
+`ExternalFileEvent × LocalEditState`:
+
+| | contents changed | deleted | moved |
+| --- | --- | --- | --- |
+| **clean** | reload, restoring the caret clamped into the new text | retain content, mark unsaved | follow, re-resolve asset base |
+| **dirty** | retain local edits, mark conflicted | retain content, mark unsaved | follow, re-resolve asset base |
+
+No cell discards unsaved content, and `reloadPreservingSelection` — the only outcome that replaces
+the buffer — is unreachable while anything is unsaved. That is asserted, not merely arranged.
+
+**Conflict is a state, not a resolution.** `hasUnresolvedExternalChange` records that the file and
+the buffer disagree. Nothing resolves it automatically: a save resolves it in favour of the buffer
+and a revert in favour of the file, and both are the user's action. Choosing a winner
+automatically would discard someone's work, which the objective ordering forbids.
+
+**Movement re-resolves assets.** `fileURL` already advances `locationGeneration` on change, and
+that generation is what invalidates cached image resolution — so following a move re-resolves
+`assets/…` against the new parent without a second mechanism.
+
+**Proof boundary, stated plainly.** `MarkdownDocument.autosavesInPlace` is `false` under XCTest
+(AppKit autosave races Swift 6 isolation in the test host), and the file-presenter machinery
+depends on it. A test that wrote through `NSFileCoordinator` would therefore observe a
+configuration that never ships and would pass regardless of the production behaviour. The
+presenter overrides are consequently one line each over `applyExternalChange`, which is what the
+tests drive. **That AppKit delivers those callbacks in the shipping configuration is not covered
+by an automated proof** — the same class of documented gap as the Save-panel cancellation in §9.
+
 ## 10. Undo and selection
 
 - All source changes use one document-owned mutation route.
@@ -739,6 +779,12 @@ architecture.** They are recorded here so no later increment reassigns them:
 | `ARC-Q24` | DISC-08 / REQ-140 (text-scaling boundary) | only after a new documented third-party platform API or separately approved in-app scaling requirement; currently Deferred |
 | `ARC-Q25` | COR-81 (reduced motion/transparency/increase contrast) | that increment lands |
 | `ARC-Q26` | COR-83 (process lifecycle) | a Stage 0-selected deterministic tool proves zero process leaks |
+
+### ARC-027 — the document is the only filesystem observer
+
+External file events reach the application through `MarkdownDocument`'s `NSFilePresenter`
+callbacks and nowhere else. `ExternalChangeDomain` classifies them without touching the
+filesystem, and no editor adapter, session, or view observes files. One owner, one route.
 
 ## 15. Architecture change gate
 

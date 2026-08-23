@@ -266,6 +266,14 @@ nonisolated enum EditorTraceEvent: Sendable, Equatable {
     case documentSaveSucceeded(utf16Count: Int, sourceRevision: UInt64, durationNanos: UInt64)
     case documentSaveFailed(reason: DocumentIOFailure)
     case documentReverted(sourceRevision: UInt64, utf16Count: Int)
+    /// REQ-145–149: the file changed underneath an open document, and what was done about it.
+    /// Carries no path — a filename is document-identifying content (REQ-031).
+    case externalFileChange(
+        event: ExternalFileEvent,
+        local: LocalEditState,
+        outcome: ExternalChangeOutcome,
+        sourceRevision: UInt64
+    )
 
     // View-update integrity (REQ-094/096; ARC-015).
     case hostUpdateEnded(durationNanos: UInt64, updatesInWindow: Int)
@@ -366,6 +374,36 @@ extension ImagePlacementError {
         case .promiseTimedOut: return .promiseTimedOut
         case .nonRegularSource: return .nonRegularSource
         case .parentChanged: return .parentChanged
+        }
+    }
+}
+
+extension ExternalFileEvent {
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .contentsChanged: return .contentsChanged
+        case .deleted: return .deleted
+        case .moved: return .moved
+        }
+    }
+}
+
+extension LocalEditState {
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .clean: return .clean
+        case .dirty: return .dirty
+        }
+    }
+}
+
+extension ExternalChangeOutcome {
+    var symbol: DiagnosticSymbol {
+        switch self {
+        case .reloadPreservingSelection: return .reloadPreservingSelection
+        case .retainLocalEditsAsConflicted: return .retainLocalEditsAsConflicted
+        case .retainContentAfterDeletion: return .retainContentAfterDeletion
+        case .followMove: return .followMove
         }
     }
 }

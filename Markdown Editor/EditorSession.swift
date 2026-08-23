@@ -249,6 +249,15 @@ final class EditorSession: ObservableObject {
             guard let self, !Task.isCancelled else { return }
             self.pendingDocumentChangeTask = nil
             self.scheduleParse(intent: self.takePendingDocumentMutationIntent())
+            // REQ-145: an external reload replaced the text under a caret the user did not move.
+            // Put it back, clamped, rather than resetting them to the top of the document.
+            if let hint = self.document?.consumeExternalReloadSelectionHint() {
+                let clamped = ExternalChangeDomain.preservedSelection(
+                    previous: hint,
+                    inNewLength: ((self.document?.text ?? "") as NSString).length
+                )
+                self.requestSelectionRestoration(SourceSelection(utf16: clamped))
+            }
         }
     }
 
@@ -325,6 +334,10 @@ final class EditorSession: ObservableObject {
         var state = sourceModeState
         mutate(&state)
         sourceModeState = state
+        // REQ-145: the document keeps the last caret so an external reload can restore it. The
+        // session owns selection; the document owns the reload, and this is the one value that
+        // has to cross between them.
+        document?.lastKnownSourceSelection = state.selection.range.utf16
     }
 
     func updateWYSIWYGModeState(_ mutate: (inout WYSIWYGModeState) -> Void) {

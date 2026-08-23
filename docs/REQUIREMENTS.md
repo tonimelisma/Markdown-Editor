@@ -44,6 +44,11 @@ how delivered behavior is verified. Current architecture is in
 | REQ-005 | WHEN the user edits a document, the system shall autosave changes without an explicit Save. | INC-01 / COR-74 | Done | test `autosavesInPlace`; test `editIsDirtyAndSaveFailureIsScopedToTheDocument` |
 | REQ-006 | The system shall preserve macOS document Versions so the user can browse and revert. | INC-01 / COR-74 | Done | test `standardDocumentLifecycleUsesAppKitOwners`; test `requiredDocumentFileSelectorsAreDeclared` |
 | REQ-007 | The system shall save without altering bytes the user did not edit, preserving the file's existing line endings and encoding. | INC-01 / COR-38 | Done | tests `roundTripsUTF8ContentUnchanged`, `preservesCRLFLineEndings`, `preservesUTF8BOM`, `CRLFCodeBlockTests.mixedLineEndingsPreserveUntouchedTerminators` (per-line mixed LF/CRLF preserved), `editingOneLinePreservesOtherTerminators` |
+| REQ-145 | WHEN the document's file is changed by another process WHILE the document has no unsaved changes, the system shall adopt the file's contents and shall restore the source caret clamped into the new text. | COR-87 | Done | test `externalWriteToCleanDocumentReloadsAndKeepsSelection`, `preservedSelectionIsClampedIntoTheNewText` (ExternalChangeTests) |
+| REQ-146 | WHEN the document's file is changed by another process WHILE the document has unsaved changes, the system shall retain the in-memory content, shall not write over the external change, and shall record the disagreement until a save or revert resolves it. | COR-87 | Done | test `externalWriteToDirtyDocumentKeepsLocalEditsAndMarksConflict`, `revertingResolvesTheConflict` (ExternalChangeTests) |
+| REQ-147 | IF the document's file is deleted by another process, THEN the system shall retain the in-memory content and shall mark it as unsaved work. | COR-87 | Done | test `externalDeleteRetainsContentAndCannotLoseTheBuffer`, `deletionRetainsContentFromEitherLocalState` (ExternalChangeTests) |
+| REQ-148 | WHEN the document's file is moved by another process, the system shall follow the new location and shall resolve relative asset references against the new parent directory. | COR-87 | Done | test `externalMoveReResolvesRelativeAssetReferences` (ExternalChangeTests) |
+| REQ-149 | The system shall declare an outcome for every combination of external file event and local edit state, and no outcome shall discard unsaved content. | COR-87 | Done | test `everyExternalChangeClassHasDeclaredBehavior` (ExternalChangeTests); `externalChangeDiagnosticsCarryNoPath` |
 
 ### B · Editing (plain text)
 
@@ -245,7 +250,7 @@ how delivered behavior is verified. Current architecture is in
 table creation/structural controls, image sizing syntax, transcoding, metadata stripping, remote
 images, automatic asset cleanup, and asset-aware Save Copy.
 
-*Next free IDs: REQ-008 (A), REQ-023 (C), REQ-033 (D), REQ-145.*
+*Next free IDs: REQ-008 (A), REQ-023 (C), REQ-033 (D), REQ-150.*
 
 *Reserved by approved, unimplemented plans — do not reassign:* REQ-129 (COR-81 accessibility
 semantics), REQ-130 and REQ-131 (COR-82 macOS citizenship), REQ-132 (COR-80 property testing and

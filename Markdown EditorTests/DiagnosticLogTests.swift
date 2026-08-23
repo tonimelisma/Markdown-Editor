@@ -113,6 +113,7 @@ struct DiagnosticLogTests {
             .modeToggle(toSource: true),
             .compositionBegan(sourceVersion: 1),
             .compositionCommitted(sourceVersion: 1, replacementLength: 2),
+            .externalFileChange(event: .contentsChanged, local: .clean, outcome: .reloadPreservingSelection, sourceRevision: 1),
             .compositionCancelled,
             .compositionRefusedStale,
             .imageDisplayCacheObserved(hit: true, bytesRead: 0, decodeCount: 0, durationNanos: 5, totalBytes: 20),

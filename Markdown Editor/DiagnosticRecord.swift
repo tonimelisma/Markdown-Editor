@@ -170,6 +170,7 @@ nonisolated enum DiagnosticField: String, Sendable, Equatable, CaseIterable {
     case revision
     case snapshot
     case sourceRevision
+    case state
     case toPhase
     case totalBytes
     case updatesPerSecond
@@ -245,6 +246,7 @@ nonisolated enum DiagnosticEventName: String, Sendable, Equatable, CaseIterable 
     case documentSaveSucceeded
     case documentSaveFailed
     case documentReverted
+    case externalFileChange
     case mutationRequested
     case mutationCommitted
     case mutationRefused

@@ -255,6 +255,13 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 (.sourceRevision, .uint(sourceRevision)),
                 (.utf16Count, .int(utf16Count))
             ])
+        case .externalFileChange(let event, let local, let outcome, let sourceRevision):
+            return Mapped(name: .externalFileChange, level: .info, category: .document, data: [
+                (.kind, .symbol(event.symbol)),
+                (.state, .symbol(local.symbol)),
+                (.reason, .symbol(outcome.symbol)),
+                (.sourceRevision, .uint(sourceRevision))
+            ])
         case .hostUpdateEnded(let durationNanos, let updatesInWindow):
             return Mapped(name: .hostUpdateEnded, level: .debug, category: .viewUpdate, data: [
                 (.durationNanos, .uint(durationNanos)),

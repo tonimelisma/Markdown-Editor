@@ -204,6 +204,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         if error != nil {
             trace?.record(route: .documentSaveFailed, .documentSaveFailed(reason: .saveFailedOrCancelled))
         } else {
+            // REQ-146: writing the buffer to the file is the user resolving the disagreement in
+            // favour of their own edits, which is the only way it resolves without a revert.
+            hasUnresolvedExternalChange = false
             let durationNanos = DispatchTime.now().uptimeNanoseconds - startUptimeNanos
             trace?.record(route: .documentSaveSucceeded, .documentSaveSucceeded(
                     utf16Count: utf16Count,
@@ -232,6 +235,110 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
                 self.trace?.record(route: .documentLoadFailed, .documentLoadFailed(reason: .fileUnreadable))
             }
             throw error
+        }
+    }
+
+    // MARK: - External file changes (REQ-145–149)
+
+    /// True while the file on disk and this buffer are known to disagree.
+    ///
+    /// // Set when an external write arrives against unsaved changes; cleared by a save or a
+    /// // revert, both of which end the disagreement. Nothing resolves it automatically: the
+    /// // product ranks preservation above convenience, and choosing a winner without being asked
+    /// // discards someone's work.
+    @Published private(set) var hasUnresolvedExternalChange = false
+
+    /// Applies an external file event. The single route; the `NSFilePresenter` callbacks below
+    /// are one line each so the behaviour lives here, where it is directly testable.
+    ///
+    /// // REQ-145–149; ARC-027. Returns the outcome so callers and tests observe the same value
+    /// // the diagnostic records.
+    @discardableResult
+    func applyExternalChange(_ event: ExternalFileEvent) -> ExternalChangeOutcome {
+        let local: LocalEditState = isDocumentEdited ? .dirty : .clean
+        let outcome = ExternalChangeDomain.outcome(for: event, local: local)
+
+        switch outcome {
+        case .reloadPreservingSelection:
+            // Nothing unsaved to lose. Adopt the file; the session restores each editor's caret
+            // from `externalReloadSelectionHint` after the new source is installed.
+            if let url = fileURL {
+                externalReloadSelectionHint = ExternalChangeDomain.preservedSelection(
+                    previous: lastKnownSourceSelection,
+                    inNewLength: (text as NSString).length
+                )
+                do {
+                    try revert(toContentsOf: url, ofType: fileType ?? MarkdownContentType.identifier)
+                } catch {
+                    // The file became unreadable between the notification and the read. Keeping
+                    // the buffer is the conservative half of the matrix, so take it.
+                    externalReloadSelectionHint = nil
+                    hasUnresolvedExternalChange = true
+                }
+            }
+        case .retainLocalEditsAsConflicted:
+            hasUnresolvedExternalChange = true
+        case .retainContentAfterDeletion:
+            // The buffer is now the only copy, so it must be treated as unsaved work rather than
+            // as a clean document that could be discarded on close without asking.
+            hasUnresolvedExternalChange = true
+            updateChangeCount(.changeDone)
+        case .followMove:
+            // `fileURL` has already been updated by AppKit; the observer on it advances
+            // `locationGeneration`, which is what re-resolves relative `assets/…` references.
+            break
+        }
+
+        trace?.record(route: .externalFileChange, .externalFileChange(
+            event: event,
+            local: local,
+            outcome: outcome,
+            sourceRevision: sourceVersion
+        ))
+        return outcome
+    }
+
+    /// The caret to restore after an external reload, consumed by `EditorSession`.
+    private(set) var externalReloadSelectionHint: NSRange?
+
+    func consumeExternalReloadSelectionHint() -> NSRange? {
+        defer { externalReloadSelectionHint = nil }
+        return externalReloadSelectionHint
+    }
+
+    /// The most recent source caret, recorded so a reload can put it back.
+    var lastKnownSourceSelection: NSRange = NSRange(location: 0, length: 0)
+
+    override func presentedItemDidChange() {
+        // AppKit delivers this off the main actor, and delivers it for this application's own
+        // writes as well as for foreign ones.
+        Task { @MainActor [weak self] in
+            guard let self, let url = self.fileURL else { return }
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                self.applyExternalChange(.deleted)
+                return
+            }
+            let onDisk = try? String(contentsOf: url, encoding: .utf8)
+            guard ExternalChangeDomain.isForeignContentChange(onDisk: onDisk, buffer: self.text) else {
+                return
+            }
+            self.applyExternalChange(.contentsChanged)
+        }
+    }
+
+    override func presentedItemDidMove(to newURL: URL) {
+        super.presentedItemDidMove(to: newURL)
+        Task { @MainActor [weak self] in
+            self?.applyExternalChange(.moved)
+        }
+    }
+
+    nonisolated override func accommodatePresentedItemDeletion(
+        completionHandler: @escaping @Sendable ((any Error)?) -> Void
+    ) {
+        Task { @MainActor [weak self] in
+            self?.applyExternalChange(.deleted)
+            completionHandler(nil)
         }
     }
 
@@ -614,6 +721,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         activeTrackingGeneration = nil
         undoManager?.removeAllActions()
         updateChangeCount(.changeCleared)
+        // REQ-146: a load or revert makes the buffer equal the file again, which is exactly what
+        // an unresolved external change meant.
+        hasUnresolvedExternalChange = false
         let utf16Count = (value as NSString).length
         if isInitialLoad {
             trace?.record(route: .documentLoaded, .documentLoaded(utf16Count: utf16Count, sourceRevision: sourceVersion))
