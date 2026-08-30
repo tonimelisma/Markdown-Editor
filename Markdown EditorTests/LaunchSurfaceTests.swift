@@ -12,7 +12,7 @@ import Testing
 ///
 /// // Verifies: REQ-144.
 ///
-/// The shipping binary honours `--benchmark-manifest`, `--diagnostic-smoke-exit` and six
+/// The shipping binary honours `--benchmark-manifest`, `--diagnostic-smoke-exit` and seven
 /// `MARKDOWN_EDITOR_*` variables, one of which makes the app type into the open document. That is
 /// deliberate — `Scripts/benchmark.sh` builds Release, so the performance evidence describes the
 /// configuration that ships — but before COR-90 no requirement described the surface and nothing

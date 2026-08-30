@@ -73,13 +73,18 @@ suite is trustworthy.
 No XCUITest target, no screen automation, no accessibility-inspection assertions. Automated
 verification is unit and component tests; constructing AppKit components directly is fine.
 
-Two narrow exceptions, both passive:
+Three narrow exceptions, all passive:
 
 - `Scripts/smoke-test.sh` launches the built app on a fixture and asserts only on the structured
   diagnostic records it writes. It never drives or reads the UI.
 - `Scripts/smoke-screenshot.sh` captures one screenshot of the app's own window (never the full
   screen) over a rich fixture. Run it when you have changed anything visual, look at the result,
   and send it to the user. It is evidence for human eyes, never a requirement's proof.
+- `Scripts/screenshots.sh` does the same capture once per screen and commits the results to
+  `docs/screenshots/`. Run it when you have changed how the product looks, or when the user asks
+  for screenshots. A screen an ordinary launch does not reach is *named at launch*
+  (`MARKDOWN_EDITOR_SMOKE_SCENE`) and presented by the app through its own command routes — never
+  by clicking. Each image is committed only if that run's structured log passes.
 
 ## 5. Documentation
 

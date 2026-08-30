@@ -731,6 +731,26 @@ genuine application diagnostic failure by the error text, not by exit code alone
 state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 `Scripts/smoke-test.sh`, for the same reason.
 
+**Screenshot gallery (REQ-151):** `Scripts/screenshots.sh` runs that same capture once per
+screen and commits the results to `docs/screenshots/`, so the repository contains a current
+picture of the product. It is documentation, not a gate — `Scripts/check.sh` does not run it —
+but each image is still copied into the repository only after that run's own structured log
+passes the `Scripts/verify-smoke-log.py` checks, so a committed image cannot claim a render the
+log calls unhealthy. Each scene runs to the application's own bounded self-termination rather
+than being killed after the capture: killing it loses the end-of-run performance summaries the
+verifier requires.
+
+A screen an ordinary launch does not reach — Source mode, the link sheet — is named at launch
+with `MARKDOWN_EDITOR_SMOKE_SCENE` and presented by the application itself
+(`MarkdownAppDelegate.SmokeScene`, `presentSmokeScene`). The applier reaches the window-scoped
+`EditorCommandController` through the window's toolbar delegate (ARC-024) — the same handle
+`exerciseSmokeEdits` uses — and issues the same commands a toolbar click issues, so no UI is
+driven and `CLAUDE.md` §4 holds. Like every other smoke affordance the variable is gated on
+`--diagnostic-smoke-exit` (REQ-144), and no scene can change document content: the link scene
+opens the sheet and never commits it. Appearance is forced through the argument domain
+(`-AppleInterfaceStyle Dark`, `-NSRequiresAquaSystemAppearance YES`), never by application code —
+the product has no appearance setting of its own.
+
 ## 13. Quality scenarios
 
 | ID | Scenario and measure |
