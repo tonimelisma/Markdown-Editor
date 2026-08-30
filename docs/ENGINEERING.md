@@ -731,6 +731,17 @@ genuine application diagnostic failure by the error text, not by exit code alone
 state veto uses the same `-ApplePersistenceIgnoreState YES` process argument as
 `Scripts/smoke-test.sh`, for the same reason.
 
+**Scroll state is document-relative (REQ-086; COR-93).** `SourceModeState.scrollOffset` and
+`WYSIWYGModeState.scrollOffset` are offsets from the top of the document, not raw `NSClipView`
+bounds origins. AppKit parks a scroll view's document view wherever it likes inside its clip
+view, and it does so for the Source editor because that editor is laid out while hidden —
+measured at `documentView.frame.origin.y == -1044` for an 861-point clip over a 2122-point
+document. Under the raw-bounds reading, a stored offset of zero scrolled 1044 points into the
+file, so the first switch into Source opened halfway down while every piece of state involved
+reported zero. Neither `NSScrollView.tile()` nor laying out the clip view resets that placement;
+`EditorHostView.HostCoordinator.scrollOffset(in:)` and `restoreScrollOffset(_:in:)` measure and
+restore against it, and are the only readers and writers of either offset.
+
 **Screenshot gallery (REQ-151):** `Scripts/screenshots.sh` runs that same capture once per
 screen and commits the results to `docs/screenshots/`, so the repository contains a current
 picture of the product. It is documentation, not a gate — `Scripts/check.sh` does not run it —
