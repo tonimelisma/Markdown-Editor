@@ -65,13 +65,16 @@ and `releases/latest/download/Markdown-Editor.dmg` (the first install).
 
 ## Owner setup (only the owner can do these, all in GitHub's web settings, from any device)
 
+Steps 1 to 3 were done on 2026-11-26: the repository is public, `main`'s ruleset is active, and
+`SPARKLE_SEED` is set, with a copy the owner keeps outside GitHub.
+
 1. **Make the repository public** (owner's choice, 2026-11-26): Settings → General → Danger Zone
    → Change visibility → Public. Sparkle can then read the release feed, which a private
    repository's release assets do not allow without credentials. Standard GitHub-hosted runners,
    macOS included, are also free for public repositories.
-2. **Protect `main`.** Add a ruleset that requires the status check `CI gate`, allows squash
-   merges only, and blocks force-pushes and deletion. Also turn on "Allow auto-merge" and
-   "Automatically delete head branches".
+2. **Protect `main`.** A ruleset named `main` requires the status check `CI gate` and a pull
+   request, allows squash merges only, and blocks force-pushes and deletion. The repository allows
+   only squash merges, allows auto-merge, and deletes merged branches.
 3. **The update key.** Settings → Environments → New environment `release` → Add environment
    secret `SPARKLE_SEED`: a random password of at least 32 characters, for example one a password
    manager generates. Keep a copy in the password manager. The release derives the app's EdDSA key
