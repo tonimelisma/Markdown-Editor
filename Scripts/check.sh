@@ -132,6 +132,19 @@ if (( run_smoke )); then
     fi
 
     if (( has_xcode )); then
+        # The Debug app the smoke run launches is signed without the hardened runtime
+        # (ENABLE_DEBUG_DYLIB), so no launch here exercises how a release is signed — which is how
+        # build 202 was published unable to start (docs/DECISIONS.md, 2026-11-26). This proves the
+        # script that repairs it, on a bundle built for the purpose: seconds, and its control must
+        # fail to launch before it passes.
+        printf '%s\n' '── ad hoc hardening (the release signing a Debug launch cannot show)'
+        if ! ./Scripts/test-adhoc-harden.sh >"$derived/adhoc-harden.log" 2>&1; then
+            failures=$((failures + 1))
+            tail -20 "$derived/adhoc-harden.log" >&2
+        else
+            echo "ad hoc hardening: PASS"
+        fi
+
         printf '%s\n' '── smoke (launches the built app on a fixture)'
         # The run's own diagnostics (JSON Lines) are kept beside the log, so a failed smoke run says
         # what it recorded (a stall's duration and moment), not only that it failed.

@@ -42,8 +42,10 @@ Reading CI from a cloud session: the GitHub MCP tools.
 
 ## Releases (`.github/workflows/release.yml`, `Scripts/release.sh`)
 
-After CI passes on a push to `main`, and only when `Markdown Editor/` or
-`Markdown Editor.xcodeproj/` changed since the newest release:
+After CI passes on a push to `main`, and only when the published app would differ from the newest
+release — anything under `Markdown Editor/` or `Markdown Editor.xcodeproj/`, or in the scripts that
+sign it (`Scripts/release.sh`, `Scripts/adhoc-harden.sh`), since build 202's defect was entirely in
+the signing:
 
 1. Refuse if the pinned Sparkle has OSV advisories (`Scripts/sparkle-advisories.sh`).
 2. Derive the update key from `SPARKLE_SEED` (`Scripts/sparkle-key.sh`) and build the Release
@@ -51,14 +53,22 @@ After CI passes on a push to `main`, and only when `Markdown Editor/` or
    `CERTIFICATE_P12` if one is set, and is ad hoc otherwise. `CFBundleVersion` is the commit count.
    `CFBundleShortVersionString` is the next patch of `MARKETING_VERSION`
    (`Scripts/release-version.sh`).
-3. Check the built app: a valid signature, the derived `SUPublicEDKey`, and `SUFeedURL` naming the
-   repository it is published to.
-4. With a Developer ID identity and the notary secrets, notarize and staple the app and the disk
+3. Without a Developer ID, re-sign the app ad hoc with the hardened runtime's
+   library-validation exception and without `get-task-allow` (`Scripts/adhoc-harden.sh`). An ad hoc
+   app cannot load its own `Sparkle.framework` otherwise, and build 202 was published unable to
+   start at all (`DECISIONS.md`, 2026-11-26).
+4. Check the built app: a valid signature, the entitlements the signing above implies, the derived
+   `SUPublicEDKey`, and `SUFeedURL` naming the repository it is published to.
+5. **Launch it.** `SMOKE_APP=… Scripts/smoke-test.sh` runs the bundle about to be published on a
+   fixture and asserts on its diagnostic records (REQ-098). A static signature check passes for an
+   app that dies in dyld, so this is the step that proves a release runs. It installs no update:
+   REQ-034 keeps a smoke run from checking for one.
+6. With a Developer ID identity and the notary secrets, notarize and staple the app and the disk
    image.
-5. Make `Markdown-Editor.dmg` (the app beside an Applications link) and the Sparkle zip. Sign the zip
+7. Make `Markdown-Editor.dmg` (the app beside an Applications link) and the Sparkle zip. Sign the zip
    with the update key, then check that signature with Sparkle's own `sign_update --verify`. Then
    write `appcast.xml` (`Scripts/appcast.sh`).
-6. Publish `v<x.y.z>` as the latest release, and delete all but the newest three.
+8. Publish `v<x.y.z>` as the latest release, and delete all but the newest three.
 
 The stable addresses are `releases/latest/download/appcast.xml` (the feed installed copies read)
 and `releases/latest/download/Markdown-Editor.dmg` (the first install).
@@ -80,8 +90,9 @@ Steps 1 to 3 were done on 2026-11-26: the repository is public, `main`'s ruleset
    manager generates. Keep a copy in the password manager. The release derives the app's EdDSA key
    from it on every run. Changing or losing it means installed copies reject every later update,
    until they are reinstalled by hand. The next app change after this publishes the first release.
-4. **Optional, later: a certificate.** Without one, the app is signed ad hoc and macOS asks once to
-   allow it. A Developer ID also gets notarization:
+4. **Optional, later: a certificate.** Without one, the app is signed ad hoc, macOS asks once to
+   allow it, and the build needs the library-validation exception to load its own frameworks
+   (`DECISIONS.md`, 2026-11-26). A Developer ID removes that exception and gets notarization:
    - `CERTIFICATE_P12` and `CERTIFICATE_PASSWORD`: the identity as a base64 `.p12`;
    - `NOTARY_KEY_P8`, `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`: an App Store Connect API key.
 
