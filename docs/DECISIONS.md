@@ -40,6 +40,18 @@ awake, and it adds a second way to verify the same change.
 
 **Choices inside A, and where each is worse.**
 
+- **Two ways to work, as latchkey settled the same day.** A cloud session never reaches the
+  MacBook during development (owner, in latchkey: "never via latchkey MCP access to my macbook
+  from the cloud env during dev process"), except for a live check the owner asks for. A local
+  session is one the owner started on the Mac. Both are described in `CLAUDE.md` itself (owner:
+  "All in CLAUDE.md").
+- **Five minutes per commit, local and CI together** (owner, in Otos: "just try to ensure each
+  commit wraps up in 5 minutes of testing"). `check.sh` prints its duration. CI restores Xcode's
+  compilation cache, and only a push to `main` saves it. Otos's prefix mapping is left out because
+  it rewrites `#filePath`, which the tests here use to find files. A CI run's checkout path is
+  constant, so its cache hits without it. Not yet measured here: the first CI runs give the
+  baseline.
+
 - **Automatic checks and installs, with no consent prompt.** `SUEnableAutomaticChecks` and
   `SUAutomaticallyUpdate` are set, as in latchkey and Otos, because the owner asked for
   auto-updates. This is worse for "no surprises" for any future user who did not expect an hourly
@@ -65,6 +77,9 @@ awake, and it adds a second way to verify the same change.
 
 - REQ-030 now allows one network access: the update check, REQ-033. `PrivacyBoundaryTests` bounds it
   to the one file that imports Sparkle.
+- `CLAUDE.md` was rebuilt around this, with its section numbers kept because other documents
+  cite them. The stale model-named commit trailer gave way to the harness's attribution, and "small
+  doc fixes can go straight to `main`" gave way to one pull request per session.
 - The repository gained a shared scheme. CI's fresh checkout has no autocreated scheme to rely on.
 - The owner runs `Scripts/release-setup.sh` once on the Mac, because the signing certificate's
   private key is in its keychain. Nothing after that needs the Mac.

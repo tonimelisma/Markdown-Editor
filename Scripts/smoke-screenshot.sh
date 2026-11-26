@@ -70,8 +70,9 @@ cleanup() {
 trap cleanup EXIT
 
 echo "smoke-screenshot: building (Debug, derivedDataPath=$derived)…"
+source "$repo_root/Scripts/lib/build-settings.sh"
 xcodebuild -project "Markdown Editor.xcodeproj" -scheme "Markdown Editor" \
-    -configuration Debug -derivedDataPath "$derived" build >/dev/null || {
+    -configuration Debug -derivedDataPath "$derived" "${verification_build_settings[@]}" build >/dev/null || {
         echo "smoke-screenshot: build failed" >&2; exit 1; }
 
 # Pre-compiled once: `swift find-window-id.swift` (script mode) recompiles on every invocation

@@ -35,6 +35,8 @@ for arg in "$@"; do
 done
 
 mkdir -p "$derived"
+source "$repo_root/Scripts/lib/build-settings.sh"
+started_at=$(date +%s)
 
 has_xcode=0
 if [[ "$(uname -s)" == Darwin ]] && xcodebuild -version >/dev/null 2>&1; then
@@ -58,6 +60,7 @@ if (( has_xcode )); then
         -configuration Debug \
         -destination 'platform=macOS' \
         -derivedDataPath "$derived" \
+        "${verification_build_settings[@]}" \
         >"$log" 2>&1
     if (( $? != 0 )); then
         failures=$((failures + 1))
@@ -119,6 +122,11 @@ if (( run_smoke )); then
         fi
     fi
 fi
+
+# The five-minute budget (docs/DECISIONS.md, 2026-11-26) counts this run plus CI's. Printed so
+# a run's cost is read against it, not guessed.
+duration=$(( $(date +%s) - started_at ))
+printf 'duration: %dm%02ds (budget: 5m for a commit, local and CI together)\n' $((duration / 60)) $((duration % 60))
 
 if (( failures > 0 )); then
     echo "check: FAILED ($failures step(s)); full log at $log" >&2

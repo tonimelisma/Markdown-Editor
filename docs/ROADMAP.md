@@ -59,10 +59,22 @@ the rejected alternatives, and the respect in which the chosen one is worse.
 
 ## Next
 
-**Packaging and distribution.** The engineering is finished and the product is not shippable: no
-app icon, no README, no LICENSE, no CI, and no sign/notarize/staple/DMG path, against a VISION
-that promises direct download signed with a Developer ID and notarized by Apple. Deliberately
-sequenced after the queue above, while the app still has no users and changes are cheapest.
+**Packaging and distribution** (🔵 Active, 2026-11-26). Cloud-first development is in place:
+
+- CI on GitHub's `xcode-27` runner;
+- a Sparkle updater (REQ-033, REQ-034);
+- a release workflow that publishes a signed disk image and the update feed for every `main`
+  commit that changes the app (`DECISIONS.md`, 2026-11-26; `DEVELOPMENT.md`).
+
+Still open:
+
+- The first green CI run of the macOS job, which also shows the build time against the five-minute
+  budget.
+- The owner's one-time setup: the feed's visibility, the ruleset, and `Scripts/release-setup.sh`.
+- The first published release, and an installed copy seen updating itself. REQ-033 stays
+  `Active` until then.
+- Notarization, once a Developer ID exists.
+- An app icon, a README and a LICENSE.
 
 ## Later — post-MVP backlog
 

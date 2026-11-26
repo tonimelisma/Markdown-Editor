@@ -45,6 +45,10 @@ The app is a native Swift 6 macOS document application:
 - Image placement is one editor-neutral transaction used by paste, drag-and-drop, and Add Image.
 - Parser, source-index, projection compilation, image inspection, and image decoding run
   from immutable snapshots away from the main actor.
+- `AppUpdater` is the only owner of Sparkle and of the application's only network access, the
+  update check (REQ-030, REQ-033). It starts only in a build that carries the update key (Release
+  configuration), and never in a test host or a smoke or benchmark run (REQ-034). Updates install
+  when the app quits, after `NSDocument` autosave.
 
 TextKit 2, hidden-delimiter storage, an AST or rich text as canonical state, whole-document rich
 serialization, web contenteditable, and duplicate image pipelines are not part of the architecture.

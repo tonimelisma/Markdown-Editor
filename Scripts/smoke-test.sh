@@ -29,8 +29,9 @@ trap cleanup EXIT
 
 echo "smoke: building (Debug, derivedDataPath=$derived)…"
 build_start=$(date +%s)
+source "$repo_root/Scripts/lib/build-settings.sh"
 build_command=(xcodebuild -project "Markdown Editor.xcodeproj" -scheme "Markdown Editor"
-    -configuration Debug -derivedDataPath "$derived")
+    -configuration Debug -derivedDataPath "$derived" "${verification_build_settings[@]}")
 if [[ -n "${FALSIFICATION_SOURCE_PACKAGES:-}" ]]; then
     build_command+=(-clonedSourcePackagesDirPath "$FALSIFICATION_SOURCE_PACKAGES")
 fi

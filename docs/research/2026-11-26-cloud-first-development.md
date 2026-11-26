@@ -32,12 +32,22 @@ Both repositories are public, both develop in cloud sessions, and both verify th
     keychain account and sets the environment `release`'s secrets with `gh`.
   - Its plan 0118 ("CI is the only Mac") and research note
     `2026-11-26-agent-instruction-files.md` cut `AGENTS.md` from 728 lines toward about 200.
-- **latchkey** (commit `9adb867`):
+- **latchkey** (commit `9adb867`, re-read at `bee78fa`):
   - The same Sparkle shape (`mac-tag.yml`, environment `release`, Apple Development certificate).
   - `mac-build.yml` splits macOS tests over four parallel jobs and keeps Xcode's compilation cache.
   - Hooks keep a session from leaving work unpushed.
-  - Its `CLAUDE.md` is about 300 lines, with topic rules in `.claude/rules/` and the note
-    "keep this file under ~200 lines".
+  - Its `CLAUDE.md` had about 300 lines. #59 (`bee78fa`) cut it to about 200, with owner setup
+    moved to `docs/development.md`.
+  - #59 also settled "two ways to work". Cloud sessions are the main way and never use the
+    MacBook during development, except for a live check the owner asks for. A local session is
+    Claude Code started on the Mac and runs the Mac tests there. Both are described in `CLAUDE.md`
+    itself, and the Mac tests gate merging.
+  - Merges are squash merges by auto-merge. A pull request opens at its first commit, and a
+    pushed branch is never rebased or force-pushed.
+- **Otos, in progress** (branch `friendly-gates-m0b2mj`, `d8cf08c`): a commit is checked within
+  five minutes, locally and on CI together (owner, 2026-11-26). Its CI restores Xcode's
+  compilation cache and the lint caches, and only `main` saves them. Every check prints its
+  durations.
 
 ## Findings
 
@@ -45,7 +55,7 @@ Both repositories are public, both develop in cloud sessions, and both verify th
 
 - A cloud session is Ubuntu 24.04 on x86_64 with about 4 vCPU, 16 GB of memory and 30 GB of disk,
   whatever the user's own OS. It has no macOS and no Xcode.
-  https://code.claude.com/docs/en/cloud-environments
+  <https://code.claude.com/docs/en/cloud-environments>
 - The repository's `CLAUDE.md`, `.claude/rules/`, skills and `.claude/settings.json` hooks load in a
   cloud session. Hooks load only when the session has a single repository. A SessionStart hook runs
   locally and in the cloud; `CLAUDE_CODE_REMOTE` is `true` only in the cloud. What the hook prints
@@ -55,8 +65,8 @@ Both repositories are public, both develop in cloud sessions, and both verify th
 - Moving between environments: `claude --cloud "task"` starts a cloud session, and `claude --teleport`
   pulls one into the local terminal (it needs a clean tree and a pushed branch). The Desktop app can
   send a local session to the cloud. A cloud session can ask to attach a folder on the user's
-  computer through Remote Control. https://code.claude.com/docs/en/claude-code-on-the-web,
-  https://code.claude.com/docs/en/remote-control
+  computer through Remote Control. <https://code.claude.com/docs/en/claude-code-on-the-web>,
+  <https://code.claude.com/docs/en/remote-control>
 - From this session's own observation: GitHub is reached through the session's GitHub tools, whose
   Actions endpoints list runs and jobs, return job logs, and return artifact download links. Otos
   records that the same proxy refuses GraphQL, tag pushes and REST release writes from the VM, so
@@ -65,16 +75,16 @@ Both repositories are public, both develop in cloud sessions, and both verify th
 ### CLAUDE.md for current models
 
 - Keep each file under about 200 lines: "Longer files consume more context and reduce adherence."
-  `@path` imports do not reduce that cost. https://code.claude.com/docs/en/memory
+  `@path` imports do not reduce that cost. <https://code.claude.com/docs/en/memory>
 - Keep only what Claude cannot infer from the code: the exact commands, where the code misleads,
   decisions not recorded in the repository, and anything corrected twice. Do not describe the
   architecture or the file layout, since Claude reads the repository itself.
-  https://code.claude.com/docs/en/best-practices
+  <https://code.claude.com/docs/en/best-practices>
 - Current models follow a plainly worded line, and "piling on emphasis mostly makes Claude
   over-apply the rule". Give the reason; say what to do rather than what not to do. A rule that has
   to hold every time belongs in a hook or a test.
-  https://code.claude.com/docs/en/best-practices,
-  https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices
+  <https://code.claude.com/docs/en/best-practices>,
+  <https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices>
 - Environment-specific notes can be printed by the SessionStart hook only where they apply, instead
   of loading in every session. Otos's note, citing the hooks documentation.
 
@@ -96,14 +106,14 @@ Both repositories are public, both develop in cloud sessions, and both verify th
   (`Scripts/sparkle-advisories.sh`, 2026-11-26).
 - `generate_keys` keeps the private EdDSA key in the login keychain (`-x` exports it). `sign_update`
   takes the key on standard input with `--ed-key-file -`. With SwiftPM the tools are in
-  `SourcePackages/artifacts/sparkle/Sparkle/bin/`. https://sparkle-project.org/documentation/
+  `SourcePackages/artifacts/sparkle/Sparkle/bin/`. <https://sparkle-project.org/documentation/>
 - Sparkle recommends a Developer ID–signed, notarized DMG that holds the app beside an
   `/Applications` link, served over HTTPS. Notarization takes a DMG or a zip; a zip cannot be
   stapled, so the app inside is stapled instead.
-  https://sparkle-project.org/documentation/publishing/,
-  https://developer.apple.com/documentation/security/customizing-the-notarization-workflow
+  <https://sparkle-project.org/documentation/publishing/>,
+  <https://developer.apple.com/documentation/security/customizing-the-notarization-workflow>
 - `hdiutil create` on hosted runners intermittently fails with "Resource busy", so retry it.
-  https://gitlab.kitware.com/cmake/cmake/-/issues/25671
+  <https://gitlab.kitware.com/cmake/cmake/-/issues/25671>
 
 ## What differs here
 
