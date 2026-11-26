@@ -77,9 +77,14 @@ Still open:
   code, passed. The stall records were not kept then, so the cause is unknown. A failed smoke run
   now uploads its records (`smoke-records/` in `check-logs-*`). The next failure is to be read from
   them, not re-run.
-- The first release, now that `SPARKLE_SEED` is set: it publishes with the next merge that changes the app.
-- The first published release, and an installed copy seen updating itself. REQ-033 stays
-  `Active` until then.
+- An installed copy seen updating itself. v1.0.0 (build 202) was published on 2026-11-26 by
+  Release run 45866221874. Its feed, archive length and EdDSA signature were checked from
+  GitHub against the `SPARKLE_SEED` public key, and its app carries that key. REQ-033 stays
+  `Active` until a copy installed from that disk image takes the next release by itself.
+- Mac runners that never come. Twice on 2026-11-26 a `main` job waited 15 minutes for an
+  `xcode-27` runner and was dropped (CI 45860219913, Release 45866221874 attempt 1), while
+  pull-request jobs started within a minute. The cause is unknown. A dropped job breaks the
+  five-minute budget whatever the code does.
 - Notarization, once a Developer ID exists.
 - An app icon, a README and a LICENSE.
 
