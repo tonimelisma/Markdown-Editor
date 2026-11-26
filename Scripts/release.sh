@@ -12,10 +12,16 @@
 # marked latest, so releases/latest/download/appcast.xml always names the newest build. Only the
 # newest three releases are kept.
 #
+# Nothing here needs the owner's Mac (docs/DECISIONS.md, 2026-11-26, "No Mac, not even once").
+#
 # The environment the workflow gives it:
-#   SIGNING_IDENTITY     SHA-1 of the identity imported from CERTIFICATE_P12
-#   SIGNING_KEYCHAIN     the keychain the workflow imported it into for this run
-#   SPARKLE_PRIVATE_KEY  the EdDSA update key, handed to sign_update on standard input
+#   SPARKLE_SEED         the secret the update key is derived from (Scripts/sparkle-key.sh); its
+#                        public half is stamped into the build as SUPublicEDKey
+#   OPENSSL              an OpenSSL 3 binary for Scripts/sparkle-key.sh
+#   SIGNING_IDENTITY     optional: SHA-1 of an identity imported from CERTIFICATE_P12, and
+#   SIGNING_KEYCHAIN     the keychain it is in. Without them the app is signed ad hoc. Sparkle
+#                        accepts an update whose EdDSA key is unchanged whatever its signing
+#                        identity (SUUpdateValidator), so a certificate can be added later.
 #   NOTARY_KEY_P8, NOTARY_KEY_ID, NOTARY_ISSUER_ID
 #                        optional App Store Connect API key; with a Developer ID identity, the
 #                        app and the disk image are notarized and stapled (VISION, Distribution)
@@ -25,10 +31,9 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 
-: "${SIGNING_IDENTITY:?the signing identity is needed}"
-: "${SIGNING_KEYCHAIN:?the signing keychain is needed}"
-: "${SPARKLE_PRIVATE_KEY:?the update key is needed}"
+: "${SPARKLE_SEED:?the seed of the update key is needed}"
 : "${GITHUB_REPOSITORY:?the repository is needed}"
+signing_identity="${SIGNING_IDENTITY:--}"
 publish_repo="$GITHUB_REPOSITORY"
 keep=3
 project="Markdown Editor.xcodeproj"
@@ -71,13 +76,20 @@ tag="v$version"
 
 ./Scripts/sparkle-advisories.sh
 
-identity_name="$(security find-identity -v -p codesigning "$SIGNING_KEYCHAIN" | awk -v sha="$SIGNING_IDENTITY" '$2 == sha { sub(/^[^"]*"/, ""); sub(/"$/, ""); print; exit }')"
-[[ -n "$identity_name" ]] || refuse "the signing identity is not in the keychain"
+public_key="$(./Scripts/sparkle-key.sh public)"
+keychain_flag=""
+identity_name="ad hoc"
+if [[ "$signing_identity" != "-" ]]; then
+    : "${SIGNING_KEYCHAIN:?a signing identity needs its keychain}"
+    keychain_flag="--keychain=$SIGNING_KEYCHAIN"
+    identity_name="$(security find-identity -v -p codesigning "$SIGNING_KEYCHAIN" | awk -v sha="$signing_identity" '$2 == sha { sub(/^[^"]*"/, ""); sub(/"$/, ""); print; exit }')"
+    [[ -n "$identity_name" ]] || refuse "the signing identity is not in the keychain"
+fi
 notarize=0
 if [[ "$identity_name" == "Developer ID Application:"* && -n "${NOTARY_KEY_P8:-}" && -n "${NOTARY_KEY_ID:-}" && -n "${NOTARY_ISSUER_ID:-}" ]]; then
     notarize=1
 fi
-say "signing with \"${identity_name%% (*}\"; notarize=$notarize"
+say "signing: ${identity_name%% (*}; notarize=$notarize; update key $public_key"
 
 derived="$repo_root/build/ReleaseDerivedData"
 out="$(mktemp -d)"
@@ -94,9 +106,11 @@ xcodebuild \
     -destination 'generic/platform=macOS' \
     -derivedDataPath "$derived" \
     CODE_SIGN_STYLE=Manual \
-    CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
+    CODE_SIGN_IDENTITY="$signing_identity" \
+    DEVELOPMENT_TEAM= \
     PROVISIONING_PROFILE_SPECIFIER= \
-    OTHER_CODE_SIGN_FLAGS="--keychain=$SIGNING_KEYCHAIN $timestamp_flag" \
+    OTHER_CODE_SIGN_FLAGS="$keychain_flag $timestamp_flag" \
+    SPARKLE_PUBLIC_ED_KEY="$public_key" \
     CURRENT_PROJECT_VERSION="$build" \
     MARKETING_VERSION="$version" \
     build
@@ -105,7 +119,7 @@ app="$derived/Build/Products/Release/Markdown Editor.app"
 plist="$app/Contents/Info.plist"
 /usr/bin/codesign --verify --deep --strict "$app"
 read_plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$plist" 2>/dev/null || true; }
-[[ -n "$(read_plist SUPublicEDKey)" ]] || refuse "SUPublicEDKey is empty: installed copies could not check this build (run Scripts/release-setup.sh once)"
+[[ "$(read_plist SUPublicEDKey)" == "$public_key" ]] || refuse "the build carries SUPublicEDKey $(read_plist SUPublicEDKey), expected $public_key"
 expected_feed="https://github.com/$publish_repo/releases/latest/download/appcast.xml"
 [[ "$(read_plist SUFeedURL)" == "$expected_feed" ]] || refuse "SUFeedURL is $(read_plist SUFeedURL), but releases go to $expected_feed"
 [[ "$(read_plist CFBundleShortVersionString)" == "$version" ]] || refuse "the build carries version $(read_plist CFBundleShortVersionString), expected $version"
@@ -137,21 +151,26 @@ for attempt in 1 2 3; do
     (( attempt < 3 )) || refuse "hdiutil could not create the disk image"
     sleep 10
 done
-/usr/bin/codesign --sign "$SIGNING_IDENTITY" --keychain "$SIGNING_KEYCHAIN" "$timestamp_flag" "$image"
-/usr/bin/codesign --verify "$image"
+# The disk image is signed only with a real identity; an ad hoc signature on it would add nothing.
+if [[ "$signing_identity" != "-" ]]; then
+    /usr/bin/codesign --sign "$signing_identity" $keychain_flag "$timestamp_flag" "$image"
+    /usr/bin/codesign --verify "$image"
+fi
 hdiutil verify -quiet "$image"
 if (( notarize )); then
     notary "$image"
     xcrun stapler staple "$image"
 fi
 
-# The Sparkle archive, from the (stapled) app. The update key goes in on standard input.
+# The Sparkle archive, from the (stapled) app, signed with the derived update key. Before anything
+# is published, Sparkle's own sign_update checks that signature with its own Ed25519 code (the key
+# goes in on standard input), so a key or format mismatch stops here, not on installed copies.
 archive="$out/Markdown-Editor-$version.zip"
 ditto -c -k --keepParent "$app" "$archive"
+signature="$(./Scripts/sparkle-key.sh sign "$archive")"
 sign_update="$derived/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update"
-signed="$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$sign_update" --ed-key-file - "$archive")"
-signature="$(printf '%s' "$signed" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')"
-[[ -n "$signature" ]] || refuse "sign_update gave no signature"
+./Scripts/sparkle-key.sh seed | "$sign_update" --verify "$archive" "$signature" --ed-key-file - >/dev/null \
+    || refuse "Sparkle's sign_update does not accept the archive's signature"
 length="$(stat -f %z "$archive")"
 url="https://github.com/$publish_repo/releases/download/$tag/Markdown-Editor-$version.zip"
 ./Scripts/appcast.sh "$publish_repo" "$build" "$version" "$url" "$length" "$signature" > "$out/appcast.xml"
@@ -159,7 +178,7 @@ url="https://github.com/$publish_repo/releases/download/$tag/Markdown-Editor-$ve
 if (( notarize )); then
     opening="It is signed with a Developer ID and notarized by Apple."
 else
-    opening="It is signed for development, not notarized. The first time you open it, macOS says it can't check the app: click **Done**, open **System Settings → Privacy & Security**, click **Open Anyway**, and confirm. After that it opens like any app, and updates itself."
+    opening="It is not notarized by Apple. The first time you open it, macOS says it can't check the app: click **Done**, open **System Settings → Privacy & Security**, click **Open Anyway**, and confirm. After that it opens like any app, and updates itself."
 fi
 notes="Markdown Editor $version, build $build. An installed copy updates itself to it.
 

@@ -12,7 +12,9 @@ import AppKit
 /// publishes it to GitHub Releases with Sparkle's feed (`Scripts/release.sh`). An installed copy
 /// reads that feed every hour, downloads a newer build in the background, and installs it when the
 /// app quits — `NSDocument` has already autosaved by then. Sparkle accepts a download only when its
-/// EdDSA signature matches `SUPublicEDKey` and its code signature matches the running app's.
+/// EdDSA signature matches `SUPublicEDKey`. That key is derived in CI from a GitHub secret
+/// (`Scripts/sparkle-key.sh`); releases are signed ad hoc unless a certificate is configured, which
+/// Sparkle accepts because the update key, not the signing identity, is what stays the same.
 ///
 /// This is the application's only network access (REQ-030): a request for the feed and, when it
 /// names a newer build, the archive. No system profile is sent (`SUEnableSystemProfiling` is off).
