@@ -23,7 +23,9 @@ In priority order:
 3. **Interoperable output.** Generated text follows a named, executable Markdown specification
    rather than an undocumented house dialect.
 4. **No surprises.** Standard macOS document and editing behavior works as expected.
-5. **Local and private.** Core editing is offline, account-free, and telemetry-free. Diagnostics
+5. **Local and private.** Core editing is offline, account-free, and telemetry-free. The one network
+   access is the update check, which fetches the release feed and sends nothing about the user or
+   their documents. Diagnostics
    are written only to ordinary local log files the user owns, contain no document content, and
    are never transmitted; any future sharing of them is a manual, per-file user action.
 6. **Safe companion files.** Adding an image never overwrites, moves, alters, or deletes the
@@ -169,7 +171,11 @@ corpus, sample count, median, and p95.
 
 ## Distribution
 
-- Direct download, signed with a Developer ID and notarized by Apple.
+- Direct download of a disk image, signed with a Developer ID and notarized by Apple. Until a
+  Developer ID exists, releases are signed with the owner's development certificate and are not
+  notarized (`DECISIONS.md`, 2026-11-26).
+- The installed app updates itself with Sparkle from GitHub Releases. CI builds and publishes every
+  `main` commit that changes the app.
 - Not sandboxed for now. App Sandbox remains a future distribution decision.
 
 ## Appearance and contrast (COR-85, 2026-08-22)

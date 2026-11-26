@@ -40,5 +40,23 @@
 			</dict>
 		</dict>
 	</array>
+	<!--
+	REQ-033, the app's only network access: Sparkle reads the newest release's feed on GitHub every
+	hour, downloads a newer build in the background, and installs it when the app quits. It sends no
+	system profile. SUPublicEDKey is set only in the Release configuration, so Debug builds never
+	update themselves (AppUpdater).
+	-->
+	<key>SUFeedURL</key>
+	<string>$(SPARKLE_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(SPARKLE_PUBLIC_ED_KEY)</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>3600</integer>
+	<key>SUEnableSystemProfiling</key>
+	<false/>
 </dict>
 </plist>

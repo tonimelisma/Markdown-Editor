@@ -59,10 +59,29 @@ the rejected alternatives, and the respect in which the chosen one is worse.
 
 ## Next
 
-**Packaging and distribution.** The engineering is finished and the product is not shippable: no
-app icon, no README, no LICENSE, no CI, and no sign/notarize/staple/DMG path, against a VISION
-that promises direct download signed with a Developer ID and notarized by Apple. Deliberately
-sequenced after the queue above, while the app still has no users and changes are cheapest.
+**Packaging and distribution** (🔵 Active, 2026-11-26). Cloud-first development is in place:
+
+- CI on GitHub's `xcode-27` runner;
+- a Sparkle updater (REQ-033, REQ-034);
+- a release workflow that publishes a signed disk image and the update feed for every `main`
+  commit that changes the app (`DECISIONS.md`, 2026-11-26; `DEVELOPMENT.md`).
+
+Still open:
+
+- The five-minute budget. The first green run (CI 45855830007, 628 tests) took 5m12s from push to
+  `CI gate`. Once the screenshot step stopped rebuilding the app, CI 45858255326 took about 4m50s,
+  3m33s of it in `check.sh`, with an empty compilation cache. Measure again after the first merge
+  saves that cache.
+- An unexplained `mainActorStall` on CI. On CI 45856817544, the smoke run recorded two main-actor
+  stalls over one second, and launch to exit took 11 s. The runs before and after it, on the same
+  code, passed. The stall records were not kept then, so the cause is unknown. A failed smoke run
+  now uploads its records (`smoke-records/` in `check-logs-*`). The next failure is to be read from
+  them, not re-run.
+- The owner's one-time setup: making the repository public, the ruleset, and `Scripts/release-setup.sh`.
+- The first published release, and an installed copy seen updating itself. REQ-033 stays
+  `Active` until then.
+- Notarization, once a Developer ID exists.
+- An app icon, a README and a LICENSE.
 
 ## Later — post-MVP backlog
 

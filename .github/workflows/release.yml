@@ -1,0 +1,127 @@
+# Publishes every main commit whose CI passed and that changed the app as an update
+# (docs/DECISIONS.md, "Cloud-first development"): Scripts/release.sh builds Release on GitHub's
+# macOS runner, signs it with the owner's certificate and the app's EdDSA update key, optionally
+# notarizes it, and publishes v<x.y.z> with a disk image and Sparkle's feed. Installed copies find
+# it within the hour.
+#
+# It runs only after CI passed on a push to main, so no pull request ever reaches these secrets.
+# They live in the environment "release" and are set once by Scripts/release-setup.sh on the Mac:
+#   CERTIFICATE_P12, CERTIFICATE_PASSWORD   the signing identity, exported as .p12 (base64)
+#   SPARKLE_PRIVATE_KEY                     the update key; its public half is the Release
+#                                           configuration's SPARKLE_PUBLIC_ED_KEY
+#   NOTARY_KEY_P8, NOTARY_KEY_ID, NOTARY_ISSUER_ID   optional; with a Developer ID, notarize
+# Until the required secrets exist, the job says which are missing and publishes nothing.
+name: Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish update
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: xcode-27
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Is the release set up?
+        id: ready
+        env:
+          P12: ${{ secrets.CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+          SPARKLE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          missing=""
+          [ -n "$P12" ] || missing="$missing CERTIFICATE_P12"
+          [ -n "$P12_PASSWORD" ] || missing="$missing CERTIFICATE_PASSWORD"
+          [ -n "$SPARKLE_KEY" ] || missing="$missing SPARKLE_PRIVATE_KEY"
+          if [ -n "$missing" ]; then
+            echo "::warning::Releases aren't set up yet (run Scripts/release-setup.sh on the Mac once); missing in the environment release:$missing. Nothing was published."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.ready.outputs.ready == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0 # the build number is the commit count
+          persist-credentials: false
+
+      - name: Select the newest Xcode 27
+        if: steps.ready.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          xcode="$(ls -d /Applications/Xcode_27*.app | sort -V | tail -n 1)"
+          sudo xcode-select --switch "$xcode/Contents/Developer"
+          xcodebuild -version
+
+      - name: The signing identity, in a keychain of this run's own
+        id: keychain
+        if: steps.ready.outputs.ready == 'true'
+        env:
+          P12: ${{ secrets.CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          kc="$RUNNER_TEMP/release.keychain-db"
+          pw="$(uuidgen)"
+          echo "::add-mask::$pw"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$pw" "$kc"
+          security set-keychain-settings -lut 3600 "$kc"
+          security unlock-keychain -p "$pw" "$kc"
+          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pw" "$kc" > /dev/null
+          # Apple's intermediates, so a chain to Apple's root can be built: WWDR G3 (pinned by
+          # SHA-256) issues development certificates, Developer ID G2 issues Developer ID ones
+          # (its hash is printed; pin it after the first Developer ID release). An intermediate
+          # grants nothing by itself: signing needs the identity's private key.
+          curl -sSfL -o "$RUNNER_TEMP/wwdr-g3.cer" https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer
+          echo "dcf21878c77f4198e4b4614f03d696d89c66c66008d4244e1b99161aac91601f  $RUNNER_TEMP/wwdr-g3.cer" | shasum -a 256 -c -
+          security import "$RUNNER_TEMP/wwdr-g3.cer" -k "$kc" > /dev/null || true
+          curl -sSfL -o "$RUNNER_TEMP/devid-g2.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          shasum -a 256 "$RUNNER_TEMP/devid-g2.cer"
+          security import "$RUNNER_TEMP/devid-g2.cer" -k "$kc" > /dev/null || true
+          rm -f "$RUNNER_TEMP/wwdr-g3.cer" "$RUNNER_TEMP/devid-g2.cer"
+          security list-keychains -d user -s "$kc" "$HOME/Library/Keychains/login.keychain-db"
+          identities="$(security find-identity -v -p codesigning "$kc")"
+          identity="$(printf '%s\n' "$identities" | awk '/"Developer ID Application/ { print $2; exit }')"
+          [ -n "$identity" ] || identity="$(printf '%s\n' "$identities" | awk '/"Apple Development/ { print $2; exit }')"
+          [ -n "$identity" ] || { echo "::error::no Developer ID Application or Apple Development identity in CERTIFICATE_P12"; exit 1; }
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+          echo "keychain=$kc" >> "$GITHUB_OUTPUT"
+
+      - name: Build, sign and publish (Scripts/release.sh)
+        if: steps.ready.outputs.ready == 'true'
+        env:
+          SIGNING_IDENTITY: ${{ steps.keychain.outputs.identity }}
+          SIGNING_KEYCHAIN: ${{ steps.keychain.outputs.keychain }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          GH_TOKEN: ${{ github.token }}
+        run: Scripts/release.sh
+
+      - name: Remove the keychain
+        if: always()
+        env:
+          KEYCHAIN: ${{ steps.keychain.outputs.keychain }}
+        run: |
+          [ -z "$KEYCHAIN" ] || security delete-keychain "$KEYCHAIN" || true
+          rm -f "$RUNNER_TEMP/cert.p12"

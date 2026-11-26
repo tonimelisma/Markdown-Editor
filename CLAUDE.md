@@ -3,13 +3,15 @@
 How to work in this repository. `AGENTS.md` is a symlink to this file.
 
 Product direction is in `docs/VISION.md`, architecture in `docs/ENGINEERING.md`, behavior in
-`docs/REQUIREMENTS.md`, sequence in `docs/ROADMAP.md`. Why the old verification apparatus was
-removed is in `docs/DECISIONS.md` — read it before adding a gate.
+`docs/REQUIREMENTS.md`, sequence in `docs/ROADMAP.md`, decisions in `docs/DECISIONS.md` (read
+"Why the gates were removed" before adding a gate), and environments, CI, releases and the
+owner's one-time setup in `docs/DEVELOPMENT.md`.
 
 ## 1. Product
 
 A native macOS Markdown editor: pure Swift, SwiftUI-first with narrow AppKit adapters,
-local-first, no accounts, no lock-in, ordinary Markdown files.
+local-first, no accounts, no lock-in, ordinary Markdown files. It updates itself with Sparkle
+from GitHub Releases; that update check is its only network access (REQ-030, REQ-033).
 
 ## 2. The loop
 
@@ -17,13 +19,74 @@ local-first, no accounts, no lock-in, ordinary Markdown files.
 Scripts/check.sh
 ```
 
-Build, test, smoke. That is the gate. It takes a few minutes and it is the only thing that has
-to pass.
+Build, test, smoke. That is the gate, and the only thing that has to pass.
 
-Work in a branch for anything non-trivial, open a PR, squash-merge. Small doc fixes can go
-straight to `main`. Get a review when the change is subtle or you are unsure — not as a ritual.
+- **On a Mac**, it runs everything and ends `check: PASS` (exit 0) or `check: FAILED` (exit 1).
+- **Without Xcode**, it runs the portable steps (release-script tests, verifier fixtures,
+  markdownlint) and ends `check: INCOMPLETE` (exit 3). That is not a pass: the build, the tests and
+  the smoke run are then CI's job `Build, test and smoke (Xcode 27)`, on the pull request's last
+  commit.
+- **Five minutes per commit**, local and CI together, from the moment a commit is ready to the
+  moment `CI gate` reports (owner, 2026-11-26). `check.sh` prints its `duration:`, and CI keeps
+  the compilation cache between runs (`Scripts/lib/build-settings.sh`). A run over budget is a
+  defect to fix, not a number to note.
+- A documentation-only diff (the paths in `ci.yml`'s `changes` job) skips the macOS job, which
+  builds nothing such a diff could change.
 
-Commit trailer: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+## 2a. Two ways to work
+
+Everything in this file applies to both. The SessionStart hook (`Scripts/cloud-setup.sh`) says
+which one a session is in.
+
+- **Cloud session: the default.** Claude Code on the web or phone. `CLAUDE_CODE_REMOTE=true`, an
+  Ubuntu VM with no macOS or Xcode, reclaimed when idle.
+  - Edit, run `Scripts/check.sh` (its portable steps), commit, and push early: an unpushed commit
+    dies with the VM.
+  - GitHub's macOS runner builds, tests and smokes the pushed branch. That run is the change's
+    verification.
+  - Read CI with the GitHub MCP tools: `actions_list` (runs and jobs), `get_job_logs`, and
+    `actions_get` with `download_workflow_run_artifact` for the window screenshot. The proxy
+    refuses GraphQL (`gh pr …`), tag pushes and release writes; releases happen in workflows.
+  - A cloud session never uses the owner's MacBook during development (no builds, tests or
+    screenshots through a remote shell or Remote Control). The one exception is a live check the
+    owner asks for in that session.
+- **Local session: optional.** Claude Code the owner started on the Mac.
+  - `Scripts/check.sh` runs the full gate natively, so there is no wait for CI before pushing.
+  - Work in a worktree or branch, never on the main checkout's `main`.
+  - Run `Scripts/smoke-screenshot.sh` after a visual change, look at it, and send it to the user.
+  - Never install a build over `/Applications`. The installed app is always one CI published,
+    which Sparkle keeps current.
+
+Nothing waits for a local session. Nothing outside `docs/DEVELOPMENT.md`'s one-time owner setup
+needs the Mac.
+
+## 2b. Git and pull requests
+
+`main` changes only through a pull request whose `CI gate` passed.
+
+- One session, one branch, one pull request. Use the branch the session was given, push early
+  and often, and open the pull request at the first commit, ready for review, so other sessions
+  see what is taken.
+- A pull request's branch is never replaced. Fixes, review changes and catching up with `main` go
+  on as new commits (`git fetch origin main && git merge origin/main`). Never rebase a pushed
+  branch, force-push, or close a pull request to redo it elsewhere.
+- Merge by squash. Once CI is green, merge it, or turn on auto-merge (`enable_pr_auto_merge`,
+  method squash). Get a review when the change is subtle or you are unsure, not as a ritual.
+- Stage files by name, never `git add -A`. Never stash: set work aside with a commit on the branch.
+- End each turn with finished work merged and unfinished work pushed to its branch. The reply
+  says in a line what is still open.
+- Commit and pull request attribution: the trailer lines the harness supplies, as given.
+
+## 2c. Merging ships
+
+`.github/workflows/release.yml` runs after CI passes on a push to `main`. When the app changed, it
+builds Release, signs it, notarizes it when the identity is a Developer ID, and publishes
+`v<x.y.z>`: the disk image, the Sparkle archive and `appcast.xml`. Installed copies update within
+the hour.
+
+- Never write a version number by hand. The patch comes from the published releases, a new
+  series from a commit that changes `MARKETING_VERSION`, and `CFBundleVersion` is the commit count.
+- Watch the `Release` run until it ends, and report its outcome.
 
 ## 3. Honesty
 
@@ -79,7 +142,9 @@ Two narrow exceptions, both passive:
   diagnostic records it writes. It never drives or reads the UI.
 - `Scripts/smoke-screenshot.sh` captures one screenshot of the app's own window (never the full
   screen) over a rich fixture. Run it when you have changed anything visual, look at the result,
-  and send it to the user. It is evidence for human eyes, never a requirement's proof.
+  and send it to the user. It is evidence for human eyes, never a requirement's proof. CI's macOS
+  job runs it too and uploads the PNG as the run's `screenshot-<run id>` artifact, which is how a
+  cloud session looks.
 
 ## 5. Documentation
 
@@ -92,6 +157,7 @@ Code and tests are canonical. The specs describe current intent.
 | `docs/REQUIREMENTS.md` | Numbered behavior requirements (`REQ-###`) |
 | `docs/ROADMAP.md` | Delivery state and sequence |
 | `docs/DECISIONS.md` | Decisions with consequences, including why the gates were removed |
+| `docs/DEVELOPMENT.md` | Environments, CI, releases, and the owner's one-time setup |
 | `docs/research/` | Costly evidence still valid; never architecture authority |
 | `docs/plans/` | Approved, not-yet-implemented plans |
 
@@ -144,9 +210,23 @@ someone who asked for the work precisely so they would not have to make it.
 A user correction is durable: update this file or the authoritative doc in the same change,
 sweep the docs it contradicts, and do not keep the displaced rule anywhere.
 
+## 7a. The owner's standing rules
+
+These are the owner's rules for every project. They are copied here because a cloud session never
+reads `~/.claude/CLAUDE.md`.
+
+- When it is already clear what the owner wants, do it. Never ask whether to do it, how, or which
+  piece first, and never end a turn on a go-ahead question. Ask only for what only the owner can
+  do (accounts, devices, approvals, publishing something), or for a real product choice not yet
+  made (§7).
+- Never end a turn while an item the owner asked for can still move forward without them. When
+  one is blocked, go on to the next, and list only the owner-only steps at the end.
+
 ## 8. Before you say you are done
 
-- The gate ran and you are reporting its actual output.
+- The gate ran and you are reporting its actual output. In a cloud session that is CI's
+  `Build, test and smoke` job on the final commit, quoted, plus the local `INCOMPLETE` line.
+  Never call a change verified on `INCOMPLETE` alone.
 - Docs that this change made wrong are fixed.
-- Branches, worktrees, and stashes you created are gone.
-- Anything you left undone is stated plainly.
+- Branches, worktrees, and stashes you created are gone or pushed (§2b).
+- Anything you left undone is stated plainly, with the owner-only steps listed last.

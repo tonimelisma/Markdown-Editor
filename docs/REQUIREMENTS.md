@@ -70,9 +70,11 @@ how delivered behavior is verified. Current architecture is in
 
 | ID | Requirement (EARS) | Inc | Status | Verified by |
 | ---- | -------------------- | ----- | -------- | ------------- |
-| REQ-030 | The system shall perform all editing offline, with no network access. | INC-01 / COR-75 | Done | test `productionBoundaryRejectsNetworkAccountAndAnalyticsCapabilities` |
+| REQ-030 | The system shall perform all editing offline, and shall make no network access other than REQ-033's update check. | INC-01 / COR-75 / 2026-11-26 | Done | test `productionBoundaryRejectsNetworkAccountAndAnalyticsCapabilities`, `onlyTheUpdaterImportsSparkle` |
 | REQ-031 | The system shall collect no telemetry and require no account. | INC-01 / COR-75 | Done | test `productionBoundaryRejectsNetworkAccountAndAnalyticsCapabilities`; test `diagnosticPayloadsCannotCarryFreeText` |
 | REQ-032 | The system shall be operable via VoiceOver and full keyboard control. | INC-01 / COR-07 / COR-81 | Done | test `everyCommandIsKeyboardReachable` (matrix over `EditorCommand.allCases`), `noTwoCommandsShareAShortcut`, plus the REQ-129 role matrix. VoiceOver itself is not driven — `CLAUDE.md` §4 forbids screen automation; roles/values are proved on directly constructed elements |
+| REQ-033 | WHERE the build carries the update key, the system shall check its release feed over HTTPS, install only a newer build whose EdDSA and code signatures match, send no system profile, and install it when the application quits. | 2026-11-26 | Active | test `onlyAKeyedBuildOutsideVerificationUpdatesItself`, `theDebugBundleNeverUpdatesItselfAndSendsNoProfile` (no profile); release feed by `Scripts/test-release-scripts.sh`. `Done` only once an installed copy has been seen updating itself to a published release |
+| REQ-034 | IF the process is a Debug build, a test host, or a smoke or benchmark run, THEN the system shall neither check for nor install updates. | 2026-11-26 | Active | test `onlyAKeyedBuildOutsideVerificationUpdatesItself`, `theDebugBundleNeverUpdatesItselfAndSendsNoProfile`, `theTestHostDoesNotUpdateItself` |
 
 ---
 
@@ -250,7 +252,7 @@ how delivered behavior is verified. Current architecture is in
 table creation/structural controls, image sizing syntax, transcoding, metadata stripping, remote
 images, automatic asset cleanup, and asset-aware Save Copy.
 
-*Next free IDs: REQ-008 (A), REQ-023 (C), REQ-033 (D), REQ-150.*
+*Next free IDs: REQ-008 (A), REQ-023 (C), REQ-035 (D), REQ-150.*
 
 *Reserved by approved, unimplemented plans — do not reassign:* REQ-129 (COR-81 accessibility
 semantics), REQ-130 and REQ-131 (COR-82 macOS citizenship), REQ-132 (COR-80 property testing and
