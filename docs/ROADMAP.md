@@ -68,10 +68,15 @@ the rejected alternatives, and the respect in which the chosen one is worse.
 
 Still open:
 
-- The five-minute budget: CI run 45855830007 (the first green one, 628 tests) took 3m26s in
-  `check.sh` with an empty cache, and 5m12s from push to `CI gate`. The screenshot step no longer
-  rebuilds; the cache that `main` saves should bring the rest under budget. Measure again after
-  the first merge.
+- The five-minute budget. The first green run (CI 45855830007, 628 tests) took 5m12s from push to
+  `CI gate`. Once the screenshot step stopped rebuilding the app, CI 45858255326 took about 4m50s,
+  3m33s of it in `check.sh`, with an empty compilation cache. Measure again after the first merge
+  saves that cache.
+- An unexplained `mainActorStall` on CI. On CI 45856817544, the smoke run recorded two main-actor
+  stalls over one second, and launch to exit took 11 s. The runs before and after it, on the same
+  code, passed. The stall records were not kept then, so the cause is unknown. A failed smoke run
+  now uploads its records (`smoke-records/` in `check-logs-*`). The next failure is to be read from
+  them, not re-run.
 - The owner's one-time setup: making the repository public, the ruleset, and `Scripts/release-setup.sh`.
 - The first published release, and an installed copy seen updating itself. REQ-033 stays
   `Active` until then.
