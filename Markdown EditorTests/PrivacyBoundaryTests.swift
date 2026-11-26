@@ -41,9 +41,16 @@ struct PrivacyBoundaryTests {
         #expect(!project.contains("Analytics"))
         #expect(!project.contains("AuthenticationServices"))
 
-        let entitlements = (FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?
-            .compactMap { $0 as? URL } ?? []).filter { $0.pathExtension == "entitlements" }
-        #expect(entitlements.isEmpty)
+        // The repository's own files, not build output: hidden folders (`.build`, `.git`) are
+        // skipped, because a package checkout under `.build` carries its own entitlements (Sparkle's
+        // does) and none of them is this app's. The walk proves it saw the project by finding its
+        // Info.plist, so an empty walk cannot pass for "no entitlements".
+        let repositoryFiles = FileManager.default.enumerator(
+            at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        )?.compactMap { $0 as? URL } ?? []
+        #expect(repositoryFiles.contains { $0.path.hasSuffix("Markdown Editor/Info.plist") }, "the walk did not reach the project")
+        let entitlements = repositoryFiles.filter { $0.pathExtension == "entitlements" }
+        #expect(entitlements.isEmpty, "entitlements files: \(entitlements.map(\.path))")
     }
 
     // Verifies: REQ-030/033 — Sparkle, the application's only network access, is imported by one

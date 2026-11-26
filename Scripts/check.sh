@@ -54,7 +54,10 @@ fi
 
 if (( has_xcode )); then
     printf '%s\n' '── build and test'
+    results="$derived/tests.xcresult"
+    rm -rf "$results"
     xcodebuild test \
+        -resultBundlePath "$results" \
         -project "Markdown Editor.xcodeproj" \
         -scheme "Markdown Editor" \
         -configuration Debug \
@@ -65,6 +68,22 @@ if (( has_xcode )); then
     if (( $? != 0 )); then
         failures=$((failures + 1))
         grep -aE "error:|Test case .* failed" "$log" | head -30 >&2
+        # xcodebuild's console never prints a Swift Testing issue's text, which is the part that
+        # says what failed. Read it from the result bundle, so a cloud session sees it in CI's log.
+        if [[ -d "$results" ]]; then
+            xcrun xcresulttool get test-results tests --path "$results" --format json 2>/dev/null \
+                | python3 -I -c '
+import json, sys
+def walk(node, path):
+    name = node.get("name", "")
+    if node.get("nodeType") == "Failure Message":
+        print("failure: %s: %s" % (path, name))
+    for child in node.get("children", []):
+        walk(child, name if node.get("nodeType") == "Test Case" else path)
+for root in json.load(sys.stdin).get("testNodes", []):
+    walk(root, "")
+' >&2 || echo "check: could not read failure messages from $results" >&2
+        fi
     fi
     # Indicative only. Parallel test output interleaves, so an occasional `passed` line is split
     # across writes and missed here; parameterized cases each emit their own line. xcodebuild's exit
