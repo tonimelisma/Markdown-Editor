@@ -12,8 +12,17 @@
 # without it; a local worktree at another path keeps its own entries.
 #
 # Index-while-building feeds only an IDE, and these builds have none.
+#
+# Signed ad hoc ("Sign to Run Locally"), never with the owner's certificate: the project's automatic
+# signing asks for a development certificate of its team, which a CI runner does not have (the
+# first CI run failed on exactly that), and no verification should depend on one person's Apple
+# account. Releases sign with the real identity (Scripts/release.sh).
 verification_build_settings=(
     COMPILATION_CACHE_ENABLE_CACHING=YES
     "COMPILATION_CACHE_CAS_PATH=$HOME/Library/Developer/Xcode/DerivedData/CompilationCache.noindex"
     COMPILER_INDEX_STORE_ENABLE=NO
+    CODE_SIGN_STYLE=Manual
+    CODE_SIGN_IDENTITY=-
+    DEVELOPMENT_TEAM=
+    PROVISIONING_PROFILE_SPECIFIER=
 )

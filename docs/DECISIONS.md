@@ -84,6 +84,11 @@ awake, and it adds a second way to verify the same change.
 - `CLAUDE.md` was rebuilt around this, with its section numbers kept because other documents
   cite them. The stale model-named commit trailer gave way to the harness's attribution, and "small
   doc fixes can go straight to `main`" gave way to one pull request per session.
+- Verification builds (`check.sh`, the smoke scripts) sign ad hoc wherever they run
+  (`Scripts/lib/build-settings.sh`). The first CI run failed because the project's automatic
+  signing wanted a team certificate the runner does not have, and no verification should depend
+  on one person's Apple account. latchkey settled the same for its sandbox Mac the same day. Only
+  `Scripts/release.sh` signs with the real identity.
 - The repository gained a shared scheme. CI's fresh checkout has no autocreated scheme to rely on.
 - The owner runs `Scripts/release-setup.sh` once on the Mac, because the signing certificate's
   private key is in its keychain. Nothing after that needs the Mac.
