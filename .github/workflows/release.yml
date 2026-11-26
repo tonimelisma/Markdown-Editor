@@ -10,8 +10,6 @@
 #   SPARKLE_PRIVATE_KEY                     the update key; its public half is the Release
 #                                           configuration's SPARKLE_PUBLIC_ED_KEY
 #   NOTARY_KEY_P8, NOTARY_KEY_ID, NOTARY_ISSUER_ID   optional; with a Developer ID, notarize
-# Optional, to publish to another (public) repository: the variable RELEASE_REPOSITORY and the
-# secret RELEASE_TOKEN (contents: write on that repository). SPARKLE_FEED_URL must name it too.
 # Until the required secrets exist, the job says which are missing and publishes nothing.
 name: Release
 
@@ -117,8 +115,7 @@ jobs:
           NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
-          RELEASE_REPOSITORY: ${{ vars.RELEASE_REPOSITORY }}
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: Scripts/release.sh
 
       - name: Remove the keychain

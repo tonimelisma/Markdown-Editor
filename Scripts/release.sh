@@ -16,7 +16,6 @@
 #   SIGNING_IDENTITY     SHA-1 of the identity imported from CERTIFICATE_P12
 #   SIGNING_KEYCHAIN     the keychain the workflow imported it into for this run
 #   SPARKLE_PRIVATE_KEY  the EdDSA update key, handed to sign_update on standard input
-#   RELEASE_REPOSITORY   owner/name the release is published to (default: GITHUB_REPOSITORY)
 #   NOTARY_KEY_P8, NOTARY_KEY_ID, NOTARY_ISSUER_ID
 #                        optional App Store Connect API key; with a Developer ID identity, the
 #                        app and the disk image are notarized and stapled (VISION, Distribution)
@@ -30,7 +29,7 @@ cd "$repo_root"
 : "${SIGNING_KEYCHAIN:?the signing keychain is needed}"
 : "${SPARKLE_PRIVATE_KEY:?the update key is needed}"
 : "${GITHUB_REPOSITORY:?the repository is needed}"
-publish_repo="${RELEASE_REPOSITORY:-$GITHUB_REPOSITORY}"
+publish_repo="$GITHUB_REPOSITORY"
 keep=3
 project="Markdown Editor.xcodeproj"
 app_paths=("Markdown Editor" "Markdown Editor.xcodeproj")
@@ -45,9 +44,8 @@ refuse() {
 sha="$(git rev-parse HEAD)"
 build="$(git rev-list --count HEAD)"
 
-# The newest release, and whether this commit changes the app it holds. Each release's notes end
-# with `source-commit: <sha>`, so this works when releases live in another repository too. The
-# workflow runs one release at a time.
+# The newest release, and whether this commit changes the app it holds, by the `source-commit:
+# <sha>` line each release's notes end with. The workflow runs one release at a time.
 latest="$(gh release list --repo "$publish_repo" --limit 100 --json tagName,isLatest --jq '.[] | select(.isLatest) | .tagName')"
 if [[ -n "$latest" ]]; then
     released="$(gh release view "$latest" --repo "$publish_repo" --json body --jq .body | sed -n 's/^source-commit: \([0-9a-f]\{40\}\)$/\1/p' | tail -1)"
@@ -169,14 +167,7 @@ To install by hand: download **Markdown-Editor.dmg** below, open it, and drag Ma
 
 source-commit: $sha"
 
-# A release in this repository is tagged at the commit; one in another repository is tagged at
-# that repository's default branch, and its notes name the commit. (macOS /bin/bash is 3.2, where
-# an empty array under `set -u` is an error, hence the ${x+...} form.)
-target=()
-if [[ "$publish_repo" == "$GITHUB_REPOSITORY" ]]; then
-    target=(--target "$sha")
-fi
-gh release create "$tag" --repo "$publish_repo" ${target[@]+"${target[@]}"} --latest \
+gh release create "$tag" --repo "$publish_repo" --target "$sha" --latest \
     --title "Markdown Editor $version" --notes "$notes" \
     "$image" "$archive" "$out/appcast.xml"
 say "published $tag (build $build, commit $sha) to $publish_repo"

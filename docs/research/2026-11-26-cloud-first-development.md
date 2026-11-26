@@ -117,13 +117,11 @@ Both repositories are public, both develop in cloud sessions, and both verify th
 
 ## What differs here
 
-1. **This repository is private, and the siblings are public.**
+1. **This repository was private, and the siblings are public.** The owner then made it public.
    - A private repository's release assets are not downloadable without credentials, so installed
      copies cannot read a feed there.
    - Its macOS CI minutes are billed against the plan.
-   - The siblings resolved both by going public. That choice is the owner's, so the feed URL is one
-     build setting (`SPARKLE_FEED_URL`), and the release can publish to another repository
-     (`RELEASE_REPOSITORY` and `RELEASE_TOKEN`).
+   - The siblings resolved both by going public, and so did this repository (owner, 2026-11-26).
 2. **VISION promises Developer ID signing and notarization; the siblings use an Apple Development
    certificate without notarization.** The release takes whichever identity it is given. When that
    is a Developer ID identity and notary credentials are set, it notarizes.
@@ -141,4 +139,4 @@ Both repositories are public, both develop in cloud sessions, and both verify th
   waits for. A session on the Mac is optional and runs the same gate locally.
 - `Scripts/check.sh` ends INCOMPLETE (exit 3) where there is no Xcode, never PASS.
 - Releases follow the Otos shape, with notarization when the identity allows it.
-- The visibility of the repository is the one decision left to the owner.
+- The repository goes public, as the siblings did (owner, 2026-11-26).

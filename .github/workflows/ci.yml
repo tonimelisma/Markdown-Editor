@@ -2,8 +2,8 @@
 # change made there, the macOS job's run of Scripts/check.sh on the pull request's last commit is
 # the gate. A change made on the Mac is verified by its local run; CI repeats it.
 #
-# macOS minutes are the expensive ones (this repository is private: they count against the plan
-# at a multiple of Linux minutes), so a change confined to documentation skips the macOS job.
+# A change confined to documentation skips the macOS job: it could not change what that job builds,
+# and the five-minute budget (CLAUDE.md §2) is better spent elsewhere.
 name: CI
 
 on:

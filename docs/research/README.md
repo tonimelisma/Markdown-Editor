@@ -22,7 +22,7 @@ Current evidence:
 - [2026-11-26-cloud-first-development.md](2026-11-26-cloud-first-development.md): cloud
   sessions, GitHub's macOS runners, CLAUDE.md guidance, Sparkle releases, and what latchkey and
   Otos do. Refresh when Sparkle, the `xcode-27` image or the cloud environment changes, or when
-  the repository's visibility does.
+  the repository goes private again.
 
 - [Architecture specification practices](architecture-specification-practices.md)
 - [macOS editor platform](macos-editor-platform.md)

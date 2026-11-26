@@ -64,14 +64,18 @@ awake, and it adds a second way to verify the same change.
   secrets, the release is notarized and stapled, as VISION's Distribution section promises. With an
   Apple Development identity, as the siblings use, it is not, and the release notes say how to open
   it. That is worse than VISION until a Developer ID exists.
-- **The feed URL is a build setting, `SPARKLE_FEED_URL`.** This repository is private, and a private
-  repository's release assets are not downloadable without credentials. Until the owner makes it
-  public (as latchkey and Otos are) or sets `RELEASE_REPOSITORY` to a public repository, installed
-  copies cannot reach the feed. That choice publishes source, so it is the owner's and is not made
-  here.
-- **Documentation-only changes skip the macOS job.** In a private repository the macOS job costs
-  plan minutes at a multiple of Linux minutes. The `changes` job lists exactly which paths are
-  treated as documentation; anything else, `.github/` included, runs macOS.
+- **The repository is public** (owner, 2026-11-26: "Make repo public"), as latchkey and Otos are.
+  A private repository's release assets cannot be downloaded without credentials, so the feed
+  would be unreachable. Standard macOS runners are also free for public repositories, and the first
+  CI run, while the repository was private, was never started. Publishing to a separate public
+  repository was the alternative, and it was dropped from the scripts once this was chosen. The
+  history was checked before publication: no credential, no personal path or location metadata.
+  The one private value in it is the Apple team ID in `project.pbxproj`, which latchkey and Otos
+  keep out of their repositories. It is also visible in every signed build. Removing it from
+  history would need a rewrite of `main` and stays the owner's call.
+- **Documentation-only changes skip the macOS job**, which builds nothing they could change. The
+  `changes` job lists exactly which paths count as documentation; anything else, `.github/`
+  included, runs macOS.
 
 **Consequences.**
 

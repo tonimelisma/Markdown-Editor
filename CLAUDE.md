@@ -30,8 +30,8 @@ Build, test, smoke. That is the gate, and the only thing that has to pass.
   moment `CI gate` reports (owner, 2026-11-26). `check.sh` prints its `duration:`, and CI keeps
   the compilation cache between runs (`Scripts/lib/build-settings.sh`). A run over budget is a
   defect to fix, not a number to note.
-- A documentation-only diff (the paths in `ci.yml`'s `changes` job) skips the macOS job. macOS
-  minutes are billed in this private repository.
+- A documentation-only diff (the paths in `ci.yml`'s `changes` job) skips the macOS job, which
+  builds nothing such a diff could change.
 
 ## 2a. Two ways to work
 

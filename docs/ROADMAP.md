@@ -70,7 +70,7 @@ Still open:
 
 - The first green CI run of the macOS job, which also shows the build time against the five-minute
   budget.
-- The owner's one-time setup: the feed's visibility, the ruleset, and `Scripts/release-setup.sh`.
+- The owner's one-time setup: making the repository public, the ruleset, and `Scripts/release-setup.sh`.
 - The first published release, and an installed copy seen updating itself. REQ-033 stays
   `Active` until then.
 - Notarization, once a Developer ID exists.

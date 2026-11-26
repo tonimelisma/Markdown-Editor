@@ -62,13 +62,10 @@ and `releases/latest/download/Markdown-Editor.dmg` (the first install).
 
 ## Owner setup (once; only the owner can do these)
 
-1. **Make the feed reachable.** A private repository's release assets need credentials, so
-   installed copies cannot read a feed there. Choose one:
-   - Make this repository public, as latchkey and Otos are. Nothing else changes.
-   - Or publish to a public repository: create it, set the Actions variable `RELEASE_REPOSITORY`
-     (`owner/name`) and the `release` environment secret `RELEASE_TOKEN` (a fine-grained token with
-     Contents: write on that repository). Then change both `SPARKLE_FEED_URL` build settings in
-     `project.pbxproj` to name it.
+1. **Make the repository public** (owner's choice, 2026-11-26): Settings → General → Danger Zone
+   → Change visibility → Public. Sparkle can then read the release feed, which a private
+   repository's release assets do not allow without credentials. Standard GitHub-hosted runners,
+   macOS included, are also free for public repositories.
 2. **Protect `main`.** Add a ruleset that requires the status check `CI gate`, allows squash
    merges only, and blocks force-pushes and deletion. Also turn on "Allow auto-merge" and
    "Automatically delete head branches".
