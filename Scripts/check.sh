@@ -133,7 +133,11 @@ if (( run_smoke )); then
 
     if (( has_xcode )); then
         printf '%s\n' '── smoke (launches the built app on a fixture)'
-        if ! SMOKE_DERIVED_DATA="$derived/smoke" ./Scripts/smoke-test.sh >"$derived/smoke.log" 2>&1; then
+        # The run's own diagnostics (JSON Lines) are kept beside the log, so a failed smoke run says
+        # what it recorded (a stall's duration and moment), not only that it failed.
+        rm -rf "$derived/smoke-records"
+        if ! SMOKE_DERIVED_DATA="$derived/smoke" SMOKE_LOG_COPY_DIR="$derived/smoke-records" \
+            ./Scripts/smoke-test.sh >"$derived/smoke.log" 2>&1; then
             failures=$((failures + 1))
             tail -30 "$derived/smoke.log" >&2
         else

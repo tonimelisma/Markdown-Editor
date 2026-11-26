@@ -132,6 +132,7 @@ jobs:
           path: |
             .build/check.log
             .build/check/*.log
+            .build/check/smoke-records/
           if-no-files-found: warn
           retention-days: 14
 
