@@ -47,9 +47,11 @@ which one a session is in.
   - Read CI with the GitHub MCP tools: `actions_list` (runs and jobs), `get_job_logs`, and
     `actions_get` with `download_workflow_run_artifact` for the window screenshot. The proxy
     refuses GraphQL (`gh pr …`), tag pushes and release writes; releases happen in workflows.
-  - A cloud session never uses the owner's MacBook during development (no builds, tests or
-    screenshots through a remote shell or Remote Control). The one exception is a live check the
-    owner asks for in that session.
+  - A cloud session never uses the owner's machines, the MacBook or any server Latchkey or Remote
+    Control reaches, for development or routine work: no builds, tests, screenshots, CI
+    investigation or setup through them. Use GitHub's tools instead. The one exception is a
+    specific action the owner asks for in that session, and it covers only that action
+    (owner, 2026-11-26).
 - **Local session: optional.** Claude Code the owner started on the Mac.
   - `Scripts/check.sh` runs the full gate natively, so there is no wait for CI before pushing.
   - Work in a worktree or branch, never on the main checkout's `main`.
