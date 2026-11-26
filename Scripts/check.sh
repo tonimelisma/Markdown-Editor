@@ -3,6 +3,14 @@
 #
 # This replaces twelve gate scripts. If you are tempted to add a thirteenth,
 # read docs/DECISIONS.md#why-the-gates-were-removed first.
+#
+# On a Mac with Xcode it runs everything. Anywhere else (a Claude Code cloud session, an Ubuntu CI
+# job) it runs only the steps that need no Xcode and ends `check: INCOMPLETE` with exit status 3:
+# the build, the tests and the smoke run are then CI's macOS job, and nothing has verified them
+# yet. Exit 3 is deliberately not 0 — a check that silently skipped the build would be the
+# "filtered run that matches nothing reports success" trap CLAUDE.md §3 describes.
+#
+# Exit status: 0 PASS · 1 FAILED · 2 usage · 3 INCOMPLETE (portable steps passed; no Xcode here).
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,30 +36,46 @@ done
 
 mkdir -p "$derived"
 
-printf '%s\n' '── build and test'
-xcodebuild test \
-    -project "Markdown Editor.xcodeproj" \
-    -scheme "Markdown Editor" \
-    -configuration Debug \
-    -destination 'platform=macOS' \
-    -derivedDataPath "$derived" \
-    >"$log" 2>&1
-if (( $? != 0 )); then
+has_xcode=0
+if [[ "$(uname -s)" == Darwin ]] && xcodebuild -version >/dev/null 2>&1; then
+    has_xcode=1
+fi
+
+# The release scripts' pure parts (version, feed). Portable; runs everywhere.
+printf '%s\n' '── release scripts'
+if ! ./Scripts/test-release-scripts.sh >"$derived/release-scripts.log" 2>&1; then
     failures=$((failures + 1))
-    grep -aE "error:|Test case .* failed" "$log" | head -30 >&2
+    tail -20 "$derived/release-scripts.log" >&2
+else
+    echo "release scripts: PASS"
 fi
-# Indicative only. Parallel test output interleaves, so an occasional `passed` line is split
-# across writes and missed here; parameterized cases each emit their own line. xcodebuild's exit
-# status above is the authority on pass/fail — this number is for a sense of scale.
-warnings="$(grep -acE 'warning:' "$log" 2>/dev/null || true)"
-if (( warnings > 0 )); then
-    # Incremental: already-compiled files emit nothing, so this undercounts. It is a drift
-    # signal, not a census — run a clean build when it moves.
-    printf 'warnings: %s (incremental build; run a clean build for a full count)\n' "$warnings"
+
+if (( has_xcode )); then
+    printf '%s\n' '── build and test'
+    xcodebuild test \
+        -project "Markdown Editor.xcodeproj" \
+        -scheme "Markdown Editor" \
+        -configuration Debug \
+        -destination 'platform=macOS' \
+        -derivedDataPath "$derived" \
+        >"$log" 2>&1
+    if (( $? != 0 )); then
+        failures=$((failures + 1))
+        grep -aE "error:|Test case .* failed" "$log" | head -30 >&2
+    fi
+    # Indicative only. Parallel test output interleaves, so an occasional `passed` line is split
+    # across writes and missed here; parameterized cases each emit their own line. xcodebuild's exit
+    # status above is the authority on pass/fail — this number is for a sense of scale.
+    warnings="$(grep -acE 'warning:' "$log" 2>/dev/null || true)"
+    if (( warnings > 0 )); then
+        # Incremental: already-compiled files emit nothing, so this undercounts. It is a drift
+        # signal, not a census — run a clean build when it moves.
+        printf 'warnings: %s (incremental build; run a clean build for a full count)\n' "$warnings"
+    fi
+    printf 'tests: ~%s passed, %s failed\n' \
+        "$(grep -acE 'Test case .* passed' "$log" 2>/dev/null || true)" \
+        "$(grep -acE 'Test case .* failed' "$log" 2>/dev/null || true)"
 fi
-printf 'tests: ~%s passed, %s failed\n' \
-    "$(grep -acE 'Test case .* passed' "$log" 2>/dev/null || true)" \
-    "$(grep -acE 'Test case .* failed' "$log" 2>/dev/null || true)"
 
 if (( run_smoke )); then
     # The smoke verifier is REQ-098's proof, so it has to be shown to still discriminate: these
@@ -85,17 +109,23 @@ if (( run_smoke )); then
         echo "markdownlint: SKIPPED (no npx)"
     fi
 
-    printf '%s\n' '── smoke (launches the built app on a fixture)'
-    if ! SMOKE_DERIVED_DATA="$derived/smoke" ./Scripts/smoke-test.sh >"$derived/smoke.log" 2>&1; then
-        failures=$((failures + 1))
-        tail -30 "$derived/smoke.log" >&2
-    else
-        echo "smoke: PASS"
+    if (( has_xcode )); then
+        printf '%s\n' '── smoke (launches the built app on a fixture)'
+        if ! SMOKE_DERIVED_DATA="$derived/smoke" ./Scripts/smoke-test.sh >"$derived/smoke.log" 2>&1; then
+            failures=$((failures + 1))
+            tail -30 "$derived/smoke.log" >&2
+        else
+            echo "smoke: PASS"
+        fi
     fi
 fi
 
 if (( failures > 0 )); then
     echo "check: FAILED ($failures step(s)); full log at $log" >&2
     exit 1
+fi
+if (( ! has_xcode )); then
+    echo "check: INCOMPLETE — portable steps passed; build, tests and smoke need macOS and run in CI's macOS job"
+    exit 3
 fi
 echo "check: PASS"

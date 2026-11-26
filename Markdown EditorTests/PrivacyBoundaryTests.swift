@@ -9,7 +9,8 @@ import Testing
 
 struct PrivacyBoundaryTests {
     // Verifies: REQ-030/031 — production source and project configuration contain no network,
-    // account, authentication, analytics, telemetry, or tracking capability.
+    // account, authentication, analytics, telemetry, or tracking capability of their own (the
+    // update check, REQ-033, is Sparkle's and is bounded by `onlyTheUpdaterImportsSparkle`).
     @Test func productionBoundaryRejectsNetworkAccountAndAnalyticsCapabilities() throws {
         let root = sourceURL("")
         let productionFiles = (FileManager.default.enumerator(at: root.appendingPathComponent("Markdown Editor"), includingPropertiesForKeys: nil)?
@@ -43,6 +44,17 @@ struct PrivacyBoundaryTests {
         let entitlements = (FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?
             .compactMap { $0 as? URL } ?? []).filter { $0.pathExtension == "entitlements" }
         #expect(entitlements.isEmpty)
+    }
+
+    // Verifies: REQ-030/033 — Sparkle, the application's only network access, is imported by one
+    // production file, so no other code can reach the network through it. The detector proves
+    // itself by finding that one file.
+    @Test func onlyTheUpdaterImportsSparkle() throws {
+        let importers = try productionSourceFiles().filter { file in
+            let text = try String(contentsOf: file, encoding: .utf8)
+            return text.range(of: #"(?m)^\s*(@preconcurrency\s+)?import\s+Sparkle\b"#, options: .regularExpression) != nil
+        }.map(\.lastPathComponent)
+        #expect(importers == ["AppUpdater.swift"], "Sparkle importers: \(importers)")
     }
 
     // Verifies: REQ-031/089; ARC-016 — diagnostic payloads are a closed, local-safe value set and

@@ -3,6 +3,74 @@
 Decisions with consequences. Newest first. This is not an archive of everything ever decided —
 it is the short list of things someone will otherwise re-litigate or accidentally undo.
 
+## 2026-11-26 — Cloud-first development: CI is the Mac, Sparkle is the installer
+
+**Decision.** Claude Code cloud sessions are this repository's default environment. A cloud session
+has no Xcode, so GitHub Actions' `xcode-27` runner runs `Scripts/check.sh` for every pull request and
+every push to `main`. That run, on a pull request's last commit, verifies a change made in the cloud.
+A session on the owner's Mac is optional: it runs the same gate locally and does not wait for CI. Where
+there is no Xcode, `Scripts/check.sh` ends `INCOMPLETE` with exit status 3, never `PASS`.
+
+Every `main` commit that passes CI and changes the app is published by `.github/workflows/release.yml`:
+a signed Release build, a disk image, and Sparkle's feed. Installed copies update themselves within
+the hour (REQ-033). The shape is Otos's ADR 0059, adapted. The evidence is in
+[research/2026-11-26-cloud-first-development.md](research/2026-11-26-cloud-first-development.md).
+
+**Criteria**, from VISION's objectives and evaluation order:
+
+1. No silent pass. `CLAUDE.md` §3: the build and the tests are either observed or reported as not run.
+2. Trustworthy files. An update must not cost the user an edit.
+3. Local and private (objective 5). Any network access is bounded, named and carries no content.
+4. One obvious path, and cost. One gate everywhere, one installer, and no apparatus the
+   2026-08-22 entry below would recognise.
+5. The owner's stated constraint: no dependency on the MacBook.
+
+**Alternatives, ranked.**
+
+| Option | 1 | 2 | 3 | 4 | 5 |
+| --- | --- | --- | --- | --- | --- |
+| **A. Cloud sessions + GitHub macOS runner + Sparkle (chosen)** | ✓ CI's run is observed output | ✓ installs on quit, after autosave | ✓ one feed request, no profile | ✓ one gate, one workflow | ✓ |
+| B. Cloud sessions drive the Mac (latchkey's `shell_run`, Remote Control) | ✓ | ✓ | ✓ | ✗ two verification paths | ✗ needs the Mac awake |
+| C. A self-hosted runner on the Mac | ✓ | ✓ | ✓ | ✓ | ✗ needs the Mac awake; runs CI code on it |
+| D. Sparkle replaced by a hand-rolled updater or an install script | ✓ | ? | ✓ | ✗ re-implements signature checks and replace-and-relaunch | ✓ |
+| E. Do nothing (develop on the Mac) | ✓ | — | ✓ | ✓ | ✗ |
+
+B was closest. It would let a cloud session see a real local run. It still depends on the Mac being
+awake, and it adds a second way to verify the same change.
+
+**Choices inside A, and where each is worse.**
+
+- **Automatic checks and installs, with no consent prompt.** `SUEnableAutomaticChecks` and
+  `SUAutomaticallyUpdate` are set, as in latchkey and Otos, because the owner asked for
+  auto-updates. This is worse for "no surprises" for any future user who did not expect an hourly
+  request to GitHub. Sparkle's second-launch permission prompt is the change to make when the app is
+  distributed to others.
+- **The update key is set only in the Release configuration.** Debug and Release share a bundle
+  identifier (see the restoration note in `MarkdownAppDelegate.init`). A Debug build that carried
+  the key would replace itself, in DerivedData, with the published build.
+- **Signing takes what it is given.** With a Developer ID identity and App Store Connect API key
+  secrets, the release is notarized and stapled, as VISION's Distribution section promises. With an
+  Apple Development identity, as the siblings use, it is not, and the release notes say how to open
+  it. That is worse than VISION until a Developer ID exists.
+- **The feed URL is a build setting, `SPARKLE_FEED_URL`.** This repository is private, and a private
+  repository's release assets are not downloadable without credentials. Until the owner makes it
+  public (as latchkey and Otos are) or sets `RELEASE_REPOSITORY` to a public repository, installed
+  copies cannot reach the feed. That choice publishes source, so it is the owner's and is not made
+  here.
+- **Documentation-only changes skip the macOS job.** In a private repository the macOS job costs
+  plan minutes at a multiple of Linux minutes. The `changes` job lists exactly which paths are
+  treated as documentation; anything else, `.github/` included, runs macOS.
+
+**Consequences.**
+
+- REQ-030 now allows one network access: the update check, REQ-033. `PrivacyBoundaryTests` bounds it
+  to the one file that imports Sparkle.
+- The repository gained a shared scheme. CI's fresh checkout has no autocreated scheme to rely on.
+- The owner runs `Scripts/release-setup.sh` once on the Mac, because the signing certificate's
+  private key is in its keychain. Nothing after that needs the Mac.
+- Not yet observed: a published release, and an installed copy updating itself. Both wait on the
+  owner's setup and the visibility choice. Until then REQ-033 is `Active`, not `Done`.
+
 ## 2026-08-23 — REQ-090's typing budget takes the same stress-shape scope, and its cited evidence was wrong
 
 **Decision.** REQ-090's 8 ms native-input-callback budget binds on every `PerformanceCorpus` shape
