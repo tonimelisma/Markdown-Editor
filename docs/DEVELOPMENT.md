@@ -60,9 +60,10 @@ the signing:
 4. Check the built app: a valid signature, the entitlements the signing above implies, the derived
    `SUPublicEDKey`, and `SUFeedURL` naming the repository it is published to.
 5. **Launch it.** `SMOKE_APP=… Scripts/smoke-test.sh` runs the bundle about to be published on a
-   fixture and asserts on its diagnostic records (REQ-098). A static signature check passes for an
-   app that dies in dyld, so this is the step that proves a release runs. It installs no update:
-   REQ-034 keeps a smoke run from checking for one.
+   fixture and asserts on its diagnostic records (REQ-098). It installs no update: REQ-034 keeps a
+   smoke run from checking for one. Note what this step cannot do: GitHub's runners do not enforce
+   library validation, so a build with build 202's defect would launch there and still die on every
+   Mac. Step 4's entitlement check is what catches that one (`DECISIONS.md`, 2026-11-26).
 6. With a Developer ID identity and the notary secrets, notarize and staple the app and the disk
    image.
 7. Make `Markdown-Editor.dmg` (the app beside an Applications link) and the Sparkle zip. Sign the zip

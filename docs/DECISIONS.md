@@ -67,6 +67,19 @@ distribution this changes little — anyone who can write into the bundle can al
   carry `get-task-allow`, and passes `SMOKE_APP=… Scripts/smoke-test.sh` — a launch of the bundle
   that is about to be published, asserted on by REQ-098's verifier, whose own discrimination
   `Scripts/test-verify-smoke-log.sh` proves in the gate.
+
+**Where the proof is weaker than it looks.** **GitHub's macOS runners do not enforce library
+validation.** The probe above launches there, unhardened — found when this change's own test failed
+on CI for exactly that reason, which is the only reason it is known. Two consequences, and they are
+the ones to remember:
+
+- A release-time launch **could not have caught build 202**, and cannot catch the next defect of
+  this kind. The app would have started on the runner and still died on every Mac. The launch is
+  kept because it catches everything else a release can be broken by; what catches *this* is the
+  entitlement assertion, which is static and the same on every host.
+- The gate's test discriminates only where library validation is enforced — the owner's Mac, and
+  anyone else's. On a host without it, it says so in its own output and reports only the
+  entitlement half as proved. It never reports a proof it did not make.
 - That launch installs nothing: REQ-034 keeps a smoke run from checking for updates
   (`onlyAKeyedBuildOutsideVerificationUpdatesItself`).
 - Not yet observed: a published release that a person has installed and opened.

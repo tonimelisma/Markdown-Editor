@@ -8,6 +8,12 @@
 # The control is the point: before hardening, this bundle must FAIL to launch. A hardening that
 # granted nothing would pass a test that only checked the after-state.
 #
+# Not every host enforces library validation. GitHub's macOS runners do not — the control launches
+# there, which is also why a release-time launch of the app could never have caught build 202's
+# defect, and why Scripts/release.sh asserts on the entitlements rather than trusting its launch
+# (docs/DECISIONS.md, 2026-11-26). Where the control launches, this says so loudly and keeps the
+# assertions that do not depend on enforcement; it never reports a proof it did not make.
+#
 # macOS only (codesign, dyld). Scripts/check.sh runs it in the macOS section.
 set -uo pipefail
 
@@ -56,10 +62,14 @@ codesign --force --sign - --options runtime --timestamp=none --entitlements "$wo
 
 run_probe() { "$app/Contents/MacOS/Probe" 2>&1; }
 
-# Control: as signed, the hardened runtime's library validation must refuse the app's own dylib.
+# Control: where library validation is enforced, it must refuse the app's own dylib.
+enforced=1
 before="$(run_probe)"
 if [[ "$before" == "probe 7" ]]; then
-    fail "the control launched: an ad hoc hardened-runtime app loaded its own dylib, so this test no longer discriminates (macOS behaviour changed, or the probe is mis-signed)"
+    enforced=0
+    echo "test-adhoc-harden: this host does not enforce library validation — the control launched."
+    echo "test-adhoc-harden: csrutil: $(csrutil status 2>&1 | tr -d '\n')"
+    echo "test-adhoc-harden: the launch half proves nothing here; the entitlement assertions below still run."
 elif [[ "$before" != *"different Team IDs"* ]]; then
     fail "the control failed for another reason than library validation: $before"
 fi
@@ -68,6 +78,9 @@ fi
 "$repo_root/Scripts/adhoc-harden.sh" "$app" >/dev/null || fail "adhoc-harden.sh refused the probe app"
 after="$(run_probe)"
 [[ "$after" == "probe 7" ]] || fail "after hardening the app still did not run: $after"
+if (( enforced )) && [[ "$before" == "$after" ]]; then
+    fail "hardening changed nothing on a host that enforces library validation"
+fi
 
 ent="$work/signed.plist"
 codesign --display --entitlements "$ent" --xml "$app" 2>/dev/null
@@ -92,4 +105,9 @@ if (( failures )); then
     echo "test-adhoc-harden: $failures failure(s)" >&2
     exit 1
 fi
-echo "test-adhoc-harden: PASS (control refused, hardened app ran, entitlements as intended)"
+if (( enforced )); then
+    echo "test-adhoc-harden: PASS (control refused, hardened app ran, entitlements as intended)"
+else
+    echo "test-adhoc-harden: PASS (entitlements as intended) — NOT PROVED HERE: that the hardening"
+    echo "test-adhoc-harden: is what makes the app loadable, because this host enforces no library validation"
+fi

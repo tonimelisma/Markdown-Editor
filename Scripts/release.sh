@@ -150,9 +150,11 @@ expected_feed="https://github.com/$publish_repo/releases/latest/download/appcast
 [[ "$(read_plist CFBundleShortVersionString)" == "$version" ]] || refuse "the build carries version $(read_plist CFBundleShortVersionString), expected $version"
 [[ "$(read_plist CFBundleVersion)" == "$build" ]] || refuse "the build carries build $(read_plist CFBundleVersion), expected $build"
 
-# The check build 202 did not have: this very bundle is launched and asserted on (REQ-098). Static
-# signature checks all passed for 202 — `codesign --verify --deep --strict` is content with an app
-# that cannot start — so the only honest proof that a release runs is running it.
+# The check build 202 did not have: this very bundle is launched and asserted on (REQ-098).
+# `codesign --verify --deep --strict` was content with 202, an app that could not start at all.
+# This does not catch 202's own defect — GitHub's runners do not enforce library validation, so
+# that build would launch here and still die on every Mac; the entitlement check above is what
+# catches that one. This catches everything else that stops a release from running.
 say "launching the signed app (Scripts/smoke-test.sh)"
 SMOKE_APP="$app" ./Scripts/smoke-test.sh || refuse "the signed app failed its smoke run; nothing was published"
 

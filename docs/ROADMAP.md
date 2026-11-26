@@ -83,8 +83,10 @@ Still open:
   could not start: installed, it died in dyld on every launch, because an ad hoc build cannot load
   its own `Sparkle.framework` under the hardened runtime (`DECISIONS.md`, 2026-11-26). Everything
   checked about build 202 was checked statically; nothing had launched it. The release path now
-  re-signs the ad hoc build with the library-validation exception and refuses to publish a bundle
-  that has not launched and passed REQ-098's assertions. REQ-033 stays `Active` until a copy
+  re-signs the ad hoc build with the library-validation exception, asserts on the entitlements it
+  publishes, and refuses to publish a bundle that has not launched and passed REQ-098's assertions.
+  The entitlement assertion, not the launch, is what catches this defect: GitHub's runners enforce
+  no library validation, so build 202 would have launched there too. REQ-033 stays `Active` until a copy
   installed from a disk image takes the next release by itself — which the broken v1.0.0 cannot do,
   so the first install has to be by hand from the next release.
 - Mac runners that never come. Twice on 2026-11-26 a `main` job waited 15 minutes for an
