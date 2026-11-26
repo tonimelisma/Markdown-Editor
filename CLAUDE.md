@@ -5,7 +5,7 @@ How to work in this repository. `AGENTS.md` is a symlink to this file.
 Product direction is in `docs/VISION.md`, architecture in `docs/ENGINEERING.md`, behavior in
 `docs/REQUIREMENTS.md`, sequence in `docs/ROADMAP.md`, decisions in `docs/DECISIONS.md` (read
 "Why the gates were removed" before adding a gate), and environments, CI, releases and the
-owner's one-time setup in `docs/DEVELOPMENT.md`.
+owner's setup in `docs/DEVELOPMENT.md`.
 
 ## 1. Product
 
@@ -57,8 +57,9 @@ which one a session is in.
   - Never install a build over `/Applications`. The installed app is always one CI published,
     which Sparkle keeps current.
 
-Nothing waits for a local session. Nothing outside `docs/DEVELOPMENT.md`'s one-time owner setup
-needs the Mac.
+Nothing waits for a local session, and nothing needs the owner's Mac: not development, not
+releases, not setup (owner, 2026-11-26). Signing and the update key come from GitHub secrets the
+owner sets in a browser. A script or procedure that needs the Mac is a defect.
 
 ## 2b. Git and pull requests
 
@@ -157,7 +158,7 @@ Code and tests are canonical. The specs describe current intent.
 | `docs/REQUIREMENTS.md` | Numbered behavior requirements (`REQ-###`) |
 | `docs/ROADMAP.md` | Delivery state and sequence |
 | `docs/DECISIONS.md` | Decisions with consequences, including why the gates were removed |
-| `docs/DEVELOPMENT.md` | Environments, CI, releases, and the owner's one-time setup |
+| `docs/DEVELOPMENT.md` | Environments, CI, releases, and the owner's browser-only setup |
 | `docs/research/` | Costly evidence still valid; never architecture authority |
 | `docs/plans/` | Approved, not-yet-implemented plans |
 

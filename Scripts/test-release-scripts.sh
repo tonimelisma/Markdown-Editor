@@ -76,6 +76,63 @@ expect_appcast_refused "a URL needing XML escaping" "$repo" 42 1.2.3 "$url?a=1&b
 expect_appcast_refused "a non-base64 signature" "$repo" 42 1.2.3 "$url" 1234 'abc"/>'
 expect_appcast_refused "an empty length" "$repo" 42 1.2.3 "$url" "" "$signature"
 
+# The update key (Scripts/sparkle-key.sh). Installed copies trust one public key forever, so the
+# same password must always give the same key, a different one a different key, and a signature
+# must verify under an implementation other than the one that made it (Python's cryptography,
+# where installed; Sparkle's own check runs in every release before anything is published).
+key="$repo_root/Scripts/sparkle-key.sh"
+# macOS's own openssl is LibreSSL, which cannot sign with Ed25519; prefer Homebrew's OpenSSL 3.
+if ! "${OPENSSL:-openssl}" version 2>/dev/null | grep -q '^OpenSSL [3-9]'; then
+    candidate="$(brew --prefix openssl@3 2>/dev/null || true)/bin/openssl"
+    [[ -x "$candidate" ]] && export OPENSSL="$candidate"
+fi
+if ! "${OPENSSL:-openssl}" version 2>/dev/null | grep -q '^OpenSSL [3-9]'; then
+    echo "test-release-scripts: no OpenSSL 3 here; the update-key cases run in CI's Linux job"
+    if (( failures > 0 )); then
+        echo "test-release-scripts: $failures failure(s)" >&2
+        exit 1
+    fi
+    echo "test-release-scripts: all cases discriminated"
+    exit 0
+fi
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+printf 'an archive\n' > "$work/archive"
+seed_a="test-seed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+seed_b="test-seed-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+pub_a="$(SPARKLE_SEED="$seed_a" "$key" public 2>/dev/null)" || fail "sparkle-key public refused a valid seed"
+[[ "$(SPARKLE_SEED="$seed_a" "$key" public 2>/dev/null)" == "$pub_a" ]] || fail "sparkle-key public is not deterministic"
+[[ "$(SPARKLE_SEED="$seed_b" "$key" public 2>/dev/null)" != "$pub_a" ]] || fail "sparkle-key gives two seeds one key"
+[[ "$(python3 -I -c 'import base64, sys; print(len(base64.b64decode(sys.argv[1])))' "$pub_a" 2>/dev/null)" == 32 ]] || fail "sparkle-key public is not a 32-byte key"
+SPARKLE_SEED="short" "$key" public >/dev/null 2>&1 && fail "sparkle-key accepted a short seed"
+env -u SPARKLE_SEED "$key" public >/dev/null 2>&1 && fail "sparkle-key ran without a seed"
+signature="$(SPARKLE_SEED="$seed_a" "$key" sign "$work/archive" 2>/dev/null)" || fail "sparkle-key sign failed"
+seed64="$(SPARKLE_SEED="$seed_a" "$key" seed 2>/dev/null)" || fail "sparkle-key seed failed"
+if python3 -c 'import cryptography' 2>/dev/null; then
+    verify() { # <public key> <signature> <file> <seed base64>: exit 0 when the signature verifies
+        python3 -I - "$@" <<'PY'
+import base64, sys
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+public, signature, path, seed = sys.argv[1:5]
+derived = Ed25519PrivateKey.from_private_bytes(base64.b64decode(seed)).public_key()
+raw = derived.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+if base64.b64encode(raw).decode() != public:
+    sys.exit("the seed does not give the public key")
+try:
+    Ed25519PublicKey.from_public_bytes(base64.b64decode(public)).verify(base64.b64decode(signature), open(path, "rb").read())
+except InvalidSignature:
+    sys.exit("invalid signature")
+PY
+    }
+    verify "$pub_a" "$signature" "$work/archive" "$seed64" 2>/dev/null || fail "the signature does not verify independently"
+    printf 'another archive\n' > "$work/tampered"
+    verify "$pub_a" "$signature" "$work/tampered" "$seed64" 2>/dev/null && fail "a signature verified for a different file"
+else
+    echo "test-release-scripts: python3 cryptography absent; independent signature check skipped"
+fi
+
 if (( failures > 0 )); then
     echo "test-release-scripts: $failures failure(s)" >&2
     exit 1

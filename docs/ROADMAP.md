@@ -77,7 +77,7 @@ Still open:
   code, passed. The stall records were not kept then, so the cause is unknown. A failed smoke run
   now uploads its records (`smoke-records/` in `check-logs-*`). The next failure is to be read from
   them, not re-run.
-- The owner's one-time setup: making the repository public, the ruleset, and `Scripts/release-setup.sh`.
+- The first release, now that `SPARKLE_SEED` is set: it publishes with the next merge that changes the app.
 - The first published release, and an installed copy seen updating itself. REQ-033 stays
   `Active` until then.
 - Notarization, once a Developer ID exists.

@@ -123,8 +123,12 @@ Both repositories are public, both develop in cloud sessions, and both verify th
    - Its macOS CI minutes are billed against the plan.
    - The siblings resolved both by going public, and so did this repository (owner, 2026-11-26).
 2. **VISION promises Developer ID signing and notarization; the siblings use an Apple Development
-   certificate without notarization.** The release takes whichever identity it is given. When that
-   is a Developer ID identity and notary credentials are set, it notarizes.
+   certificate without notarization**, exported from the owner's Mac (Otos re-exports it yearly).
+   The owner ruled out any Mac step here. Releases therefore sign ad hoc unless a certificate secret
+   is set, and derive the update key from a secret password. Sparkle 2.10.1's `SUUpdateValidator`
+   accepts an update whose EdDSA key is unchanged, whatever its signing identity, and its own
+   message says "adhoc signing can be used at minimum". Sparkle's private-key format is the
+   32-byte Ed25519 seed, base64 (`common_cli/Secret.swift`).
 3. **REQ-030 promised no network access.** Sparkle's update check is the first network access the
    application makes, so the requirement has to change with the code.
 4. **Debug and Release share one bundle identifier** (Otos's dev builds have their own). So the
