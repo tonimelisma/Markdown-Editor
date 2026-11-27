@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import SwiftUI
 import Synchronization
 import Testing
 @testable import Markdown_Editor
@@ -138,10 +139,13 @@ struct WindowCitizenshipTests {
         // 320×208 after five resizes, which said as much about test order as about layout.
         UserDefaults.standard.removeObject(forKey: "NSWindow Frame MarkdownDocumentWindow")
         let document = MarkdownDocument()
-        let resizes = Mutex(0)
+        let resizes = Mutex<[String]>([])
         let observer = NotificationCenter.default.addObserver(
             forName: NSWindow.didResizeNotification, object: nil, queue: nil
-        ) { _ in resizes.withLock { $0 += 1 } }
+        ) { note in
+            let size = (note.object as? NSWindow).map { $0.contentRect(forFrameRect: $0.frame).size }
+            resizes.withLock { $0.append(size.map { "\($0.width)×\($0.height)" } ?? "?") }
+        }
         document.makeWindowControllers()
         NotificationCenter.default.removeObserver(observer)
         defer { document.close() }
@@ -149,8 +153,9 @@ struct WindowCitizenshipTests {
 
         let contentSize = window.contentRect(forFrameRect: window.frame).size
         #expect(contentSize == NSSize(width: 720, height: 560), "the window's content is \(contentSize), not its default size")
-        let count = resizes.withLock { $0 }
-        #expect(count == 0, "the window was resized \(count) time(s) after it was created, so it was laid out again")
+        let sizes = resizes.withLock { $0 }
+        let sizing = (window.contentViewController as? NSHostingController<ContentView>)?.sizingOptions.rawValue
+        #expect(sizes.isEmpty, "the window was resized after it was created, so it was laid out again: \(sizes); sizingOptions \(String(describing: sizing))")
     }
 
     // Verifies: REQ-131 — the command surface stays usable at the minimum window size. A toolbar
