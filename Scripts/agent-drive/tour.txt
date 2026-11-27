@@ -51,6 +51,7 @@ type "https://example.com/guide"
 key return
 wait 1
 shot c-linked
+no-dialogs
 expect-no-faults
 
 # --- D. Lists, a task, a quote and code, from the Format shortcuts.
@@ -128,6 +129,7 @@ expect-file notes/notes.md "- Milk"
 expect-file notes/notes.md "- [ ] Call the plumber"
 expect-file notes/notes.md "> Simplicity is prerequisite for reliability."
 expect-file notes/notes.md "let answer = 42"
+no-dialogs
 expect-no-faults
 
 # --- G. Source mode: the same note as Markdown, edited there, and back.
@@ -185,6 +187,7 @@ shot i-pasted
 key cmd+s
 wait 1
 shell ls -la "$WORK/notes/assets" && grep -n "assets/" "$WORK/notes/notes.md"
+no-dialogs
 expect-no-faults
 
 # --- J. Plain-text paste.
@@ -249,6 +252,7 @@ wait 3
 shot-screen n-print
 key escape
 wait 1
+no-dialogs
 expect-no-faults
 
 # --- O. A second document, closed without saving.
@@ -263,6 +267,7 @@ shot-screen o-close-asks
 press "Delete"
 wait 1
 windows
+no-dialogs
 expect-no-faults
 
 # --- P. Opening an existing document: rich content, a task box, a table cell.
@@ -290,6 +295,7 @@ key cmd+s
 wait 2
 file showcase.md p-showcase
 expect-file showcase.md "Terns back over the harbour"
+no-dialogs
 expect-no-faults
 
 # --- Q. A file that is not UTF-8 is refused with a message, not opened corrupted.
@@ -305,6 +311,7 @@ wait 2
 shot-screen q-bad-file
 key return
 wait 1
+no-dialogs
 expect-no-window bad.md
 
 # --- R. Quit and relaunch: the documents come back.

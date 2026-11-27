@@ -59,6 +59,9 @@
 //   expect-value LABEL TEXT    the element's value contains TEXT
 //   expect-no-value LABEL TEXT the element's value does not contain TEXT
 //   expect-element LABEL / expect-no-element LABEL
+//   no-dialogs                 the front window is a document with no sheet; any dialog still
+//                              open is a failure, and is closed with Escape so the next section
+//                              starts from a document, as a person would close it
 //   expect-enabled LABEL / expect-disabled LABEL
 //   expect-file PATH TEXT      the file contains TEXT
 //   expect-no-file PATH TEXT   the file does not contain TEXT
@@ -424,7 +427,7 @@ while let raw = readLine() {
         "shot", "tree", "windows", "focused", "value", "selection", "menu-items", "press", "menu", "click",
         "clickat", "scroll", "focus", "caret", "select", "caret-after", "type", "type-field", "key", "raise", "resize", "expect-value",
         "expect-no-value", "expect-element", "expect-no-element", "expect-enabled", "expect-disabled",
-        "expect-window", "expect-windows", "expect-no-window",
+        "expect-window", "expect-windows", "expect-no-window", "no-dialogs",
     ]
     if needsApp.contains(words[0]), runningApp() == nil {
         fail("the app is not running")
@@ -701,6 +704,23 @@ while let raw = readLine() {
             let found = text(element, kAXValueAttribute).contains(rest[1])
             found == wanted ? pass("value of \"\(rest[0])\" \(found ? "contains" : "lacks") \"\(rest[1])\"")
                 : fail("value of \"\(rest[0])\" \(found ? "contains" : "lacks") \"\(rest[1])\"")
+        }
+    case ("no-dialogs", 0):
+        func dialogOpen() -> Bool {
+            guard let front = frontWindow() else { return false }
+            if text(front, kAXSubroleAttribute) != "AXStandardWindow" { return true }
+            return children(front).contains { text($0, kAXRoleAttribute) == "AXSheet" }
+        }
+        var closed: [String] = []
+        for _ in 0..<4 where dialogOpen() {
+            if let front = frontWindow() { closed.append(describe(front)) }
+            _ = key("escape")
+            RunLoop.current.run(until: Date().addingTimeInterval(0.7))
+        }
+        if closed.isEmpty {
+            pass("no dialog is open")
+        } else {
+            fail("closed with Escape: \(closed.joined(separator: "; "))\(dialogOpen() ? ", and one is still open" : "")")
         }
     case ("expect-element", 1):
         find(rest[0]) != nil ? pass("\"\(rest[0])\" is there") : fail("no element labelled \"\(rest[0])\"")
