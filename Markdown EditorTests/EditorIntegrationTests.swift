@@ -594,6 +594,39 @@ struct EditorIntegrationTests {
         #expect(doc.undoManager?.canUndo == true)
     }
 
+    // Verifies: REQ-014/017 — a close ends the typing group, then starts AppKit's review a turn
+    // later, so the change AppKit counts on the main queue is counted first. Quit's review
+    // reached `canClose` with the group open and hung the app (tour 46011070302).
+    @Test func aCloseCountsTheTypingBeforeAppKitReviewsIt() {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("hi\n")
+        let typed = SourceMutation(
+            expectedRevision: 0,
+            range: NSRange(location: 0, length: 0),
+            expectedText: "",
+            replacement: "a",
+            selectionBefore: SourceSelection(utf16: NSRange(location: 0, length: 0)),
+            selectionAfter: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+            actionName: "Typing",
+            grouping: .typing
+        )
+        _ = commitSourceMutationForTest(doc, typed)
+        #expect(doc.undoManager?.groupingLevel == 1, "typing left no group open to end")
+        var reviews: [Int] = []
+        doc.closeReview = { _, _, _ in reviews.append(doc.undoManager?.groupingLevel ?? -1) }
+
+        doc.canClose(withDelegate: NSObject(), shouldClose: nil, contextInfo: nil)
+
+        #expect(doc.undoManager?.groupingLevel == 0, "the typing group is still open as the close starts")
+        #expect(reviews.isEmpty, "AppKit's review started in the same turn the typing group ended")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        #expect(reviews == [0], "the review did not follow a turn later: \(reviews)")
+
+        // With no typing open, the review starts at once.
+        doc.canClose(withDelegate: NSObject(), shouldClose: nil, contextInfo: nil)
+        #expect(reviews == [0, 0])
+    }
+
     // Verifies: REQ-016 — closeTypingUndoGroup ends an open typing group.
     @Test func closeTypingUndoGroupEndsOpenTypingGroup() {
         let doc = MarkdownDocument()

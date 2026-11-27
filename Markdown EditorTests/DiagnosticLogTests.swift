@@ -343,6 +343,31 @@ struct DiagnosticLogTests {
         session.detach()
     }
 
+    // Verifies: REQ-103 — `parseProjection` times the parse and the projection, not the parse
+    // task's wait for the main actor between them. A showcase parse of a few milliseconds was
+    // recorded at 875 ms while the main thread opened its window (tour 46011070302).
+    @Test func parseProjectionLeavesOutTheWaitForTheMainActor() async {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("# Title\n\nBody paragraph.\n")
+        let session = EditorSession(performanceSamplerCoordinator: DiagnosticRunCoordinator())
+        session.attach(document: document)
+        defer { session.detach() }
+        // The parse runs off the main actor and then waits for it, held here.
+        Thread.sleep(forTimeInterval: 0.3)
+        let revision = document.sourceVersion
+        for _ in 0..<400 where trace.eventsMatching({
+            if case .reconciliationApplied(_, let applied, _, _) = $0 { return applied == revision }
+            return false
+        }).isEmpty {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        let summary = session.performanceSampler?.drainSummaries().first { $0.metric == .parseProjection }
+        #expect(summary != nil, "no parse was measured")
+        #expect((summary?.max ?? .max) < 150_000_000, "the wait for the main actor was timed as parsing: \(String(describing: summary))")
+    }
+
     // Verifies: REQ-123 — a document opened before its window exists parses once when the window
     // opens on the main screen. The parse before the window guessed scale 2, so on a 1x display
     // (CI's runner, an external monitor) binding the window parsed it again. On a 2x host this

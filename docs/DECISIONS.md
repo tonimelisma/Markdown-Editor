@@ -182,8 +182,13 @@ sees it only as an image arriving that much after the text, which the 100 ms cov
 ## 2026-11-27 — Unsaved typing is edited before AppKit counts it; undo groups end outside AppKit's activities
 
 **Decision.** A document is edited when AppKit says so, or while a typing undo group holds edits.
-The typing group is ended at the entry of Save and Save As. Close and load drop it without ending
-it. ENGINEERING §10 states both rules.
+The typing group is ended at the entry of Save, Save As and a close's review (`canClose`, which
+⌘W, the close button and Quit all reach), each of which then starts a main-queue turn later. The
+close itself and load drop it without ending it. ENGINEERING §10 states both rules.
+
+Quit was added after tour 46011070302: quitting 0.7 s after typing reached the review with the
+group open, the review's sheet ended it inside AppKit's activity, and the app hung as the close
+had.
 
 **Why.** The tour found two defects with one cause.
 

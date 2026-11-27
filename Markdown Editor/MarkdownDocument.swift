@@ -196,13 +196,39 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         AppModalSession.shared.around { super.revertToSaved(sender) }
     }
 
+    /// Every close asks this first: ⌘W, the window's close button, and Quit, whose review of
+    /// unsaved documents reaches each document here. Typing still in an open undo group is ended
+    /// first, and when that ends one, the review waits a main-queue turn, as saves do
+    /// (`save(withDelegate:)`): AppKit counts the change in an activity it queues on the main
+    /// queue, and a review started in the same turn waits for that activity synchronously and
+    /// never returns. Quitting 0.7 s after typing hung the app that way (tour 46011070302).
     override func canClose(
         withDelegate delegate: Any, shouldClose shouldCloseSelector: Selector?, contextInfo: UnsafeMutableRawPointer?
     ) {
-        AppModalSession.shared.around {
-            super.canClose(withDelegate: delegate, shouldClose: shouldCloseSelector, contextInfo: contextInfo)
+        guard closeTypingGroupIfNeeded() else {
+            reviewForClose(delegate, shouldCloseSelector, contextInfo)
+            return
+        }
+        nonisolated(unsafe) let delegate = delegate
+        nonisolated(unsafe) let contextInfo = contextInfo
+        DispatchQueue.main.async { [self] in
+            MainActor.assumeIsolated { self.reviewForClose(delegate, shouldCloseSelector, contextInfo) }
         }
     }
+
+    /// AppKit's review of a close, as an app-modal session (above). A test replaces
+    /// `closeReview` to watch when it starts, since AppKit's own shows a dialog.
+    private func reviewForClose(_ delegate: Any, _ selector: Selector?, _ contextInfo: UnsafeMutableRawPointer?) {
+        if let closeReview {
+            closeReview(delegate, selector, contextInfo)
+            return
+        }
+        AppModalSession.shared.around {
+            super.canClose(withDelegate: delegate, shouldClose: selector, contextInfo: contextInfo)
+        }
+    }
+
+    var closeReview: ((Any, Selector?, UnsafeMutableRawPointer?) -> Void)?
 
     override func makeWindowControllers() {
         if fileURL == nil, duplicateOrigin == nil, let origin = Self.duplicatingFrom {

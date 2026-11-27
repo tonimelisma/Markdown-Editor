@@ -153,9 +153,14 @@ final class ParseCoordinator {
                 }
                 return
             }
+            // The hop to record this waits for the main actor, which is not parsing: it is left
+            // out of `parseProjection`, which measured 875 ms for a showcase parse that took a
+            // few while the main thread opened its window (tour 46011070302).
+            let parsedAt = DispatchTime.now().uptimeNanoseconds
             await MainActor.run {
                 document?.trace?.record(route: .parseCompleted, .parseCompleted(sourceVersion: snapshot.sourceVersion))
             }
+            let projectionStart = DispatchTime.now().uptimeNanoseconds
             let model = MarkdownProjectionModel.build(tree: tree, index: index, intent: intent)
             if case .failure = ProjectionOracle.validate(model: model, sourceUTF16Count: (snapshot.text as NSString).length, intent: intent) {
                 await MainActor.run {
@@ -170,7 +175,8 @@ final class ParseCoordinator {
                 }
                 return
             }
-            let parseProjectionDuration = DispatchTime.now().uptimeNanoseconds &- parseProjectionStart
+            let parseProjectionDuration = (parsedAt &- parseProjectionStart)
+                &+ (DispatchTime.now().uptimeNanoseconds &- projectionStart)
             let imageResolutionStart = DispatchTime.now().uptimeNanoseconds
             var descriptors: [ImageDisplayDescriptor] = []
             var resolveFailures: [LocalImageResolveFailure] = []

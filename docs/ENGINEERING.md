@@ -439,7 +439,8 @@ Rules:
   under the retained default and enters `MainActor.assumeIsolated` for the canonical load.
 - Saves write asynchronously (`canAsynchronouslyWrite`).
 - A File command, Save included, ends the front document's typing group before it starts, and
-  when that ends a group the command starts on the next turn of the main queue. AppKit counts the
+  when that ends a group the command starts on the next turn of the main queue. So does a close's
+  review (`canClose`), which ⌘W, the close button and Quit's review of unsaved documents reach. AppKit counts the
   ended group in an activity of the document's own, queued on the main queue; a command started
   in the same turn waited synchronously for it, holding the main thread it needed. `save(to:ofType:for:completionHandler:)`
   takes the bytes to write on the main actor before AppKit starts, and keeps them until the next
