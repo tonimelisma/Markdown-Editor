@@ -225,7 +225,20 @@ The projection gives these edits somewhere to put the caret:
   document with no block `blank / 2`), each a synthetic line break whose insertion point is the
   start of its middle blank line or the end of the file. Return writes two line breaks, which adds
   exactly one;
-- a list item with no text ends its line with a synthetic break.
+- a list item with no text ends its line with a synthetic break, and one whose only text is a task
+  box (`- [ ]` and a space: no task to cmark-gfm until text follows the box) is shown as the empty task it is
+  about to be;
+- a task's box and the space after it anchor at the item's start, so a caret at the end of the
+  task's text maps after them.
+
+Return in an empty item replaces the item, and the blank lines before it, with the two line
+breaks of a new paragraph, so a tight and a loose list end alike.
+
+A keystroke that the exact route plans is checked twice. First, the candidate proof requires the
+built page to read as typed, with the same visible styling: runs in order, neighbours with the same
+styling taken as one. A trailing space, or a letter typed into an empty paragraph, changes run
+boundaries but not what the page shows. Second, the kernel compares the page with the typed text,
+line breaks aside, since the first letter in an empty document starts a paragraph.
 
 ### Selection classification
 
@@ -392,6 +405,13 @@ Rules:
   the accepted/refused result. The completed composition is a separate source transaction.
 - Native plain-text paste, spelling, Find, keyboard input, selection, and accessibility remain
   available. There are no UI-test dependencies.
+- A key is never lost to timing. A formatting command's snapshot reaches the page on SwiftUI's next
+  update. A key that arrives first finds the page behind the session. The page is then brought
+  current and the key replayed once, at the caret the command left. A collapsed insertion where
+  AppKit shows the caret somewhere other than the owner's selection goes where the person sees the
+  caret.
+- A window with a sheet attached takes no typing. Keys meant for the sheet must not edit the
+  document behind it.
 
 ### Native command surface
 
