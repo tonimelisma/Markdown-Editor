@@ -46,16 +46,40 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
     /// text at the edit (`{0,11} {11,1} {12,1}`) where the parser emits one atom (`{0,13}`), the same
     /// mapping in a different number of pieces (CI 45939800494).
     func hasSameContent(as other: PresentationSnapshot) -> Bool {
-        sourceRevision == other.sourceRevision
-            && locationGeneration == other.locationGeneration
-            && sourceUTF16Count == other.sourceUTF16Count
-            && renderedString == other.renderedString
-            && runs == other.runs
-            && attachments == other.attachments
-            && tables == other.tables
-            && blocks == other.blocks
-            && listMarkers == other.listMarkers
-            && ProjectionAtom.coalescingIdentity(atoms) == ProjectionAtom.coalescingIdentity(other.atoms)
+        firstContentDifference(from: other) == nil
+    }
+
+    /// The parts of a snapshot's content `hasSameContent` compares, for a diagnostic record
+    /// that names which one disagreed without carrying any of it.
+    enum ContentField: Sendable, Equatable {
+        case identity, renderedString, runs, attachments, tables, blocks, listMarkers, atoms
+
+        var symbol: DiagnosticSymbol {
+            switch self {
+            case .identity: return .disagreedOnIdentity
+            case .renderedString: return .disagreedOnRenderedString
+            case .runs: return .disagreedOnRuns
+            case .attachments: return .disagreedOnAttachments
+            case .tables: return .disagreedOnTables
+            case .blocks: return .disagreedOnBlocks
+            case .listMarkers: return .disagreedOnListMarkers
+            case .atoms: return .disagreedOnAtoms
+            }
+        }
+    }
+
+    func firstContentDifference(from other: PresentationSnapshot) -> ContentField? {
+        if sourceRevision != other.sourceRevision
+            || locationGeneration != other.locationGeneration
+            || sourceUTF16Count != other.sourceUTF16Count { return .identity }
+        if renderedString != other.renderedString { return .renderedString }
+        if runs != other.runs { return .runs }
+        if attachments != other.attachments { return .attachments }
+        if tables != other.tables { return .tables }
+        if blocks != other.blocks { return .blocks }
+        if listMarkers != other.listMarkers { return .listMarkers }
+        if ProjectionAtom.coalescingIdentity(atoms) != ProjectionAtom.coalescingIdentity(other.atoms) { return .atoms }
+        return nil
     }
 
     var projectionRevision: ProjectionRevision {

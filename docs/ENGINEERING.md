@@ -151,7 +151,8 @@ An accepted WYSIWYG edit is a synchronous atomic transition:
 7. Reconciliation may replace the provisional snapshot only if its complete input identity still
    matches current state. If the authoritative snapshot's content differs from a provisional
    snapshot of the same revision and location generation, the local transition was wrong. That is a
-   recorded fault (`presentationRecovered`, `patchUnprovable`; COR-71): WYSIWYG stops accepting
+   recorded fault (`presentationRecovered`, reason `disagreedOn…` naming the first part of the
+   content that differed; COR-71): WYSIWYG stops accepting
    input until the authoritative snapshot is installed, and the caret, read through the provisional
    snapshot the user was looking at, is carried into it so typing goes on. The comparison is by content
    (`PresentationSnapshot.hasSameContent`), never by snapshot identity, which always differs. It

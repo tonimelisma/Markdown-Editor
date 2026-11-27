@@ -247,7 +247,7 @@ final class ParseCoordinator {
                    session.provisionalPresentationID == provisional.id,
                    provisional.sourceRevision == authoritative.sourceRevision,
                    provisional.locationGeneration == authoritative.locationGeneration,
-                   !provisional.hasSameContent(as: authoritative) {
+                   let disagreement = provisional.firstContentDifference(from: authoritative) {
                     // COR-71: a local transition disagreed with the pinned authority. Do not
                     // silently replace an editable provisional snapshot; record a fault, make
                     // WYSIWYG unavailable, and rebuild from canonical source in this same
@@ -255,7 +255,7 @@ final class ParseCoordinator {
                     document?.trace?.record(route: .presentationRecovered, .presentationRecovered(
                         snapshotID: provisional.id.value,
                         sourceRevision: provisional.sourceRevision.value,
-                        reason: .patchUnprovable
+                        reason: .provisionalDisagreed(disagreement)
                     ))
                     // The caret the user sees is in the provisional snapshot: carry it, through
                     // that snapshot's coordinates, into the authority, or typing goes on being

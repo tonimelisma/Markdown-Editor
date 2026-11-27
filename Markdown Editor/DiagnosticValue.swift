@@ -93,6 +93,14 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     // Presentation recovery reasons
     case patchUnprovable
     case appliedStorageMismatch
+    case disagreedOnIdentity
+    case disagreedOnRenderedString
+    case disagreedOnRuns
+    case disagreedOnAttachments
+    case disagreedOnTables
+    case disagreedOnBlocks
+    case disagreedOnListMarkers
+    case disagreedOnAtoms
 
     // Reconciliation violations
     case publication

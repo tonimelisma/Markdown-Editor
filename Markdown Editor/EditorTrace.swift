@@ -41,11 +41,16 @@ nonisolated enum PresentationRecoveryReason: Sendable, Equatable {
     case patchUnprovable
     /// Applied storage no longer matched the snapshot the patch was built against.
     case appliedStorageMismatch
+    /// COR-71: a provisional snapshot disagreed with the parse of the same revision, first in
+    /// this part of its content. Recorded as `patchUnprovable` until tour 45964220766 needed to
+    /// tell the two apart.
+    case provisionalDisagreed(PresentationSnapshot.ContentField)
 
     var symbol: DiagnosticSymbol {
         switch self {
         case .patchUnprovable: return .patchUnprovable
         case .appliedStorageMismatch: return .appliedStorageMismatch
+        case .provisionalDisagreed(let field): return field.symbol
         }
     }
 }
