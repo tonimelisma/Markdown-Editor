@@ -61,9 +61,9 @@ struct Markdown_EditorApp: App {
                 Button("Save") { Self.send("saveDocument:") }
                     .keyboardShortcut("s")
                 Button("Duplicate") { Self.send("duplicateDocument:") }
-                    .keyboardShortcut("S")
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
                 Button("Save As…") { Self.send("saveDocumentAs:") }
-                    .keyboardShortcut("S", modifiers: [.command, .option])
+                    .keyboardShortcut("s", modifiers: [.command, .option, .shift])
                 Button("Rename…") { Self.send("renameDocument:") }
                 Button("Move To…") { Self.send("moveDocument:") }
                 Button("Revert Document…") { Self.send("revertDocumentToSaved:") }

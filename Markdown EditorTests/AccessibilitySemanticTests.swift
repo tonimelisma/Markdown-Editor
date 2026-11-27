@@ -208,10 +208,13 @@ struct KeyboardCommandMatrixTests {
         for title in ["Close", "Save", "Duplicate", "Save As…", "Rename…", "Move To…", "Revert Document…"] {
             #expect(titles.contains(title), "the File menu offers \(titles), not \(title)")
         }
-        // Shift-Command-S: AppKit spells Shift as the capital letter, without the Shift flag.
+        // Shift-Command-S, which AppKit may spell as a capital letter instead of the Shift flag.
         let duplicate = try #require(file.item(withTitle: "Duplicate"))
-        #expect(duplicate.keyEquivalent == "S" || (duplicate.keyEquivalent == "s" && duplicate.keyEquivalentModifierMask.contains(.shift)))
-        #expect(duplicate.keyEquivalentModifierMask.contains(.command))
+        let key = duplicate.keyEquivalent
+        let mask = duplicate.keyEquivalentModifierMask
+        let shifted = key == "S" || (key == "s" && mask.contains(.shift))
+        #expect(shifted && mask.contains(.command) && !mask.contains(.option),
+                "Duplicate's shortcut is \(key.debugDescription) with \(mask.rawValue)")
     }
 
     // Verifies: REQ-032 — no command's shortcut is one macOS or every Mac app already owns. Block
