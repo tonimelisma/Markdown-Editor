@@ -132,6 +132,11 @@ struct WindowCitizenshipTests {
     // window cost (DECISIONS.md, 2026-11-27). `makeWindowControllers` runs synchronously on the main
     // actor, so every resize it causes is posted inside this call and nothing else's can be.
     @Test func theDocumentWindowIsCreatedAtItsFinalSize() throws {
+        // A frame AppKit saved under the autosave name is restored onto the next window, and that
+        // restoration is a legitimate resize this test is not about. `toolbarRemainsUsableAtTheMinimumWindowSize`
+        // leaves one at the minimum size: without this, the falsification run (CI 45936808313) saw
+        // 320×208 after five resizes, which said as much about test order as about layout.
+        UserDefaults.standard.removeObject(forKey: "NSWindow Frame MarkdownDocumentWindow")
         let document = MarkdownDocument()
         let resizes = Mutex(0)
         let observer = NotificationCenter.default.addObserver(
