@@ -18,7 +18,7 @@
 //   shot NAME                  screenshot of the app's window only (never the screen)
 //   tree NAME                  the accessibility tree, to NAME.txt
 //   press LABEL                accessibility press: buttons, segments, checkboxes, menu buttons
-//   menu TOP ITEM [SUBITEM…]   choose a menu item through the menu bar, e.g. menu View "Source Mode"
+//   menu TOP ITEM [SUBITEM…]   open a menu and choose an item, e.g. menu View "Source Mode"
 //   click LABEL                a real mouse click on the middle of the element's visible part
 //   clickat X Y                a real mouse click at a point of the window, in screenshot points
 //   focus LABEL                give the element keyboard focus
@@ -34,7 +34,7 @@
 //   expect-file TEXT           the document on disk contains TEXT
 //   expect-no-file TEXT        the document on disk does not contain TEXT
 //
-// Everything it does is written to transcript.txt in the out-dir, one numbered line per step, and
+// Everything it does is written to transcript.txt in the out-dir, one numbered, timed line per step, and
 // each file it writes is named with that step's number. Exit status 1 if an expectation failed,
 // 2 for a scenario it could not run.
 
@@ -54,8 +54,16 @@ var transcript = ""
 var step = 0
 var failures = 0
 
+let clock: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withTime, .withColonSeparatorInTime, .withFractionalSeconds]
+    return formatter
+}()
+
+/// Each line carries the UTC time, in the app's diagnostic log's format, so a step can be matched
+/// to what the app recorded while it ran.
 func log(_ line: String) {
-    let numbered = String(format: "%02d ", step) + line
+    let numbered = String(format: "%02d ", step) + clock.string(from: Date()) + " " + line
     print(numbered)
     transcript += numbered + "\n"
 }
@@ -268,7 +276,16 @@ while let raw = readLine() {
             log("  \(describe(element)) → \(AXUIElementPerformAction(element, kAXPressAction as CFString).rawValue)")
         }
     case ("menu", 2...):
-        var current: AXUIElement? = attribute(app, kAXMenuBarAttribute).map { $0 as! AXUIElement }
+        // Opened first, as a person opens it: AppKit validates a menu's items when it opens, so an
+        // item read from a closed menu carries whatever enabled state the last validation left
+        // (agent-drive run 45943545906 found "WYSIWYG Mode" disabled in Source mode that way).
+        activate()
+        let bar: AXUIElement? = attribute(app, kAXMenuBarAttribute).map { $0 as! AXUIElement }
+        if let top = bar.map(children)?.first(where: { text($0, kAXTitleAttribute) == rest[0] }) {
+            _ = AXUIElementPerformAction(top, kAXPressAction as CFString)
+            usleep(400_000)
+        }
+        var current: AXUIElement? = bar
         for title in rest {
             // A menu bar item and a menu item hold their menu as their only child.
             let candidates = current.map(children) ?? []
@@ -281,6 +298,7 @@ while let raw = readLine() {
         } else {
             log("  no menu item at \(rest.joined(separator: " › "))")
             failures += 1
+            _ = key("escape")
         }
     case ("click", 1):
         if let element = require(rest[0]) {

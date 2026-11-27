@@ -488,12 +488,32 @@ final class EditorSession: ObservableObject {
         document?.trace?.record(route: .modeToggle, .modeToggle(toSource: toSource))
     }
 
+    /// The WYSIWYG selection in source coordinates, read through the snapshot it was captured
+    /// in, or nil when it belongs to no current snapshot.
+    func wysiwygSourceSelection() -> SourceSelection? {
+        guard let presentation,
+              let existing = wysiwygModeState.selection,
+              existing.range.revision.snapshotID == presentation.id,
+              case .exact(let sourceRange) = presentation.coordinateMap.sourceRange(
+                forProjection: existing.range.utf16,
+                affinity: existing.affinity
+              ) else {
+            return nil
+        }
+        return SourceSelection(utf16: sourceRange, affinity: existing.affinity)
+    }
+
+    /// `carrying` is the selection to map into `snapshot` when the presentation it was captured
+    /// in is no longer current: a COR-71 recovery clears the provisional snapshot before the
+    /// authority is installed, and without it the caret the user can still see owned no
+    /// selection, so every keystroke after a recovery was refused (agent-drive run 45943545906).
     func installPresentation(
         _ snapshot: PresentationSnapshot,
         tree: MarkdownTree?,
         provisional: Bool,
         intent: IntentContext? = nil,
-        validateReconciliation: Bool = true
+        validateReconciliation: Bool = true,
+        carrying carried: SourceSelection? = nil
     ) {
         if !provisional, validateReconciliation, let document {
             let input = EditorInput.reconciliation(
@@ -512,19 +532,7 @@ final class EditorSession: ObservableObject {
                 return
             }
         }
-        let previous = presentation
-        let sourceSelection: SourceSelection? = {
-            guard let previous,
-                  let existing = wysiwygModeState.selection,
-                  existing.range.revision.snapshotID == previous.id,
-                  case .exact(let sourceRange) = previous.coordinateMap.sourceRange(
-                    forProjection: existing.range.utf16,
-                    affinity: existing.affinity
-                  ) else {
-                return nil
-            }
-            return SourceSelection(utf16: sourceRange, affinity: existing.affinity)
-        }()
+        let sourceSelection = carried ?? wysiwygSourceSelection()
         presentation = snapshot
         provisionalPresentationID = provisional ? snapshot.id : nil
         if let intent {

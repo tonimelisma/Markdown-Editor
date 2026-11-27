@@ -219,4 +219,84 @@ struct PresentationRecoveryTests {
         #expect(recoveries(trace).count == 1, "a provisional snapshot that disagreed with the parse was not recorded: \(recoveries(trace))")
         #expect(session.presentation?.runs.isEmpty == false, "the wrong provisional snapshot was kept")
     }
+
+    // Verifies: REQ-109 — a recovery keeps the caret. The recovery cleared the provisional snapshot
+    // before installing the authority, and the selection was carried only through the snapshot
+    // being replaced, so it was dropped. The caret stayed on screen and every keystroke after it
+    // was refused without a trace: agent-drive run 45943545906 typed "Agent " and the document
+    // received "A".
+    @Test func aRecoveryKeepsTheCaret() async throws {
+        let trace = InMemoryEditorTrace()
+        let document = MarkdownDocument()
+        document.trace = trace
+        document.installTextForTesting("Hello **world**.\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        defer { session.detach() }
+        session.setMode(.wysiwyg)
+        let revision = document.sourceVersion
+        await awaitReconciliations(trace, revision: revision, count: 1)
+        let authoritative = try #require(session.presentation)
+
+        let wrong = PresentationSnapshot.make(
+            id: session.snapshotIDs.make(),
+            sourceRevision: authoritative.sourceRevision,
+            locationGeneration: authoritative.locationGeneration,
+            renderedString: authoritative.renderedString,
+            runs: [],
+            attachments: authoritative.attachments,
+            tables: authoritative.tables,
+            blocks: authoritative.blocks,
+            listMarkers: authoritative.listMarkers,
+            atoms: authoritative.atoms,
+            sourceUTF16Count: authoritative.sourceUTF16Count
+        )
+        session.installPresentation(wrong, tree: session.authoritativeTree, provisional: true)
+        session.updateWYSIWYGModeState {
+            $0.selection = ProjectionSelection(utf16: NSRange(location: 3, length: 0), revision: wrong.projectionRevision)
+        }
+        session.scheduleParse()
+        await awaitReconciliations(trace, revision: revision, count: 2)
+
+        try #require(recoveries(trace).count == 1, "the wrong provisional snapshot was not recovered")
+        let installed = try #require(session.presentation)
+        let selection = try #require(session.wysiwygModeState.selection, "the recovery dropped the caret")
+        #expect(selection.range.utf16 == NSRange(location: 3, length: 0))
+        #expect(selection.range.revision == installed.projectionRevision, "the caret belongs to a snapshot that is gone")
+    }
+
+    // Verifies: REQ-109 — typing at the start of a heading goes on being accepted, keystroke after
+    // keystroke, as the authoritative parse of each lands between them. Agent-drive run
+    // 45943545906 clicked into the app on a runner, typed "Agent " before "Typography proof",
+    // and the first keystroke was recovered as a COR-71 disagreement; the rest were lost.
+    //
+    // The second keystroke is sent without capturing a selection first, as AppKit sends it: the
+    // caret is wherever the first keystroke and its reconciliation left the session's selection.
+    @Test func typingAtTheStartOfAHeadingContinues() async throws {
+        let trace = InMemoryEditorTrace()
+        let harness = try PerformanceBoundaryTests.EditorHarness(source: "# Typography proof\n\nParagraph one.\n", trace: trace)
+        let opened = harness.document.sourceVersion
+        await awaitReconciliations(trace, revision: opened, count: 1)
+        harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
+
+        harness.typeCharacter("A", at: NSRange(location: 0, length: 0))
+        let first = harness.document.sourceVersion
+        try #require(first != opened, "the first keystroke did not commit")
+        let provisional = try #require(harness.session.presentation)
+        await awaitReconciliations(trace, revision: first, count: 1)
+        let differences = harness.session.presentation.map { Self.differences(provisional, $0) } ?? ["no presentation"]
+        // The view's update on a new snapshot, which SwiftUI performs in the app.
+        harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
+
+        harness.session.updateOrigin.with(.nativeUserInput) {
+            _ = harness.coordinator.textView(
+                harness.textView,
+                shouldChangeTextIn: NSRange(location: 1, length: 0),
+                replacementString: "g"
+            )
+        }
+
+        #expect(harness.document.text.hasPrefix("# Ag"), "the second keystroke was lost: \(harness.document.text.prefix(24).debugDescription)")
+        #expect(recoveries(trace).isEmpty, "a keystroke at the start of a heading was recovered: \(recoveries(trace)); provisional vs authoritative: \(differences)")
+    }
 }
