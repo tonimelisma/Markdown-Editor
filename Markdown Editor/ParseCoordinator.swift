@@ -247,7 +247,7 @@ final class ParseCoordinator {
                     // The caret the user sees is in the provisional snapshot: carry it, through
                     // that snapshot's coordinates, into the authority, or typing goes on being
                     // refused after the recovery.
-                    carried = session.wysiwygSourceSelection()
+                    carried = nil // FALSIFY
                     session.presentation = nil
                     session.authoritativeTree = nil
                     session.updateWYSIWYGModeState {

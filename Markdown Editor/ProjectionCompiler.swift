@@ -489,7 +489,7 @@ private nonisolated struct CompilerBuilder {
         let utf16 = (string as NSString).length
         utf16Length += utf16
         let projection = NSRange(location: start, length: utf16)
-        let insertAt = sourceUTF16(of: node).map(NSMaxRange) ?? lastSourceEnd
+        let insertAt = sourceUTF16(of: node).map(NSMaxRange) ?? 0 // FALSIFY
         let policy: SyntheticInsertionPolicy = refuseEdits ? .refuse : .atSourceLocation(insertAt)
         segments.append(.synthetic(projection: projection, kind: kind, insertion: policy))
         runs.append(
