@@ -289,7 +289,7 @@ struct BlockBoundaryTypingTests {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = typist.harness.textView
         let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
-        window.beginSheet(sheet)
+        window.beginSheet(sheet, completionHandler: nil)
         defer { window.endSheet(sheet) }
         try #require(window.attachedSheet === sheet, "the sheet did not attach")
         try typist.click(after: "guide")
