@@ -388,24 +388,29 @@ struct DiagnosticLogTests {
         let document = MarkdownDocument()
         let trace = InMemoryEditorTrace()
         document.trace = trace
-        document.installTextForTesting("# Title\n\nBody paragraph.\n")
+        let text = "# Title\n\nBody paragraph.\n"
+        document.installTextForTesting(text)
         let session = EditorSession(performanceSamplerCoordinator: DiagnosticRunCoordinator())
         session.attach(document: document)
         defer { session.detach() }
-        // The parse runs off the main actor and then waits for it, held here for longer than
-        // any parse of three lines takes, even queued behind the suite's other parses for
-        // cmark's lock (CI 46019135155 timed one at 246 ms).
-        occupyMainActor(seconds: 1.5)
         let revision = document.sourceVersion
-        for _ in 0..<400 where trace.eventsMatching({
-            if case .reconciliationApplied(_, let applied, _, _) = $0 { return applied == revision }
-            return false
-        }).isEmpty {
-            try? await Task.sleep(for: .milliseconds(5))
+        // Hold the main actor until the parse has finished off it, which the session's memo
+        // shows, then half a second more: the parse's hop is then sure to have waited that long,
+        // however long cmark's lock kept the parse waiting (CI 46020138506: 1.9 s).
+        holdMainActor(until: { session.intentRecorder.parseMemo.tree(source: text, sourceVersion: revision) != nil }, then: 0.5)
+        var whole: UInt64?
+        for _ in 0..<2_000 where whole == nil {
+            for event in trace.events {
+                if case .reconciliationApplied(_, let applied, _, let duration) = event, applied == revision { whole = duration }
+            }
+            if whole == nil { try? await Task.sleep(for: .milliseconds(5)) }
         }
         let summary = session.performanceSampler?.drainSummaries().first { $0.metric == .parseProjection }
+        #expect(whole != nil, "the parse never landed")
         #expect(summary != nil, "no parse was measured")
-        #expect((summary?.max ?? .max) < 1_000_000_000, "the wait for the main actor was timed as parsing: \(String(describing: summary))")
+        if let whole, let summary {
+            #expect(summary.max + 400_000_000 <= whole, "the wait for the main actor was timed as parsing: parse \(summary.max) ns of \(whole) ns")
+        }
     }
 
     // Verifies: REQ-123 — a document opened before its window exists parses once when the window
