@@ -55,7 +55,7 @@ struct EditorMenuCommandTests {
 
         #expect(KeyWindowCommands.controller(of: window) === commands)
         #expect(KeyWindowCommands.controller(of: nil) == nil)
-        let registry = KeyWindowCommands.shared
+        let registry = KeyWindowCommands(observingKeyWindow: false)
         registry.refresh(keyWindow: window)
         #expect(registry.controller === commands, "the key document window's commands were not published")
         #expect(registry.enabled.contains(.sourceMode))
@@ -85,9 +85,8 @@ struct EditorMenuCommandTests {
         let toolbar = EditorToolbarController()
         toolbar.commandController = commands
         toolbar.install(on: window)
-        let registry = KeyWindowCommands.shared
+        let registry = KeyWindowCommands(observingKeyWindow: false)
         registry.refresh(keyWindow: window)
-        defer { registry.refresh(keyWindow: nil) }
         #expect(!registry.enabled.contains(.italic), "italic was available with no presentation in WYSIWYG")
 
         session.setMode(.source)

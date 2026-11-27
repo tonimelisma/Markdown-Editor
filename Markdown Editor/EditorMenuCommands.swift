@@ -29,7 +29,10 @@ final class KeyWindowCommands: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private var stateSubscription: AnyCancellable?
 
-    private init() {
+    /// `observingKeyWindow` false is for a test: an instance that only its own `refresh` calls
+    /// change. The shared one is refreshed by every window's toolbar, in every test running.
+    init(observingKeyWindow: Bool = true) {
+        guard observingKeyWindow else { return }
         let center = NotificationCenter.default
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in

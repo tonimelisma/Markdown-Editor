@@ -40,7 +40,15 @@ struct PresentationRecoveryTests {
         check("tables", a.tables, b.tables)
         check("blocks", a.blocks, b.blocks)
         check("listMarkers", a.listMarkers, b.listMarkers)
-        check("atoms", a.atoms, b.atoms)
+        // Atoms are compared as `hasSameContent` compares them, and the first that differs is
+        // shown from both sides: a whole array is too long to read either side in a message.
+        let atomsA = ProjectionAtom.coalescingIdentity(a.atoms), atomsB = ProjectionAtom.coalescingIdentity(b.atoms)
+        if atomsA != atomsB {
+            let index = zip(atomsA, atomsB).firstIndex { $0 != $1 } ?? min(atomsA.count, atomsB.count)
+            let left = atomsA.indices.contains(index) ? String(describing: atomsA[index]) : "none"
+            let right = atomsB.indices.contains(index) ? String(describing: atomsB[index]) : "none"
+            out.append("atoms (\(atomsA.count) vs \(atomsB.count)) first differ at \(index): \(left) ≠ \(right)")
+        }
         return out
     }
 
@@ -97,7 +105,7 @@ struct PresentationRecoveryTests {
         let trace = InMemoryEditorTrace()
         let harness = try PerformanceBoundaryTests.EditorHarness(source: "Hello world.\n", trace: trace)
         let opened = harness.document.sourceVersion
-        await awaitReconciliations(trace, revision: opened, count: 1)
+        await harness.settle()
 
         harness.typeCharacter("!", at: NSRange(location: 11, length: 0))
         let typed = harness.document.sourceVersion
@@ -274,7 +282,7 @@ struct PresentationRecoveryTests {
         // The rendered length from a harness whose opening parse has landed, as every loop's has.
         let probe = InMemoryEditorTrace()
         let opened = try PerformanceBoundaryTests.EditorHarness(source: source, trace: probe)
-        await awaitReconciliations(probe, revision: opened.document.sourceVersion, count: 1)
+        await opened.settle()
         let rendered = opened.session.presentation?.renderedString ?? ""
         try #require((rendered as NSString).length > 20, "the fixture rendered as \(rendered.debugDescription)")
         var recovered: [String] = []
@@ -283,7 +291,7 @@ struct PresentationRecoveryTests {
         for offset in 0...(rendered as NSString).length {
             let trace = InMemoryEditorTrace()
             let harness = try PerformanceBoundaryTests.EditorHarness(source: source, trace: trace)
-            await awaitReconciliations(trace, revision: harness.document.sourceVersion, count: 1)
+            await harness.settle()
             harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
             let before = harness.document.sourceVersion
             harness.typeCharacter("x", at: NSRange(location: offset, length: 0))
@@ -319,7 +327,7 @@ struct PresentationRecoveryTests {
         let source = try String(contentsOf: fixture, encoding: .utf8)
         let trace = InMemoryEditorTrace()
         let harness = try PerformanceBoundaryTests.EditorHarness(source: source, trace: trace)
-        await awaitReconciliations(trace, revision: harness.document.sourceVersion, count: 1)
+        await harness.settle()
         harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
 
         var disagreements: [String] = []
@@ -354,7 +362,7 @@ struct PresentationRecoveryTests {
         let trace = InMemoryEditorTrace()
         let harness = try PerformanceBoundaryTests.EditorHarness(source: "# Typography proof\n\nParagraph one.\n", trace: trace)
         let opened = harness.document.sourceVersion
-        await awaitReconciliations(trace, revision: opened, count: 1)
+        await harness.settle()
         harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
 
         harness.typeCharacter("A", at: NSRange(location: 0, length: 0))
