@@ -68,6 +68,15 @@ struct Markdown_EditorApp: App {
                 Button("Move To…") { Self.send("moveDocument:") }
                 Button("Revert Document…") { Self.send("revertDocumentToSaved:") }
             }
+            // REQ-130: the File menu had no Print or Page Setup, so ⌘P reached no menu item and
+            // printing was unreachable (tour 45990628438; every tour's print step showed no
+            // panel). NSDocument's own actions, which print through printOperation(withSettings:).
+            CommandGroup(replacing: .printItem) {
+                Button("Page Setup…") { Self.send("runPageLayout:") }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+                Button("Print…") { Self.send("printDocument:") }
+                    .keyboardShortcut("p")
+            }
         }
     }
 

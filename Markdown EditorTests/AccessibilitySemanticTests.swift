@@ -208,6 +208,10 @@ struct KeyboardCommandMatrixTests {
         for title in ["Close", "Save", "Duplicate", "Save As…", "Rename…", "Move To…", "Revert Document…"] {
             #expect(titles.contains(title), "the File menu offers \(titles), not \(title)")
         }
+        // REQ-130: Print and Page Setup, on their standard keys. The menu had neither.
+        let print = try #require(file.item(withTitle: "Print…"), "the File menu offers \(titles)")
+        #expect(print.keyEquivalent.lowercased() == "p" && print.keyEquivalentModifierMask.contains(.command))
+        #expect(titles.contains("Page Setup…"), "the File menu offers \(titles)")
         // Shift-Command-S, which AppKit may spell as a capital letter instead of the Shift flag.
         let duplicate = try #require(file.item(withTitle: "Duplicate"))
         let key = duplicate.keyEquivalent

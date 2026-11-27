@@ -80,7 +80,9 @@ WYSIWYG no spaces at a line's end, no Return and no Backspace (REQ-152, REQ-153)
   showing its original's images as missing, as the Versions browser showed a past version's;
 - every autosave holding the main thread for its whole write, 133–413 ms on a runner, while the
   person typed;
-- the Versions browser's animation and a duplicate's close dialog recorded as main-actor stalls.
+- the Versions browser's animation and a duplicate's close dialog recorded as main-actor stalls;
+- no Print or Page Setup in the File menu, so ⌘P never printed, a gap every earlier tour missed
+  because its print step looked only for faults.
 
 It is done when the tour runs through with no failed step and no unexpected fault in the app's log.
 

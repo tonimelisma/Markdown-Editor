@@ -254,11 +254,11 @@ expect-file notes/notes.md "Unsaved words."
 file notes/notes.md m-notes
 expect-no-faults
 
-# --- N. Print.
+# --- N. Print: File › Print… shows the print panel, and Cancel closes it.
 key cmd+p
 wait 3
 shot-screen n-print
-key escape
+press Cancel
 wait 1
 no-dialogs
 expect-no-faults
