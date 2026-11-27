@@ -293,6 +293,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// local-network prompt, it never did, and every later save of every document waited for it
     /// forever (tours 45990628438, 45996638231; probe 45992765502). Printing reads the
     /// presentation and changes nothing, so it needs none of that serialization.
+    ///
+    /// The panel's first load is AppKit's work on the main thread, 0.5–2 s on a runner, so it runs
+    /// inside `AppModalSession.aroundAppKitWork` rather than counting as the app's stall.
     override func printDocument(_ sender: Any?) {
         guard let window = windowForSheet else { NSSound.beep(); return }
         let operation: NSPrintOperation
@@ -305,6 +308,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         operation.showsPrintPanel = true
         operation.showsProgressPanel = true
         operation.jobTitle = displayName
+        AppModalSession.shared.aroundAppKitWork { presentPrintPanel(operation, window) }
+    }
+
+    /// Begins the print sheet. AppKit loads the panel before this returns, so `printDocument`
+    /// calls it inside `aroundAppKitWork`; a test replaces it to see that.
+    var presentPrintPanel: (NSPrintOperation, NSWindow) -> Void = { operation, window in
         operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
     }
 

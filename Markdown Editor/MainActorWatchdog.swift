@@ -17,10 +17,14 @@ import Synchronization
 nonisolated final class AppModalSession: Sendable {
     static let shared = AppModalSession()
 
-    private struct State { var depth = 0; var epoch: UInt64 = 0 }
+    private struct State { var depth = 0; var appKitWork = 0; var epoch: UInt64 = 0 }
     private let state = Mutex(State())
 
     var isActive: Bool { state.withLock { $0.depth > 0 } }
+
+    /// Whether the main thread is inside a call into AppKit that does AppKit's own work before it
+    /// returns (`aroundAppKitWork`): to the watchdog, a wait in AppKit's own loop, with its bound.
+    var isAppKitWorking: Bool { state.withLock { $0.appKitWork > 0 } }
 
     /// Advances as each session begins and ends: a measurement that starts at one epoch and ends
     /// at another overlapped a session, though none may be running at either end.
@@ -40,6 +44,19 @@ nonisolated final class AppModalSession: Sendable {
     /// (`MainRunLoop.isAppKitWait`): a measurement spanning it did not measure the app.
     func noteAppKitWait() {
         state.withLock { $0.epoch &+= 1 }
+    }
+
+    /// Runs `body`, a call that hands the main thread to AppKit's own synchronous work and returns
+    /// when AppKit has done it, such as presenting the print panel: its first load waits on the
+    /// print system and loads PrintingUI, 0.5–2 s on a runner (probe 46007142113, and agent-drive
+    /// 46004639447's sample, in which the app's own code was one sample of it). Unlike `around`,
+    /// this is not the person's time but AppKit's, and it is bounded: the watchdog treats it as a
+    /// wait in AppKit's own loop, reported only past `MainActorWatchdog.appKitWaitBoundMillis`,
+    /// since the print activity's wedge showed that a print can fail to return.
+    func aroundAppKitWork<T>(_ body: () throws -> T) rethrows -> T {
+        state.withLock { $0.appKitWork += 1; $0.epoch &+= 1 }
+        defer { state.withLock { $0.appKitWork = max(0, $0.appKitWork - 1); $0.epoch &+= 1 } }
+        return try body()
     }
 
     /// Runs `body`, an app-modal presentation that returns when the person dismisses it.
@@ -158,6 +175,7 @@ final class MainActorWatchdog {
         thresholdMillis: UInt64,
         appKitWaitBoundMillis: UInt64 = MainActorWatchdog.appKitWaitBoundMillis,
         isModalSessionActive: @Sendable () -> Bool = { AppModalSession.shared.isActive },
+        isAppKitWorking: @Sendable () -> Bool = { AppModalSession.shared.isAppKitWorking },
         mainRunLoopMode: @Sendable () -> String? = { MainRunLoop.currentMode() },
         report: Report
     ) async {
@@ -179,7 +197,9 @@ final class MainActorWatchdog {
         let recent: UInt64 = 250_000_000
         var lastSeenWaiting: UInt64?
         func look() {
-            if MainRunLoop.isAppKitWait(mainRunLoopMode()) { lastSeenWaiting = DispatchTime.now().uptimeNanoseconds }
+            if isAppKitWorking() || MainRunLoop.isAppKitWait(mainRunLoopMode()) {
+                lastSeenWaiting = DispatchTime.now().uptimeNanoseconds
+            }
         }
         for _ in 0..<5 {
             look()

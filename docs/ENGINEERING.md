@@ -704,6 +704,10 @@ ordinary files the user owns and can read, delete, or ignore.
   stall. In any other mode AppKit is waiting in a loop that serves no queue, as the title bar's
   rename after Duplicate waits on its view service. The watchdog reports such a wait only past ten
   seconds, so a deadlock inside one, as the close hang was, is still reported.
+- AppKit's own synchronous work for the app counts as such a wait, with the same bound, where the
+  app hands the main thread to it (`AppModalSession.aroundAppKitWork`): Print, whose panel's first
+  load waits on the print system for up to two seconds in the default mode, where nothing else
+  tells it from the app's own stall.
 - Reconciliation instrumentation records any session publication during view reconciliation, and
   the host-update meter reports a sustained update rate — the signature of a self-feeding loop,
   which presents as high CPU rather than as a hang.
