@@ -68,6 +68,12 @@ the rejected alternatives, and the respect in which the chosen one is worse.
 - a release workflow that publishes a signed disk image and the update feed for every `main`
   commit that changes the app (`DECISIONS.md`, 2026-11-26; `DEVELOPMENT.md`).
 
+An installed copy updates itself: the owner reported it on 2026-11-27, after v1.0.3–v1.0.6, which
+closes REQ-033. v1.0.0 could not start, because an ad hoc build cannot load its own
+`Sparkle.framework` under the hardened runtime (`DECISIONS.md`, 2026-11-26). Since then every release
+launches its exact bundle twice before publishing, and its feed, archive signature (with a
+tampered-copy control), update key and entitlements are checked from the public download URLs.
+
 Still open:
 
 - The five-minute budget. The first green run (CI 45855830007, 628 tests) took 5m12s from push to
@@ -83,21 +89,6 @@ Still open:
   window is created at its final size (`theDocumentWindowIsCreatedAtItsFinalSize`). Building the
   Source editor lazily would save roughly another 10–20 ms, and REQ-052's persistent editors make
   it a larger change than that is worth. Nothing measures this on a real Mac yet.
-- An installed copy seen updating itself. v1.0.0 (build 202) could not start: an ad hoc build
-  cannot load its own `Sparkle.framework` under the hardened runtime (`DECISIONS.md`,
-  2026-11-26), so no copy of it can update itself. v1.0.1 (build 208) was published on
-  2026-11-27 by Release run 45927961315. Both of its launches passed, and the first did not even
-  stall. These were checked from the public download URLs:
-  - The feed names version 1.0.1, build 208, and the archive length matches it.
-  - The archive's EdDSA signature verifies against the `SPARKLE_SEED` public key, and a copy with
-    one bit flipped is rejected.
-  - The app carries that key and the feed URL, checks every hour, and sends no system profile.
-  - Its entitlements include the library-validation exception, and `get-task-allow` is absent.
-
-  v1.0.2 (build 209, Release run 45929312450) followed, after `main`'s CI had run its full macOS
-  job (CI 45928952330). It was checked the same way, and both of its launches passed. REQ-033
-  stays `Active` until a copy installed by hand from a published disk image takes a later release
-  by itself.
 - Mac runners that never come. Twice on 2026-11-26 a `main` job waited 15 minutes for an
   `xcode-27` runner and was dropped (CI 45860219913, Release 45866221874 attempt 1), while
   pull-request jobs started within a minute. Both ended after exactly 15 minutes with no runner and
