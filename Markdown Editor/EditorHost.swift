@@ -351,7 +351,7 @@ struct EditorHostView: NSViewRepresentable {
                 if coord.nativeStorageState == .idle, text.string != document.text {
                     coord.withOrigin(.programmaticPresentation) {
                         text.string = document.text
-                        coord.highlight()
+                        coord.highlight(afterReplacingText: true)
                         // Replacing storage collapses the native caret. Re-apply the session's
                         // selection so the visible caret and `sourceModeState.selection` — which
                         // toolbar commands act on — cannot diverge after a load or revert.

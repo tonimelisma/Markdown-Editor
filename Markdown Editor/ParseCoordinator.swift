@@ -229,6 +229,7 @@ final class ParseCoordinator {
                 }
                 let imageResolutionTotal = imageResolutionDuration
                 let applicationStart = DispatchTime.now().uptimeNanoseconds
+                var carried: SourceSelection?
                 if let provisional = session.presentation,
                    session.provisionalPresentationID == provisional.id,
                    provisional.sourceRevision == authoritative.sourceRevision,
@@ -243,6 +244,10 @@ final class ParseCoordinator {
                         sourceRevision: provisional.sourceRevision.value,
                         reason: .patchUnprovable
                     ))
+                    // The caret the user sees is in the provisional snapshot: carry it, through
+                    // that snapshot's coordinates, into the authority, or typing goes on being
+                    // refused after the recovery.
+                    carried = session.wysiwygSourceSelection()
                     session.presentation = nil
                     session.authoritativeTree = nil
                     session.updateWYSIWYGModeState {
@@ -254,10 +259,10 @@ final class ParseCoordinator {
                 }
                 if session.presentation?.sourceRevision.value == authoritative.sourceRevision.value {
                     session.updateOrigin.with(.programmaticPresentation) {
-                        session.installPresentation(authoritative, tree: tree, provisional: false, intent: intent)
+                        session.installPresentation(authoritative, tree: tree, provisional: false, intent: intent, carrying: carried)
                     }
                 } else {
-                    session.installPresentation(authoritative, tree: tree, provisional: false, intent: intent)
+                    session.installPresentation(authoritative, tree: tree, provisional: false, intent: intent, carrying: carried)
                 }
                 let authoritativeApplicationDuration = DispatchTime.now().uptimeNanoseconds &- applicationStart
                 session.performanceSampler?.record(.parseProjection, durationNanos: parseProjectionDuration)

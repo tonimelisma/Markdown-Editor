@@ -95,7 +95,6 @@ struct ContentView: View {
         } message: {
             Text(alertMessage)
         }
-        .focusedValue(\.editorCommandController, commandController)
         .sheet(
             isPresented: Binding(
                 get: { commandController.linkSheetPresented },

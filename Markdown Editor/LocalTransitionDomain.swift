@@ -63,6 +63,23 @@ nonisolated enum LocalTransitionDomain {
         }
     }
 
+    /// A local transition shifts runs and blocks by projection position alone, so it is exact only
+    /// for an edit with no run or block boundary at or inside it. At a boundary, whether typed
+    /// text joins what comes before, what comes after, or neither depends on the source markup
+    /// there, which only a parse knows: the shift put a character typed at the start of a heading
+    /// outside the heading, the parse put it inside, and COR-71 recovered every such keystroke
+    /// (agent-drive run 45943545906; `aKeystrokeAtAnyOffsetIsReconciledWithoutRecovery`). Such an
+    /// edit takes the semantic route, which builds the exact next presentation.
+    static func touchesNoBoundary(_ range: NSRange, in presentation: PresentationSnapshot) -> Bool {
+        let first = range.location, last = NSMaxRange(range)
+        func touches(_ r: NSRange) -> Bool {
+            r.length > 0 && ((r.location >= first && r.location <= last)
+                || (NSMaxRange(r) >= first && NSMaxRange(r) <= last))
+        }
+        return !presentation.runs.contains { touches($0.utf16Range) }
+            && !presentation.blocks.contains { touches($0.projectionRange) }
+    }
+
     /// Plans only the classes proven by Stage 0 to be identity/atomic local transitions. This
     /// route deliberately calls the WYSIWYG source mapper and literal encoder directly: the
     /// candidate-proof helper is authoritative reconciliation work and is not allowed to hide a

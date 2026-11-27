@@ -202,11 +202,22 @@ enum SourceEditor {
 
         // REQ-045: debounce + off-main highlight; no document-size styling suspension.
         @discardableResult
-        func highlight(debounced: Bool = false, intent: IntentContext? = nil) -> Task<Void, Never>? {
+        ///
+        /// `afterReplacingText`: the whole storage was just replaced, which gives every character
+        /// the attributes of the first one (a heading's, in most documents). The line cache would
+        /// restyle only the lines whose lexical result changed and leave every other line in the
+        /// heading's font (agent-drive run 45945859891, Source mode after a WYSIWYG edit), so it
+        /// is discarded and every line restyled.
+        func highlight(
+            debounced: Bool = false,
+            intent: IntentContext? = nil,
+            afterReplacingText: Bool = false
+        ) -> Task<Void, Never>? {
             guard let textView else { return nil }
             version &+= 1
             let expectedVersion = version
             let snapshot = textView.string
+            if afterReplacingText { pendingStyleRange = nil }
             let editedRange = pendingStyleRange
             let sourceRevision = document.sourceVersion
             let expectedDocument = document
@@ -235,6 +246,7 @@ enum SourceEditor {
                     if Task.isCancelled { return }
                 }
                 guard let self else { return }
+                if afterReplacingText { await highlighter.reset() }
                 let patch: SourceHighlightPatch
                 do {
                     patch = try await highlighter.highlight(

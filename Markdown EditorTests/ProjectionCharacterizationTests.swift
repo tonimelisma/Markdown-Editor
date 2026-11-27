@@ -24,6 +24,24 @@ struct ProjectionCharacterizationTests {
         #expect(hard.segments.contains { if case .synthetic(_, .hardLineBreak, _) = $0 { return true }; return false })
     }
 
+    // Verifies: REQ-109 — a line break inserts where its line ends. cmark gives soft and hard
+    // break nodes no source position, and their insertion location fell back to 0, the start of
+    // the document: a provisional snapshot shifted that 0 with each keystroke typed before the
+    // break, the parse put it back, and every such keystroke was recovered as a COR-71 fault.
+    @Test func lineBreaksInsertWhereTheirLineEnds() throws {
+        func insertions(_ source: String, _ kind: SyntheticKind) throws -> [SyntheticInsertionPolicy] {
+            build(source, tree: try parse(source)).segments.compactMap {
+                if case .synthetic(_, let k, let insertion) = $0, k == kind { return insertion }
+                return nil
+            }
+        }
+        // "first" spans UTF-16 7..<12 in "Intro\n\nfirst\nsecond\n"; the soft break follows it.
+        #expect(try insertions("Intro\n\nfirst\nsecond\n", .softLineBreak) == [.atSourceLocation(12)])
+        // A hard break may carry a position of its own; either way it is not the document's start.
+        let hard = try insertions("Intro\n\nfirst\\\nsecond\n", .hardLineBreak)
+        #expect(hard.count == 1 && !hard.contains(.atSourceLocation(0)), "hard break inserts at \(hard)")
+    }
+
     // Verifies: REQ-080/105 — every semantic table cell is a distinct paragraph rather than a
     // tab-delimited span, allowing TextKit's paragraph-level table blocks to form columns.
     @Test func tableCellsUseParagraphSeparators() throws {

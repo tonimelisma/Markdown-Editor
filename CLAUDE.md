@@ -136,10 +136,11 @@ suite is trustworthy.
 
 ## 4. No UI tests
 
-No XCUITest target, no screen automation, no accessibility-inspection assertions. Automated
-verification is unit and component tests; constructing AppKit components directly is fine.
+No XCUITest target, no UI-driving test, no accessibility-inspection assertions. Automated
+verification, the gate and every requirement's proof, is unit and component tests; constructing
+AppKit components directly is fine.
 
-Three narrow exceptions, all passive:
+Three passive exceptions, and one instrument that drives:
 
 - `Scripts/smoke-test.sh` launches the built app on a fixture and asserts only on the structured
   diagnostic records it writes. It never drives or reads the UI.
@@ -153,6 +154,12 @@ Three narrow exceptions, all passive:
   the user asks for screenshots; it needs a Mac, so a cloud session leaves the gallery as it is. A screen an ordinary launch does not reach is *named at launch*
   (`MARKDOWN_EDITOR_SMOKE_SCENE`) and presented by the app through its own command routes — never
   by clicking. Each image is committed only if that run's structured log passes.
+- `.github/workflows/agent-drive.yml` is an agent's hands and eyes. It runs a scenario of real
+  clicks, keys, menu choices and accessibility presses (`Scripts/agent-drive.swift`) against the
+  app on a GitHub Mac runner, and uploads a screenshot, tree or value after each step. Use it to
+  try a change the way a person would, then look at every image. It is never a gate and never a
+  proof: a defect it finds is fixed with a unit or component test that fails for it
+  (`docs/DECISIONS.md`, 2026-11-27).
 
 ## 5. Documentation
 

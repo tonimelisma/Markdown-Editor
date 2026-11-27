@@ -60,6 +60,48 @@ struct EditorToolbarConstructionTests {
         #expect(first.toolbar === existing)
     }
 
+    // Verifies: REQ-108 — the mode control shows the mode the editor is in, after a click on it
+    // and after a change from elsewhere (the View menu, its shortcut). The control followed
+    // `session.mode` from a `$mode` sink, which runs before the property changes, so every change
+    // left the previous mode selected. No test looked at the control after a change; the UI probe
+    // of PR #97 (run 45942394078) saw it, pressing Source and capturing Source text under a
+    // selected WYSIWYG segment.
+    @Test func theModeControlFollowsTheMode() throws {
+        let document = MarkdownDocument()
+        document.installTextForTesting("Hello.\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        defer { session.detach() }
+        let commands = EditorCommandController()
+        commands.bind(document: document, session: session, actionRouter: EditorActionRouter(), window: nil)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 480),
+            styleMask: [.titled], backing: .buffered, defer: true
+        )
+        let toolbar = EditorToolbarController()
+        toolbar.commandController = commands
+        toolbar.install(on: window)
+        let item = try #require(
+            window.toolbar?.items.first { $0.itemIdentifier == EditorToolbarController.modeIdentifier },
+            "the installed toolbar has no mode item"
+        )
+        let segmented = try #require(item.view as? NSSegmentedControl)
+        #expect(segmented.selectedSegment == 0)
+
+        // A click: the control selects the segment, then sends its action.
+        segmented.selectedSegment = 1
+        segmented.sendAction(segmented.action, to: segmented.target)
+        #expect(session.mode == .source, "the click did not change the mode")
+        #expect(segmented.selectedSegment == 1, "the control snapped back after a click on Source")
+
+        // A change from outside the control, as the View menu makes.
+        _ = commands.perform(.wysiwygMode)
+        #expect(session.mode == .wysiwyg)
+        #expect(segmented.selectedSegment == 0, "the control kept Source after the menu chose WYSIWYG")
+        _ = commands.perform(.sourceMode)
+        #expect(segmented.selectedSegment == 1, "the control kept WYSIWYG after the menu chose Source")
+    }
+
     // Verifies: REQ-058/108; COR-28 — every toolbar item the controller vends carries an image.
     //
     // An NSToolbarItem with neither an image nor a view draws as an empty control with a label

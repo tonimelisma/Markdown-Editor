@@ -40,7 +40,15 @@ struct PresentationRecoveryTests {
         check("tables", a.tables, b.tables)
         check("blocks", a.blocks, b.blocks)
         check("listMarkers", a.listMarkers, b.listMarkers)
-        check("atoms", a.atoms, b.atoms)
+        // Atoms are compared as `hasSameContent` compares them, and the first that differs is
+        // shown from both sides: a whole array is too long to read either side in a message.
+        let atomsA = ProjectionAtom.coalescingIdentity(a.atoms), atomsB = ProjectionAtom.coalescingIdentity(b.atoms)
+        if atomsA != atomsB {
+            let index = zip(atomsA, atomsB).enumerated().first { $0.element.0 != $0.element.1 }?.offset ?? min(atomsA.count, atomsB.count)
+            let left = atomsA.indices.contains(index) ? String(describing: atomsA[index]) : "none"
+            let right = atomsB.indices.contains(index) ? String(describing: atomsB[index]) : "none"
+            out.append("atoms (\(atomsA.count) vs \(atomsB.count)) first differ at \(index): \(left) ≠ \(right)")
+        }
         return out
     }
 
@@ -97,7 +105,7 @@ struct PresentationRecoveryTests {
         let trace = InMemoryEditorTrace()
         let harness = try PerformanceBoundaryTests.EditorHarness(source: "Hello world.\n", trace: trace)
         let opened = harness.document.sourceVersion
-        await awaitReconciliations(trace, revision: opened, count: 1)
+        await harness.settle()
 
         harness.typeCharacter("!", at: NSRange(location: 11, length: 0))
         let typed = harness.document.sourceVersion
@@ -218,5 +226,167 @@ struct PresentationRecoveryTests {
 
         #expect(recoveries(trace).count == 1, "a provisional snapshot that disagreed with the parse was not recorded: \(recoveries(trace))")
         #expect(session.presentation?.runs.isEmpty == false, "the wrong provisional snapshot was kept")
+    }
+
+    // Verifies: REQ-109 — a recovery keeps the caret. The recovery cleared the provisional snapshot
+    // before installing the authority, and the selection was carried only through the snapshot
+    // being replaced, so it was dropped. The caret stayed on screen and every keystroke after it
+    // was refused without a trace: agent-drive run 45943545906 typed "Agent " and the document
+    // received "A".
+    @Test func aRecoveryKeepsTheCaret() async throws {
+        let trace = InMemoryEditorTrace()
+        let document = MarkdownDocument()
+        document.trace = trace
+        document.installTextForTesting("Hello **world**.\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        defer { session.detach() }
+        session.setMode(.wysiwyg)
+        let revision = document.sourceVersion
+        await awaitReconciliations(trace, revision: revision, count: 1)
+        let authoritative = try #require(session.presentation)
+
+        let wrong = PresentationSnapshot.make(
+            id: session.snapshotIDs.make(),
+            sourceRevision: authoritative.sourceRevision,
+            locationGeneration: authoritative.locationGeneration,
+            renderedString: authoritative.renderedString,
+            runs: [],
+            attachments: authoritative.attachments,
+            tables: authoritative.tables,
+            blocks: authoritative.blocks,
+            listMarkers: authoritative.listMarkers,
+            atoms: authoritative.atoms,
+            sourceUTF16Count: authoritative.sourceUTF16Count
+        )
+        session.installPresentation(wrong, tree: session.authoritativeTree, provisional: true)
+        session.updateWYSIWYGModeState {
+            $0.selection = ProjectionSelection(utf16: NSRange(location: 3, length: 0), revision: wrong.projectionRevision)
+        }
+        session.scheduleParse()
+        await awaitReconciliations(trace, revision: revision, count: 2)
+
+        try #require(recoveries(trace).count == 1, "the wrong provisional snapshot was not recovered")
+        let installed = try #require(session.presentation)
+        let selection = try #require(session.wysiwygModeState.selection, "the recovery dropped the caret")
+        #expect(selection.range.utf16 == NSRange(location: 3, length: 0))
+        #expect(selection.range.revision == installed.projectionRevision, "the caret belongs to a snapshot that is gone")
+    }
+
+    // Verifies: REQ-109 — a keystroke anywhere is reconciled without a recovery. Every caret
+    // offset of a document with a heading, a paragraph with a bold run, a list and a quote: a
+    // shifted provisional snapshot was wrong exactly where a keystroke meets the start of a run or
+    // block, which a test of one interior offset could not see.
+    @Test func aKeystrokeAtAnyOffsetIsReconciledWithoutRecovery() async throws {
+        let source = "# Title\n\nSome **bold** text.\n\n- item\n\n> quote\n"
+        // The rendered length from a harness whose opening parse has landed, as every loop's has.
+        let probe = InMemoryEditorTrace()
+        let opened = try PerformanceBoundaryTests.EditorHarness(source: source, trace: probe)
+        await opened.settle()
+        let rendered = opened.session.presentation?.renderedString ?? ""
+        try #require((rendered as NSString).length > 20, "the fixture rendered as \(rendered.debugDescription)")
+        var recovered: [String] = []
+        var refused: [String] = []
+        var typedAt = 0
+        for offset in 0...(rendered as NSString).length {
+            let trace = InMemoryEditorTrace()
+            let harness = try PerformanceBoundaryTests.EditorHarness(source: source, trace: trace)
+            await harness.settle()
+            harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
+            let before = harness.document.sourceVersion
+            harness.typeCharacter("x", at: NSRange(location: offset, length: 0))
+            guard harness.document.sourceVersion != before, let provisional = harness.session.presentation else {
+                // Refused here, as on an attachment: no provisional snapshot to check.
+                let reasons = trace.eventsMatching {
+                    if case .editRefused = $0 { return true }
+                    return false
+                }
+                refused.append("\(offset): \(reasons)")
+                continue
+            }
+            typedAt += 1
+            await awaitReconciliations(trace, revision: harness.document.sourceVersion, count: 1)
+            if !recoveries(trace).isEmpty {
+                let differences = harness.session.presentation.map { Self.differences(provisional, $0) } ?? []
+                recovered.append("offset \(offset): \(differences.first ?? "?")")
+            }
+        }
+        #expect(typedAt > 20, "only \(typedAt) offsets accepted a keystroke; refused at \(refused.prefix(6))")
+        #expect(recovered.isEmpty, "\(recovered.count) offsets recovered:\n\(recovered.joined(separator: "\n"))")
+    }
+
+    // Verifies: REQ-109 — typing a word into a real document is reconciled without a recovery,
+    // whether each keystroke's parse lands before the next or the keystrokes outrun them.
+    // Agent-drive run 45945859891 typed "Agent " at the start of smoke-rich.md's heading and
+    // three of the keystrokes inside the word were recovered, which a plain heading did not show.
+    @Test(arguments: [true, false])
+    func typingAWordIntoTheRichFixtureIsReconciledWithoutRecovery(waitingForEachParse: Bool) async throws {
+        let fixture = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Scripts/Fixtures/smoke-rich.md")
+        let source = try String(contentsOf: fixture, encoding: .utf8)
+        let trace = InMemoryEditorTrace()
+        let harness = try PerformanceBoundaryTests.EditorHarness(source: source, trace: trace)
+        await harness.settle()
+        harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
+
+        var disagreements: [String] = []
+        for (offset, character) in "Agent ".enumerated() {
+            let before = recoveries(trace).count
+            harness.typeCharacter(String(character), at: NSRange(location: offset, length: 0))
+            guard let provisional = harness.session.presentation else { continue }
+            let revision = harness.document.sourceVersion
+            if waitingForEachParse {
+                await awaitReconciliations(trace, revision: revision, count: 1)
+                harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
+                if recoveries(trace).count > before {
+                    let differences = harness.session.presentation.map { Self.differences(provisional, $0) } ?? []
+                    disagreements.append("\(character.debugDescription) at \(offset): \(differences.map { $0.prefix(400) })")
+                }
+            }
+        }
+        await awaitReconciliations(trace, revision: harness.document.sourceVersion, count: 1)
+
+        #expect(harness.document.text.hasPrefix("# Agent Typography proof"), "typed \(harness.document.text.prefix(30).debugDescription)")
+        #expect(recoveries(trace).isEmpty, "\(recoveries(trace).count) keystrokes recovered: \(disagreements)")
+    }
+
+    // Verifies: REQ-109 — typing at the start of a heading goes on being accepted, keystroke after
+    // keystroke, as the authoritative parse of each lands between them. Agent-drive run
+    // 45943545906 clicked into the app on a runner, typed "Agent " before "Typography proof",
+    // and the first keystroke was recovered as a COR-71 disagreement; the rest were lost.
+    //
+    // The second keystroke is sent without capturing a selection first, as AppKit sends it: the
+    // caret is wherever the first keystroke and its reconciliation left the session's selection.
+    @Test func typingAtTheStartOfAHeadingContinues() async throws {
+        let trace = InMemoryEditorTrace()
+        let harness = try PerformanceBoundaryTests.EditorHarness(source: "# Typography proof\n\nParagraph one.\n", trace: trace)
+        let opened = harness.document.sourceVersion
+        await harness.settle()
+        harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
+
+        harness.typeCharacter("A", at: NSRange(location: 0, length: 0))
+        let first = harness.document.sourceVersion
+        try #require(first != opened, "the first keystroke did not commit")
+        let provisional = try #require(harness.session.presentation)
+        await awaitReconciliations(trace, revision: first, count: 1)
+        let differences = harness.session.presentation.map { Self.differences(provisional, $0) } ?? ["no presentation"]
+        // The view's update on a new snapshot, which SwiftUI performs in the app.
+        harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
+
+        harness.session.updateOrigin.with(.nativeUserInput) {
+            _ = harness.coordinator.textView(
+                harness.textView,
+                shouldChangeTextIn: NSRange(location: 1, length: 0),
+                replacementString: "g"
+            )
+        }
+
+        let refusals = trace.eventsMatching {
+            if case .editRefused = $0 { return true }
+            return false
+        }
+        #expect(harness.document.text.hasPrefix("# Ag"), "the second keystroke was lost: \(harness.document.text.prefix(24).debugDescription); refusals: \(refusals); session selection \(String(describing: harness.session.wysiwygModeState.selection)), presentation \(String(describing: harness.session.presentation?.id))")
+        #expect(recoveries(trace).isEmpty, "a keystroke at the start of a heading was recovered: \(recoveries(trace)); provisional vs authoritative: \(differences)")
     }
 }

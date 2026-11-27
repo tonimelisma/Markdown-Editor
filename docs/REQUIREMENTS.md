@@ -25,7 +25,8 @@ how delivered behavior is verified. Current architecture is in
   needing no UI automation · `inherent` = satisfied by construction, either because a standard
   framework provides the behavior (`NSDocument` provides Versions) or because inspection proves
   an absence (makes no network calls) · `visual-review` = one passive screenshot of the app's own
-  window, for human oversight of rendering. `visual-review` is never a standalone proof.
+  window, for human oversight of rendering. `visual-review` is never a standalone proof, and
+  neither is an agent-drive run (`CLAUDE.md` §4), which drives the app for an agent to look at.
 - **Liveness:** a requirement promising a capability carries at least one proof that the
   capability succeeds, not only proofs that it refuses. See `CLAUDE.md` §3.
 

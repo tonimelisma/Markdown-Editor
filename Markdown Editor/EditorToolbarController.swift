@@ -10,7 +10,10 @@ import Combine
 @MainActor
 final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObject {
     weak var commandController: EditorCommandController? {
-        didSet { observeModeChanges() }
+        didSet {
+            observeModeChanges()
+            KeyWindowCommands.shared.refresh()
+        }
     }
     private weak var installedToolbar: NSToolbar?
     private var modeCancellable: AnyCancellable?
@@ -39,6 +42,9 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
         window.toolbar = toolbar
         installedToolbar = toolbar
         observeModeChanges()
+        // The menu bar finds a window's commands through its toolbar delegate; the window can
+        // become key before this runs.
+        KeyWindowCommands.shared.refresh()
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -220,17 +226,21 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
         _ = commandController?.perform(sender.selectedSegment == 1 ? .sourceMode : .wysiwygMode)
     }
 
+    /// `$mode` publishes in `willSet`, so the session still holds the old mode when the sink runs:
+    /// the control follows the delivered value. Reading `session.mode` there snapped the control
+    /// back to the previous mode after every change, found by the UI probe (PR #97, run
+    /// 45942394078), where pressing Source switched the editor and left WYSIWYG selected.
     private func observeModeChanges() {
-        modeCancellable = commandController?.session?.$mode.sink { [weak self] _ in
-            self?.syncModeControl()
+        modeCancellable = commandController?.session?.$mode.sink { [weak self] mode in
+            self?.syncModeControl(to: mode)
         }
-        syncModeControl()
+        syncModeControl(to: commandController?.session?.mode ?? .wysiwyg)
     }
 
-    private func syncModeControl() {
+    private func syncModeControl(to mode: EditorMode) {
         guard let item = installedToolbar?.items.first(where: { $0.itemIdentifier == Self.modeIdentifier }),
               let segmented = item.view as? NSSegmentedControl else { return }
-        segmented.selectedSegment = commandController?.session?.mode == .source ? 1 : 0
+        segmented.selectedSegment = mode == .source ? 1 : 0
     }
 
     private func command(for tag: Int) -> EditorCommand? {

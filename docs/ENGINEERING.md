@@ -152,7 +152,8 @@ An accepted WYSIWYG edit is a synchronous atomic transition:
    matches current state. If the authoritative snapshot's content differs from a provisional
    snapshot of the same revision and location generation, the local transition was wrong. That is a
    recorded fault (`presentationRecovered`, `patchUnprovable`; COR-71): WYSIWYG stops accepting
-   input until the authoritative snapshot is installed. The comparison is by content
+   input until the authoritative snapshot is installed, and the caret, read through the provisional
+   snapshot the user was looking at, is carried into it so typing goes on. The comparison is by content
    (`PresentationSnapshot.hasSameContent`), never by snapshot identity, which always differs. It
    applies only to a snapshot installed as provisional, not to a re-parse of an authoritative one.
 
@@ -165,7 +166,12 @@ identity/atomic edits and synthetic insertions proven to occur at source boundar
 local encoder/decoder transition; table-cell edits use the declared enclosing-block bounded
 transition; source-location synthetic edits, task-marker edits, mixed, cross-cell, ambiguous, and
 every unassigned class remain on their semantic/refusal routes without mutation in the parser-free
-path. A completed IME transaction is the one explicit exception: when its synthetic block-end
+path. So does an edit with a run or block boundary at or inside it
+(`LocalTransitionDomain.touchesNoBoundary`): the local transition shifts runs and blocks by projection
+position alone, and whether text typed at a boundary joins what precedes it, what follows it or neither
+depends on source markup only a parse sees. A character typed at the start of a heading was shifted out
+of it, and COR-71 recovered every such keystroke. On the semantic route the exact next presentation is
+built, and installed wherever the shifted one would differ from it. A completed IME transaction is the one explicit exception: when its synthetic block-end
 anchor maps exactly to a zero-length source range, the captured composition route treats that
 range as identity text and uses the same local transition. The local and bounded proof paths construct the complete next
 `PresentationSnapshot` from the accepted source mutation, then apply one exact or bounded patch.

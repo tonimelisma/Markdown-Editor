@@ -364,20 +364,24 @@ enum WYSIWYGEditor {
             else {
                 // Applied storage is not the snapshot this keystroke targets. Resynchronizing is
                 // a full replacement, so it is recorded for the same reason a post-commit
-                // recovery is: storage drift must never be silent.
+                // recovery is: storage drift must never be silent. So is the refused keystroke:
+                // typing that vanished without a trace took an agent-drive run to see
+                // (45943545906).
+                document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.stalePresentation)))
                 applyProjectionIfNeeded(reason: .reapplyIfDrift)
                 return false
             }
             let appliedPresentation = presentation
 
-            let projectionSelection = ProjectionSelection(
-                utf16: affectedCharRange,
-                revision: presentation.projectionRevision,
-                affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
-            )
-            guard session.wysiwygModeState.selection == projectionSelection else {
+            // The owner's selection decides, affinity included: AppKit's affinity after a
+            // programmatic insertion need not match the owner's for the same caret, and comparing
+            // it refused every keystroke after the first (agent-drive run 45944610103).
+            let nativeRange = ProjectionRange(affectedCharRange, revision: presentation.projectionRevision)
+            guard let projectionSelection = session.wysiwygModeState.selection,
+                  projectionSelection.range == nativeRange else {
                 // The native selection callback is the owner-state capture point. A mutation
                 // callback cannot promote its affected range into current state after the fact.
+                document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.ambiguousSelection)))
                 applyProjectionIfNeeded(reason: .reapplyIfDrift)
                 return false
             }
