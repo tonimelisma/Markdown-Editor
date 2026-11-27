@@ -83,10 +83,6 @@ Still open:
   window is created at its final size (`theDocumentWindowIsCreatedAtItsFinalSize`). Building the
   Source editor lazily would save roughly another 10–20 ms, and REQ-052's persistent editors make
   it a larger change than that is worth. Nothing measures this on a real Mac yet.
-- `presentationRecovered` (`patchUnprovable`, COR-71) in a smoke run. Repeat-smoke 45925262536's
-  second launch recorded a provisional WYSIWYG presentation that disagreed with the authoritative
-  parse of the same revision. The smoke edits had landed while a slow parse was still running. It
-  was seen once in about 40 launches, and the cause is not yet known.
 - An installed copy seen updating itself. v1.0.0 (build 202) could not start: an ad hoc build
   cannot load its own `Sparkle.framework` under the hardened runtime (`DECISIONS.md`,
   2026-11-26), so no copy of it can update itself. v1.0.1 (build 208) was published on
