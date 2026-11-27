@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import Synchronization
 import Testing
 @testable import Markdown_Editor
 
@@ -123,6 +124,28 @@ struct WindowCitizenshipTests {
         // hide the other silently opting out. Observed values are "MarkdownDocumentWindow" / true.
         #expect(window.frameAutosaveName == "MarkdownDocumentWindow", "no frame autosave name, so AppKit cannot restore or cascade")
         #expect(window.isRestorable, "window opts out of state restoration")
+    }
+
+    // Verifies: REQ-131 — a document window is laid out once, at its final size. Creating it at
+    // another size and resizing it afterwards laid out the whole window twice — SwiftUI's first
+    // render, both editors and the toolbar — which on a CI runner was a third of what the first
+    // window cost (DECISIONS.md, 2026-11-27). `makeWindowControllers` runs synchronously on the main
+    // actor, so every resize it causes is posted inside this call and nothing else's can be.
+    @Test func theDocumentWindowIsCreatedAtItsFinalSize() throws {
+        let document = MarkdownDocument()
+        let resizes = Mutex(0)
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification, object: nil, queue: nil
+        ) { _ in resizes.withLock { $0 += 1 } }
+        document.makeWindowControllers()
+        NotificationCenter.default.removeObserver(observer)
+        defer { document.close() }
+        let window = try #require(document.windowControllers.first?.window)
+
+        let contentSize = window.contentRect(forFrameRect: window.frame).size
+        #expect(contentSize == NSSize(width: 720, height: 560), "the window's content is \(contentSize), not its default size")
+        let count = resizes.withLock { $0 }
+        #expect(count == 0, "the window was resized \(count) time(s) after it was created, so it was laid out again")
     }
 
     // Verifies: REQ-131 — the command surface stays usable at the minimum window size. A toolbar

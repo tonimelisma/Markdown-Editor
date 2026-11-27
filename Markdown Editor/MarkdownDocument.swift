@@ -135,12 +135,20 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         trace?.record(route: .documentOpened, .documentOpened(utf16Count: (text as NSString).length))
         let contentView = ContentView(document: self)
         let hosting = NSHostingController(rootView: contentView)
-        let window = NSWindow(contentViewController: hosting)
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         // REQ-104: the screenshot verification may make the window taller so one capture can
         // show every semantic construct at once. Width stays at the default, because the default
         // width is what the reading measure and the untruncated toolbar are reviewed against.
-        window.setContentSize(NSSize(width: 720, height: MarkdownAppDelegate.smokeWindowHeight ?? 560))
+        let contentSize = NSSize(width: 720, height: MarkdownAppDelegate.smokeWindowHeight ?? 560)
+        // The hosting view takes its final size before the window exists. NSWindow(contentViewController:)
+        // lays out the whole tree — SwiftUI's first render, both editors, the toolbar — at the
+        // view's size, so a window created at another size and resized afterwards was laid out
+        // twice: on a CI runner the second pass (`setContentSize`) was 8 of the 24–28 main-thread
+        // samples the first window cost (repeat-smoke 45923942236). Now the first layout is the
+        // only one, and `setContentSize` below finds nothing to change.
+        hosting.view.frame = NSRect(origin: .zero, size: contentSize)
+        let window = NSWindow(contentViewController: hosting)
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.setContentSize(contentSize)
         window.minSize = NSSize(width: 320, height: 240)
         let controller = NSWindowController(window: window)
         controller.contentViewController = hosting
