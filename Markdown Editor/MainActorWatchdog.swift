@@ -109,7 +109,7 @@ final class MainActorWatchdog {
     static let defaultThresholdMillis: UInt64 = 1_000
     /// How long a wait in AppKit's own loop (`MainRunLoop`) may hold the main actor before it is
     /// reported: a deadlock there never ends.
-    static let appKitWaitBoundMillis: UInt64 = 10_000
+    nonisolated static let appKitWaitBoundMillis: UInt64 = 10_000
 
     /// Report sink. Invoked from a background task, so it must be safe off the main actor.
     typealias Report = @Sendable (UInt64) -> Void
