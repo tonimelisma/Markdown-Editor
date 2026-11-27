@@ -3,6 +3,7 @@
 //  Markdown EditorTests
 //
 
+import Synchronization
 import Testing
 import Foundation
 import AppKit
@@ -296,6 +297,36 @@ struct EditorIntegrationTests {
     }
 
     // MARK: - D10 observer teardown
+
+    // Verifies: REQ-005/REQ-015 — closing a document with typing in an open undo group ends no
+    // undo group. Ending it at close made NSDocument update its change count with synchronous
+    // waiting inside its own close activity, and the app hung for good (probe 45972423807).
+    @Test func closingADocumentAfterTypingEndsNoUndoGroup() {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("x")
+        _ = commitSourceMutationForTest(doc,
+            SourceMutation(
+                expectedRevision: 0,
+                range: NSRange(location: 1, length: 0),
+                expectedText: "",
+                replacement: "y",
+                selectionBefore: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+                selectionAfter: SourceSelection(utf16: NSRange(location: 2, length: 0)),
+                actionName: "Typing",
+                grouping: .typing
+            )
+        )
+        let undoManager = doc.undoManager
+        #expect((undoManager?.groupingLevel ?? 0) > 0, "the typing left no open group, so this proves nothing")
+        let groupsClosed = Mutex(0)
+        let token = NotificationCenter.default.addObserver(
+            forName: .NSUndoManagerDidCloseUndoGroup, object: undoManager, queue: nil
+        ) { _ in groupsClosed.withLock { $0 += 1 } }
+        defer { NotificationCenter.default.removeObserver(token) }
+        doc.close()
+        let closed = groupsClosed.withLock { $0 }
+        #expect(closed == 0, "closing ended \(closed) undo group(s)")
+    }
 
     // Verifies: REQ-015 — undo checkpoint observer is removed deterministically.
     @Test func undoCheckpointObserverRemovedOnDetach() {

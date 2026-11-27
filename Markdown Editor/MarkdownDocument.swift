@@ -736,7 +736,17 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     override func close() {
         trace?.record(route: .documentClosed, .documentClosed(sourceRevision: sourceVersion))
-        detachUndoCheckpointObserver()
+        // A closing document's open typing group is dropped, never ended. Ending it posts the
+        // did-close-group notification, NSDocument then updates its change count with synchronous
+        // waiting, and that waits on the close activity already in progress: closing a window
+        // after typing hung the app for good (agent-drive probe 45972423807, sampled). The
+        // history goes with the document, so there is nothing left to count.
+        if let token = undoCheckpointObserver {
+            notificationCenterForTesting.removeObserver(token)
+            undoCheckpointObserver = nil
+        }
+        typingGroupOpen = false
+        typingGroupHasChanges = false
         // COR-89's memos retain one source, tree and snapshot. Correctness does not depend on
         // clearing them — a new key supersedes the entry — but a closed document should not leave
         // megabytes resident.
