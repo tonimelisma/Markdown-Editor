@@ -78,6 +78,13 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
             item.view = segmented
             item.label = "Mode"
             item.paletteLabel = "Editor Mode"
+            // In a window too narrow for the toolbar, AppKit moves items into its overflow menu,
+            // where a view item without a menu form shows as nothing.
+            let modeMenu = NSMenu()
+            modeMenu.addItem(commandMenuItem("WYSIWYG", .wysiwygMode))
+            modeMenu.addItem(commandMenuItem("Source", .sourceMode))
+            item.menuFormRepresentation = NSMenuItem(title: "Editor Mode", action: nil, keyEquivalent: "")
+            item.menuFormRepresentation?.submenu = modeMenu
             return item
         case Self.paragraphIdentifier:
             return groupedMenuItem(itemIdentifier, label: "Paragraph", menu: paragraphMenu(), representing: .paragraph)

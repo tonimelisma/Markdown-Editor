@@ -48,6 +48,8 @@
 //   select LABEL TEXT          select the first TEXT in the element's value
 //   caret-after LABEL TEXT     put the caret just after the first TEXT in the element's value
 //   type TEXT                  real key events carrying TEXT
+//   type-field TEXT            wait for a text field (a dialog's, a sheet's) to have keyboard
+//                              focus, type TEXT into it as `type` does, and wait to see it there
 //   key COMBO                  one real key press: cmd+s, return, shift+left, cmd+b, escape…
 //   clipboard-text TEXT / clipboard-image PATH
 //   shell COMMAND…             run a shell command, as another app or the user in Terminal would
@@ -420,7 +422,7 @@ while let raw = readLine() {
     let rest = Array(words.dropFirst())
     let needsApp: Set<String> = [
         "shot", "tree", "windows", "focused", "value", "selection", "menu-items", "press", "menu", "click",
-        "clickat", "scroll", "focus", "caret", "select", "caret-after", "type", "key", "raise", "resize", "expect-value",
+        "clickat", "scroll", "focus", "caret", "select", "caret-after", "type", "type-field", "key", "raise", "resize", "expect-value",
         "expect-no-value", "expect-element", "expect-no-element", "expect-enabled", "expect-disabled",
         "expect-window", "expect-windows", "expect-no-window",
     ]
@@ -610,6 +612,26 @@ while let raw = readLine() {
         }
     case ("type", 1...):
         typeText(rest.joined(separator: " "))
+    case ("type-field", 1...):
+        // A person waits for the field to appear before typing into it; key events sent before a
+        // sheet has focus land in whatever had it.
+        let wanted = rest.joined(separator: " ")
+        func focusedField() -> AXUIElement? {
+            guard let app, let focused = attribute(app, kAXFocusedUIElementAttribute) else { return nil }
+            let element = focused as! AXUIElement
+            let role = text(element, kAXRoleAttribute)
+            return ["AXTextField", "AXComboBox", "AXSearchField", "AXTextArea"].contains(role) ? element : nil
+        }
+        guard waitUntil(5, { focusedField() != nil }), let field = focusedField() else {
+            fail("no text field has keyboard focus")
+            continue
+        }
+        typeText(wanted)
+        if waitUntil(3, { text(field, kAXValueAttribute).contains(wanted) }) {
+            pass("\(describe(field)) holds the text")
+        } else {
+            fail("\(describe(field)) reads \"\(text(field, kAXValueAttribute).prefix(200))\"")
+        }
     case ("key", 1):
         if !key(rest[0]) { fail("unknown key \(rest[0])") }
     case ("clipboard-text", 1...):

@@ -76,8 +76,12 @@ nonisolated enum LocalTransitionDomain {
             r.length > 0 && ((r.location >= first && r.location <= last)
                 || (NSMaxRange(r) >= first && NSMaxRange(r) <= last))
         }
+        // Text typed outside every block starts one, whose break and run only a parse knows:
+        // the first letter in an empty document was shifted in without them, and COR-71
+        // recovered it.
         return !presentation.runs.contains { touches($0.utf16Range) }
             && !presentation.blocks.contains { touches($0.projectionRange) }
+            && presentation.blocks.contains { $0.projectionRange.location < first && last < NSMaxRange($0.projectionRange) }
     }
 
     /// Plans only the classes proven by Stage 0 to be identity/atomic local transitions. This

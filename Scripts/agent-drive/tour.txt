@@ -107,10 +107,9 @@ key cmd+s
 wait 2
 shot-screen f-save-panel
 key cmd+a
-type "notes.md"
+type-field "notes.md"
 key cmd+shift+g
-wait 1
-type "$WORK/notes"
+type-field "$WORK/notes"
 key return
 wait 1
 key return
@@ -166,8 +165,7 @@ menu Format "Add Image…"
 wait 2
 shot-screen i-open-panel
 key cmd+shift+g
-wait 1
-type "$WORK/pictures/photo.png"
+type-field "$WORK/pictures/photo.png"
 key return
 wait 1
 key return
@@ -272,8 +270,7 @@ key cmd+o
 wait 2
 shot-screen p-open-panel
 key cmd+shift+g
-wait 1
-type "$WORK/showcase.md"
+type-field "$WORK/showcase.md"
 key return
 wait 1
 key return
@@ -300,8 +297,7 @@ shell printf 'caf\xe9 \xff\xfe' > "$WORK/bad.md"
 key cmd+o
 wait 2
 key cmd+shift+g
-wait 1
-type "$WORK/bad.md"
+type-field "$WORK/bad.md"
 key return
 wait 1
 key return

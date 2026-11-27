@@ -8,8 +8,8 @@ Git records the sequence; [DECISIONS.md](DECISIONS.md) records the choices that 
 
 ## What the app is today
 
-The MVP behavior contract is complete: every row in [REQUIREMENTS.md](REQUIREMENTS.md) is `Done`
-except two explicit `Deferred` rows. The application includes:
+Every row in [REQUIREMENTS.md](REQUIREMENTS.md) is `Done` except two explicit `Deferred` rows and
+the two `Active` rows the tour opened (TOUR-01, below). The application includes:
 
 - ordinary UTF-8 Markdown documents through `NSDocument` — New, Open, Save, Save As, autosave,
   Versions, tabs, Recents, undo/redo, spelling, Find, and printing;
@@ -57,9 +57,15 @@ REQ-143 is `Done`: the 16 ms budget binds on every corpus shape not declared a s
 `heavyLists` and `tableDense` carry recorded bounds instead. See `DECISIONS.md` for the criteria,
 the rejected alternatives, and the respect in which the chosen one is worse.
 
-**Every requirement is now `Done` except two explicit `Deferred` rows.**
-
 ## Next
+
+**TOUR-01 — the whole app, used as a person uses it** (🔵 Active, 2026-11-27). A long scenario,
+`Scripts/agent-drive/tour.txt`, drives every feature on a Mac runner from a plain launch to a
+relaunch (`.github/workflows/agent-drive.yml`), and each defect it finds is fixed with a test that
+fails for it. Found so far: no window at a plain launch, a stamp-sized window, no keyboard focus in
+a new window, Block Quote's shortcut locking the screen, a second parse at every open, and in
+WYSIWYG no spaces at a line's end, no Return and no Backspace (REQ-152, REQ-153). It is done when the
+tour runs through with no failed step and no fault in the app's log.
 
 **Packaging and distribution** (🔵 Active, 2026-11-26). Cloud-first development is in place:
 

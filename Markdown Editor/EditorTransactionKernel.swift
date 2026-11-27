@@ -697,6 +697,10 @@ nonisolated enum EditorTransactionKernel {
         }
     }
 
+    private static func withoutLineBreaks(_ text: String) -> String {
+        text.replacingOccurrences(of: "\n", with: "")
+    }
+
     private static func requestSelectionMatchesOwner(
         _ selection: EditorSelection,
         state: EditorStateSnapshot
@@ -841,7 +845,13 @@ nonisolated enum EditorTransactionKernel {
                     in: selection.range.utf16,
                     with: text
                 )
-                if transition.projectionReplacementRange == selection.range.utf16 {
+                if transition.sourceAfter != nil {
+                    // An exact rebuild, bound to the source below. Typing may start a block,
+                    // whose break is no typed text: the first letter in an empty document is a
+                    // paragraph. The page reads as typed, line breaks aside.
+                    guard Self.withoutLineBreaks(transition.nextSnapshot.renderedString)
+                        == Self.withoutLineBreaks(expected) else { return .contentMismatch }
+                } else if transition.projectionReplacementRange == selection.range.utf16 {
                     guard transition.projectionReplacement == text else { return .contentMismatch }
                 } else {
                     guard transition.nextSnapshot.renderedString == expected else { return .contentMismatch }
@@ -866,7 +876,10 @@ nonisolated enum EditorTransactionKernel {
                     in: deletionRange,
                     with: ""
                 )
-                if transition.projectionReplacementRange == selection.range.utf16 {
+                if transition.sourceAfter != nil {
+                    guard Self.withoutLineBreaks(transition.nextSnapshot.renderedString)
+                        == Self.withoutLineBreaks(expected) else { return .contentMismatch }
+                } else if transition.projectionReplacementRange == selection.range.utf16 {
                     guard transition.projectionReplacement.isEmpty else { return .contentMismatch }
                 } else {
             guard transition.nextSnapshot.renderedString == expected else { return .contentMismatch }
