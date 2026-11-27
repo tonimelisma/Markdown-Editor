@@ -577,6 +577,14 @@ func occupyMainActor(seconds: TimeInterval) {
     Thread.sleep(forTimeInterval: seconds)
 }
 
+/// Keeps the main actor busy until `condition` holds, polled every 5 ms for at most 30 s, then
+/// for `seconds` more.
+func holdMainActor(until condition: () -> Bool, then seconds: TimeInterval) {
+    let deadline = Date().addingTimeInterval(30)
+    while !condition(), Date() < deadline { Thread.sleep(forTimeInterval: 0.005) }
+    Thread.sleep(forTimeInterval: seconds)
+}
+
 /// Collects watchdog reports from a background isolation domain.
 ///
 /// Reports arrive synchronously from a non-isolated context, so delivery into the actor is

@@ -107,20 +107,34 @@ final class PerformanceSampler {
         self.frameObserver = frameObserver
     }
 
-    func drainSummaries() -> [Summary] {
-        defer { windows.removeAll() }
-        return Metric.allCases.compactMap { metric in
-            guard let window = windows[metric], window.count > 0 else { return nil }
+    /// The fewest samples whose 95th percentile is not simply their largest. With fewer, the
+    /// nearest-rank p95 is the maximum: a document opened and edited five times was judged by
+    /// its one first layout after opening (34–40 ms in tours 46012382716 and 46013947916), as if
+    /// that were a p95.
+    static let samplesForAPercentile = 20
+
+    /// Drains every metric with at least `minimumCount` samples; the rest stay in their window
+    /// and carry into the next one.
+    func drainSummaries(minimumCount: Int = 1) -> [Summary] {
+        Metric.allCases.compactMap { metric in
+            guard let window = windows[metric], window.count > 0, window.count >= minimumCount else { return nil }
+            windows[metric] = nil
             let values = window.reservoir.sorted()
             let percentile: (Double) -> UInt64 = { p in values[min(values.count - 1, max(0, Int(ceil(Double(values.count) * p)) - 1))] }
             return Summary(metric: metric, count: window.count, p50: percentile(0.5), p95: percentile(0.95), max: window.max)
         }
     }
 
-    func flush() {
-        for summary in drainSummaries() {
+    /// Writes each metric's summary once it has enough samples for a percentile, carrying the
+    /// rest into the next minute, and judges its p95 against the budget. The last flush, as the
+    /// sampler ends, writes what remains, and judges only a p95 that has the samples to be one:
+    /// a summary of fewer still shows their largest.
+    func flush(final: Bool = false) {
+        let minimum = final ? 1 : Self.samplesForAPercentile
+        for summary in drainSummaries(minimumCount: minimum) {
             trace?.record(route: .performanceSummary, .performanceSummary(metric: summary.metric, count: summary.count, p50Nanos: summary.p50, p95Nanos: summary.p95, maxNanos: summary.max))
-            guard let budget = Self.budgetNanos[summary.metric] else { continue }
+            guard let budget = Self.budgetNanos[summary.metric],
+                  summary.count >= Self.samplesForAPercentile else { continue }
             if summary.p95 > budget { trace?.record(route: .budgetExceeded, .budgetExceeded(metric: summary.metric, p95Nanos: summary.p95, budgetNanos: budget)) }
         }
         if let statistics = frameObserver?.drainStatistics() {
@@ -138,7 +152,7 @@ final class PerformanceSampler {
         guard !invalidated else { return }
         timer?.invalidate()
         timer = nil
-        flush()
+        flush(final: true)
         invalidated = true
         coordinator.unregister(self)
     }

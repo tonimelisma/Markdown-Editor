@@ -43,7 +43,7 @@ nonisolated enum BlockBoundaryPlanner {
             forProjection: selection.range.utf16,
             affinity: selection.affinity
         ) else { return .refused(.mappingFailure) }
-        guard let context = Context(snapshot: snapshot, tree: tree) else { return .refused(.mappingFailure) }
+        guard let context = Context(snapshot: snapshot, tree: tree, intent: intent) else { return .refused(.mappingFailure) }
         let before = SourceSelection(utf16: range, affinity: selection.affinity)
         let newline = context.lineEnding
         let chain = context.chain(at: range.location)
@@ -163,7 +163,7 @@ nonisolated enum BlockBoundaryPlanner {
             forProjection: projectionCaret,
             affinity: .downstream
         ) else { return .refused(.mappingFailure) }
-        guard let context = Context(snapshot: snapshot, tree: tree) else { return .refused(.mappingFailure) }
+        guard let context = Context(snapshot: snapshot, tree: tree, intent: intent) else { return .refused(.mappingFailure) }
         let caret = caretRange.location
         let before = SourceSelection(utf16: NSRange(location: caret, length: 0), affinity: selection.affinity)
         let source = context.source
@@ -315,12 +315,14 @@ nonisolated enum BlockBoundaryPlanner {
         let root: MarkdownNode
         let topLevel: [Located]
 
-        init?(snapshot: SourceSnapshot, tree: MarkdownTree?) {
+        init?(snapshot: SourceSnapshot, tree: MarkdownTree?, intent: IntentContext?) {
             let current: MarkdownTree
             if let tree, tree.sourceVersion == snapshot.sourceVersion {
                 current = tree
             } else {
-                guard case .success(let parsed) = MarkdownParser.parse(snapshot.text, sourceVersion: snapshot.sourceVersion) else {
+                // With the intent, through the session's parse memo, which holds what the
+                // reconciliation just parsed; without one it would miss and parse again.
+                guard case .success(let parsed) = MarkdownParser.parse(snapshot.text, sourceVersion: snapshot.sourceVersion, intent: intent) else {
                     return nil
                 }
                 current = parsed

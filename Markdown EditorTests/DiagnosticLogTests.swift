@@ -60,9 +60,47 @@ struct DiagnosticLogTests {
     @Test func budgetExceededIsRecordedWhenP95OverBudget() {
         let trace = InMemoryEditorTrace()
         let sampler = PerformanceSampler(trace: trace)
-        sampler.record(.modeTransition, durationNanos: 20_000_000)
+        for _ in 0..<PerformanceSampler.samplesForAPercentile { sampler.record(.modeTransition, durationNanos: 20_000_000) }
         sampler.flush()
         #expect(trace.events.contains(.budgetExceeded(metric: .modeTransition, p95Nanos: 20_000_000, budgetNanos: 16_000_000)))
+    }
+
+    // Verifies: REQ-103 — a p95 is judged only from enough samples to be one. With fewer, the
+    // nearest-rank p95 is the largest sample: five edits of a just-opened document were judged
+    // by its first layout (tours 46012382716, 46013947916). They carry into the next window.
+    @Test func aFewSamplesCarryIntoTheNextWindowBeforeTheirP95IsJudged() {
+        let trace = InMemoryEditorTrace()
+        let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
+        let budget = PerformanceSampler.budgetNanos[.layoutApplication]!
+        for _ in 0..<5 { sampler.record(.layoutApplication, durationNanos: budget * 2) }
+        sampler.flush()
+        let judged: () -> [EditorTraceEvent] = {
+            trace.eventsMatching {
+                switch $0 {
+                case .budgetExceeded(.layoutApplication, _, _), .performanceSummary(.layoutApplication, _, _, _, _): return true
+                default: return false
+                }
+            }
+        }
+        #expect(judged().isEmpty, "five samples were summarised and judged as a p95: \(judged())")
+
+        for _ in 5..<PerformanceSampler.samplesForAPercentile { sampler.record(.layoutApplication, durationNanos: budget * 2) }
+        sampler.flush()
+        #expect(trace.events.contains(.performanceSummary(metric: .layoutApplication, count: PerformanceSampler.samplesForAPercentile, p50Nanos: budget * 2, p95Nanos: budget * 2, maxNanos: budget * 2)), "the carried samples were lost")
+        #expect(trace.events.contains(.budgetExceeded(metric: .layoutApplication, p95Nanos: budget * 2, budgetNanos: budget)), "twenty over-budget samples were not judged")
+        sampler.invalidate()
+    }
+
+    // Verifies: REQ-103 — the last flush writes what remains, its largest included, and judges
+    // no p95 it has too few samples for.
+    @Test func theLastFlushWritesAFewSamplesWithoutJudgingThem() {
+        let trace = InMemoryEditorTrace()
+        let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
+        let budget = PerformanceSampler.budgetNanos[.layoutApplication]!
+        for _ in 0..<5 { sampler.record(.layoutApplication, durationNanos: budget * 2) }
+        sampler.invalidate()
+        #expect(trace.events.contains(.performanceSummary(metric: .layoutApplication, count: 5, p50Nanos: budget * 2, p95Nanos: budget * 2, maxNanos: budget * 2)))
+        #expect(!trace.events.contains(.budgetExceeded(metric: .layoutApplication, p95Nanos: budget * 2, budgetNanos: budget)), "five samples were judged as a p95")
     }
 
     // Verifies: REQ-103 — summaries are emitted on flush and never per keystroke. The flush
@@ -72,7 +110,7 @@ struct DiagnosticLogTests {
         let sampler = PerformanceSampler(trace: trace)
         sampler.record(.parseProjection, durationNanos: 1)
         #expect(trace.events.isEmpty)
-        sampler.flush()
+        sampler.flush(final: true)
         #expect(trace.events.count == 2)
         #expect(trace.events.contains { event in
             if case .performanceSummary(metric: .parseProjection, count: 1, p50Nanos: 1, p95Nanos: 1, maxNanos: 1) = event {
@@ -350,22 +388,29 @@ struct DiagnosticLogTests {
         let document = MarkdownDocument()
         let trace = InMemoryEditorTrace()
         document.trace = trace
-        document.installTextForTesting("# Title\n\nBody paragraph.\n")
+        let text = "# Title\n\nBody paragraph.\n"
+        document.installTextForTesting(text)
         let session = EditorSession(performanceSamplerCoordinator: DiagnosticRunCoordinator())
         session.attach(document: document)
         defer { session.detach() }
-        // The parse runs off the main actor and then waits for it, held here.
-        occupyMainActor(seconds: 0.3)
         let revision = document.sourceVersion
-        for _ in 0..<400 where trace.eventsMatching({
-            if case .reconciliationApplied(_, let applied, _, _) = $0 { return applied == revision }
-            return false
-        }).isEmpty {
-            try? await Task.sleep(for: .milliseconds(5))
+        // Hold the main actor until the parse has finished off it, which the session's memo
+        // shows, then half a second more: the parse's hop is then sure to have waited that long,
+        // however long cmark's lock kept the parse waiting (CI 46020138506: 1.9 s).
+        holdMainActor(until: { session.intentRecorder.parseMemo.tree(source: text, sourceVersion: revision) != nil }, then: 0.5)
+        var whole: UInt64?
+        for _ in 0..<2_000 where whole == nil {
+            for event in trace.events {
+                if case .reconciliationApplied(_, let applied, _, let duration) = event, applied == revision { whole = duration }
+            }
+            if whole == nil { try? await Task.sleep(for: .milliseconds(5)) }
         }
         let summary = session.performanceSampler?.drainSummaries().first { $0.metric == .parseProjection }
+        #expect(whole != nil, "the parse never landed")
         #expect(summary != nil, "no parse was measured")
-        #expect((summary?.max ?? .max) < 150_000_000, "the wait for the main actor was timed as parsing: \(String(describing: summary))")
+        if let whole, let summary {
+            #expect(summary.max + 400_000_000 <= whole, "the wait for the main actor was timed as parsing: parse \(summary.max) ns of \(whole) ns")
+        }
     }
 
     // Verifies: REQ-123 — a document opened before its window exists parses once when the window

@@ -142,6 +142,19 @@ struct AuthoritativeRebuildCountTests {
         #expect(other.session.intentRecorder.parseMemo !== MarkdownParser.ParseMemo.shared)
     }
 
+    /// Return and Backspace, planned against a tree older than the text, parse the text through
+    /// the session's memo, which holds what the reconciliation just parsed. Without their intent
+    /// the parse went to the process's shared memo and missed.
+    @Test func blockBoundaryPlanningParsesThroughTheSessionsMemo() {
+        let snapshot = SourceSnapshot(text: "First paragraph.\n\nSecond.\n", sourceVersion: 4, locationGeneration: 0, fileURL: nil)
+        let recorder = IntentRecorder()
+        let intent = recorder.begin(.acceptedEdit)
+        defer { recorder.finish(intent) }
+        let context = BlockBoundaryPlanner.Context(snapshot: snapshot, tree: nil, intent: intent)
+        #expect(context != nil)
+        #expect(recorder.parseMemo.performedParseCount == 1, "the planner's parse did not go through the session's memo")
+    }
+
     /// Waits until the document's current revision has been reconciled, if a reconciliation was
     /// scheduled for it, so its background parse cannot land inside a measurement.
     private static func settle(_ fixture: Fixture, _ trace: InMemoryEditorTrace) async {
