@@ -1,7 +1,7 @@
 #!/bin/bash
 # Re-signs an ad hoc built app so it can load its own embedded frameworks, and so it is not
-# published debuggable. Scripts/release.sh calls it for a build with no Developer ID; it is a
-# script of its own so that the signing the release path performs can be run, and watched, by hand.
+# published debuggable. Scripts/release.sh calls it on every release, all of which are ad hoc
+# (docs/DECISIONS.md, 2026-11-27); it is a script of its own so that the signing the release path performs can be run, and watched, by hand.
 #
 # An ad hoc signature carries no Team ID, and library validation — part of the hardened runtime —
 # refuses any library whose team differs from the running process's. "No team" never matches "no
@@ -11,12 +11,9 @@
 # published bundle and on a build from source. The hardened runtime's library-validation exception
 # does, and nothing else in the hardened runtime is given up (docs/DECISIONS.md, 2026-11-26).
 #
-# Only an ad hoc build needs this. With a Developer ID, every nested signature carries that team
-# and library validation stays on, which is why release.sh calls this script only without one.
-#
 # get-task-allow goes at the same time. Xcode injects it into any non-distribution signature, so
 # build 202 was published debuggable by any process of the person running it; a published app has
-# no use for it, and notarisation rejects a build that carries it.
+# no use for it.
 set -euo pipefail
 
 app="${1:?the app bundle to re-sign}"

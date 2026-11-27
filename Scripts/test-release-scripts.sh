@@ -2,8 +2,7 @@
 # The release scripts' pure parts, proved to discriminate: Scripts/release-version.sh (which
 # version a release takes) and Scripts/appcast.sh (the feed installed copies read). Portable; run
 # by Scripts/check.sh everywhere, including cloud sessions. The signing is proved separately, and on
-# macOS, by Scripts/test-adhoc-harden.sh; what is left — the certificate, notarization and GitHub —
-# is proved only by a published release that someone has installed and opened (docs/ROADMAP.md).
+# macOS, by Scripts/test-adhoc-harden.sh; what is left — publishing to GitHub — is proved only by a published release that someone has installed and opened (docs/ROADMAP.md).
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"

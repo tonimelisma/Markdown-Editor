@@ -171,9 +171,9 @@ corpus, sample count, median, and p95.
 
 ## Distribution
 
-- Direct download of a disk image, signed with a Developer ID and notarized by Apple. Until a
-  Developer ID is set up, releases are signed ad hoc and are not notarized (`DECISIONS.md`,
-  2026-11-26).
+- Direct download of a disk image, signed ad hoc and not notarized: there is no Apple Developer
+  account, by the owner's choice (`DECISIONS.md`, 2026-11-27). The first open needs **Open
+  Anyway** once; updates never do.
 - The installed app updates itself with Sparkle from GitHub Releases. CI builds and publishes every
   `main` commit that changes the app.
 - Not sandboxed for now. App Sandbox remains a future distribution decision.

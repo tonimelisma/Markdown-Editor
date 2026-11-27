@@ -3,6 +3,23 @@
 Decisions with consequences. Newest first. This is not an archive of everything ever decided —
 it is the short list of things someone will otherwise re-litigate or accidentally undo.
 
+## 2026-11-27 — No Apple Developer account: releases are ad hoc, for good
+
+**Decision.** The owner will not get an Apple Developer account ("Not doing dev account",
+2026-11-27). Every release is signed ad hoc and is not notarized. The certificate and notarization
+paths that waited for one are gone: `CERTIFICATE_P12`, `CERTIFICATE_PASSWORD` and the `NOTARY_*`
+secrets, the keychain step in `release.yml`, and the Developer ID branches in `release.sh`.
+
+**What it costs.** A first install needs **System Settings → Privacy & Security → Open Anyway**
+once. Updates never do, because Sparkle installs them without the quarantine flag. The app keeps
+the hardened runtime, minus library validation (`Scripts/adhoc-harden.sh`, 2026-11-26). VISION's
+Distribution section no longer promises a notarized download.
+
+**Why delete rather than keep the option.** That code was never exercised. Nothing tested it, and
+it would rot until the day it was needed, which the owner says will not come. Git keeps it
+(`release.sh` before this change) if that changes. Adding a certificate later would not break
+updates: Sparkle checks the EdDSA key, not the signing identity.
+
 ## 2026-11-27 — A release launches its bundle twice; the first launch's stall is the runner's
 
 **Decision.** `Scripts/release.sh` launches the signed bundle twice. The first launch passes every

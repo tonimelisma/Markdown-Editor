@@ -114,7 +114,6 @@ Still open:
   no steps: GitHub never assigned one. That is outside this repository's code, so
   `retry-unstarted.yml` now asks again, once or twice, instead of leaving `main` red until a
   person notices. A dropped job still costs its 15 minutes against the five-minute budget.
-- Notarization, once a Developer ID exists.
 
 ## Later — post-MVP backlog
 

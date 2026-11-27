@@ -25,7 +25,7 @@ More screens are in [docs/screenshots](docs/screenshots/README.md).
 Download [Markdown-Editor.dmg](https://github.com/tonimelisma/Markdown-Editor/releases/latest/download/Markdown-Editor.dmg),
 open it, and drag Markdown Editor to Applications. It needs macOS 27 or later.
 
-The app is not yet notarized by Apple. The first time you open it, macOS says it can't check the
+The app is not notarized by Apple. The first time you open it, macOS says it can't check the
 app. Click **Done**, open **System Settings → Privacy & Security**, click **Open Anyway**, and
 confirm. After that it opens like any app and updates itself from
 [GitHub Releases](https://github.com/tonimelisma/Markdown-Editor/releases).
