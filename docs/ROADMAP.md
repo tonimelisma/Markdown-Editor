@@ -74,21 +74,15 @@ Still open:
   `CI gate`. Once the screenshot step stopped rebuilding the app, CI 45858255326 took about 4m50s,
   3m33s of it in `check.sh`, with an empty compilation cache. Measure again after the first merge
   saves that cache.
-- A slow first window on a cold machine. On a runner booted minutes earlier, the first launch's
-  `makeWindowControllers` took 2.9 s on the main thread (repeat-smoke 45924758118). It lays out
-  the window, builds both editors, and pays AppKit's first-use set-up, mostly paging from a cold
-  disk. That stall blocked v1.0.1 in Release runs 45921027714 and 45922511341. A release now
-  allows it on its first launch only and holds a second launch to every check (`DECISIONS.md`,
-  2026-11-27). CI 45856817544's one Debug stall was probably the same thing. Building the Source
-  editor only when Source is first shown would cut the work; nothing measures it on a real Mac yet.
-- Two timing-bound tests failed on `main` together (CI 45926585599 attempt 1). The same tree had
-  passed as the pull request (CI 45926211612). `SemanticCommandBudgetTests` measured a codeHeavy
-  worst-of-5 of 64.4 ms against its 60 ms Debug bound. `imagePlacementTraceOmitsFilenames` hit
-  `waitUntilIdle`'s 15 s deadline with the controller still `.publishing`. On that runner many
-  unrelated main-actor tests took 13–16 s and one took 39 s. Under parallel suites, both bounds
-  include the time other tests hold the main actor, so they measure the runner's contention
-  along with their own subject. Not yet fixed: the bound should be on the work, not on
-  wall-clock time shared with the rest of the suite.
+- The first window's cost. On a runner booted minutes earlier, the first launch's
+  `makeWindowControllers` took 2.9 s on the main thread (repeat-smoke 45924758118), mostly
+  paging AppKit from a cold disk. A release allows that stall on its first launch only
+  (`DECISIONS.md`, 2026-11-27). On warm launches the same call is 240–280 ms on a runner. Of
+  that, our two editors are about 50 ms, much of it AppKit's one-time text-input set-up, which
+  either editor would pay first. A second full layout was another 80 ms, and it is gone: the
+  window is created at its final size (`theDocumentWindowIsCreatedAtItsFinalSize`). Building the
+  Source editor lazily would save roughly another 10–20 ms, and REQ-052's persistent editors make
+  it a larger change than that is worth. Nothing measures this on a real Mac yet.
 - `presentationRecovered` (`patchUnprovable`, COR-71) in a smoke run. Repeat-smoke 45925262536's
   second launch recorded a provisional WYSIWYG presentation that disagreed with the authoritative
   parse of the same revision. The smoke edits had landed while a slow parse was still running. It
