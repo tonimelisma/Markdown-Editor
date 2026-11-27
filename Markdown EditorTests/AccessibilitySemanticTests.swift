@@ -168,6 +168,42 @@ struct KeyboardCommandMatrixTests {
         )
     }
 
+    // Verifies: REQ-032 — no command's shortcut is one macOS or every Mac app already owns. Block
+    // Quote was control-command-Q, which is the system's Lock Screen: an agent-drive tour
+    // (45955987611) pressed it and locked the runner's screen, as it would have locked a user's.
+    @Test func noShortcutTakesASystemOrStandardKey() {
+        typealias Key = (Character, EventModifiers)
+        let reserved: [(Key, String)] = [
+            (("q", [.command, .control]), "Lock Screen"),
+            (("f", [.command, .control]), "Enter Full Screen"),
+            ((" ", [.command, .control]), "Emoji & Symbols"),
+            (("d", [.command, .control]), "Look Up"),
+            ((" ", [.command]), "Spotlight"),
+            (("3", [.command, .shift]), "Screenshot"),
+            (("4", [.command, .shift]), "Screenshot of a selection"),
+            (("5", [.command, .shift]), "Screenshot and recording options"),
+            (("3", [.command, .shift, .control]), "Screenshot to the clipboard"),
+            (("4", [.command, .shift, .control]), "Selection screenshot to the clipboard"),
+            (("h", [.command]), "Hide"), (("h", [.command, .option]), "Hide Others"),
+            (("m", [.command]), "Minimize"), (("q", [.command]), "Quit"), (("w", [.command]), "Close"),
+            ((",", [.command]), "Settings"), (("/", [.command, .shift]), "Help"),
+            (("a", [.command]), "Select All"), (("c", [.command]), "Copy"), (("v", [.command]), "Paste"),
+            (("x", [.command]), "Cut"), (("z", [.command]), "Undo"), (("z", [.command, .shift]), "Redo"),
+            (("f", [.command]), "Find"), (("g", [.command]), "Find Next"), (("g", [.command, .shift]), "Find Previous"),
+            (("e", [.command]), "Use Selection for Find"), (("j", [.command]), "Jump to Selection"),
+            (("n", [.command]), "New"), (("o", [.command]), "Open"), (("s", [.command]), "Save"),
+            (("s", [.command, .shift]), "Save As"), (("p", [.command]), "Print"), (("t", [.command]), "Show Fonts / New Tab"),
+            ((";", [.command]), "Check Spelling"), ((":", [.command]), "Spelling and Grammar"),
+            (("v", [.command, .shift, .option]), "Paste and Match Style"),
+        ]
+        for (command, shortcut) in EditorMenuCommands.shortcuts {
+            for ((character, modifiers), name) in reserved
+            where shortcut.key.character == character && shortcut.modifiers == modifiers {
+                Issue.record("\(command)'s shortcut is the system's or every app's \(name)")
+            }
+        }
+    }
+
     // Verifies: REQ-032 — no two commands share a shortcut, which would make one of them
     // unreachable by keyboard however it is declared.
     @Test func noTwoCommandsShareAShortcut() {

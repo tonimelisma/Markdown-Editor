@@ -135,7 +135,9 @@ struct EditorMenuCommands: Commands {
         .unorderedList: KeyboardShortcut("7", modifiers: [.command, .shift]),
         .orderedList: KeyboardShortcut("8", modifiers: [.command, .shift]),
         .taskList: KeyboardShortcut("9", modifiers: [.command, .shift]),
-        .blockQuote: KeyboardShortcut("q", modifiers: [.command, .control]),
+        // Mail's Increase Quote Level. It was control-command-Q, which is macOS's own Lock Screen:
+        // pressing the app's advertised shortcut locked the Mac (agent-drive tour 45955987611).
+        .blockQuote: KeyboardShortcut("'", modifiers: [.command]),
         .codeBlock: KeyboardShortcut("c", modifiers: [.command, .control, .shift])
     ]
 

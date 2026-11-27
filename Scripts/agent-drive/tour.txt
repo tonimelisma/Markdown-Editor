@@ -74,7 +74,7 @@ key cmd+down
 key return
 key return
 type "Simplicity is prerequisite for reliability."
-key ctrl+cmd+q
+key cmd+'
 key cmd+down
 key return
 key return

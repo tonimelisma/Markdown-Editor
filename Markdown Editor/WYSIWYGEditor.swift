@@ -333,6 +333,27 @@ enum WYSIWYGEditor {
             appliedSnapshotID == id
         }
 
+        /// The caret AppKit shows becomes the owner's selection when the owner has none and the
+        /// page has keyboard focus: when a new window's page gains focus, or a presentation lands
+        /// under a focused page. Only a selection *change* reported it before, and an untouched
+        /// caret never changes, so a new document's first keystroke and first command were
+        /// refused as `ambiguousSelection` (agent-drive tour 45955987611). Deferred one turn so it
+        /// never writes session state from inside view reconciliation (ARC-015), and it goes
+        /// through the same guarded capture a real selection change does.
+        func adoptNativeSelectionIfUnowned() {
+            guard let textView, textView.window?.firstResponder === textView,
+                  session.wysiwygModeState.selection == nil else { return }
+            Task { @MainActor [weak self] in
+                guard let self, let textView = self.textView,
+                      textView.window?.firstResponder === textView,
+                      self.session.wysiwygModeState.selection == nil,
+                      self.session.updateOrigin.current == .nativeUserInput else { return }
+                self.textViewDidChangeSelection(
+                    Notification(name: NSTextView.didChangeSelectionNotification, object: textView)
+                )
+            }
+        }
+
         func textView(
             _ textView: NSTextView,
             shouldChangeTextIn affectedCharRange: NSRange,
@@ -578,6 +599,12 @@ enum WYSIWYGEditor {
 
 @MainActor
 final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        if accepted { adapterCoordinator?.adoptNativeSelectionIfUnowned() }
+        return accepted
+    }
+
     weak var session: EditorSession?
     weak var documentActions: DocumentActionInterface?
     weak var placementController: ImagePlacementController?
