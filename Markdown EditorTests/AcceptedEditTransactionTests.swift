@@ -787,11 +787,41 @@ struct NativeUpdateOriginTests {
 @MainActor
 struct DocumentSerializedIOTests {
 
-    // Verifies: REQ-015; ARC-001/011 — default serialized NSDocument I/O opt-ins remain false.
-    @Test func concurrentReadAndAsyncWriteDefaultsRemainDisabled() {
+    // Verifies: REQ-015; ARC-001/011 — reads stay serialized on the main thread; every kind of
+    // save writes asynchronously, so an autosave no longer holds the main thread for the write
+    // (133–413 ms per autosave on a runner, probes 45979646302 and 45980923448).
+    @Test func readsAreSerializedAndSavesWriteAsynchronously() {
         #expect(MarkdownDocument.canConcurrentlyReadDocuments(ofType: "net.daringfireball.markdown") == false)
         let doc = MarkdownDocument()
-        #expect(doc.canAsynchronouslyWrite(to: URL(fileURLWithPath: "/tmp/x.md"), ofType: "net.daringfireball.markdown", for: .saveOperation) == false)
+        let url = URL(fileURLWithPath: "/tmp/x.md")
+        for operation: NSDocument.SaveOperationType in [.saveOperation, .saveAsOperation, .saveToOperation, .autosaveInPlaceOperation, .autosaveElsewhereOperation] {
+            #expect(doc.canAsynchronouslyWrite(to: url, ofType: "net.daringfireball.markdown", for: operation), "\(operation.rawValue) writes on the main thread")
+        }
+    }
+
+    // Verifies: REQ-015/018; ARC-011 — the background write reads only the bytes taken on the
+    // main actor when the save began: typing that lands after that point is not in them, and the
+    // background thread never reads the document's text.
+    @Test func aBackgroundWriteWritesTheTextAsTheSaveBegan() async throws {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("Saved words.\n")
+        doc.prepareWriteSnapshot()
+        doc.installTextForTesting("Saved words. Typed during the write.\n")
+        // As AppKit's writer thread holds it: the document is not Sendable.
+        nonisolated(unsafe) let writer = doc
+        let written = try await Task.detached { try writer.data(ofType: "net.daringfireball.markdown") }.value
+        #expect(String(decoding: written, as: UTF8.self) == "Saved words.\n")
+    }
+
+    // Verifies: REQ-015; ARC-011 — a background write with no snapshot refuses rather than read
+    // main-actor state from another thread.
+    @Test func aBackgroundWriteWithoutASnapshotRefuses() async {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("Words.\n")
+        nonisolated(unsafe) let writer = doc
+        await #expect(throws: CocoaError.self) {
+            _ = try await Task.detached { try writer.data(ofType: "net.daringfireball.markdown") }.value
+        }
     }
 
     // Verifies: REQ-015; ARC-001/011 — actual NSDocumentController open/save uses canonical I/O.

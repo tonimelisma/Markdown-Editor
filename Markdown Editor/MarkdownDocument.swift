@@ -6,6 +6,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import Synchronization
 import UniformTypeIdentifiers
 
 /// NSDocument owner of canonical Markdown source, revision, URL generation, and undo.
@@ -48,6 +49,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     let canonicalAssetReferenceUpdates = PassthroughSubject<CanonicalAssetReferences, Never>()
     /// Mirror of `fileURL` for SwiftUI observation (NSDocument's property is not @Published).
     @Published private(set) var publishedFileURL: URL?
+
+    /// The bytes the save in progress writes, taken on the main actor as it began. AppKit writes
+    /// them on a background thread (`canAsynchronouslyWrite`), which reads only this value, never
+    /// the document. Writing on the main thread stalled it for the whole of every autosave:
+    /// 133–413 ms on a GitHub runner, while the person typed (probes 45979646302, 45980923448).
+    nonisolated private let writeSnapshot = Mutex<Data?>(nil)
 
     /// The document an untitled duplicate was made from. Its images are `assets/` paths
     /// relative to that document's folder, so the copy resolves them there until it is saved:
@@ -310,7 +317,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         let utf16Count = (text as NSString).length
         trace?.record(route: .documentSaveStarted, .documentSaveStarted(utf16Count: utf16Count))
         let start = DispatchTime.now().uptimeNanoseconds
+        prepareWriteSnapshot()
         super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
+            self?.writeSnapshot.withLock { $0 = nil }
             self?.recordSaveOutcome(error: error, utf16Count: utf16Count, startUptimeNanos: start)
             completionHandler(error)
         }
@@ -507,12 +516,32 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         }
     }
 
-    // REQ-015/018; ARC-011: AppKit's default serialized write — snapshot canonical text on main.
+    /// Takes the bytes a save is about to write, on the main actor, before AppKit starts it.
+    func prepareWriteSnapshot() {
+        let bytes = MarkdownDocumentData(text: text).data()
+        writeSnapshot.withLock { $0 = bytes }
+    }
+
+    // REQ-015/018; ARC-011: a save writes on a background thread, from bytes taken on the main
+    // actor as it began; the document's state stays the main actor's (DECISIONS, 2026-11-27).
+    nonisolated override func canAsynchronouslyWrite(
+        to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType
+    ) -> Bool {
+        true
+    }
+
+    // REQ-015/018; ARC-011: off the main thread, only the snapshot `save(to:…)` took is read, and
+    // the main thread, which AppKit holds until then, is released at once. On the main thread a
+    // write that did not come through that save (a duplicate's) reads the document itself.
     nonisolated override func data(ofType typeName: String) throws -> Data {
-        precondition(
-            Thread.isMainThread,
-            "ARC-011 counterexample: NSDocument data(ofType:) invoked off-main while canAsynchronouslyWrite remains false"
-        )
+        if let snapshot = writeSnapshot.withLock({ $0 }) {
+            if !Thread.isMainThread { unblockUserInteraction() }
+            return snapshot
+        }
+        guard Thread.isMainThread else {
+            // A background write with no snapshot would have to read main-actor state.
+            throw CocoaError(.fileWriteUnknown)
+        }
         return MainActor.assumeIsolated {
             MarkdownDocumentData(text: self.text).data()
         }

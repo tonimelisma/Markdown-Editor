@@ -40,13 +40,14 @@ avoidable duplicate authority.
 Current Apple behavior reports that documents do not read concurrently by default and do not
 write asynchronously unless the subclass opts in. A 2026-07-25 probe confirmed the app inherits
 both serialized defaults. The architecture therefore does not need a mutex-protected second text
-mirror or asynchronous load gate.
+mirror or asynchronous load gate. The app has since opted into asynchronous writes, from a
+snapshot taken at each save, because serialized autosaves stalled typing (ENGINEERING §9).
 
 Swift imports `read(from:ofType:)` as `nonisolated`, so the compiler cannot infer the runtime
 executor. Apple's document guide states that Open/Finder loading moves to a background thread when
 `canConcurrentlyReadDocuments` is explicitly enabled; the default is false. Similarly,
-`canAsynchronouslyWrite` defaults to false. The direct implementation must retain those defaults,
-assert the main thread in both overrides, and enter the main-actor boundary explicitly. An actual
+`canAsynchronouslyWrite` defaults to false. The read override must retain its default, assert the
+main thread, and enter the main-actor boundary explicitly. An actual
 off-main callback under those defaults would invalidate this conclusion and must fail a component
 probe rather than be hidden behind a long-lived mirror.
 

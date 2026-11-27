@@ -432,14 +432,18 @@ Rules:
 ## 9. Document and concurrency model
 
 - `MarkdownDocument` is main-actor-owned mutable state.
-- AppKit's default serialized `NSDocument` read/write behavior is used. The app does not maintain
-  a second mutex-protected text mirror or asynchronous load gate unless a future measured platform
-  requirement proves it necessary.
+- Reads use AppKit's default serialized `NSDocument` behavior. The app keeps no long-lived second
+  text mirror and no asynchronous load gate.
 - Swift imports the data-read override as `nonisolated`, but AppKit performs background document
   opening only when the subclass opts into concurrent reads. The override asserts the main thread
   under the retained default and enters `MainActor.assumeIsolated` for the canonical load.
-- Asynchronous writes remain disabled. The data-write override likewise asserts the serialized
-  main-thread contract and snapshots canonical document data inside the main-actor boundary.
+- Saves write asynchronously (`canAsynchronouslyWrite`). `save(to:ofType:for:completionHandler:)`
+  takes the bytes to write on the main actor before AppKit starts, and clears them when the save
+  completes. On AppKit's background thread, `data(ofType:)` returns those bytes and releases the
+  main thread at once (`unblockUserInteraction`). It never reads the document there, and throws
+  if it has no snapshot. A write that does not come through that save, such as a duplicate's, runs
+  on the main thread and reads the document directly. Serialized writes held the main thread for
+  every autosave, 133–413 ms on a runner, while the person typed (DECISIONS, 2026-11-27).
 - A failed executor assertion is an architecture counterexample, not permission to restore a
   long-lived mirrored source.
 - `save(to:ofType:for:completionHandler:)` is the AppKit override every save that determines a
