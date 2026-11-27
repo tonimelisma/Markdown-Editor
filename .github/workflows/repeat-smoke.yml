@@ -15,6 +15,10 @@
 #   settle         Seconds to wait between the build and the first launch. Run 45923942236's
 #                  warm-up delayed its first launch by several seconds, and that launch did not
 #                  stall, so this separates "the profiler was cold" from "the machine was busy".
+#   io             inherited: the app runs with the disk I/O policy it inherits from the runner's
+#                  shell. important: launched through `taskpolicy -d important`, the unthrottled
+#                  policy an app opened from the Finder has. Run 45924758118's stalled first launch
+#                  spent 192 of its main thread's 546 samples asleep in throttle_lowpri_io.
 #   fresh          Each launch is of a new copy of the bundle at a new path. A stall seen only on
 #                  the first launch of a bundle (repeat-smoke 45923148087, 45923150495) then
 #                  shows on every launch, or does not, which says whether newness is the trigger.
@@ -38,6 +42,9 @@ on:
       settle:
         description: Seconds to wait after the build before the first launch
         default: "0"
+      io:
+        description: The launched app's disk I/O policy, inherited or important
+        default: inherited
       fresh:
         description: Launch a new copy of the bundle at a new path each time (Release only; true or false)
         default: "false"
@@ -91,6 +98,7 @@ jobs:
           FRESH: ${{ inputs.fresh }}
           WARM: ${{ inputs.warm }}
           SETTLE: ${{ inputs.settle }}
+          IO: ${{ inputs.io }}
           APP: ${{ steps.bundle.outputs.app }}
         run: |
           set -uo pipefail
@@ -98,6 +106,11 @@ jobs:
           records=.build/repeat-records
           mkdir -p "$records"
           [[ "$SETTLE" =~ ^[0-9]{1,3}$ ]] || { echo "::error::settle must be 0 to 999"; exit 1; }
+          case "$IO" in
+            inherited) wrapper="" ;;
+            important) wrapper="taskpolicy -d important" ;;
+            *) echo "::error::io must be inherited or important"; exit 1 ;;
+          esac
           failed=0
           if [[ "$SAMPLE" == "true" && "$WARM" != "false" ]]; then
             sleep 30 & warm=$!
@@ -113,7 +126,7 @@ jobs:
               mkdir -p "$(dirname "$app")"
               ditto "$APP" "$app"
             fi
-            SMOKE_APP="$app" SMOKE_DERIVED_DATA=.build/repeat SMOKE_LOG_COPY_DIR="$records/run-$i" \
+            SMOKE_LAUNCH_WRAPPER="$wrapper" SMOKE_APP="$app" SMOKE_DERIVED_DATA=.build/repeat SMOKE_LOG_COPY_DIR="$records/run-$i" \
               Scripts/smoke-test.sh > "$records/smoke-$i.log" 2>&1 &
             smoke=$!
             # What else the machine is doing during the launch: a stall only the first launch after
