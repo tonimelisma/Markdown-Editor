@@ -59,6 +59,19 @@ nonisolated final class AppModalSession: Sendable {
         return try body()
     }
 
+    /// Runs `body`, which builds or shows a document window. A latency sample spanning it is
+    /// dropped: building a window is one discrete operation, 0.15–0.7 s on a runner (SwiftUI's
+    /// first layout of the window, probe 46014139254), and judged per minute against a frame's
+    /// 16 ms it made every minute that opened two or three windows look unresponsive though
+    /// each section of the tour, measured alone, held a p95 of 0.1 ms (probe 46023988152). It is
+    /// the app's own work, so unlike `around` and `aroundAppKitWork` it is not hidden from the
+    /// watchdog: a window build that holds the main actor for a second is a stall.
+    func aroundWindowConstruction<T>(_ body: () throws -> T) rethrows -> T {
+        state.withLock { $0.epoch &+= 1 }
+        defer { state.withLock { $0.epoch &+= 1 } }
+        return try body()
+    }
+
     /// Runs `body`, an app-modal presentation that returns when the person dismisses it.
     func around<T>(_ body: () throws -> T) rethrows -> T {
         state.withLock { $0.depth += 1; $0.epoch &+= 1 }

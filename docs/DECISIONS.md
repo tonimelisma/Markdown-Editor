@@ -3,6 +3,34 @@
 Decisions with consequences. Newest first. This is not an archive of everything ever decided —
 it is the short list of things someone will otherwise re-litigate or accidentally undo.
 
+## 2026-11-27 — Building a window is bounded by the watchdog, not by a frame's budget
+
+**Decision.** A main-actor latency sample that spans building or showing a document window is
+dropped from the histogram (`AppModalSession.aroundWindowConstruction`). Unlike a modal session
+or AppKit's own work, the watchdog is not told: a window build that holds the main actor for a
+second is still a stall, recorded as a fault. REQ-124 and ENGINEERING §10 state it.
+
+**Why.** After every other fix, each Release tour still logged two `mainActorLatency` notes, p95s
+of 23–43 ms against 16. A probe that ran the tour's sections one per minute (46023988152) found
+every section, alone, at a p95 of 0.1 ms. The notes were density: the minutes that opened windows
+(launch, ⌘N, Open Recent, Duplicate) held single blocks of 0.15–0.7 s, and two or three of them
+fill the slowest 5% of a minute's 600 samples. Profiles (46014139254, 46018864413) put a window's
+cost in SwiftUI's first layout of it, with no hotspot and the app's code under a seventh of it.
+
+**Criteria:** a budget should measure what it names (CLAUDE.md §3); every measurement keeps a
+bound; nothing the app does is hidden from the hang watchdog; the product stays SwiftUI-first
+(CLAUDE.md §1).
+
+| Option | Budget measures what it names | Window cost still bounded | SwiftUI-first |
+| --- | --- | --- | --- |
+| **Leave window construction out of the frame budget; the watchdog bounds it (chosen)** | ✓ responsiveness between discrete operations | ✓ at one second, as a fault | ✓ |
+| Count it, as before | ✗ a minute's p95 measures how many windows it opened | ✓ | ✓ |
+| Build the window's content in AppKit to make it cheaper | ✓ | ✓ | ✗ |
+| Pace the tour so windows fall in different minutes | ✗ the tour would be shaped to the metric | ✓ | ✓ |
+
+**Where it is worse.** A window that takes 0.9 s to open is recorded nowhere, where before it
+raised the minute's p95. Only a stall of a second or more is reported.
+
 ## 2026-11-27 — A p95 is judged from twenty samples or more
 
 **Decision.** A performance summary is written once a metric has at least 20 samples; fewer

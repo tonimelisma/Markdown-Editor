@@ -244,6 +244,31 @@ struct MeasurementSubstrateProofTests {
     #expect(summary?.max ?? .max < 150_000_000, "AppKit's work was counted: \(String(describing: summary))")
 }
 
+// Verifies: REQ-124 — a hop that waited while a document window was built is not a latency
+// sample; the 200 ms block that `aTwoHundredMillisecondMainActorBlockAppearsInTheLatencyDistribution`
+// counts leaves none here. The watchdog still sees it: no modal session and no AppKit work.
+@Test @MainActor func aHopThatWaitedOnAWindowBeingBuiltIsNotALatencySample() {
+    let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
+    let sessions = AppModalSession()
+    let probe = MainActorResponsivenessProbe(sampler: sampler, modalSessions: sessions)
+    probe.captureSampleNow()
+    var seenByTheWatchdog: (modal: Bool, appKitWork: Bool)?
+    sessions.aroundWindowConstruction {
+        seenByTheWatchdog = (sessions.isActive, sessions.isAppKitWorking)
+        Thread.sleep(forTimeInterval: 0.2)
+    }
+    RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+    probe.captureSampleNow()
+    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    probe.stop()
+    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    let summary = sampler.drainSummaries().first { $0.metric == .mainActorLatency }
+    sampler.invalidate()
+    #expect(summary?.count == 1, "samples: \(String(describing: summary))")
+    #expect(summary?.max ?? .max < 150_000_000, "the window's construction was counted: \(String(describing: summary))")
+    #expect(seenByTheWatchdog?.modal == false && seenByTheWatchdog?.appKitWork == false, "a window build was hidden from the watchdog")
+}
+
 // Verifies: REQ-124 — a hop that waited out an app-modal alert is not a latency sample. The
 // main thread ran the alert, and the wait was the person reading it: tour 45974231615's
 // bad-file alert alone put the p95 at 896 ms. The 200 ms block above, outside a session, is

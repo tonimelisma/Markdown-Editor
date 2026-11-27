@@ -151,6 +151,17 @@ struct WindowCitizenshipTests {
         #expect(window.isRestorable, "window opts out of state restoration")
     }
 
+    // Verifies: REQ-124 — building a document window is measured apart from main-actor latency:
+    // the construction runs inside `AppModalSession.aroundWindowConstruction`, which advances the
+    // epoch as it begins and ends, so a latency sample spanning it is dropped.
+    @Test func buildingAWindowIsKeptOutOfTheLatencyHistogram() throws {
+        let document = MarkdownDocument()
+        let before = AppModalSession.shared.epoch
+        document.makeWindowControllers()
+        defer { document.close() }
+        #expect(AppModalSession.shared.epoch &- before >= 2, "the window was built outside aroundWindowConstruction")
+    }
+
     // Verifies: REQ-131 — a document window is laid out at its final size only. Creating it at
     // another size, or restyling and resizing it afterwards, laid out the whole window again —
     // SwiftUI's first render, both editors and the toolbar — which on a CI runner was a third of

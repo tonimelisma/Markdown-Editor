@@ -709,6 +709,10 @@ ordinary files the user owns and can read, delete, or ignore.
   app hands the main thread to it (`AppModalSession.aroundAppKitWork`): Print, whose panel's first
   load waits on the print system for up to two seconds in the default mode, where nothing else
   tells it from the app's own stall.
+- The latency probe, not the watchdog, also leaves out a hop that waited while a document window
+  was built or shown (`AppModalSession.aroundWindowConstruction`). A window is one discrete
+  operation of a few hundred milliseconds, not a frame; the watchdog still reports one that
+  holds the main actor for a second.
 - Reconciliation instrumentation records any session publication during view reconciliation, and
   the host-update meter reports a sustained update rate — the signature of a self-feeding loop,
   which presents as high CPU rather than as a hang.

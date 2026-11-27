@@ -120,15 +120,11 @@ Still open:
   found no hotspot left in the first layout, and removed the tab merge that was over half of
   showing the window (`DECISIONS.md`, "New documents tab as the person's Prefer tabs setting
   says"). Nothing measures this on a real Mac yet.
-- The tour's remaining budget notes. With the warm-up launch and p95s judged only from twenty
-  samples, a Release tour (46019135012) leaves `mainActorLatency` p95s of 23–38 ms against 16 in
-  the minutes that open windows and save. A whole-tour Release profile (46020274732, `sudo
-  sample`) attributes them to three things: building a window (⌘N, Duplicate, Open), which is
-  SwiftUI's own layout with no hotspot, the app's code under a seventh of it; AppKit marking each
-  saved file for Spotlight (`_MDItemMarkWithUserAndDate`, a synchronous call to `mds` inside
-  NSDocument's save completion); and creating the open panel for Add Image. None is the app's own
-  computation, but the first is partly its SwiftUI content, so it stays counted. Cutting it means
-  leaving SwiftUI for the window's content, against CLAUDE.md §1.
+- Window opening's cost. A window takes 0.15–0.7 s to build on a runner, SwiftUI's first layout
+  of it with no hotspot (probes 46014139254, 46018864413); the latency histogram leaves it out and
+  the watchdog bounds it at a second (`DECISIONS.md`, "Building a window is bounded by the
+  watchdog"). Nothing records a window that opens in, say, 0.9 s. AppKit also marks each saved
+  file for Spotlight synchronously (`_MDItemMarkWithUserAndDate`), inside NSDocument's save.
 - Mac runners that never come. Twice on 2026-11-26 a `main` job waited 15 minutes for an
   `xcode-27` runner and was dropped (CI 45860219913, Release 45866221874 attempt 1), while
   pull-request jobs started within a minute. Both ended after exactly 15 minutes with no runner and

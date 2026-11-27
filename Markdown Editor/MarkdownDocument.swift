@@ -230,7 +230,18 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     var closeReview: ((Any, Selector?, UnsafeMutableRawPointer?) -> Void)?
 
+    /// Building the window is measured apart from main-actor latency (`AppModalSession`
+    /// `.aroundWindowConstruction`): it is one discrete operation of a few hundred milliseconds,
+    /// bounded by the watchdog's second, not a frame. Showing it is too (`showWindows`).
     override func makeWindowControllers() {
+        AppModalSession.shared.aroundWindowConstruction { buildWindowControllers() }
+    }
+
+    override func showWindows() {
+        AppModalSession.shared.aroundWindowConstruction { super.showWindows() }
+    }
+
+    private func buildWindowControllers() {
         if fileURL == nil, duplicateOrigin == nil, let origin = Self.duplicatingFrom {
             duplicateOrigin = origin
         }
