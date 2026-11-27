@@ -33,6 +33,12 @@ private nonisolated struct CompilerBuilder {
     private var segments: [ProjectionSegment] = []
     private var listMarkers: [ProjectionListMarker] = []
     private var utf16Length = 0
+    /// Where the last source-backed piece ended, for a synthetic break whose node has no source
+    /// position of its own: cmark gives none to soft and hard line breaks. They fell back to
+    /// location 0, so the local transition shifted that 0 with every keystroke before them and the
+    /// parse put it back, and each such keystroke was a COR-71 disagreement
+    /// (`typingAWordIntoTheRichFixtureIsReconciledWithoutRecovery`).
+    private var lastSourceEnd = 0
 
     mutating func finish() -> MarkdownProjectionModel {
         MarkdownProjectionModel(
@@ -228,6 +234,7 @@ private nonisolated struct CompilerBuilder {
         let markerUTF16 = (markerText as NSString).length
         utf16Length += markerUTF16
         let markerRange = NSRange(location: markerStart, length: markerUTF16)
+        lastSourceEnd = afterMarker
         if markerUTF16 > 0 {
             segments.append(
                 .synthetic(
@@ -395,6 +402,7 @@ private nonisolated struct CompilerBuilder {
 
         let sourceRange = sourceUTF16(of: node)
         if let sourceRange {
+            lastSourceEnd = NSMaxRange(sourceRange)
             guard let contentSource = resolveContentSource(node: node, rendered: string, full: sourceRange) else {
                 // Normalized code/fence bodies are not 1:1 with rendered text — refuse edits.
                 segments.append(.uneditable(projection: projection, reason: .ambiguous))
@@ -412,6 +420,7 @@ private nonisolated struct CompilerBuilder {
                 )
                 return
             }
+            lastSourceEnd = NSMaxRange(contentSource)
             if literalFallback {
                 segments.append(.literalFallback(projection: projection, source: contentSource))
             } else {
@@ -480,7 +489,7 @@ private nonisolated struct CompilerBuilder {
         let utf16 = (string as NSString).length
         utf16Length += utf16
         let projection = NSRange(location: start, length: utf16)
-        let insertAt = NSMaxRange(sourceUTF16(of: node) ?? NSRange(location: 0, length: 0))
+        let insertAt = sourceUTF16(of: node).map(NSMaxRange) ?? lastSourceEnd
         let policy: SyntheticInsertionPolicy = refuseEdits ? .refuse : .atSourceLocation(insertAt)
         segments.append(.synthetic(projection: projection, kind: kind, insertion: policy))
         runs.append(
