@@ -71,6 +71,20 @@ struct NewWindowReadinessTests {
         #expect(h.window.initialFirstResponder === page)
     }
 
+    // Verifies: REQ-084 — closing the find bar gives the keyboard back to the page it searched.
+    // Closed with Done it left no first responder, and the next keys went nowhere.
+    @Test func closingTheFindBarReturnsTheKeyboardToThePage() throws {
+        let h = Self.makeHost(text: "Milk and Eggs\n")
+        defer { h.session.detach() }
+        let scroll = try #require(h.host.wysiwygScroll)
+        let page = try #require(h.host.wysiwygText)
+        scroll.isFindBarVisible = true
+        h.window.makeFirstResponder(nil)
+        try #require(h.window.firstResponder === h.window, "the keyboard was not put nowhere")
+        scroll.isFindBarVisible = false
+        #expect(h.window.firstResponder === page, "the keyboard is with \(String(describing: h.window.firstResponder))")
+    }
+
     // Verifies: REQ-058/REQ-032 — the first command in a new window applies at the caret the page
     // shows. The caret had never moved, so no selection callback reported it, and the command was
     // refused.
