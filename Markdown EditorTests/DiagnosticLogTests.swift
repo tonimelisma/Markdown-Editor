@@ -60,9 +60,47 @@ struct DiagnosticLogTests {
     @Test func budgetExceededIsRecordedWhenP95OverBudget() {
         let trace = InMemoryEditorTrace()
         let sampler = PerformanceSampler(trace: trace)
-        sampler.record(.modeTransition, durationNanos: 20_000_000)
+        for _ in 0..<PerformanceSampler.samplesForAPercentile { sampler.record(.modeTransition, durationNanos: 20_000_000) }
         sampler.flush()
         #expect(trace.events.contains(.budgetExceeded(metric: .modeTransition, p95Nanos: 20_000_000, budgetNanos: 16_000_000)))
+    }
+
+    // Verifies: REQ-103 — a p95 is judged only from enough samples to be one. With fewer, the
+    // nearest-rank p95 is the largest sample: five edits of a just-opened document were judged
+    // by its first layout (tours 46012382716, 46013947916). They carry into the next window.
+    @Test func aFewSamplesCarryIntoTheNextWindowBeforeTheirP95IsJudged() {
+        let trace = InMemoryEditorTrace()
+        let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
+        let budget = PerformanceSampler.budgetNanos[.layoutApplication]!
+        for _ in 0..<5 { sampler.record(.layoutApplication, durationNanos: budget * 2) }
+        sampler.flush()
+        let judged: () -> [EditorTraceEvent] = {
+            trace.eventsMatching {
+                switch $0 {
+                case .budgetExceeded(.layoutApplication, _, _), .performanceSummary(.layoutApplication, _, _, _, _): return true
+                default: return false
+                }
+            }
+        }
+        #expect(judged().isEmpty, "five samples were summarised and judged as a p95: \(judged())")
+
+        for _ in 5..<PerformanceSampler.samplesForAPercentile { sampler.record(.layoutApplication, durationNanos: budget * 2) }
+        sampler.flush()
+        #expect(trace.events.contains(.performanceSummary(metric: .layoutApplication, count: PerformanceSampler.samplesForAPercentile, p50Nanos: budget * 2, p95Nanos: budget * 2, maxNanos: budget * 2)), "the carried samples were lost")
+        #expect(trace.events.contains(.budgetExceeded(metric: .layoutApplication, p95Nanos: budget * 2, budgetNanos: budget)), "twenty over-budget samples were not judged")
+        sampler.invalidate()
+    }
+
+    // Verifies: REQ-103 — the last flush writes what remains, its largest included, and judges
+    // no p95 it has too few samples for.
+    @Test func theLastFlushWritesAFewSamplesWithoutJudgingThem() {
+        let trace = InMemoryEditorTrace()
+        let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
+        let budget = PerformanceSampler.budgetNanos[.layoutApplication]!
+        for _ in 0..<5 { sampler.record(.layoutApplication, durationNanos: budget * 2) }
+        sampler.invalidate()
+        #expect(trace.events.contains(.performanceSummary(metric: .layoutApplication, count: 5, p50Nanos: budget * 2, p95Nanos: budget * 2, maxNanos: budget * 2)))
+        #expect(!trace.events.contains(.budgetExceeded(metric: .layoutApplication, p95Nanos: budget * 2, budgetNanos: budget)), "five samples were judged as a p95")
     }
 
     // Verifies: REQ-103 — summaries are emitted on flush and never per keystroke. The flush
@@ -72,7 +110,7 @@ struct DiagnosticLogTests {
         let sampler = PerformanceSampler(trace: trace)
         sampler.record(.parseProjection, durationNanos: 1)
         #expect(trace.events.isEmpty)
-        sampler.flush()
+        sampler.flush(final: true)
         #expect(trace.events.count == 2)
         #expect(trace.events.contains { event in
             if case .performanceSummary(metric: .parseProjection, count: 1, p50Nanos: 1, p95Nanos: 1, maxNanos: 1) = event {

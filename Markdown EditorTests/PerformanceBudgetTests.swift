@@ -53,7 +53,7 @@ struct PerformanceBudgetTests {
         let trace = InMemoryEditorTrace()
         let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
         let budget = PerformanceSampler.budgetNanos[.layoutApplication]!
-        sampler.record(.layoutApplication, durationNanos: budget * 4)
+        for _ in 0..<PerformanceSampler.samplesForAPercentile { sampler.record(.layoutApplication, durationNanos: budget * 4) }
         sampler.flush()
         #expect(!trace.eventsMatching {
             if case .budgetExceeded(let metric, _, _) = $0 { return metric == .layoutApplication }
@@ -62,7 +62,7 @@ struct PerformanceBudgetTests {
 
         let quiet = InMemoryEditorTrace()
         let second = PerformanceSampler(trace: quiet, coordinator: DiagnosticRunCoordinator())
-        second.record(.layoutApplication, durationNanos: budget / 4)
+        for _ in 0..<PerformanceSampler.samplesForAPercentile { second.record(.layoutApplication, durationNanos: budget / 4) }
         second.flush()
         #expect(quiet.eventsMatching {
             if case .budgetExceeded = $0 { return true }
