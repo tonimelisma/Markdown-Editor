@@ -159,7 +159,9 @@ type "Eggs"
 key return
 wait 1
 shot h-find
-key escape
+press Done
+wait 1
+focused
 expect-no-faults
 
 # --- I. Images: Add Image… from the Format menu, then a pasted one.
@@ -244,7 +246,11 @@ shot-screen m-external-dirty
 expect-value "Markdown WYSIWYG" "Unsaved words."
 key cmd+s
 wait 2
+shot-screen m-save-asks
+press "Save Anyway"
+wait 2
 shot-screen m-after-save
+expect-file notes/notes.md "Unsaved words."
 file notes/notes.md m-notes
 expect-no-faults
 

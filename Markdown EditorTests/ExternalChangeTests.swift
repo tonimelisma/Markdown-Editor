@@ -140,6 +140,30 @@ struct ExternalChangeTests {
         #expect(document.text == "original\nMine.", "the typed words were discarded: \(document.text.debugDescription)")
     }
 
+    /// // Verifies: REQ-146 — a save stopped for the conflict alert is the app asking, recorded as
+    /// such: as an error, every run that saved through a conflict looked like a faulty one.
+    @Test func aSaveStoppedForTheConflictAlertIsNotAnError() throws {
+        let (document, url, dir) = try documentOnDisk("original\n")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("mine\n")
+        document.updateChangeCount(.changeDone)
+        try Data("theirs\n".utf8).write(to: url)
+        try #require(document.applyExternalChange(.contentsChanged) == .retainLocalEditsAsConflicted)
+
+        document.recordSaveOutcome(error: CocoaError(.fileWriteUnknown), utf16Count: 5, startUptimeNanos: 0)
+        let reasons = trace.eventsMatching {
+            if case .documentSaveFailed = $0 { return true }
+            return false
+        }
+        let asked = reasons.contains {
+            if case .documentSaveFailed(reason: .awaitingConflictDecision) = $0 { return true }
+            return false
+        }
+        #expect(asked && reasons.count == 1, "recorded \(reasons)")
+    }
+
     /// The conflict is a state, not a permanent mark: reverting resolves it.
     @Test func revertingResolvesTheConflict() throws {
         let (document, url, dir) = try documentOnDisk("original\n")

@@ -247,7 +247,7 @@ final class JSONLinesEditorTrace: EditorTraceSink {
                 (.durationNanos, .uint(durationNanos))
             ])
         case .documentSaveFailed(let reason):
-            return Mapped(name: .documentSaveFailed, level: .error, category: .document, data: [
+            return Mapped(name: .documentSaveFailed, level: reason == .awaitingConflictDecision ? .info : .error, category: .document, data: [
                 (.reason, .symbol(reason.symbol))
             ])
         case .documentReverted(let sourceRevision, let utf16Count):

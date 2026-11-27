@@ -261,7 +261,11 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     func recordSaveOutcome(error: Error?, utf16Count: Int, startUptimeNanos: UInt64) {
         saveOutcomeSequence &+= 1
         if error != nil {
-            trace?.record(route: .documentSaveFailed, .documentSaveFailed(reason: .saveFailedOrCancelled))
+            // With another app's write unresolved, AppKit stops the save to ask the person: the
+            // app's designed outcome (REQ-146), recorded as such rather than as an error.
+            trace?.record(route: .documentSaveFailed, .documentSaveFailed(
+                reason: hasUnresolvedExternalChange ? .awaitingConflictDecision : .saveFailedOrCancelled
+            ))
         } else {
             // REQ-146: writing the buffer to the file is the user resolving the disagreement in
             // favour of their own edits, which is the only way it resolves without a revert.
