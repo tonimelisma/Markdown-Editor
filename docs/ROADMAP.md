@@ -64,8 +64,18 @@ the rejected alternatives, and the respect in which the chosen one is worse.
 relaunch (`.github/workflows/agent-drive.yml`), and each defect it finds is fixed with a test that
 fails for it. Found so far: no window at a plain launch, a stamp-sized window, no keyboard focus in
 a new window, Block Quote's shortcut locking the screen, a second parse at every open, and in
-WYSIWYG no spaces at a line's end, no Return and no Backspace (REQ-152, REQ-153). It is done when the
-tour runs through with no failed step and no fault in the app's log.
+WYSIWYG no spaces at a line's end, no Return and no Backspace (REQ-152, REQ-153). Then:
+
+- typing discarded by another app's write, since an open typing group read as clean;
+- a hang when closing a window after typing;
+- Add Image refused after the caret moved;
+- no Find menu, and no ⌘W;
+- the caret lost on returning from Source mode;
+- quote text and code backgrounds left in Light colours after a switch to Dark;
+- the keyboard nowhere after closing the find bar;
+- an alert waiting for the person recorded as a main-actor stall.
+
+It is done when the tour runs through with no failed step and no unexpected fault in the app's log.
 
 **Packaging and distribution** (🔵 Active, 2026-11-26). Cloud-first development is in place:
 
