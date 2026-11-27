@@ -794,9 +794,13 @@ struct DocumentSerializedIOTests {
         #expect(MarkdownDocument.canConcurrentlyReadDocuments(ofType: "net.daringfireball.markdown") == false)
         let doc = MarkdownDocument()
         let url = URL(fileURLWithPath: "/tmp/x.md")
-        for operation: NSDocument.SaveOperationType in [.saveOperation, .saveAsOperation, .saveToOperation, .autosaveInPlaceOperation, .autosaveElsewhereOperation] {
+        for operation: NSDocument.SaveOperationType in [.saveOperation, .saveAsOperation, .saveToOperation, .autosaveInPlaceOperation] {
             #expect(doc.canAsynchronouslyWrite(to: url, ofType: "net.daringfireball.markdown", for: operation), "\(operation.rawValue) writes on the main thread")
         }
+        // An untitled document's autosave writes on the main thread: AppKit makes it as the first
+        // change lands, and a Save begun in the same turn waited forever for its background write
+        // (probe 45989909379).
+        #expect(!doc.canAsynchronouslyWrite(to: url, ofType: "net.daringfireball.markdown", for: .autosaveElsewhereOperation))
     }
 
     // Verifies: REQ-015/018; ARC-011 — the background write reads only the bytes taken on the

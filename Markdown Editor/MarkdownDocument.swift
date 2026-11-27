@@ -541,10 +541,20 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     // REQ-015/018; ARC-011: a save writes on a background thread, from bytes taken on the main
     // actor as it began; the document's state stays the main actor's (DECISIONS, 2026-11-27).
+    //
+    // Except an untitled document's autosave, which writes on the main thread as before. AppKit
+    // autosaves an untitled document as soon as it first changes; ⌘S a moment after typing ends
+    // the typing group, which is that first change, and the Save that follows waited forever for
+    // the autosave's background write (probe 45989909379; sample in 45989313661). That autosave
+    // is small and rare; the measured stalls were autosaves of saved documents.
     nonisolated override func canAsynchronouslyWrite(
         to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType
     ) -> Bool {
-        true
+        Self.writesAsynchronously(saveOperation)
+    }
+
+    nonisolated static func writesAsynchronously(_ saveOperation: NSDocument.SaveOperationType) -> Bool {
+        saveOperation != .autosaveElsewhereOperation
     }
 
     // The background write begins here: with the bytes already taken, the main thread AppKit holds

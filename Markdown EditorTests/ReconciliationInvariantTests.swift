@@ -321,7 +321,9 @@ struct ReconciliationInvariantTests {
         await Self.stallMainActor(seconds: 0.6) {
             await MainActorWatchdog.probeOnce(
                 thresholdMillis: 100,
-                appKitWaitBoundMillis: 5_000,
+                // Far past any wait the suite's other tests impose on the main actor (CI 45989392525
+                // saw 16 s), so only the mode decides.
+                appKitWaitBoundMillis: 120_000,
                 isModalSessionActive: { false },
                 mainRunLoopMode: { "com.apple.HIServices.RunLoopSemaphore" }
             ) { millis in reported.append(millis) }
@@ -338,7 +340,7 @@ struct ReconciliationInvariantTests {
         await Self.stallMainActor(seconds: 0.6) {
             await MainActorWatchdog.probeOnce(
                 thresholdMillis: 100,
-                appKitWaitBoundMillis: 5_000,
+                appKitWaitBoundMillis: 120_000,
                 isModalSessionActive: { false },
                 mainRunLoopMode: {
                     let look = looks.withLock { $0 += 1; return $0 }

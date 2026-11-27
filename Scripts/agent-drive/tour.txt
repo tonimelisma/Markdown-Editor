@@ -269,6 +269,14 @@ wait 2
 windows
 shot o-new
 type "Scratch"
+# ⌘S at once, while the typing is still one open group: the Save panel opens.
+key cmd+s
+wait 2
+type-field "Scratch.md"
+shot-screen o-save-panel
+key escape
+wait 1
+no-dialogs
 key cmd+w
 wait 2
 shot-screen o-close-asks
