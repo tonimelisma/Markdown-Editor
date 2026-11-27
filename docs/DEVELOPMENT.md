@@ -34,6 +34,15 @@ a clean tree and a pushed branch. The Desktop app's **Open in** sends a local se
 The macOS job restores Xcode's compilation cache and the Swift packages from `main`'s newest
 run, and only a push to `main` saves them. A failed run uploads `check-logs-<run id>-<attempt>`.
 
+Two more workflows serve CI without gating anything:
+
+- **`retry-unstarted.yml`**: when a CI or Release job ended without GitHub ever assigning it a
+  runner (no runner, no steps), it re-runs that run's failed jobs. It runs at most twice, and only
+  while the commit is still its branch's tip. A job that ran and failed is never retried.
+- **`repeat-smoke.yml`**: started by hand (`actions_run_trigger`, `run_workflow`, input `count`).
+  It runs the smoke test many times on one runner and uploads every run's diagnostics as
+  `repeat-smoke-<run id>`. Use it to chase a failure that comes and goes, instead of re-running CI.
+
 Reading CI from a cloud session: the GitHub MCP tools.
 
 - `actions_list` with `list_workflow_runs`, then `list_workflow_jobs`.

@@ -158,3 +158,22 @@ host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-8}"
 python3 "$repo_root/Scripts/verify-smoke-log.py" \
     "$run_file" "$host_update_threshold" --label smoke --expect-edits --allow-orphaned-intents \
     ${SMOKE_VERIFIER_EXTRA_ARGS:-}
+verdict=$?
+if (( verdict != 0 )); then
+    # A rejected run prints its whole timeline, so the log alone says when each fault happened and
+    # what the app was doing just before: a mainActorStall's milliseconds and its neighbours. The
+    # records carry no document content (REQ-089), so they are safe in a public CI log.
+    echo "smoke: the rejected run's records (uptime s, level, category, event, data):" >&2
+    python3 -I - "$run_file" >&2 <<'PY'
+import json, sys
+for line in open(sys.argv[1]):
+    try:
+        r = json.loads(line)
+    except ValueError:
+        print("  (unparseable) " + line.rstrip()[:160])
+        continue
+    data = {k: v for k, v in r.items() if k not in ("v", "seq", "up", "wall", "lvl", "cat", "ev")}
+    print("  %9s %-5s %-10s %-28s %s" % (r.get("up", ""), r.get("lvl", ""), r.get("cat", ""), r.get("ev", ""), json.dumps(data, separators=(",", ":"))[:200]))
+PY
+fi
+exit "$verdict"

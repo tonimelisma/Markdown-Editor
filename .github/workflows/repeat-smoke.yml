@@ -1,0 +1,56 @@
+# Runs the smoke test many times on one macOS runner and keeps every run's diagnostics, to chase a
+# failure that comes and goes, such as the mainActorStall of CI 45856817544 (docs/ROADMAP.md). It is
+# a cloud session's way to reproduce, not a gate: nothing requires it, and it runs only when
+# started (GitHub's tools: actions_run_trigger, method run_workflow, workflow repeat-smoke.yml).
+name: Repeat smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: How many smoke runs
+        default: "12"
+
+permissions:
+  contents: read
+
+jobs:
+  repeat:
+    name: Smoke, repeated
+    runs-on: xcode-27
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Select the newest Xcode 27
+        run: |
+          set -euo pipefail
+          xcode="$(ls -d /Applications/Xcode_27*.app | sort -V | tail -n 1)"
+          sudo xcode-select --switch "$xcode/Contents/Developer"
+          xcodebuild -version
+      - name: Smoke runs
+        env:
+          COUNT: ${{ inputs.count }}
+        run: |
+          set -uo pipefail
+          [[ "$COUNT" =~ ^[1-9][0-9]?$ ]] || { echo "::error::count must be 1 to 99"; exit 1; }
+          mkdir -p .build/repeat-records
+          failed=0
+          for i in $(seq 1 "$COUNT"); do
+            # The first run builds; the rest reuse that build folder, so each is a launch, not a build.
+            if SMOKE_DERIVED_DATA=.build/repeat SMOKE_LOG_COPY_DIR=".build/repeat-records/run-$i" \
+                Scripts/smoke-test.sh > ".build/repeat-records/smoke-$i.log" 2>&1; then
+              echo "run $i: PASS $(grep -o 'launch→exit took [0-9]*s' ".build/repeat-records/smoke-$i.log")"
+            else
+              failed=$((failed + 1))
+              echo "run $i: FAIL $(grep -o 'launch→exit took [0-9]*s' ".build/repeat-records/smoke-$i.log") $(grep 'diagnostics FAIL' ".build/repeat-records/smoke-$i.log")"
+            fi
+          done
+          echo "smoke runs: $COUNT, failed: $failed"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: repeat-smoke-${{ github.run_id }}
+          path: .build/repeat-records/
+          retention-days: 14

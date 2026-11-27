@@ -100,6 +100,7 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
             "MARKDOWN_EDITOR_FRAME_OBSERVER",
             "MARKDOWN_EDITOR_SMOKE_EXERCISE_EDITS",
             "MARKDOWN_EDITOR_SMOKE_EXIT_SECONDS",
+            "MARKDOWN_EDITOR_SMOKE_SCENE",
             "MARKDOWN_EDITOR_SMOKE_WINDOW_HEIGHT",
         ]
 
@@ -169,6 +170,37 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
         return URL(fileURLWithPath: path)
+    }
+
+    /// A screen a screenshot run can ask a smoke launch to present (REQ-151).
+    ///
+    /// // `Scripts/screenshots.sh` publishes a committed gallery of the product's important
+    /// // screens. Source mode and the link sheet are not reachable by a launch alone, and
+    /// // CLAUDE.md §4 forbids reaching them by driving the UI. Naming the screen at launch and
+    /// // applying it through the ordinary window-scoped command routes — the same handle
+    /// // `exerciseSmokeEdits` uses — keeps the capture passive: no synthetic events, no
+    /// // accessibility, no screen automation.
+    /// //
+    /// // Closed and `CaseIterable` so a new screen cannot be added without the gallery script's
+    /// // scene list and this enum being compared by a test.
+    nonisolated enum SmokeScene: String, CaseIterable, Sendable {
+        /// The rendered reading surface, which is also the ordinary launch state.
+        case wysiwyg
+        /// The Markdown source, syntax highlighted.
+        case source
+        /// The window-attached link sheet, over a selected link in the rendered surface.
+        case linkSheet = "link-sheet"
+    }
+
+    /// The screen this run was asked to present, or `nil` for the ordinary launch state.
+    ///
+    /// // Gated on `isSmokeRun` like every other smoke affordance: the variable alone changes
+    /// // nothing in a launch the user performs (REQ-144).
+    nonisolated static var smokeScene: SmokeScene? {
+        guard isSmokeRun,
+              let raw = ProcessInfo.processInfo.environment["MARKDOWN_EDITOR_SMOKE_SCENE"],
+              !raw.isEmpty else { return nil }
+        return SmokeScene(rawValue: raw)
     }
 
     /// REQ-115: true when the smoke run should additionally exercise one accepted insertion and
@@ -265,6 +297,12 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
                     try? await Task.sleep(for: .seconds(min(2, Self.smokeExitSeconds / 3)))
                     Self.exerciseSmokeEdits()
                 }
+                if let scene = Self.smokeScene {
+                    // Same wait, and for the same reason: the link scene selects a run of the
+                    // authoritative presentation, which does not exist at launch.
+                    try? await Task.sleep(for: .seconds(min(2, Self.smokeExitSeconds / 3)))
+                    Self.presentSmokeScene(scene)
+                }
                 try? await Task.sleep(for: .seconds(Self.smokeExitSeconds))
                 // NSDocument can keep NSApp.terminate(nil) pending when this verifier has
                 // intentionally exercised an unsaved edit. Perform the same cleanup that
@@ -321,6 +359,57 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         let inserted = SourceSelection(utf16: NSRange(location: 0, length: 1))
         session.updateSourceModeState { $0.selection = inserted }
         _ = controller.perform(.bold)
+    }
+
+    /// Presents one gallery screen through the window-scoped command routes (REQ-151).
+    @MainActor
+    private static func presentSmokeScene(_ scene: SmokeScene) {
+        guard let controller = NSApp.windows
+            .compactMap({ ($0.toolbar?.delegate as? EditorToolbarController)?.commandController })
+            .first
+        else { return }
+
+        presentSmokeScene(scene, using: controller)
+    }
+
+    /// The same route, exposed to component tests so REQ-151 can be falsified without a window
+    /// server or a timing race.
+    ///
+    /// // Every branch goes through `EditorCommandController.perform`, so a screen the product
+    /// // would refuse to show is refused here too, and nothing here can change document content:
+    /// // `.editLink` only opens the sheet — committing it is a separate route this never calls.
+    @MainActor
+    @discardableResult
+    static func presentSmokeScene(
+        _ scene: SmokeScene,
+        using controller: EditorCommandController
+    ) -> Bool {
+        guard let session = controller.session else { return false }
+        switch scene {
+        case .wysiwyg:
+            return controller.perform(.wysiwygMode) == .accepted
+        case .source:
+            return controller.perform(.sourceMode) == .accepted
+        case .linkSheet:
+            guard controller.perform(.wysiwygMode) == .accepted,
+                  let presentation = session.presentation,
+                  case .editable(let id) = session.wysiwygModeState.availability,
+                  id == presentation.id
+            else { return false }
+            // Select an existing link so the sheet shows a real destination rather than an
+            // empty field. Falls back to the first word, which keeps the screen reachable on a
+            // fixture that happens to carry no link.
+            let range = presentation.runs.first { $0.linkDestination != nil }?.utf16Range
+                ?? NSRange(location: 0, length: min(12, (presentation.renderedString as NSString).length))
+            guard range.length > 0 else { return false }
+            session.updateWYSIWYGModeState {
+                $0.selection = ProjectionSelection(
+                    utf16: range,
+                    revision: presentation.projectionRevision
+                )
+            }
+            return controller.perform(.editLink) == .started
+        }
     }
 
     /// App ▸ Check for Updates… (REQ-033).

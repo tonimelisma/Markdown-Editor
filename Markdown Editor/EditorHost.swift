@@ -168,13 +168,14 @@ struct EditorHostView: NSViewRepresentable {
             guard session.updateOrigin.current == .nativeUserInput else { return }
             guard session.viewReconciliationDepth == 0 else { return }
             guard let clipView = notification.object as? NSClipView else { return }
-            let origin = clipView.bounds.origin
-            if clipView === sourceScroll?.contentView {
-                guard session.sourceModeState.scrollOffset != origin else { return }
-                session.updateSourceModeState { $0.scrollOffset = origin }
-            } else if clipView === wysiwygScroll?.contentView {
-                guard session.wysiwygModeState.scrollOffset != origin else { return }
-                session.updateWYSIWYGModeState { $0.scrollOffset = origin }
+            if let sourceScroll, clipView === sourceScroll.contentView {
+                let offset = Self.scrollOffset(in: sourceScroll)
+                guard session.sourceModeState.scrollOffset != offset else { return }
+                session.updateSourceModeState { $0.scrollOffset = offset }
+            } else if let wysiwygScroll, clipView === wysiwygScroll.contentView {
+                let offset = Self.scrollOffset(in: wysiwygScroll)
+                guard session.wysiwygModeState.scrollOffset != offset else { return }
+                session.updateWYSIWYGModeState { $0.scrollOffset = offset }
             }
         }
 
@@ -326,8 +327,7 @@ struct EditorHostView: NSViewRepresentable {
                         affinity: affinity,
                         stillSelecting: false
                     )
-                    sourceScroll.contentView.scroll(to: sourceState.scrollOffset)
-                    sourceScroll.reflectScrolledClipView(sourceScroll.contentView)
+                    Self.restoreScrollOffset(sourceState.scrollOffset, in: sourceScroll)
                     if shouldFocus { sourceText.window?.makeFirstResponder(sourceText) }
                 } else {
                     let wysiwygState = session.wysiwygModeState
@@ -339,8 +339,7 @@ struct EditorHostView: NSViewRepresentable {
                         affinity: affinity,
                         stillSelecting: false
                     )
-                    wysiwygScroll.contentView.scroll(to: wysiwygState.scrollOffset)
-                    wysiwygScroll.reflectScrolledClipView(wysiwygScroll.contentView)
+                    Self.restoreScrollOffset(wysiwygState.scrollOffset, in: wysiwygScroll)
                     if shouldFocus { wysiwygText.window?.makeFirstResponder(wysiwygText) }
                 }
             }
@@ -406,6 +405,36 @@ struct EditorHostView: NSViewRepresentable {
                     }
                 }
             }
+        }
+
+        /// Session scroll state is an offset from the top of the *document*, not a raw clip-view
+        /// bounds origin.
+        ///
+        /// // COR-93: AppKit is free to park a scroll view's document view at a non-zero origin
+        /// // inside its clip view, and it does exactly that for the Source editor, which is
+        /// // laid out while hidden — measured at `documentView.frame.origin.y == -1044` for an
+        /// // 861-point clip over a 2122-point document. `scroll(to: .zero)` then means "1044
+        /// // points down", so the first switch into Source opened halfway through the file
+        /// // while both the session and the clip view agreed the offset was zero. Neither
+        /// // `tile()` nor laying out the clip view resets that placement; measuring against it
+        /// // does. Storing the offset relative to the document keeps "no scroll" meaning "the
+        /// // top" wherever AppKit has put the document view (REQ-086).
+        private static func documentOrigin(in scrollView: NSScrollView) -> CGPoint {
+            scrollView.documentView?.frame.origin ?? .zero
+        }
+
+        static func scrollOffset(in scrollView: NSScrollView) -> CGPoint {
+            let document = documentOrigin(in: scrollView)
+            let bounds = scrollView.contentView.bounds.origin
+            return CGPoint(x: bounds.x - document.x, y: bounds.y - document.y)
+        }
+
+        static func restoreScrollOffset(_ offset: CGPoint, in scrollView: NSScrollView) {
+            let document = documentOrigin(in: scrollView)
+            scrollView.contentView.scroll(
+                to: CGPoint(x: document.x + offset.x, y: document.y + offset.y)
+            )
+            scrollView.reflectScrolledClipView(scrollView.contentView)
         }
 
         private func configureSource(_ textView: MarkdownSourceTextView) {
