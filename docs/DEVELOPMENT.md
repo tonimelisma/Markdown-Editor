@@ -45,7 +45,8 @@ Two more workflows serve CI without gating anything:
   `fresh` a new copy each time, `settle` waits after the build, and `sample` takes a `spindump` of
   each launch. Use it to chase a failure that comes and goes, instead of re-running CI.
 - **`agent-drive.yml`**: started by hand (`run_workflow`, `ref` the branch to build), and on a pull
-  request that changes the driver or its scenarios. The driver (`Scripts/agent-drive.swift`, whose
+  request that changes the driver or its scenarios. It builds Release, hardened ad hoc and without the
+  update key, unless `inputs.configuration` is `Debug`, which `sample` can attach to. The driver (`Scripts/agent-drive.swift`, whose
   header lists every step) launches the app through Launch Services, as the Dock and Finder do, and
   uses it: real keys, clicks and scrolls, menus and panels, the clipboard, shell commands standing in
   for other apps, Light and Dark, quit and relaunch. `inputs.scenario` holds steps; empty, it runs
