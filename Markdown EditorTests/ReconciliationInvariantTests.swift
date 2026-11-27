@@ -332,6 +332,28 @@ struct ReconciliationInvariantTests {
         #expect(values.isEmpty, "AppKit's wait was reported as a stall: \(values)")
     }
 
+    // Verifies: REQ-096 — a stopped watchdog reports nothing. Stopping it, on the main actor,
+    // cancels a probe in flight, whose sleep then returns at once and finds its hop not yet run:
+    // every quit that caught one recorded a one-second stall (tour 46015012930).
+    @Test func aCancelledProbeReportsNoStall() async {
+        let reported = ReportBox()
+        let probe = Task.detached {
+            await MainActorWatchdog.probeOnce(
+                thresholdMillis: 500,
+                appKitWaitBoundMillis: 120_000,
+                isModalSessionActive: { false },
+                isAppKitWorking: { false },
+                mainRunLoopMode: { CFRunLoopMode.defaultMode.rawValue as String }
+            ) { millis in reported.append(millis) }
+        }
+        // No suspension from here: the probe's hop cannot land while the main actor cancels it
+        // and stays busy, as it is while the app stops the watchdog.
+        probe.cancel()
+        occupyMainActor(seconds: 0.3)
+        let values = await reported.awaitingCount(1, timeoutSeconds: 0.5)
+        #expect(values.isEmpty, "a cancelled probe reported a stall: \(values)")
+    }
+
     // Verifies: REQ-096 — AppKit's own synchronous work for the app, such as loading the print
     // panel, is a wait in AppKit's loop, not a stall: the main thread is in the default mode, so
     // only `aroundAppKitWork` tells it apart. Probe 46007142113 reported it as a 1.2 s stall.

@@ -185,6 +185,10 @@ final class MainActorWatchdog {
             await flag.markCompleted()
         }
         try? await Task.sleep(for: .milliseconds(Int(thresholdMillis)))
+        // A stopped watchdog cancels its probe, and a cancelled sleep returns at once: the hop,
+        // queued behind the very call that stopped it, has not landed. That was reported as a
+        // one-second stall 34 ms into every quit that caught a probe in flight (tour 46015012930).
+        guard !Task.isCancelled else { return }
         guard await flag.isCompleted == false else { return }
         guard !isModalSessionActive() else {
             await probe.value
@@ -204,12 +208,14 @@ final class MainActorWatchdog {
         for _ in 0..<5 {
             look()
             try? await Task.sleep(for: .milliseconds(20))
+            if Task.isCancelled { return }
             if await flag.isCompleted { return }
         }
         while let seen = lastSeenWaiting,
               DispatchTime.now().uptimeNanoseconds &- seen < recent,
               DispatchTime.now().uptimeNanoseconds < bound {
             try? await Task.sleep(for: .milliseconds(20))
+            if Task.isCancelled { return }
             if await flag.isCompleted { return }
             look()
         }
