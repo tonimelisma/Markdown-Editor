@@ -287,6 +287,27 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         MarkdownAppDelegate.isRunningUnitTests ? "MarkdownDocumentWindow.tests" : "MarkdownDocumentWindow"
     }
 
+    /// Runs the print panel as a sheet on the document's window, outside NSDocument's activity
+    /// queue. NSDocument prints inside an activity that ends only when the print operation reports
+    /// back; after Cancel on a fresh Mac, with the print system still waiting on macOS's
+    /// local-network prompt, it never did, and every later save of every document waited for it
+    /// forever (tours 45990628438, 45996638231; probe 45992765502). Printing reads the
+    /// presentation and changes nothing, so it needs none of that serialization.
+    override func printDocument(_ sender: Any?) {
+        guard let window = windowForSheet else { NSSound.beep(); return }
+        let operation: NSPrintOperation
+        do {
+            operation = try printOperation(withSettings: [:])
+        } catch {
+            presentError(error, modalFor: window, delegate: nil, didPresent: nil, contextInfo: nil)
+            return
+        }
+        operation.showsPrintPanel = true
+        operation.showsProgressPanel = true
+        operation.jobTitle = displayName
+        operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+    }
+
     override func printOperation(
         withSettings printSettings: [NSPrintInfo.AttributeKey: Any]
     ) throws -> NSPrintOperation {
