@@ -291,3 +291,37 @@ nonisolated enum ProjectionAtom: Sendable, Equatable {
         }
     }
 }
+
+extension ProjectionAtom {
+    /// The same atoms with every run of adjacent identity atoms that continue each other — contiguous
+    /// in projection and in source, the first's insertion-after offset the next's insertion-before —
+    /// merged into one. Two segmentations of the same identity mapping coalesce to the same list;
+    /// any other difference, in mapping, kind or order, survives it.
+    static func coalescingIdentity(_ atoms: [ProjectionAtom]) -> [ProjectionAtom] {
+        var out: [ProjectionAtom] = []
+        out.reserveCapacity(atoms.count)
+        for atom in atoms {
+            if case .identity(let next) = atom,
+               case .identity(let previous)? = out.last,
+               NSMaxRange(previous.projection) == next.projection.location,
+               NSMaxRange(previous.source) == next.source.location,
+               previous.insertionAfter == next.insertionBefore {
+                out[out.count - 1] = .identity(IdentityAtom(
+                    projection: NSRange(
+                        location: previous.projection.location,
+                        length: previous.projection.length + next.projection.length
+                    ),
+                    source: NSRange(
+                        location: previous.source.location,
+                        length: previous.source.length + next.source.length
+                    ),
+                    insertionBefore: previous.insertionBefore,
+                    insertionAfter: next.insertionAfter
+                ))
+            } else {
+                out.append(atom)
+            }
+        }
+        return out
+    }
+}

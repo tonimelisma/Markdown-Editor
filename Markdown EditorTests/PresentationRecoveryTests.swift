@@ -151,6 +151,34 @@ struct PresentationRecoveryTests {
         #expect(parses == 1, "revision \(edited) was parsed \(parses) times")
     }
 
+    // Verifies: REQ-109 — identity text split into pieces is the same content as the same text in
+    // one piece, and a different mapping is not. An ordinary keystroke's local transition splits
+    // identity atoms at the edit where the parser emits one (CI 45939800494).
+    @Test func identitySegmentationIsNotADisagreement() {
+        func identity(_ projection: NSRange, _ source: NSRange) -> ProjectionAtom {
+            .identity(IdentityAtom(
+                projection: projection, source: source,
+                insertionBefore: source.location, insertionAfter: NSMaxRange(source)
+            ))
+        }
+        let split = [
+            identity(NSRange(location: 0, length: 11), NSRange(location: 0, length: 11)),
+            identity(NSRange(location: 11, length: 1), NSRange(location: 11, length: 1)),
+            identity(NSRange(location: 12, length: 1), NSRange(location: 12, length: 1)),
+        ]
+        let whole = [identity(NSRange(location: 0, length: 13), NSRange(location: 0, length: 13))]
+        #expect(ProjectionAtom.coalescingIdentity(split) == whole)
+        #expect(ProjectionAtom.coalescingIdentity(whole) == whole)
+
+        // The same pieces mapped one character further into the source do not continue the first.
+        let shifted = [
+            identity(NSRange(location: 0, length: 11), NSRange(location: 0, length: 11)),
+            identity(NSRange(location: 11, length: 2), NSRange(location: 12, length: 2)),
+        ]
+        #expect(ProjectionAtom.coalescingIdentity(shifted) != whole)
+        #expect(ProjectionAtom.coalescingIdentity(shifted).count == 2)
+    }
+
     // Verifies: REQ-109 — the check still catches what it exists for. A provisional snapshot whose
     // content disagrees with the authoritative parse of its revision is recorded, exactly once,
     // and replaced. Without this, a fix to the two tests above could pass by making the check
