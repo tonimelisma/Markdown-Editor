@@ -78,7 +78,10 @@ Still open:
   stalls over one second, and launch to exit took 11 s. The runs before and after it, on the same
   code, passed. The stall records were not kept then, so the cause is unknown. A failed smoke run
   now uploads its records (`smoke-records/` in `check-logs-*`), and `repeat-smoke.yml` runs the
-  smoke test many times on one runner to reproduce it.
+  smoke test many times on one runner to reproduce it. It came back on 2026-11-27 and blocked
+  v1.0.1. Release run 45921027714 launched the signed Release app, recorded the same two stalls
+  (launch to exit 12 s), and published nothing. A rejected smoke run now prints its whole
+  timeline into the log, so the next one shows when each stall happened and what preceded it.
 - An installed copy seen updating itself. v1.0.0 (build 202) was published on 2026-11-26 by
   Release run 45866221874. Its feed, archive length and EdDSA signature were checked from
   GitHub against the `SPARKLE_SEED` public key, and its app carries that key — but the app itself
