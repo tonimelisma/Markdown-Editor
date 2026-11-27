@@ -41,7 +41,8 @@ final class PerformanceSampler {
         .nativeInputCallback: 8_000_000,
         .modeTransition: 16_000_000,
         .parseProjection: 100_000_000,
-        .imageResolution: 16_000_000,
+        // Off-main, in the parse task, like parsing: no frame waits on it (DECISIONS, 2026-11-27).
+        .imageResolution: 100_000_000,
         .authoritativeApplication: 100_000_000,
         // A frame-shaped budget rather than the off-main 100 ms allowance: this runs on the
         // main actor and the user sees it.

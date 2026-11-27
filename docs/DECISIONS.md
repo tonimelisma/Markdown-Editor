@@ -3,6 +3,29 @@
 Decisions with consequences. Newest first. This is not an archive of everything ever decided —
 it is the short list of things someone will otherwise re-litigate or accidentally undo.
 
+## 2026-11-27 — Off-main image resolution has the off-main budget
+
+**Decision.** `imageResolution` is budgeted at 100 ms p95, as the other off-main stages
+(`parseProjection`, `sourceHighlightCompute`) are, not at a 16 ms frame.
+
+**Why.** The tour's log reported `imageResolution` over budget at 19.7 ms on opening the showcase
+document. The stage reads, inspects and decodes image files in the parse task, off the main actor
+(REQ-090 requires that). No frame waits on it, so the frame budget described nothing the person
+sees, and it warned on every rich document opened on a slow machine.
+
+**Criteria:** a measurement must bound what it describes (CLAUDE.md §3); a warning in the log must
+mean something the person would notice; cost.
+
+| Option | Bound describes the stage | Warning means a problem | Cost |
+| --- | --- | --- | --- |
+| **100 ms, the off-main allowance (chosen)** | ✓ the parse task's whole result waits on it | ✓ | none |
+| Keep 16 ms | ✗ a frame, for work no frame waits on | ✗ every rich open on a slow Mac | none |
+| Remove the metric | ✗ unbounded work then goes unmeasured | — | loses the decode cost's only number |
+| Move decoding lazily onto display | ✗ puts decode work on the main actor, which REQ-090 forbids | — | large |
+
+**Where it is worse.** A decode slower than a frame but under 100 ms no longer warns. The person
+sees it only as an image arriving that much after the text, which the 100 ms covers.
+
 ## 2026-11-27 — Unsaved typing is edited before AppKit counts it; undo groups end outside AppKit's activities
 
 **Decision.** A document is edited when AppKit says so, or while a typing undo group holds edits.

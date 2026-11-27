@@ -723,7 +723,8 @@ Metric names describe their actual boundaries:
   patch application, and selection restoration;
 - `modeTransition`: requested mode change through visibility, focus, and selection restoration;
 - `parseProjection`: parser, source index, and semantic projection only;
-- `imageResolution`: inspection, metadata identity, thumbnail decode, and cache lookup; and
+- `imageResolution`: inspection, metadata identity, thumbnail decode, and cache lookup, off the
+  main actor, so budgeted as parsing is (100 ms); and
 - `authoritativeApplication`: main-actor application of a completed authoritative result; and
 - `sourceHighlightCompute`: off-main incremental source lexing for the captured document/session;
   its duration starts at incremental-lexer actor entry, excluding time queued behind a superseded

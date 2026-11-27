@@ -203,6 +203,27 @@ struct MeasurementSubstrateProofTests {
     #expect(summary?.max ?? 0 >= 150_000_000)
 }
 
+// Verifies: REQ-124 — a hop that waited out an app-modal alert is not a latency sample. The
+// main thread ran the alert, and the wait was the person reading it: tour 45974231615's
+// bad-file alert alone put the p95 at 896 ms. The 200 ms block above, outside a session, is
+// still counted.
+@Test @MainActor func aHopThatWaitedOutAnAppModalAlertIsNotALatencySample() {
+    let trace = InMemoryEditorTrace()
+    let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
+    let probe = MainActorResponsivenessProbe(sampler: sampler)
+    probe.captureSampleNow()
+    AppModalSession.around { Thread.sleep(forTimeInterval: 0.2) }
+    RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+    probe.captureSampleNow()
+    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    probe.stop()
+    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    let summary = sampler.drainSummaries().first { $0.metric == .mainActorLatency }
+    sampler.invalidate()
+    #expect(summary?.count == 1, "samples: \(String(describing: summary))")
+    #expect(summary?.max ?? .max < 150_000_000, "the alert's wait was counted: \(String(describing: summary))")
+}
+
 // Verifies: REQ-125
 @Test @MainActor func frameBudgetFollowsTheDisplayLinkCadenceRatherThanAConstant() async {
     let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())

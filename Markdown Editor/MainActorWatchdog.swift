@@ -11,14 +11,19 @@ import Synchronization
 /// queued jobs wait until the session ends, so a watchdog probe cannot land. The bad-file alert in
 /// tour 45974231615 was recorded as two main-actor stalls, while the app was only asking.
 nonisolated enum AppModalSession {
-    private static let depth = Mutex(0)
+    private struct State { var depth = 0; var epoch: UInt64 = 0 }
+    private static let state = Mutex(State())
 
-    static var isActive: Bool { depth.withLock { $0 > 0 } }
+    static var isActive: Bool { state.withLock { $0.depth > 0 } }
+
+    /// Advances as each session begins and ends: a measurement that starts at one epoch and ends
+    /// at another overlapped a session, though none may be running at either end.
+    static var epoch: UInt64 { state.withLock { $0.epoch } }
 
     /// Runs `body`, an app-modal presentation that returns when the person dismisses it.
     static func around<T>(_ body: () throws -> T) rethrows -> T {
-        depth.withLock { $0 += 1 }
-        defer { depth.withLock { $0 = max(0, $0 - 1) } }
+        state.withLock { $0.depth += 1; $0.epoch &+= 1 }
+        defer { state.withLock { $0.depth = max(0, $0.depth - 1); $0.epoch &+= 1 } }
         return try body()
     }
 }
