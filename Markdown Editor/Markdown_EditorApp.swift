@@ -84,8 +84,18 @@ struct Markdown_EditorApp: App {
     /// The front document's typing is counted first, before AppKit starts the action's activity
     /// (`MarkdownDocument.prepareForDocumentCommand`).
     private static func send(_ action: String) {
-        (NSDocumentController.shared.currentDocument as? MarkdownDocument)?.prepareForDocumentCommand()
-        NSApp.sendAction(NSSelectorFromString(action), to: nil, from: nil)
+        let selector = NSSelectorFromString(action)
+        let endedTyping = (NSDocumentController.shared.currentDocument as? MarkdownDocument)?
+            .prepareForDocumentCommand() ?? false
+        guard endedTyping else {
+            NSApp.sendAction(selector, to: nil, from: nil)
+            return
+        }
+        // AppKit counts the ended typing in an activity queued on the main queue; the command
+        // waits that turn, or its own activity waits for it with the main thread held.
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { _ = NSApp.sendAction(selector, to: nil, from: nil) }
+        }
     }
 }
 

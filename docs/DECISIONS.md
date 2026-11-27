@@ -57,10 +57,10 @@ cost.
 | A long-lived mirrored text for writers | ✓ | ✗ a second source of truth | ~ mirror can lag | large |
 | Do nothing | ✗ 0.1–0.4 s freeze per autosave | ✓ | ✓ | none |
 
-**Amended the same day.** An untitled document's autosave writes on the main thread. ⌘S a moment
-after typing ends the typing group, which is the untitled document's first change; AppKit autosaves
-it at once, and the Save then waited forever for that autosave's background write (probe
-45989909379). That autosave is small and happens once; the measured stalls were not it.
+**Amended the same day.** Saving a moment after typing hung the app. The cause was not the
+background write: ending the typing group makes AppKit count the change in an activity queued on
+the main queue, and a save started in the same turn waited for it with the main thread held
+(probe 45999625665). A File command that ends a typing group now starts on the next turn.
 
 **Where it is worse.** A background write that arrives with no snapshot fails instead of reading
 the document; no path in AppKit was seen to do that, and the failure is a save error, not a wrong

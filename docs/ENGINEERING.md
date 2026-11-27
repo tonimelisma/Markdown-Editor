@@ -437,9 +437,11 @@ Rules:
 - Swift imports the data-read override as `nonisolated`, but AppKit performs background document
   opening only when the subclass opts into concurrent reads. The override asserts the main thread
   under the retained default and enters `MainActor.assumeIsolated` for the canonical load.
-- Saves write asynchronously (`canAsynchronouslyWrite`), except an untitled document's autosave.
-  AppKit makes that autosave as the first change lands, and a Save begun in the same turn waited
-  forever for its background write. `save(to:ofType:for:completionHandler:)`
+- Saves write asynchronously (`canAsynchronouslyWrite`).
+- A File command, Save included, ends the front document's typing group before it starts, and
+  when that ends a group the command starts on the next turn of the main queue. AppKit counts the
+  ended group in an activity of the document's own, queued on the main queue; a command started
+  in the same turn waited synchronously for it, holding the main thread it needed. `save(to:ofType:for:completionHandler:)`
   takes the bytes to write on the main actor before AppKit starts, and keeps them until the next
   save replaces them: AppKit completes a save stopped for the conflict alert, then writes on Save
   Anyway without a second `save(to:…)`. On AppKit's background thread, `writeSafely` releases the

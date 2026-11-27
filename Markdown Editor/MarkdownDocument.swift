@@ -331,14 +331,35 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     // done here, before AppKit starts its save activity, never inside it: ending a group makes
     // NSDocument update its change count with synchronous waiting, which inside its own activity
     // waits forever (the close hang, probe 45972423807).
+    //
+    // When that ends a group, the save starts on the next turn of the main queue. AppKit counts
+    // the ended group in an activity of the document's own, queued on the main queue; a save
+    // started in the same turn waited synchronously for it, holding the main thread it needed,
+    // and the app hung (probe 45999625665: ⌘S a moment after typing hung; the same save after
+    // the Edit menu had ended the group did not).
     override func save(withDelegate delegate: Any?, didSave didSaveSelector: Selector?, contextInfo: UnsafeMutableRawPointer?) {
-        closeTypingGroupIfNeeded()
-        super.save(withDelegate: delegate, didSave: didSaveSelector, contextInfo: contextInfo)
+        guard closeTypingGroupIfNeeded() else {
+            super.save(withDelegate: delegate, didSave: didSaveSelector, contextInfo: contextInfo)
+            return
+        }
+        nonisolated(unsafe) let delegate = delegate
+        nonisolated(unsafe) let contextInfo = contextInfo
+        DispatchQueue.main.async { [self] in
+            MainActor.assumeIsolated {
+                super.save(withDelegate: delegate, didSave: didSaveSelector, contextInfo: contextInfo)
+            }
+        }
     }
 
     override func saveAs(_ sender: Any?) {
-        closeTypingGroupIfNeeded()
-        super.saveAs(sender)
+        guard closeTypingGroupIfNeeded() else {
+            super.saveAs(sender)
+            return
+        }
+        nonisolated(unsafe) let sender = sender
+        DispatchQueue.main.async { [self] in
+            MainActor.assumeIsolated { super.saveAs(sender) }
+        }
     }
 
     // REQ-100: the one override AppKit routes every save through — manual Save, Save As,
@@ -562,20 +583,10 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     // REQ-015/018; ARC-011: a save writes on a background thread, from bytes taken on the main
     // actor as it began; the document's state stays the main actor's (DECISIONS, 2026-11-27).
-    //
-    // Except an untitled document's autosave, which writes on the main thread as before. AppKit
-    // autosaves an untitled document as soon as it first changes; ⌘S a moment after typing ends
-    // the typing group, which is that first change, and the Save that follows waited forever for
-    // the autosave's background write (probe 45989909379; sample in 45989313661). That autosave
-    // is small and rare; the measured stalls were autosaves of saved documents.
     nonisolated override func canAsynchronouslyWrite(
         to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType
     ) -> Bool {
-        Self.writesAsynchronously(saveOperation)
-    }
-
-    nonisolated static func writesAsynchronously(_ saveOperation: NSDocument.SaveOperationType) -> Bool {
-        saveOperation != .autosaveElsewhereOperation
+        true
     }
 
     // The background write begins here: with the bytes already taken, the main thread AppKit holds
@@ -1082,14 +1093,17 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         typingGroupHasChanges = false
     }
 
-    private func closeTypingGroupIfNeeded() {
-        guard typingGroupOpen else { return }
+    /// Ends the open typing group; returns whether it ended one.
+    @discardableResult
+    private func closeTypingGroupIfNeeded() -> Bool {
+        guard typingGroupOpen else { return false }
         typingGroupOpen = false
         typingGroupHasChanges = false
         // Only end a group we actually opened — AppKit/checkpoint churn can leave
         // groupingLevel 0 while our flag was still set.
-        guard let undoManager, undoManager.groupingLevel > 0 else { return }
+        guard let undoManager, undoManager.groupingLevel > 0 else { return false }
         undoManager.endUndoGrouping()
+        return true
     }
 
     private func beginMarkedTextGroupIfNeeded() {
@@ -1115,7 +1129,10 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// the undo checkpoint observer at whatever moment the main queue next ran: once inside the
     /// print panel, where that autosave began and never finished, and every later save of the
     /// document waited for it forever (probes 45994331916, 45992765502).
-    func prepareForDocumentCommand() {
+    /// Returns whether it ended a group: the command then waits a turn of the main queue, for
+    /// the activity in which AppKit counts it (see `save(withDelegate:didSave:contextInfo:)`).
+    @discardableResult
+    func prepareForDocumentCommand() -> Bool {
         closeTypingGroupIfNeeded()
     }
 
@@ -1128,7 +1145,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.closeTypingGroupIfNeeded()
+                _ = self?.closeTypingGroupIfNeeded()
             }
         }
     }

@@ -587,8 +587,9 @@ struct EditorIntegrationTests {
         )
         _ = commitSourceMutationForTest(doc, typed)
         #expect(doc.undoManager?.groupingLevel == 1, "typing left no group open to end")
-        doc.prepareForDocumentCommand()
+        #expect(doc.prepareForDocumentCommand(), "it reported no group ended, so the command would not wait its turn")
         #expect(doc.undoManager?.groupingLevel == 0, "the typing group is still open as the command starts")
+        #expect(!doc.prepareForDocumentCommand(), "with no group open, a command need not wait")
         #expect(doc.isDocumentEdited)
         #expect(doc.undoManager?.canUndo == true)
     }
