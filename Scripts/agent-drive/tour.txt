@@ -254,10 +254,14 @@ expect-file notes/notes.md "Unsaved words."
 file notes/notes.md m-notes
 expect-no-faults
 
-# --- N. Print: File › Print… shows the print panel, and Cancel closes it.
+# --- N. Print: File › Print… shows the print panel, and Cancel closes it. The first time, the
+# panel's search for printers makes macOS ask whether the app may find devices on the local
+# network; the prompt is answered as a person would, or it keeps the keyboard.
 key cmd+p
 wait 3
 shot-screen n-print
+system-prompt "Don't Allow"
+wait 1
 press Cancel
 wait 1
 no-dialogs

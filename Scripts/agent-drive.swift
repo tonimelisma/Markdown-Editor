@@ -39,6 +39,9 @@
 //   faults                     the app's fault, error and warn records since the last `faults`
 // Doing
 //   press LABEL                accessibility press: buttons, segments, checkboxes, menu buttons
+//   system-prompt LABEL        press LABEL in another process's window, as a person answers a
+//                              system prompt the app caused (the print panel's local-network
+//                              request); passes, noting it, when no such prompt is showing
 //   menu TOP ITEM [SUBITEM…]   open a menu and choose an item, e.g. menu View "Source Mode"
 //   click LABEL                a real mouse click on the middle of the element's visible part
 //   clickat X Y                a real mouse click at a point of the front window, in points
@@ -532,6 +535,33 @@ while let raw = readLine() {
         if let element = require(rest[0]) {
             log("  \(describe(element)) → \(AXUIElementPerformAction(element, kAXPressAction as CFString).rawValue)")
         }
+    case ("system-prompt", 1):
+        // A system prompt belongs to another process, so the app's own tree does not hold it.
+        // Titles are compared with straight apostrophes: "Don’t Allow" is typeset.
+        func plain(_ s: String) -> String { s.replacingOccurrences(of: "\u{2019}", with: "'") }
+        let wanted = plain(rest[0])
+        func button(in element: AXUIElement, depth: Int = 0) -> AXUIElement? {
+            guard depth <= 12 else { return nil }
+            if text(element, kAXRoleAttribute) == (kAXButtonRole as String), plain(text(element, kAXTitleAttribute)) == wanted {
+                return element
+            }
+            for child in children(element) { if let found = button(in: child, depth: depth + 1) { return found } }
+            return nil
+        }
+        var answered = false
+        for other in NSWorkspace.shared.runningApplications where other.processIdentifier != pid && !answered {
+            let root = AXUIElementCreateApplication(other.processIdentifier)
+            let windows = (attribute(root, kAXWindowsAttribute) as? [AXUIElement]) ?? []
+            for window in windows {
+                if let found = button(in: window) {
+                    let result = AXUIElementPerformAction(found, kAXPressAction as CFString).rawValue
+                    log("  \(other.localizedName ?? "pid \(other.processIdentifier)"): \(describe(found)) → \(result)")
+                    answered = true
+                    break
+                }
+            }
+        }
+        if !answered { log("  no prompt offers \"\(rest[0])\"") }
     case ("menu-items", 1):
         // Opens one menu bar menu, lists every item with its enabled state and shortcut, and
         // closes it again: what the menu offers right now, as AppKit has just validated it.
