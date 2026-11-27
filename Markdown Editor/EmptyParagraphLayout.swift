@@ -28,6 +28,30 @@ nonisolated enum EmptyParagraphLayout {
         let after: Int
     }
 
+    /// Where a top-level block's text ends: cmark's span for a list runs on over the blank lines
+    /// after it, which are the gap's.
+    static func blockEnd(_ range: NSRange, in source: NSString) -> Int {
+        var end = min(NSMaxRange(range), source.length)
+        while end > range.location {
+            let c = source.character(at: end - 1)
+            guard c == 0x0A || c == 0x0D || c == 0x20 || c == 0x09 else { break }
+            end -= 1
+        }
+        return end
+    }
+
+    /// Every slot in a document whose top-level blocks span `blocks`, in order.
+    static func documentSlots(in source: NSString, blocks: [NSRange]) -> [Slot] {
+        var slots: [Slot] = []
+        var previousEnd: Int?
+        if blocks.isEmpty { return Self.slots(in: source, previousEnd: nil, nextStart: nil) }
+        for block in blocks {
+            slots += Self.slots(in: source, previousEnd: previousEnd, nextStart: block.location)
+            previousEnd = blockEnd(block, in: source)
+        }
+        return slots + Self.slots(in: source, previousEnd: previousEnd, nextStart: nil)
+    }
+
     /// The slots in the gap after the block ending at `previousEnd` (nil before the first) and
     /// before the block starting at `nextStart` (nil after the last).
     static func slots(in source: NSString, previousEnd: Int?, nextStart: Int?) -> [Slot] {

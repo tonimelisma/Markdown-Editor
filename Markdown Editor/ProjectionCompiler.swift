@@ -63,7 +63,7 @@ private nonisolated struct CompilerBuilder {
                     appendEmptyParagraphs(gap: previousEnd, nextStart: start, documentNode: node)
                 }
                 emit(child, styleStack: styleStack, listNesting: listNesting)
-                previousEnd = sourceUTF16(of: child).map(NSMaxRange) ?? previousEnd
+                previousEnd = sourceUTF16(of: child).map { EmptyParagraphLayout.blockEnd($0, in: map.source as NSString) } ?? previousEnd
             }
             appendEmptyParagraphs(gap: previousEnd, nextStart: nil, documentNode: node)
 

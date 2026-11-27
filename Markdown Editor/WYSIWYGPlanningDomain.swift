@@ -492,12 +492,28 @@ enum WYSIWYGPlanningDomain {
         return preserves ? .preservesPresentation(built: built) : .changesPresentation(built: built)
     }
 
+    /// Whether two presentations style their text alike: their runs in order, neighbours with
+    /// the same styling taken as one. Run boundaries alone are representation: a trailing space
+    /// is a run of its own, and a letter typed into an empty paragraph turns its break into text
+    /// and a break. Counted run by run, every such keystroke looked like a change of formatting
+    /// and was refused or escaped (agent-drive tour 45957180019).
     static func sameRunSemantics(_ lhs: [ProjectionRun], _ rhs: [ProjectionRun]) -> Bool {
-        lhs.count == rhs.count && zip(lhs, rhs).allSatisfy {
-            $0.styles == $1.styles
-                && $0.linkDestination == $1.linkDestination
-                && $0.isLiteralFallback == $1.isLiteralFallback
+        visibleStyling(lhs) == visibleStyling(rhs)
+    }
+
+    nonisolated struct RunStyling: Equatable {
+        let styles: Set<ProjectionStyleTag>
+        let linkDestination: String?
+        let isLiteralFallback: Bool
+    }
+
+    static func visibleStyling(_ runs: [ProjectionRun]) -> [RunStyling] {
+        var result: [RunStyling] = []
+        for run in runs {
+            let styling = RunStyling(styles: run.styles, linkDestination: run.linkDestination, isLiteralFallback: run.isLiteralFallback)
+            if result.last != styling { result.append(styling) }
         }
+        return result
     }
 
     static func sameAttachmentSemantics(

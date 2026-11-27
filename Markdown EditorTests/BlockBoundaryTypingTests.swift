@@ -96,12 +96,20 @@ struct BlockBoundaryTypingTests {
             if waitsForEachParse { await settle() }
         }
 
+        /// What each recovered keystroke's provisional snapshot disagreed with the parse on.
+        private(set) var disagreements: [String] = []
+
         /// Waits until the current revision's parse has landed and is on the page.
         func settle() async {
             let revision = harness.document.sourceVersion
+            let provisional = harness.session.presentation
+            let recovered = recoveries.count
             for _ in 0..<2_000 where !reconciled(revision) {
                 await Task.yield()
                 try? await Task.sleep(for: .milliseconds(5))
+            }
+            if recoveries.count > recovered, let provisional, let authoritative = harness.session.presentation {
+                disagreements.append("revision \(revision): " + PresentationRecoveryTests.differences(provisional, authoritative).joined(separator: "; "))
             }
             harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
         }
@@ -133,7 +141,7 @@ struct BlockBoundaryTypingTests {
             await settle()
             #expect(text == source, "the document reads \(text.debugDescription)", sourceLocation: sourceLocation)
             #expect(refusals.isEmpty, "keystrokes were refused: \(refusals)", sourceLocation: sourceLocation)
-            #expect(recoveries.isEmpty, "keystrokes were recovered: \(recoveries)", sourceLocation: sourceLocation)
+            #expect(recoveries.isEmpty, "keystrokes were recovered: \(recoveries); \(disagreements)", sourceLocation: sourceLocation)
         }
     }
 
@@ -183,13 +191,15 @@ struct BlockBoundaryTypingTests {
         await typist.expect("# Weekly notes\n\nBody")
     }
 
-    // Verifies: REQ-152 — Return before a paragraph's text opens an empty paragraph above it.
+    // Verifies: REQ-152 — Return before a paragraph's text opens an empty paragraph above it,
+    // and the caret stays with the paragraph, as in TextEdit.
     @Test func returnBeforeAParagraphOpensOneAboveIt() async throws {
         let typist = try await Typist("# Title\n\nBody")
         try typist.click(before: "Body")
         await typist.pressReturn()
-        await typist.type("Lead")
-        await typist.expect("# Title\n\nLead\n\nBody")
+        await typist.type("The ")
+        await typist.expect("# Title\n\n\n\nThe Body")
+        #expect(typist.rendered.hasPrefix("Title\n\nThe Body"), "the page reads \(typist.rendered.debugDescription)")
     }
 
     // Verifies: REQ-152 — Return in a list starts the next item; Return in the empty item ends
@@ -327,13 +337,7 @@ struct BlockBoundaryTypingTests {
             guard let tree = try? MarkdownParser.parse(source, sourceVersion: 1).get() else { return -1 }
             let index = MarkdownSourceIndex(source: source, sourceVersion: 1)
             let blocks = tree.root.children.compactMap { try? index.utf16Range(for: $0.position).get() }
-            if blocks.isEmpty { return EmptyParagraphLayout.slots(in: ns, previousEnd: nil, nextStart: nil).count }
-            var total = EmptyParagraphLayout.slots(in: ns, previousEnd: nil, nextStart: blocks[0].location).count
-            for (a, b) in zip(blocks, blocks.dropFirst()) {
-                total += EmptyParagraphLayout.slots(in: ns, previousEnd: NSMaxRange(a), nextStart: b.location).count
-            }
-            total += EmptyParagraphLayout.slots(in: ns, previousEnd: NSMaxRange(blocks[blocks.count - 1]), nextStart: nil).count
-            return total
+            return EmptyParagraphLayout.documentSlots(in: ns, blocks: blocks).count
         }
         #expect(count("") == 0)
         #expect(count("\n\n") == 1)

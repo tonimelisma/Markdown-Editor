@@ -209,7 +209,7 @@ nonisolated enum BlockBoundaryPlanner {
             guard let index = context.topLevel.firstIndex(where: { $0.node.id == top.node.id }) else {
                 return .refused(.mappingFailure)
             }
-            let previousEnd = index > 0 ? NSMaxRange(context.topLevel[index - 1].range) : nil
+            let previousEnd = index > 0 ? EmptyParagraphLayout.blockEnd(context.topLevel[index - 1].range, in: source) : nil
             // After an empty paragraph: that paragraph goes, and this one moves up.
             if !EmptyParagraphLayout.slots(in: source, previousEnd: previousEnd, nextStart: top.range.location).isEmpty {
                 let lineStart = context.lineStart(of: top.range.location)
@@ -350,17 +350,7 @@ nonisolated enum BlockBoundaryPlanner {
         }
 
         var emptyParagraphSlots: [EmptyParagraphLayout.Slot] {
-            if topLevel.isEmpty {
-                return EmptyParagraphLayout.slots(in: source, previousEnd: nil, nextStart: nil)
-            }
-            var slots: [EmptyParagraphLayout.Slot] = []
-            var previousEnd: Int?
-            for block in topLevel {
-                slots += EmptyParagraphLayout.slots(in: source, previousEnd: previousEnd, nextStart: block.range.location)
-                previousEnd = NSMaxRange(block.range)
-            }
-            slots += EmptyParagraphLayout.slots(in: source, previousEnd: previousEnd, nextStart: nil)
-            return slots
+            EmptyParagraphLayout.documentSlots(in: source, blocks: topLevel.map(\.range))
         }
 
         func lineStart(of location: Int) -> Int {

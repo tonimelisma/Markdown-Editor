@@ -124,6 +124,7 @@ struct ProductionTestHookInventoryTests {
             "performedBuildCountForTesting",   // COR-89: whole-document rebuilds actually performed
             "resetParseMemoForTesting",        // COR-89: cold-starts the cmark parse memo
             "performedParseCountForTesting",   // COR-89: cmark parses actually performed
+            "overrideScheduledBackingScaleForTesting", // a window at another scale than the parse's, without a second display
         ]
         for hook in hooks {
             #expect(source.contains(hook), "inventoried hook \(hook) no longer exists")
