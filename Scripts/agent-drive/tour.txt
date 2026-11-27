@@ -111,6 +111,7 @@ key cmd+a
 type-field "notes.md"
 key cmd+shift+g
 type-field "$WORK/notes"
+shot-screen f-folder-typed
 key return
 wait 1
 key return
@@ -168,6 +169,7 @@ wait 2
 shot-screen i-open-panel
 key cmd+shift+g
 type-field "$WORK/pictures/photo.png"
+shot-screen i-path-typed
 key return
 wait 1
 key return

@@ -252,7 +252,18 @@ func require(_ label: String) -> AXUIElement? {
 
 // MARK: Real input events
 
+/// Brings the app forward unless it, or a panel it is showing, already has the keyboard. The
+/// Open and Save panels run in AppKit's own service process; activating the app behind one took
+/// the keyboard from the panel, and a file name typed into it went into the document instead
+/// (tour 45962151435).
 func activate() {
+    guard let front = NSWorkspace.shared.frontmostApplication else {
+        _ = runningApp()?.activate()
+        usleep(150_000)
+        return
+    }
+    if front.processIdentifier == pid { return }
+    if let identifier = front.bundleIdentifier, identifier.hasPrefix("com.apple.appkit.xpc") { return }
     _ = runningApp()?.activate()
     usleep(150_000)
 }
@@ -632,6 +643,10 @@ while let raw = readLine() {
         typeText(wanted)
         if waitUntil(3, { text(field, kAXValueAttribute).contains(wanted) }) {
             pass("\(describe(field)) holds the text")
+        } else if frame(field).isEmpty {
+            // A field of the Open or Save panel's service process: the app's accessibility tree
+            // shows it without its contents. The screen capture that follows is the evidence.
+            log("  typed into a panel field the app cannot read back")
         } else {
             fail("\(describe(field)) reads \"\(text(field, kAXValueAttribute).prefix(200))\"")
         }
