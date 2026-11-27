@@ -4,9 +4,10 @@
     python3 Scripts/make-app-icon.py
 
 The icon is made in code so it can be regenerated anywhere, a cloud session included: a macOS
-rounded-square tile in ink blue, a paper page with a folded corner, and the Markdown mark (an M and
-a down arrow, the community's public-domain symbol for Markdown). It is drawn once at 4096 px and
-scaled down, so every size is antialiased from the same geometry. Needs Pillow.
+rounded-square tile in sage, and on it a cream legal pad, turned a few degrees, with a terracotta
+binding strip, ruled lines and a Markdown heading mark (#) in the margin. It is drawn at 4096 px and
+scaled down, so every size is antialiased from the same geometry; 16 and 32 px get simpler art,
+without the margin mark and text, which would only be noise at that size. Needs Pillow.
 """
 import json
 import math
@@ -40,7 +41,29 @@ def vertical_gradient(size, top, bottom):
     return gradient.resize(size)
 
 
-def draw_icon():
+def hash_mark(d, cx, cy, size, weight, fill, slant=0.15):
+    """A '#' in grid units: two slanted uprights and two crossbars, with round ends."""
+    h = size / 2
+    gap = size * 0.18
+    w = weight * U
+    for dx in (-gap, gap):
+        top = ((cx + dx + slant * h) * U, (cy - h) * U)
+        foot = ((cx + dx - slant * h) * U, (cy + h) * U)
+        d.line([top, foot], fill=fill, width=int(w))
+        for x, y in (top, foot):
+            d.ellipse((x - w / 2, y - w / 2, x + w / 2, y + w / 2), fill=fill)
+    for dy in (-gap, gap):
+        d.rounded_rectangle(
+            ((cx - h * 0.78) * U, (cy + dy) * U - w / 2, (cx + h * 0.78) * U, (cy + dy) * U + w / 2),
+            radius=w / 2,
+            fill=fill,
+        )
+
+
+def draw_icon(detail=True):
+    """A legal pad on a sage tile: cream paper, a terracotta binding strip, ruled lines, and a
+    Markdown heading mark in the margin. `detail=False` is the art for 16 and 32 px, where a margin
+    mark and text would be noise: the pad, the strip and four heavier rules."""
     canvas = Image.new("RGBA", (S, S), (0, 0, 0, 0))
 
     # Tile: Apple's grid puts the body at 824 of 1024 units, centred, with a soft shadow below.
@@ -51,50 +74,61 @@ def draw_icon():
     canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(14 * U)))
     mask = Image.new("L", (S, S), 0)
     ImageDraw.Draw(mask).polygon(tile, fill=255)
-    body = vertical_gradient((S, S), (58, 88, 150), (24, 36, 74)).convert("RGBA")
+    body = vertical_gradient((S, S), (156, 180, 152), (100, 128, 102)).convert("RGBA")
     canvas.paste(body, (0, 0), mask)
 
-    # Page: a sheet of paper with its top-right corner folded over.
-    d = ImageDraw.Draw(canvas)
-    left, top, right, bottom = 262 * U, 196 * U, 762 * U, 828 * U
-    fold = 118 * U
-    page_shadow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    ImageDraw.Draw(page_shadow).polygon(
-        [(left, top + 10 * U), (right - fold, top + 10 * U), (right, top + fold + 10 * U), (right, bottom + 10 * U), (left, bottom + 10 * U)],
-        fill=(0, 0, 0, 110),
-    )
-    canvas.alpha_composite(page_shadow.filter(ImageFilter.GaussianBlur(12 * U)))
-    d = ImageDraw.Draw(canvas)
-    d.polygon([(left, top), (right - fold, top), (right, top + fold), (right, bottom), (left, bottom)], fill=(250, 248, 242))
-    d.polygon([(right - fold, top), (right - fold, top + fold), (right, top + fold)], fill=(214, 210, 200))
+    # The pad, drawn upright on its own layer and then turned a few degrees, as if set down.
+    pad = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(pad)
+    left, top, right, bottom = 262 * U, 222 * U, 762 * U, 816 * U
+    strip = (top + 104 * U) if detail else (top + 124 * U)
+    paper, binding, binding_edge = (253, 249, 238), (200, 104, 74), (168, 82, 58)
+    d.rounded_rectangle((left, top, right, bottom), radius=36 * U, fill=paper)
+    d.rounded_rectangle((left, top, right, strip), radius=36 * U, fill=binding)
+    d.rectangle((left, strip - 40 * U, right, strip), fill=binding)
+    d.rectangle((left, strip - 10 * U, right, strip), fill=binding_edge)
 
-    # Text lines above and below the mark, the way a document reads.
-    line = (196, 200, 212)
-    for y, width in ((300, 300), (360, 360), (690, 380), (750, 260)):
-        d.rounded_rectangle((left + 62 * U, y * U, left + (62 + width) * U, (y + 24) * U), radius=12 * U, fill=line)
+    rule = (172, 196, 222)
+    if detail:
+        for i in range(7):
+            y = strip + (70 + i * 58) * U
+            d.line([(left + 38 * U, y), (right - 36 * U, y)], fill=rule, width=int(6 * U))
+        margin = left + 112 * U
+        d.line([(margin, strip + 14 * U), (margin, bottom - 14 * U)], fill=(230, 150, 138), width=int(6 * U))
+        hash_mark(d, (left / U) + 56, (strip / U) + 50, 52, 13, binding)
+        heading, text = (66, 74, 88), (150, 158, 172)
+        for i, width in enumerate((300, 340, 250)):
+            y = strip + (34 + i * 58) * U
+            d.rounded_rectangle(
+                (margin + 22 * U, y, margin + (22 + width) * U, y + 20 * U),
+                radius=10 * U,
+                fill=heading if i == 0 else text,
+            )
+    else:
+        for i in range(4):
+            y = strip + (96 + i * 104) * U
+            d.line([(left + 52 * U, y), (right - 52 * U, y)], fill=(120, 150, 186), width=int(22 * U))
 
-    # The Markdown mark: an outlined frame holding an M and a down arrow.
-    ink = (28, 42, 86)
-    fx0, fy0, fx1, fy1 = 318 * U, 436 * U, 706 * U, 636 * U
-    d.rounded_rectangle((fx0, fy0, fx1, fy1), radius=26 * U, outline=ink, width=int(22 * U))
-    stroke = int(40 * U)
-    mx0, mx1, my0, my1 = 378 * U, 532 * U, 482 * U, 590 * U
-    d.line([(mx0, my1), (mx0, my0), ((mx0 + mx1) / 2, my0 + 62 * U), (mx1, my0), (mx1, my1)], fill=ink, width=stroke, joint="curve")
-    ax = 618 * U
-    d.line([(ax, my0), (ax, my1 - 40 * U)], fill=ink, width=stroke)
-    d.polygon([(ax - 52 * U, my1 - 52 * U), (ax + 52 * U, my1 - 52 * U), (ax, my1 + 4 * U)], fill=ink)
+    pad = pad.rotate(-4, resample=Image.BICUBIC, center=(S / 2, S / 2))
+    pad_shadow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    pad_shadow.putalpha(pad.split()[3].point(lambda v: int(v * 0.35)))
+    lifted = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    lifted.alpha_composite(pad_shadow.filter(ImageFilter.GaussianBlur(18 * U)), (0, int(12 * U)))
+    canvas.alpha_composite(lifted)
+    canvas.alpha_composite(pad)
     return canvas
 
 
 def main():
-    icon = draw_icon()
+    icon, small = draw_icon(), draw_icon(detail=False)
     contents = json.loads((ICONSET / "Contents.json").read_text())
     for image in contents["images"]:
         points = int(image["size"].split("x")[0])
         scale = int(image["scale"].rstrip("x"))
         pixels = points * scale
         name = f"icon_{points}x{points}{'@2x' if scale == 2 else ''}.png"
-        icon.resize((pixels, pixels), Image.LANCZOS).save(ICONSET / name, optimize=True)
+        art = small if pixels <= 32 else icon
+        art.resize((pixels, pixels), Image.LANCZOS).save(ICONSET / name, optimize=True)
         image["filename"] = name
     (ICONSET / "Contents.json").write_text(json.dumps(contents, indent=2) + "\n")
     print(f"make-app-icon: wrote {len(contents['images'])} images to {ICONSET.relative_to(ROOT)}")
