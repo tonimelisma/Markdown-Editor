@@ -196,13 +196,39 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         AppModalSession.shared.around { super.revertToSaved(sender) }
     }
 
+    /// Every close asks this first: ⌘W, the window's close button, and Quit, whose review of
+    /// unsaved documents reaches each document here. Typing still in an open undo group is ended
+    /// first, and when that ends one, the review waits a main-queue turn, as saves do
+    /// (`save(withDelegate:)`): AppKit counts the change in an activity it queues on the main
+    /// queue, and a review started in the same turn waits for that activity synchronously and
+    /// never returns. Quitting 0.7 s after typing hung the app that way (tour 46011070302).
     override func canClose(
         withDelegate delegate: Any, shouldClose shouldCloseSelector: Selector?, contextInfo: UnsafeMutableRawPointer?
     ) {
-        AppModalSession.shared.around {
-            super.canClose(withDelegate: delegate, shouldClose: shouldCloseSelector, contextInfo: contextInfo)
+        guard closeTypingGroupIfNeeded() else {
+            reviewForClose(delegate, shouldCloseSelector, contextInfo)
+            return
+        }
+        nonisolated(unsafe) let delegate = delegate
+        nonisolated(unsafe) let contextInfo = contextInfo
+        DispatchQueue.main.async { [self] in
+            MainActor.assumeIsolated { self.reviewForClose(delegate, shouldCloseSelector, contextInfo) }
         }
     }
+
+    /// AppKit's review of a close, as an app-modal session (above). A test replaces
+    /// `closeReview` to watch when it starts, since AppKit's own shows a dialog.
+    private func reviewForClose(_ delegate: Any, _ selector: Selector?, _ contextInfo: UnsafeMutableRawPointer?) {
+        if let closeReview {
+            closeReview(delegate, selector, contextInfo)
+            return
+        }
+        AppModalSession.shared.around {
+            super.canClose(withDelegate: delegate, shouldClose: selector, contextInfo: contextInfo)
+        }
+    }
+
+    var closeReview: ((Any, Selector?, UnsafeMutableRawPointer?) -> Void)?
 
     override func makeWindowControllers() {
         if fileURL == nil, duplicateOrigin == nil, let origin = Self.duplicatingFrom {
@@ -258,8 +284,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             }
             controller.windowFrameAutosaveName = name
         }
+        // Tabs as the person set them in System Settings (Desktop & Dock, "Prefer tabs when
+        // opening documents"), as TextEdit does. `.preferred` forced every new document into a
+        // tab, against that setting, and merging into the tab group was over half of showing a
+        // window (probe 46014139254).
         window.tabbingIdentifier = "MarkdownDocument"
-        window.tabbingMode = .preferred
+        window.tabbingMode = .automatic
         addWindowController(controller)
     }
 
@@ -293,6 +323,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// local-network prompt, it never did, and every later save of every document waited for it
     /// forever (tours 45990628438, 45996638231; probe 45992765502). Printing reads the
     /// presentation and changes nothing, so it needs none of that serialization.
+    ///
+    /// The panel's first load is AppKit's work on the main thread, 0.5–2 s on a runner, so it runs
+    /// inside `AppModalSession.aroundAppKitWork` rather than counting as the app's stall.
     override func printDocument(_ sender: Any?) {
         guard let window = windowForSheet else { NSSound.beep(); return }
         let operation: NSPrintOperation
@@ -305,6 +338,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         operation.showsPrintPanel = true
         operation.showsProgressPanel = true
         operation.jobTitle = displayName
+        AppModalSession.shared.aroundAppKitWork { presentPrintPanel(operation, window) }
+    }
+
+    /// Begins the print sheet. AppKit loads the panel before this returns, so `printDocument`
+    /// calls it inside `aroundAppKitWork`; a test replaces it to see that.
+    var presentPrintPanel: (NSPrintOperation, NSWindow) -> Void = { operation, window in
         operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
     }
 

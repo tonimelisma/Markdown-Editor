@@ -45,6 +45,28 @@ struct PrintingContractTests {
         #expect(operation.printInfo.rightMargin == 36)
     }
 
+    // Verifies: REQ-096 — the print panel's load is AppKit's work, not the app's stall. Print
+    // begins the sheet inside `AppModalSession.aroundAppKitWork`, so the first load (1.4 s in
+    // probe 46007142113, 2 s in Release tour 46007567920) is bounded as a wait in AppKit's loop.
+    @Test func printBeginsItsPanelWhileAppKitWorksForTheApp() {
+        let (document, _) = documentWithPrintView("# Title\n\nBody paragraph.\n")
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: true)
+        let controller = NSWindowController(window: window)
+        document.addWindowController(controller)
+        defer { document.removeWindowController(controller) }
+        var presented: (operation: NSPrintOperation, window: NSWindow, appKitWorking: Bool)?
+        document.presentPrintPanel = { operation, window in
+            presented = (operation, window, AppModalSession.shared.isAppKitWorking)
+        }
+
+        document.printDocument(nil)
+
+        #expect(presented?.window === window, "Print did not begin its sheet on the document's window")
+        #expect(presented?.appKitWorking == true, "the print panel began outside AppKit's work")
+        #expect(presented?.operation.showsPrintPanel == true)
+        #expect(!AppModalSession.shared.isAppKitWorking)
+    }
+
     // Verifies: REQ-130 — printing changes neither source nor history. A print is a read, and the
     // failure this guards against is a print path that re-lays-out through the document and marks
     // it edited, so the user is asked to save a file they only looked at.
@@ -117,7 +139,7 @@ struct WindowCitizenshipTests {
         let window = try #require(document.windowControllers.first?.window)
 
         #expect(window.tabbingIdentifier == "MarkdownDocument")
-        #expect(window.tabbingMode == .preferred)
+        #expect(window.tabbingMode == .automatic, "tabbing overrides the person's Prefer tabs setting")
         // A frame autosave name is what makes AppKit restore and cascade; an empty one means the
         // app is silently not participating.
         // Both signals asserted separately rather than with `||`: either one alone passing would

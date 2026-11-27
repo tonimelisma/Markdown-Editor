@@ -439,7 +439,8 @@ Rules:
   under the retained default and enters `MainActor.assumeIsolated` for the canonical load.
 - Saves write asynchronously (`canAsynchronouslyWrite`).
 - A File command, Save included, ends the front document's typing group before it starts, and
-  when that ends a group the command starts on the next turn of the main queue. AppKit counts the
+  when that ends a group the command starts on the next turn of the main queue. So does a close's
+  review (`canClose`), which ⌘W, the close button and Quit's review of unsaved documents reach. AppKit counts the
   ended group in an activity of the document's own, queued on the main queue; a command started
   in the same turn waited synchronously for it, holding the main thread it needed. `save(to:ofType:for:completionHandler:)`
   takes the bytes to write on the main actor before AppKit starts, and keeps them until the next
@@ -704,6 +705,10 @@ ordinary files the user owns and can read, delete, or ignore.
   stall. In any other mode AppKit is waiting in a loop that serves no queue, as the title bar's
   rename after Duplicate waits on its view service. The watchdog reports such a wait only past ten
   seconds, so a deadlock inside one, as the close hang was, is still reported.
+- AppKit's own synchronous work for the app counts as such a wait, with the same bound, where the
+  app hands the main thread to it (`AppModalSession.aroundAppKitWork`): Print, whose panel's first
+  load waits on the print system for up to two seconds in the default mode, where nothing else
+  tells it from the app's own stall.
 - Reconciliation instrumentation records any session publication during view reconciliation, and
   the host-update meter reports a sustained update rate — the signature of a self-feeding loop,
   which presents as high CPU rather than as a hang.

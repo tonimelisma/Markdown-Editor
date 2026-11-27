@@ -20,6 +20,32 @@ struct DiagnosticLogTests {
         #expect(sampler.drainSummaries() == [.init(metric: .nativeInputCallback, count: 100, p50: 50, p95: 95, max: 100)])
     }
 
+    // Verifies: REQ-103 — a summary describes every sample of its window. The latency probe takes
+    // 600 a minute; a ring of the newest 512 lost the first nine seconds of each minute, and a
+    // print panel's first load there was absent from the count, the max and the p95.
+    @Test func aSummaryCountsEverySampleOfItsWindowAndKeepsTheLargest() {
+        let sampler = PerformanceSampler(trace: nil, coordinator: DiagnosticRunCoordinator())
+        sampler.record(.mainActorLatency, durationNanos: 1_500_000_000)
+        for _ in 1..<600 { sampler.record(.mainActorLatency, durationNanos: 1_000_000) }
+        let summary = sampler.drainSummaries().first { $0.metric == .mainActorLatency }
+        sampler.invalidate()
+        #expect(summary?.count == 600)
+        #expect(summary?.max == 1_500_000_000)
+    }
+
+    // Verifies: REQ-103 — the percentiles weigh the whole window, not its newest part: a slow
+    // first sixth of the minute still sets the p95.
+    @Test func thePercentilesWeighTheWholeWindow() {
+        let sampler = PerformanceSampler(trace: nil, coordinator: DiagnosticRunCoordinator())
+        for _ in 0..<200 { sampler.record(.mainActorLatency, durationNanos: 400_000_000) }
+        for _ in 0..<1_000 { sampler.record(.mainActorLatency, durationNanos: 1_000_000) }
+        let summary = sampler.drainSummaries().first { $0.metric == .mainActorLatency }
+        sampler.invalidate()
+        #expect(summary?.count == 1_200)
+        #expect(summary?.p95 == 400_000_000, "summary: \(String(describing: summary))")
+        #expect(summary?.p50 == 1_000_000, "summary: \(String(describing: summary))")
+    }
+
     // Verifies: REQ-090 — the evidence type refuses a run with no executed samples, so a
     // latency gate cannot be reported as satisfied by having measured nothing.
     @Test func performanceEvidenceRejectsZeroSamples() {
@@ -315,6 +341,47 @@ struct DiagnosticLogTests {
             return false
         })
         session.detach()
+    }
+
+    // Verifies: REQ-103 — `parseProjection` times the parse and the projection, not the parse
+    // task's wait for the main actor between them. A showcase parse of a few milliseconds was
+    // recorded at 875 ms while the main thread opened its window (tour 46011070302).
+    @Test func parseProjectionLeavesOutTheWaitForTheMainActor() async {
+        let document = MarkdownDocument()
+        let trace = InMemoryEditorTrace()
+        document.trace = trace
+        document.installTextForTesting("# Title\n\nBody paragraph.\n")
+        let session = EditorSession(performanceSamplerCoordinator: DiagnosticRunCoordinator())
+        session.attach(document: document)
+        defer { session.detach() }
+        // The parse runs off the main actor and then waits for it, held here.
+        occupyMainActor(seconds: 0.3)
+        let revision = document.sourceVersion
+        for _ in 0..<400 where trace.eventsMatching({
+            if case .reconciliationApplied(_, let applied, _, _) = $0 { return applied == revision }
+            return false
+        }).isEmpty {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        let summary = session.performanceSampler?.drainSummaries().first { $0.metric == .parseProjection }
+        #expect(summary != nil, "no parse was measured")
+        #expect((summary?.max ?? .max) < 150_000_000, "the wait for the main actor was timed as parsing: \(String(describing: summary))")
+    }
+
+    // Verifies: REQ-123 — a document opened before its window exists parses once when the window
+    // opens on the main screen. The parse before the window guessed scale 2, so on a 1x display
+    // (CI's runner, an external monitor) binding the window parsed it again. On a 2x host this
+    // passes either way; CI's runner is 1x.
+    @Test func aWindowOpenedAfterAttachOnTheMainScreenNeedsNoSecondParse() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("hello\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        defer { session.detach() }
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled], backing: .buffered, defer: true)
+        let before = session.parseCoordinator.generation()
+        session.bind(editorWindow: window)
+        #expect(session.parseCoordinator.generation() == before, "binding a main-screen window parsed the document again")
     }
 
     // Verifies: ARC-023 — a backing change from the session's own window that changes the scale

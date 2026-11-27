@@ -65,7 +65,11 @@ final class ParseCoordinator {
         let generation = operationGeneration
         let currentPresentation = session.presentation
         let imageDisplayService = session.imageDisplayService
-        let backingScale = session.editorWindow?.backingScaleFactor ?? 2
+        // Before the document has a window, the main screen's scale is where its window will
+        // open. A fixed 2 made every open on a 1x display parse twice: the window, bound a moment
+        // later, differed from the guess (Release launch probe 46008725028: two parses of the
+        // same empty document, the first discarded).
+        let backingScale = session.editorWindow?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         scheduledBackingScale = backingScale
         let appearance: ImageDisplayAppearance = {
             switch NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) {
@@ -149,9 +153,14 @@ final class ParseCoordinator {
                 }
                 return
             }
+            // The hop to record this waits for the main actor, which is not parsing: it is left
+            // out of `parseProjection`, which measured 875 ms for a showcase parse that took a
+            // few while the main thread opened its window (tour 46011070302).
+            let parsedAt = DispatchTime.now().uptimeNanoseconds
             await MainActor.run {
                 document?.trace?.record(route: .parseCompleted, .parseCompleted(sourceVersion: snapshot.sourceVersion))
             }
+            let projectionStart = DispatchTime.now().uptimeNanoseconds
             let model = MarkdownProjectionModel.build(tree: tree, index: index, intent: intent)
             if case .failure = ProjectionOracle.validate(model: model, sourceUTF16Count: (snapshot.text as NSString).length, intent: intent) {
                 await MainActor.run {
@@ -166,7 +175,8 @@ final class ParseCoordinator {
                 }
                 return
             }
-            let parseProjectionDuration = DispatchTime.now().uptimeNanoseconds &- parseProjectionStart
+            let parseProjectionDuration = (parsedAt &- parseProjectionStart)
+                &+ (DispatchTime.now().uptimeNanoseconds &- projectionStart)
             let imageResolutionStart = DispatchTime.now().uptimeNanoseconds
             var descriptors: [ImageDisplayDescriptor] = []
             var resolveFailures: [LocalImageResolveFailure] = []

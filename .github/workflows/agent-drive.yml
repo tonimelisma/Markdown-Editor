@@ -23,6 +23,9 @@ on:
       scenario_file:
         description: A scenario in Scripts/agent-drive, used when scenario is empty
         default: tour.txt
+      configuration:
+        description: Release (the bundle release.sh publishes, ad hoc, no update key) or Debug (profilable)
+        default: Release
   pull_request:
     paths:
       - .github/workflows/agent-drive.yml
@@ -57,15 +60,36 @@ jobs:
             .build/check/SourcePackages
           key: build-${{ runner.os }}-${{ steps.xcode.outputs.build }}-${{ github.sha }}
           restore-keys: build-${{ runner.os }}-${{ steps.xcode.outputs.build }}-
+      # Release by default: the tour's timings and budget records then describe the build people
+      # run, not an unoptimised one (docs/DECISIONS.md, 2026-11-27). Hardened as repeat-smoke.yml
+      # hardens its Release bundle. Debug is for `sample`, which cannot attach to a hardened app.
       - name: Build the app and the driver
+        id: bundle
+        env:
+          CONFIGURATION: ${{ inputs.configuration || 'Release' }}
         run: |
           set -euo pipefail
           mkdir -p out
           source Scripts/lib/build-settings.sh
-          xcodebuild -project "Markdown Editor.xcodeproj" -scheme "Markdown Editor" -configuration Debug \
-            -derivedDataPath .build/check -destination 'platform=macOS' \
-            "${verification_build_settings[@]}" build > out/build.log 2>&1 \
-            || { grep -A4 ': error:' out/build.log | head -n 60; tail -n 20 out/build.log; exit 1; }
+          case "$CONFIGURATION" in
+            Debug)
+              xcodebuild -project "Markdown Editor.xcodeproj" -scheme "Markdown Editor" -configuration Debug \
+                -derivedDataPath .build/check -destination 'platform=macOS' \
+                "${verification_build_settings[@]}" build > out/build.log 2>&1 \
+                || { grep -A4 ': error:' out/build.log | head -n 60; tail -n 20 out/build.log; exit 1; }
+              app="$PWD/.build/check/Build/Products/Debug/Markdown Editor.app" ;;
+            Release)
+              xcodebuild -project "Markdown Editor.xcodeproj" -scheme "Markdown Editor" -configuration Release \
+                -derivedDataPath .build/check -destination 'platform=macOS' \
+                "${verification_build_settings[@]}" OTHER_CODE_SIGN_FLAGS=--timestamp=none build > out/build.log 2>&1 \
+                || { grep -A4 ': error:' out/build.log | head -n 60; tail -n 20 out/build.log; exit 1; }
+              app="$PWD/.build/check/Build/Products/Release/Markdown Editor.app"
+              Scripts/adhoc-harden.sh "$app" --timestamp=none "$RUNNER_TEMP/adhoc.entitlements" ;;
+            *)
+              echo "::error::configuration must be Debug or Release"; exit 1 ;;
+          esac
+          echo "configuration: $CONFIGURATION" > out/configuration.txt
+          echo "app=$app" >> "$GITHUB_OUTPUT"
           swiftc -O Scripts/agent-drive.swift -o .build/agent-drive
       - name: Drive
         env:
@@ -79,7 +103,7 @@ jobs:
               || { echo "::error::scenario_file must be a file in Scripts/agent-drive"; exit 1; }
             cp "Scripts/agent-drive/$SCENARIO_FILE" out/scenario.txt
           fi
-          app="$PWD/.build/check/Build/Products/Debug/Markdown Editor.app"
+          app="${{ steps.bundle.outputs.app }}"
           work="$RUNNER_TEMP/work"; rm -rf "$work"; mkdir -p "$work"; cp -R Scripts/Fixtures/. "$work/"
           caffeinate -d -i -u -t 1800 &
           verdict=0

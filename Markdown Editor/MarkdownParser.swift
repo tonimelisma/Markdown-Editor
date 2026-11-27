@@ -43,8 +43,9 @@ nonisolated enum MarkdownParser {
     /// //
     /// // An object rather than a global, because a single shared entry made every test that
     /// // asserted on it race: any concurrent parse anywhere evicts it, so a test could observe a
-    /// // miss and pass for the wrong reason. Production uses `.shared`; a test that measures
-    /// // memo behaviour passes its own.
+    /// // miss and pass for the wrong reason. Each editor session owns one
+    /// // (`IntentRecorder.parseMemo`), reached through the intent a parse carries; `.shared`
+    /// // serves only parses with no intent. A test that measures memo behaviour passes its own.
     nonisolated final class ParseMemo: Sendable {
         static let shared = ParseMemo()
 
@@ -89,8 +90,11 @@ nonisolated enum MarkdownParser {
         sourceVersion: UInt64,
         intent: IntentContext? = nil,
         isCancelled: @Sendable () -> Bool = { false },
-        memo: ParseMemo = .shared
+        memo: ParseMemo? = nil
     ) -> Result<MarkdownTree, MarkdownParseFailure> {
+        // The intent's session memo, so one document's parses never evict another's; `.shared`
+        // only for a parse no session asked for.
+        let memo = memo ?? intent?.recorder.parseMemo ?? .shared
         // Cancellation is answered before the memo, not after it. A memo must be invisible, and
         // that includes the cancelled case: a caller that asked for a cancellable parse and was
         // cancelled must still see `.cancelled`, whether or not this happens to hold the answer.

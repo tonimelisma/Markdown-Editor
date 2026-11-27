@@ -100,19 +100,70 @@ struct AuthoritativeRebuildCountTests {
     /// `SemanticEditPlanners.replaceValidated` parses the candidate text to check a postcondition,
     /// and `AuthoritativePresentationBuilder.build` parses the same text again to produce the
     /// snapshot. Fails at 2 against the pre-COR-89 build.
-    @Test func oneCommandParsesItsCandidateTextOnce() {
+    ///
+    /// Counted on the session's own parse memo, after the warm-up command's background
+    /// reconciliation has landed. It read a process-wide counter, which every concurrent suite's
+    /// parses raised: CI 46009037920 counted 3.
+    @Test func oneCommandParsesItsCandidateTextOnce() async {
         let fixture = Fixture()
         defer { fixture.tearDown() }
+        let trace = InMemoryEditorTrace()
+        fixture.document.trace = trace
         fixture.selectLead()
         #expect(fixture.controller.perform(.bold) == .accepted)
+        await Self.settle(fixture, trace)
 
         AuthoritativePresentationBuilder.resetMemoForTesting()
-        MarkdownParser.resetParseMemoForTesting()
+        let memo = fixture.session.intentRecorder.parseMemo
+        memo.release()
+        let before = memo.performedParseCount
         fixture.selectLead()
         #expect(fixture.controller.perform(.bold) == .accepted)
 
-        let parses = MarkdownParser.performedParseCountForTesting
-        #expect(parses <= 1, "one command performed \(parses) cmark parses of its candidate text")
+        let parses = memo.performedParseCount - before
+        #expect(parses == 1, "one command performed \(parses) cmark parses of its candidate text")
+    }
+
+    /// Each session parses through its own memo, so another document's parse cannot evict a
+    /// command's entry between its postcondition parse and its snapshot build.
+    @Test func aSessionsParsesUseItsOwnMemo() async {
+        let fixture = Fixture()
+        defer { fixture.tearDown() }
+        let trace = InMemoryEditorTrace()
+        fixture.document.trace = trace
+        fixture.selectLead()
+        #expect(fixture.controller.perform(.bold) == .accepted)
+        await Self.settle(fixture, trace)
+
+        #expect(fixture.session.intentRecorder.parseMemo.performedParseCount > 0, "the command's parses went to another memo")
+        let other = Fixture()
+        defer { other.tearDown() }
+        #expect(other.session.intentRecorder.parseMemo !== fixture.session.intentRecorder.parseMemo)
+        #expect(other.session.intentRecorder.parseMemo !== MarkdownParser.ParseMemo.shared)
+    }
+
+    /// Waits until the document's current revision has been reconciled, if a reconciliation was
+    /// scheduled for it, so its background parse cannot land inside a measurement.
+    private static func settle(_ fixture: Fixture, _ trace: InMemoryEditorTrace) async {
+        let revision = fixture.document.sourceVersion
+        func scheduled() -> Bool {
+            !trace.eventsMatching {
+                if case .reconciliationScheduled(let scheduled, _) = $0 { return scheduled == revision }
+                return false
+            }.isEmpty
+        }
+        func landed() -> Bool {
+            !trace.eventsMatching {
+                switch $0 {
+                case .reconciliationApplied(_, let applied, _, _): return applied == revision
+                case .reconciliationDiscarded(let discarded, _): return discarded == revision
+                default: return false
+                }
+            }.isEmpty
+        }
+        for _ in 0..<1_000 where scheduled() && !landed() {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
     }
 
     /// A parse memo hit must equal a fresh parse, which is what makes memoising it invisible.

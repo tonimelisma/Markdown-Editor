@@ -332,6 +332,63 @@ struct ReconciliationInvariantTests {
         #expect(values.isEmpty, "AppKit's wait was reported as a stall: \(values)")
     }
 
+    // Verifies: REQ-096 — a stopped watchdog reports nothing. Stopping it, on the main actor,
+    // cancels a probe in flight, whose sleep then returns at once and finds its hop not yet run:
+    // every quit that caught one recorded a one-second stall (tour 46015012930).
+    @Test func aCancelledProbeReportsNoStall() async {
+        let reported = ReportBox()
+        let probe = Task.detached {
+            await MainActorWatchdog.probeOnce(
+                thresholdMillis: 500,
+                appKitWaitBoundMillis: 120_000,
+                isModalSessionActive: { false },
+                isAppKitWorking: { false },
+                mainRunLoopMode: { CFRunLoopMode.defaultMode.rawValue as String }
+            ) { millis in reported.append(millis) }
+        }
+        // No suspension from here: the probe's hop cannot land while the main actor cancels it
+        // and stays busy, as it is while the app stops the watchdog.
+        probe.cancel()
+        occupyMainActor(seconds: 0.3)
+        let values = await reported.awaitingCount(1, timeoutSeconds: 0.5)
+        #expect(values.isEmpty, "a cancelled probe reported a stall: \(values)")
+    }
+
+    // Verifies: REQ-096 — AppKit's own synchronous work for the app, such as loading the print
+    // panel, is a wait in AppKit's loop, not a stall: the main thread is in the default mode, so
+    // only `aroundAppKitWork` tells it apart. Probe 46007142113 reported it as a 1.2 s stall.
+    @Test func watchdogReportsNoStallWhileAppKitWorksForTheApp() async {
+        let reported = ReportBox()
+        await Self.stallMainActor(seconds: 0.6) {
+            await MainActorWatchdog.probeOnce(
+                thresholdMillis: 100,
+                appKitWaitBoundMillis: 120_000,
+                isModalSessionActive: { false },
+                isAppKitWorking: { true },
+                mainRunLoopMode: { CFRunLoopMode.defaultMode.rawValue as String }
+            ) { millis in reported.append(millis) }
+        }
+        let values = await reported.awaitingCount(1, timeoutSeconds: 0.5)
+        #expect(values.isEmpty, "AppKit's work was reported as a stall: \(values)")
+    }
+
+    // Verifies: REQ-096 — AppKit's work that outlasts the bound is reported: a print that never
+    // returns is a hang, as the print activity's wedge was.
+    @Test func watchdogReportsAppKitWorkThatOutlastsItsBound() async {
+        let reported = ReportBox()
+        await Self.stallMainActor(seconds: 0.8) {
+            await MainActorWatchdog.probeOnce(
+                thresholdMillis: 100,
+                appKitWaitBoundMillis: 300,
+                isModalSessionActive: { false },
+                isAppKitWorking: { true },
+                mainRunLoopMode: { CFRunLoopMode.defaultMode.rawValue as String }
+            ) { millis in reported.append(millis) }
+        }
+        let values = await reported.awaitingCount(1, timeoutSeconds: 2)
+        #expect(!values.isEmpty, "AppKit's work past its bound went unreported")
+    }
+
     // Verifies: REQ-096 — AppKit's wait runs its loop in slices, between which the outer default
     // mode shows. A look that falls between two slices does not make the wait a stall.
     @Test func watchdogSeesAnAppKitWaitBetweenItsSlices() async {

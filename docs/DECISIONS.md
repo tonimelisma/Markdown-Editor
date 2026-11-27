@@ -3,6 +3,100 @@
 Decisions with consequences. Newest first. This is not an archive of everything ever decided —
 it is the short list of things someone will otherwise re-litigate or accidentally undo.
 
+## 2026-11-27 — New documents tab as the person's Prefer tabs setting says
+
+**Decision.** Document windows use `tabbingMode = .automatic`, under one tabbing identifier. A new
+document opens as a tab only when System Settings › Desktop & Dock › "Prefer tabs when opening
+documents" says so; by default, as in TextEdit, it opens a window. Window › Merge All Windows and
+the tab bar work as before (REQ-020, REQ-131).
+
+**Why.** COR-53 set `.preferred`, which overrides that setting and puts every new document into a
+tab, without a reason recorded. The owner asked for the app to behave "just like TextEdit", and
+TextEdit follows the setting. A profile of three warm ⌘N opens (probe 46014139254, Debug) also
+put 79 of the 143 samples of showing a window in AppKit merging it into the tab group and laying
+it out again for the tab bar.
+
+**Criteria:** standard macOS behaviour (VISION objective 4, "No surprises"); the owner's
+instruction; cost.
+
+| Option | The person's setting decides | Like TextEdit | Opening cost |
+| --- | --- | --- | --- |
+| **`.automatic` (chosen)** | ✓ | ✓ | no tab merge unless the person prefers tabs |
+| `.preferred`, as before | ✗ always tabs | ✗ | a tab merge and a second layout on every open |
+| `.disallowed` | ✗ never tabs | ✗ | none |
+
+**Where it is worse.** Someone who liked every document arriving as a tab, without having set
+Prefer tabs, now gets windows; Window › Merge All Windows, or the setting, brings tabs back.
+
+The rest of opening a window was attributed too. Of 464 samples in `makeWindowControllers`, 412
+were the window's first layout, which `setFrameUsingName` happens to trigger: SwiftUI building the
+view graph, AppKit, the allocator, with no hotspot. The app's own code was 54 samples for the
+toolbar, 12 for both editors. Nothing short of leaving SwiftUI for the window's content would
+shorten that, and the product is SwiftUI-first (CLAUDE.md §1), so it stays.
+
+## 2026-11-27 — The print panel's load is AppKit's work, bounded like AppKit's own loops
+
+**Decision.** File › Print begins its sheet inside `AppModalSession.aroundAppKitWork`. While that
+runs, the watchdog treats the main thread as waiting in AppKit's own loop, reported only past ten
+seconds, and the latency probe drops the samples it spans. REQ-096, REQ-124 and ENGINEERING §10
+state it.
+
+**Why.** Tours that passed every check still logged main-actor pauses of 0.5–2 s, and some
+failed on a 1.2 s `mainActorStall`. A tour profiled throughout (agent-drive 46004639447) put the
+stall in `-[NSPrintPanel beginSheetWithPrintInfo:…]`: a synchronous XPC call to the print agent
+for the default printer, PrintingUI's nibs, and a `dlopen` of PrintingPrivate. The app's own code
+was one sample of it. Probing each panel in its own minute (46007142113) measured the first print
+panel at 1.4 s and a second at 0.5 s in Debug; the Release tour (46007567920) measured 2 s. The
+main thread stays in the default mode throughout, so the run-loop classification cannot see it.
+Whether the watchdog reported it depended on whether AppKit happened to spin a private loop
+during the load, so the tour's verdict was chance.
+
+**Criteria:** a fault must mean the app stalled (CLAUDE.md §3); a print that never returns must
+still be reported, as the print activity's wedge was; the tour must be deterministic; no new
+prompt or launch cost (VISION, objectives 4 and 7).
+
+| Option | Fault means the app stalled | A hung print still reported | Deterministic | No new cost or prompt |
+| --- | --- | --- | --- | --- |
+| **Bounded AppKit-work session around the sheet's start (chosen)** | ✓ | ✓ at 10 s | ✓ | ✓ |
+| An unbounded app-modal session (`around`) | ✓ | ✗ a hang would never be reported | ✓ | ✓ |
+| Warm the print system in the background at launch | ~ only the warmed part | ✓ | ~ | ✗ wakes the print agent every launch, and Print brought macOS's local-network prompt |
+| Do nothing | ✗ | ✓ | ✗ | ✓ |
+
+**Where it is worse.** The person still waits up to two seconds the first time they print, and no
+metric now shows it. That wait is AppKit's, as long in TextEdit, and nothing the app does shortens
+it. A stall of the app's own during those seconds is hidden with it, since the main actor could
+not run then anyway.
+
+## 2026-11-27 — The tour drives the Release bundle
+
+**Decision.** `agent-drive.yml` builds Release by default, hardened ad hoc as
+`repeat-smoke.yml` hardens it. It has no update key, so it never checks for updates, and it
+differs from the bundle `Scripts/release.sh` publishes only in that key, its version numbers and
+its signature's timestamp.
+`configuration: Debug` remains for a probe that profiles with `sample`, which cannot attach to a
+hardened app.
+
+**Why.** Every tour until now ran the unoptimised Debug build. Its budget records (a
+`nativeInputCallback` p95 of 10 ms against 8, a first `parseProjection` of 655 ms, a
+`layoutApplication` p95 of 41 ms) described code nobody runs, so the tour could neither show the
+app within its budgets nor show it outside them. Its behavioural checks are the same in either
+build: the one Debug-only code, ARC-015's assertion, also writes a fault record, which
+`expect-no-faults` reads.
+
+**Criteria:** evidence describes the shipping binary (VISION, Evaluation: "Performance evidence
+records … build configuration"); the tour still catches every behavioural defect; profiling stays
+possible.
+
+| Option | Timings describe the shipping app | Behaviour checked | Profilable |
+| --- | --- | --- | --- |
+| **Release by default, Debug on request (chosen)** | ✓ | ✓ | ✓ with `configuration: Debug` |
+| Debug, and disregard its budget records | ✗ | ✓ | ✓ |
+| Both builds every run | ✓ | ✓ | ✓ but twice the runner time for one verdict |
+
+**Where it is worse.** A cold Release build takes longer than Debug, whose compilation cache CI
+keeps warm. A Release tour cannot be profiled, so a stall it finds is chased with a Debug probe,
+where the timings are larger than the ones that were found.
+
 ## 2026-11-27 — A main thread waiting in AppKit's own loop is not a stall until ten seconds
 
 **Decision.** The watchdog reads the main run loop's mode when a hop misses its one-second
@@ -119,8 +213,13 @@ sees it only as an image arriving that much after the text, which the 100 ms cov
 ## 2026-11-27 — Unsaved typing is edited before AppKit counts it; undo groups end outside AppKit's activities
 
 **Decision.** A document is edited when AppKit says so, or while a typing undo group holds edits.
-The typing group is ended at the entry of Save and Save As. Close and load drop it without ending
-it. ENGINEERING §10 states both rules.
+The typing group is ended at the entry of Save, Save As and a close's review (`canClose`, which
+⌘W, the close button and Quit all reach), each of which then starts a main-queue turn later. The
+close itself and load drop it without ending it. ENGINEERING §10 states both rules.
+
+Quit was added after tour 46011070302: quitting 0.7 s after typing reached the review with the
+group open, the review's sheet ended it inside AppKit's activity, and the app hung as the close
+had.
 
 **Why.** The tour found two defects with one cause.
 
