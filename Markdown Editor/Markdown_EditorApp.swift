@@ -48,10 +48,10 @@ struct Markdown_EditorApp: App {
             }
             // REQ-014: the File menu of a document that autosaves in place: Close, Save,
             // Duplicate, Rename, Move To and Revert Document, with Save As kept on its own key.
-            // Revert Document opens the Versions browser, where the last saved version is on the
-            // right. AppKit's Revert To submenu tells its items apart by private menu-item tags,
-            // so an item sent from here without one opened the browser whatever its title said
-            // (tour 45979207044); Apple documents File › Revert Document as the browser's route.
+            // Revert Document asks AppKit to revert: for an edited document it offers the last
+            // saved version or the Versions browser. AppKit's Revert To submenu tells its items
+            // apart by private menu-item tags, so an item sent from here without one could not
+            // choose among them (tour 45979207044).
             // The group replaced also held Close: without it ⌘W did nothing (tour 45968755636).
             // Each item sends NSDocument's own action down the responder chain, so AppKit
             // enables it only when the front document can do it.

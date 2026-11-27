@@ -66,10 +66,15 @@ the main queue, and a save started in the same turn waited for it with the main 
 the document; no path in AppKit was seen to do that, and the failure is a save error, not a wrong
 file. Encoding the bytes still happens on the main actor, which is linear in the document's size.
 
-## 2026-11-27 — File › Revert Document opens the Versions browser; there is no Revert To submenu
+## 2026-11-27 — File › Revert Document asks AppKit to revert; there is no Revert To submenu
 
-**Decision.** The File menu offers Revert Document…, which sends `revertDocumentToSaved:` and opens
-the Versions browser. It offers no Revert To ▸ Last Saved Version.
+**Decision.** The File menu offers Revert Document…, which sends `revertDocumentToSaved:`. For an
+edited document AppKit asks whether to go back to the last saved version or browse older ones; for
+one with no unsaved changes it opens the Versions browser. The menu has no Revert To submenu.
+
+**Amended the same day.** Revert Document first opened the browser even after typing, because the
+open typing group was not yet a change AppKit knew of. Once File commands counted the typing first,
+AppKit offered Last Saved Version as well (tour 46000331975), which is what the submenu was for.
 
 **Why.** AppKit builds Revert To from items it tells apart by private menu-item tags, and every
 item sent without one opens the browser. The tour chose Last Saved Version and got the browser

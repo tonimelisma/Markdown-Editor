@@ -289,16 +289,15 @@ wait 1
 windows
 no-dialogs
 expect-window notes.md
-# Edits to the note, then File › Revert Document… opens the Versions browser, where Restore
-# brings back the last saved version, shown on the right.
+# Edits to the note, then File › Revert Document…: AppKit asks whether to go back to the last
+# saved version or browse older ones, and Last Saved Version takes the edits back.
 type " Discarded."
 wait 1
 expect-value "Markdown WYSIWYG" "Discarded."
 menu File "Revert Document…"
 wait 3
-shot-screen o-versions
-tree o-versions
-press "Restore"
+shot-screen o-revert-asks
+press "Last Saved Version"
 wait 3
 shot o-restored
 expect-no-value "Markdown WYSIWYG" "Discarded."
