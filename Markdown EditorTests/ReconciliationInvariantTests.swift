@@ -337,6 +337,27 @@ struct ReconciliationInvariantTests {
         #expect(values.isEmpty, "a modal session was reported as a stall: \(values)")
     }
 
+    // Verifies: REQ-124 — the Versions browser is an app-modal session from the moment it opens
+    // until it has closed, so its closing animation, run after Restore, is not counted as
+    // main-actor latency (tours 45985053390 and 45985821997: a 361–391 ms p95 per visit).
+    @Test func theVersionsBrowserIsAnAppModalSessionWhileItIsOpen() {
+        let sessions = AppModalSession()
+        let center = NotificationCenter()
+        let observer = VersionBrowserSessions(sessions: sessions, center: center)
+        let window = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+        let before = sessions.epoch
+        center.post(name: NSWindow.willEnterVersionBrowserNotification, object: window)
+        #expect(sessions.isActive, "entering the browser opened no session")
+        center.post(name: NSWindow.willEnterVersionBrowserNotification, object: window)
+        center.post(name: NSWindow.didExitVersionBrowserNotification, object: window)
+        #expect(!sessions.isActive, "the session outlived the browser")
+        #expect(sessions.epoch != before)
+        // An exit with no matching entry closes nothing.
+        center.post(name: NSWindow.didExitVersionBrowserNotification, object: window)
+        #expect(!sessions.isActive)
+        withExtendedLifetime(observer) {}
+    }
+
     // Verifies: REQ-096 — a close runs as an app-modal session: a duplicate's "keep this new
     // document?" dialog runs modally inside it, and was reported as a 1.5 s main-actor stall
     // while it waited for the person (probe 45982413288).

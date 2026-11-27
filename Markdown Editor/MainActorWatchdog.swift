@@ -3,6 +3,7 @@
 //  Markdown Editor
 //
 
+import AppKit
 import Foundation
 import Synchronization
 
@@ -24,6 +25,16 @@ nonisolated final class AppModalSession: Sendable {
     /// Advances as each session begins and ends: a measurement that starts at one epoch and ends
     /// at another overlapped a session, though none may be running at either end.
     var epoch: UInt64 { state.withLock { $0.epoch } }
+
+    /// Opens a session that something other than a call's extent ends, such as the Versions
+    /// browser, which opens and closes in separate events. Each `begin` is matched by one `end`.
+    func begin() {
+        state.withLock { $0.depth += 1; $0.epoch &+= 1 }
+    }
+
+    func end() {
+        state.withLock { $0.depth = max(0, $0.depth - 1); $0.epoch &+= 1 }
+    }
 
     /// Runs `body`, an app-modal presentation that returns when the person dismisses it.
     func around<T>(_ body: () throws -> T) rethrows -> T {
@@ -132,5 +143,47 @@ final class MainActorWatchdog {
 
     deinit {
         task?.cancel()
+    }
+}
+
+/// Holds an app-modal session for as long as a window shows the Versions browser.
+///
+/// AppKit runs a blocking animation as the browser opens and again as it closes, after Restore or
+/// Done, and the document cannot be edited in between. Only the opening call was a session, so the
+/// closing animation's wait counted as main-actor latency: a 361–391 ms p95 in every tour minute
+/// that visited the browser (tours 45985053390, 45985821997), and under 0.5 ms in a probe of the
+/// same steps without it (45985991466).
+@MainActor
+final class VersionBrowserSessions {
+    private let sessions: AppModalSession
+    private var browsing: Set<ObjectIdentifier> = []
+    /// Kept for the observers' lifetime; the app's instance lives as long as the app.
+    private var observers: [NSObjectProtocol] = []
+
+    /// AppKit posts both notifications on the main thread, where the observers run (`queue: nil`).
+    init(sessions: AppModalSession = .shared, center: NotificationCenter = .default) {
+        self.sessions = sessions
+        observers.append(center.addObserver(
+            forName: NSWindow.willEnterVersionBrowserNotification, object: nil, queue: nil
+        ) { [weak self] note in
+            let window = (note.object as AnyObject?).map(ObjectIdentifier.init)
+            MainActor.assumeIsolated { self?.entered(window) }
+        })
+        observers.append(center.addObserver(
+            forName: NSWindow.didExitVersionBrowserNotification, object: nil, queue: nil
+        ) { [weak self] note in
+            let window = (note.object as AnyObject?).map(ObjectIdentifier.init)
+            MainActor.assumeIsolated { self?.exited(window) }
+        })
+    }
+
+    private func entered(_ window: ObjectIdentifier?) {
+        guard let window, browsing.insert(window).inserted else { return }
+        sessions.begin()
+    }
+
+    private func exited(_ window: ObjectIdentifier?) {
+        guard let window, browsing.remove(window) != nil else { return }
+        sessions.end()
     }
 }

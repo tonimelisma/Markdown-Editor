@@ -690,6 +690,10 @@ ordinary files the user owns and can read, delete, or ignore.
   threshold crossing is written through the non-main process route while the stall is still in
   progress, including when it never recovers. A recovery record carries the measured duration
   once the hop lands. Both records use the same diagnostic sink and schema.
+- Neither the watchdog nor the main-actor latency probe counts time inside an app-modal session
+  (`AppModalSession`): an alert, a close's dialogs, or the Versions browser from opening to closed.
+  There AppKit runs its own event loop or a blocking animation, the main thread serves the person,
+  and only the main actor's queued jobs wait.
 - Reconciliation instrumentation records any session publication during view reconciliation, and
   the host-update meter reports a sustained update rate — the signature of a self-feeding loop,
   which presents as high CPU rather than as a hang.

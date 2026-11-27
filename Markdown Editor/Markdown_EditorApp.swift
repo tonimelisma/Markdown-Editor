@@ -236,6 +236,7 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
 
     /// Detects an unresponsive main actor for the process lifetime (REQ-096).
     private var watchdog: MainActorWatchdog?
+    private var versionBrowserSessions: VersionBrowserSessions?
     private var responsivenessProbe: MainActorResponsivenessProbe?
     private var frameObserver: FrameObserver?
     private var applicationSampler: PerformanceSampler?
@@ -284,6 +285,7 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         let watchdog = MainActorWatchdog(report: report)
         watchdog.start()
         self.watchdog = watchdog
+        versionBrowserSessions = VersionBrowserSessions()
         if let log = DiagnosticLog.shared {
             // Process-wide sampler and frame records have no document owner. Keeping them
             // documentless prevents a single opened fixture from appearing as two documents in
