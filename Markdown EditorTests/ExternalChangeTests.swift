@@ -129,7 +129,9 @@ struct ExternalChangeTests {
                 selection: .source(caret),
                 expectedSourceRevision: SourceRevision(value: document.sourceVersion)
             )
-            try #require({ if case .accepted = outcome { return true }; return false }(), "typing was \(outcome)")
+            let accepted: Bool
+            if case .accepted = outcome { accepted = true } else { accepted = false }
+            try #require(accepted, "typing was \(outcome)")
         }
         try #require(document.text == "original\nMine.")
 

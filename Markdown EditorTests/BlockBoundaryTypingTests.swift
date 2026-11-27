@@ -308,7 +308,9 @@ struct BlockBoundaryTypingTests {
         let end = SourceSelection(utf16: NSRange(location: 13, length: 0))
         session.captureSelection(.source(end))
         let outcome = session.perform(.insertText("!"), selection: .source(end), expectedSourceRevision: SourceRevision(value: typist.harness.document.sourceVersion))
-        try #require({ if case .accepted = outcome { return true }; return false }(), "typing in Source was \(outcome)")
+        let accepted: Bool
+        if case .accepted = outcome { accepted = true } else { accepted = false }
+        try #require(accepted, "typing in Source was \(outcome)")
         session.setMode(.wysiwyg)
         await typist.settle()
         let caret = session.pendingSelectionRestoration?.projectionSelection ?? session.wysiwygModeState.selection
