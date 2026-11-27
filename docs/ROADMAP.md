@@ -120,7 +120,9 @@ Still open:
   found no hotspot left in the first layout, and removed the tab merge that was over half of
   showing the window (`DECISIONS.md`, "New documents tab as the person's Prefer tabs setting
   says"). Nothing measures this on a real Mac yet.
-- The tour's remaining budget notes. A Release tour (46021355668, 46027043019) passes every check
+- The tour's remaining budget notes, accepted as they are by the owner (2026-11-27): the 16 ms budget,
+  the SwiftUI window and the tour's pace all stay, and these notes are not to be chased again
+  without new evidence. A Release tour (46021355668, 46027043019) passes every check
   and still logs two or three `mainActorLatency` notes, minute p95s of 21–56 ms against 16. Run one
   section per minute (probe 46023988152), every section holds a p95 of 0.1 ms. The notes are
   density: the tour acts every one to three seconds, and many of its actions are single main-thread
