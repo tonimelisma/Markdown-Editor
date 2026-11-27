@@ -271,7 +271,12 @@ struct PresentationRecoveryTests {
     // block, which a test of one interior offset could not see.
     @Test func aKeystrokeAtAnyOffsetIsReconciledWithoutRecovery() async throws {
         let source = "# Title\n\nSome **bold** text.\n\n- item\n\n> quote\n"
-        let rendered = try PerformanceBoundaryTests.EditorHarness(source: source).session.presentation?.renderedString ?? ""
+        // The rendered length from a harness whose opening parse has landed, as every loop's has.
+        let probe = InMemoryEditorTrace()
+        let opened = try PerformanceBoundaryTests.EditorHarness(source: source, trace: probe)
+        await awaitReconciliations(probe, revision: opened.document.sourceVersion, count: 1)
+        let rendered = opened.session.presentation?.renderedString ?? ""
+        try #require((rendered as NSString).length > 20, "the fixture rendered as \(rendered.debugDescription)")
         var recovered: [String] = []
         var refused: [String] = []
         var typedAt = 0
