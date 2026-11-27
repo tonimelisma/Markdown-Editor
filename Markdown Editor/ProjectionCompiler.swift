@@ -292,11 +292,10 @@ private nonisolated struct CompilerBuilder {
 
         if let checked = taskChecked {
             let label = boxOnly == nil ? plainText(of: node) : ""
-            // A task with no text ends where its line does, which is where typing in it writes.
-            // Its box and the space after it anchor at the item's start, so that a caret at the
-            // line's end maps after them and not before the box.
-            let hasText = boxOnly == nil && node.children.contains { if case .list = $0.kind { return false }; return true }
-            let boxLocation: Int? = hasText ? nil : itemStart
+            // The box and the space after it anchor at the item's start. Anchored at its end,
+            // they claimed the caret at the end of the task's text, which then mapped before the
+            // box, and the next letter typed was refused (CI 45965037736).
+            let boxLocation: Int? = itemStart
             appendAttachment(
                 nodeID: node.id,
                 kind: .task(checked: checked, label: label),
