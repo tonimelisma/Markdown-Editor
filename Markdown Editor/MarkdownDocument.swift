@@ -227,6 +227,21 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         return NSPrintOperation(view: currentPrintView, printInfo: printInfo)
     }
 
+    // A save is a boundary in the history: the typing before it is counted first, so the saved
+    // point follows it and the group closing later cannot mark the saved document edited. It is
+    // done here, before AppKit starts its save activity, never inside it: ending a group makes
+    // NSDocument update its change count with synchronous waiting, which inside its own activity
+    // waits forever (the close hang, probe 45972423807).
+    override func save(withDelegate delegate: Any?, didSave didSaveSelector: Selector?, contextInfo: UnsafeMutableRawPointer?) {
+        closeTypingGroupIfNeeded()
+        super.save(withDelegate: delegate, didSave: didSaveSelector, contextInfo: contextInfo)
+    }
+
+    override func saveAs(_ sender: Any?) {
+        closeTypingGroupIfNeeded()
+        super.saveAs(sender)
+    }
+
     // REQ-100: the one override AppKit routes every save through — manual Save, Save As,
     // autosave-in-place, and the delegate-based DocumentSaveBridge path this app's own
     // operation-scoped saveDocument() uses — verified empirically (both real call paths land
@@ -239,9 +254,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         for saveOperation: NSDocument.SaveOperationType,
         completionHandler: @escaping (Error?) -> Void
     ) {
-        // A save is a boundary in the history: the typing before it is counted now, so the
-        // saved point is after it, and the group closing later cannot mark the document edited.
-        closeTypingGroupIfNeeded()
         let utf16Count = (text as NSString).length
         trace?.record(route: .documentSaveStarted, .documentSaveStarted(utf16Count: utf16Count))
         let start = DispatchTime.now().uptimeNanoseconds
@@ -745,8 +757,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             notificationCenterForTesting.removeObserver(token)
             undoCheckpointObserver = nil
         }
-        typingGroupOpen = false
-        typingGroupHasChanges = false
+        abandonTypingGroup()
         // COR-89's memos retain one source, tree and snapshot. Correctness does not depend on
         // clearing them — a new key supersedes the entry — but a closed document should not leave
         // megabytes resident.
@@ -793,7 +804,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// // `fileURL` is not reliable either — NSDocument's own opening machinery may already
     /// // have set it before `read(from:ofType:)` runs even on the very first load.
     private func installLoadedText(_ value: String) {
-        closeTypingGroupIfNeeded()
+        // Dropped, not ended: a revert runs inside NSDocument's activity, where ending a group
+        // waits on that activity forever. The history is cleared just below.
+        abandonTypingGroup()
         let isInitialLoad = !hasCompletedInitialLoad && !isRevertingViaAppKit
         hasCompletedInitialLoad = true
         text = value
@@ -920,6 +933,15 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             trace?.record(route: .undoRegistered, .undoRegistered(actionNameLength: patch.actionName.count, groupingTyping: true)
             )
         }
+    }
+
+    /// Forgets the open typing group without ending it, for a document whose history is about
+    /// to be cleared or dropped. Ending it posts the did-close-group notification, and NSDocument
+    /// answers that by updating its change count with synchronous waiting; inside one of its own
+    /// activities (close, revert) that wait never ends.
+    private func abandonTypingGroup() {
+        typingGroupOpen = false
+        typingGroupHasChanges = false
     }
 
     private func closeTypingGroupIfNeeded() {
