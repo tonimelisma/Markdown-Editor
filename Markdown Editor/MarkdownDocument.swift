@@ -1088,6 +1088,16 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         closeTypingGroupIfNeeded()
     }
 
+    /// Ends the typing group before a File command (Save, Print, Duplicate, Revert, Close…) starts
+    /// NSDocument's activity for it. Ending the group counts the typing as a change, and for an
+    /// untitled document AppKit autosaves at its first change. Left open, the group was ended by
+    /// the undo checkpoint observer at whatever moment the main queue next ran: once inside the
+    /// print panel, where that autosave began and never finished, and every later save of the
+    /// document waited for it forever (probes 45994331916, 45992765502).
+    func prepareForDocumentCommand() {
+        closeTypingGroupIfNeeded()
+    }
+
     /// Close an open typing group before undo/redo so UndoManager is never left nested.
     private func attachUndoCheckpointObserverIfNeeded() {
         guard undoCheckpointObserver == nil, let undoManager else { return }

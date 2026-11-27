@@ -81,7 +81,10 @@ struct Markdown_EditorApp: App {
     }
 
     /// Sends a document action down the key window's responder chain, as a nib's menu item does.
+    /// The front document's typing is counted first, before AppKit starts the action's activity
+    /// (`MarkdownDocument.prepareForDocumentCommand`).
     private static func send(_ action: String) {
+        (NSDocumentController.shared.currentDocument as? MarkdownDocument)?.prepareForDocumentCommand()
         NSApp.sendAction(NSSelectorFromString(action), to: nil, from: nil)
     }
 }

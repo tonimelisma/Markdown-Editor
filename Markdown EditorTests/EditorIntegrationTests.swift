@@ -567,6 +567,32 @@ struct EditorIntegrationTests {
         #expect(discrete)
     }
 
+    // Verifies: REQ-014/017 — a File command ends the typing group before AppKit starts its
+    // activity, so the typing is counted then, not by the checkpoint observer at whatever
+    // moment the main queue next runs. Ended inside the print panel, the untitled document's
+    // first-change autosave began and never finished, and every later save waited for it
+    // (probes 45994331916, 45992765502).
+    @Test func aFileCommandCountsTheTypingBeforeItStarts() {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("hi\n")
+        let typed = SourceMutation(
+            expectedRevision: 0,
+            range: NSRange(location: 0, length: 0),
+            expectedText: "",
+            replacement: "a",
+            selectionBefore: SourceSelection(utf16: NSRange(location: 0, length: 0)),
+            selectionAfter: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+            actionName: "Typing",
+            grouping: .typing
+        )
+        _ = commitSourceMutationForTest(doc, typed)
+        #expect(doc.undoManager?.groupingLevel == 1, "typing left no group open to end")
+        doc.prepareForDocumentCommand()
+        #expect(doc.undoManager?.groupingLevel == 0, "the typing group is still open as the command starts")
+        #expect(doc.isDocumentEdited)
+        #expect(doc.undoManager?.canUndo == true)
+    }
+
     // Verifies: REQ-016 — closeTypingUndoGroup ends an open typing group.
     @Test func closeTypingUndoGroupEndsOpenTypingGroup() {
         let doc = MarkdownDocument()
