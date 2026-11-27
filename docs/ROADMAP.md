@@ -130,7 +130,11 @@ Still open:
   (`_MDItemMarkWithUserAndDate`), and answering accessibility presses. A person working at that
   pace would see the same pauses. Leaving any one kind out of the histogram moved the notes and did
   not clear them (PR 104, closed), so none is left out: the budget keeps measuring responsiveness
-  between operations, and the watchdog bounds each operation at a second.
+  between operations, and the watchdog bounds each operation at a second. Two attempts to make a
+  window cheaper while keeping SwiftUI measured nothing: taking SwiftUI out of sizing the window
+  (`NSHostingController.sizingOptions = []`, PR 107, closed) cost 528 samples for three ⌘N opens
+  against 430 before (probes 46032101258, 46018864413), and the first layout spends nothing in text
+  layout, so a document's length is not the cost either.
 - Mac runners that never come. Twice on 2026-11-26 a `main` job waited 15 minutes for an
   `xcode-27` runner and was dropped (CI 45860219913, Release 45866221874 attempt 1), while
   pull-request jobs started within a minute. Both ended after exactly 15 minutes with no runner and
