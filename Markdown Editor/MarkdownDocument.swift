@@ -56,9 +56,23 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// Set across `duplicate()`, so the copy AppKit creates and shows inside it can adopt it.
     private static var duplicatingFrom: URL?
 
-    /// The location relative image paths resolve against: the file, or for an untitled
-    /// duplicate the original it was copied from.
-    var imageBaseURL: URL? { publishedFileURL ?? duplicateOrigin }
+    /// For a past version AppKit opens in the Versions browser, the document being browsed. The
+    /// version's file is in the version store, where none of its `assets/` images are: the
+    /// browser showed the older version's images as missing (tour 45980851977).
+    private(set) var versionOf: URL?
+    /// The document whose versions the browser shows; versions it opens for viewing adopt it.
+    private static var browsingVersionsOf: URL?
+
+    /// The location relative image paths resolve against.
+    var imageBaseURL: URL? {
+        Self.imageBase(versionOf: versionOf, fileURL: publishedFileURL, duplicateOrigin: duplicateOrigin)
+    }
+
+    /// A past version resolves beside the document it is a version of, a file beside itself, and
+    /// an untitled duplicate beside the original it was copied from.
+    nonisolated static func imageBase(versionOf: URL?, fileURL: URL?, duplicateOrigin: URL?) -> URL? {
+        versionOf ?? fileURL ?? duplicateOrigin
+    }
 
     let selectionRestorations = PassthroughSubject<SourceSelection, Never>()
 
@@ -154,9 +168,23 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         return copy
     }
 
+    override func browseVersions(_ sender: Any?) {
+        Self.browsingVersionsOf = imageBaseURL
+        super.browseVersions(sender)
+    }
+
+    override func revertToSaved(_ sender: Any?) {
+        // With autosave in place this opens the Versions browser (DECISIONS, 2026-11-27).
+        Self.browsingVersionsOf = imageBaseURL
+        super.revertToSaved(sender)
+    }
+
     override func makeWindowControllers() {
         if fileURL == nil, duplicateOrigin == nil, let origin = Self.duplicatingFrom {
             duplicateOrigin = origin
+        }
+        if isInViewingMode, versionOf == nil, let origin = Self.browsingVersionsOf {
+            versionOf = origin
         }
         undoManager?.groupsByEvent = false
         attachUndoCheckpointObserverIfNeeded()

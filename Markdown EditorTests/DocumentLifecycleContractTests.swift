@@ -218,6 +218,21 @@ struct DocumentLifecycleContractTests {
         )
     }
 
+    // Verifies: REQ-014 — where relative images resolve: a past version beside the document it
+    // is a version of, though its own file is in the version store (the Versions browser showed
+    // its images as missing, tour 45980851977); a file beside itself; an untitled duplicate
+    // beside its original until it is saved.
+    @Test func imagesResolveBesideTheDocumentAVersionBelongsTo() {
+        let browsed = URL(fileURLWithPath: "/Notes/notes.md")
+        let store = URL(fileURLWithPath: "/.DocumentRevisions-V100/PerUID/501/1/com.apple.documentVersions/A.md")
+        let original = URL(fileURLWithPath: "/Notes/original.md")
+        #expect(MarkdownDocument.imageBase(versionOf: browsed, fileURL: store, duplicateOrigin: nil) == browsed)
+        #expect(MarkdownDocument.imageBase(versionOf: nil, fileURL: browsed, duplicateOrigin: nil) == browsed)
+        #expect(MarkdownDocument.imageBase(versionOf: nil, fileURL: nil, duplicateOrigin: original) == original)
+        // A duplicate saved somewhere of its own resolves there.
+        #expect(MarkdownDocument.imageBase(versionOf: nil, fileURL: browsed, duplicateOrigin: original) == browsed)
+    }
+
     @Test func newRouteCreatesEmptyDocument() throws {
         let controller = MarkdownDocumentController()
         let document = try #require(controller.openUntitledDocumentAndDisplay(false) as? MarkdownDocument)
