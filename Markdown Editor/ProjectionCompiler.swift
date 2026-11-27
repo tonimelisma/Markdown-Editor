@@ -200,10 +200,26 @@ private nonisolated struct CompilerBuilder {
         nesting: Int,
         itemIndex: Int
     ) {
-        guard case .item(let taskChecked) = node.kind else {
+        guard case .item(let parsedTaskChecked) = node.kind else {
             emit(node, styleStack: styleStack, listNesting: nesting)
             return
         }
+        // An item whose only text is a task box, as Return leaves one (`- [ ] `), is no task to
+        // cmark-gfm until text follows the box. Shown as the text "[ ]", the first letter typed
+        // after it turned it into a checkbox, which the edit's proof took for a change of
+        // structure and refused. It is shown as the empty task it is about to be.
+        let boxOnly: Bool? = {
+            guard parsedTaskChecked == nil,
+                  node.children.count == 1,
+                  case .paragraph = node.children[0].kind,
+                  let text = substring(of: node.children[0])?.trimmingCharacters(in: .whitespaces) else { return nil }
+            switch text {
+            case "[ ]": return false
+            case "[x]", "[X]": return true
+            default: return nil
+            }
+        }()
+        let taskChecked = parsedTaskChecked ?? boxOnly
 
         let task = taskChecked != nil
         let markerText: String
@@ -275,7 +291,7 @@ private nonisolated struct CompilerBuilder {
         }
 
         if let checked = taskChecked {
-            let label = plainText(of: node)
+            let label = boxOnly == nil ? plainText(of: node) : ""
             appendAttachment(
                 nodeID: node.id,
                 kind: .task(checked: checked, label: label),
@@ -298,7 +314,7 @@ private nonisolated struct CompilerBuilder {
         // An item with no text of its own, as Return leaves one, still ends its line. Without a
         // break the next block ran on after its marker, and the caret after the marker had no
         // place of its own to map to.
-        if !node.children.contains(where: { if case .list = $0.kind { return false }; return true }) {
+        if boxOnly != nil || !node.children.contains(where: { if case .list = $0.kind { return false }; return true }) {
             let projection = NSRange(location: utf16Length, length: 1)
             pieces.append("\n")
             utf16Length += 1
@@ -308,7 +324,7 @@ private nonisolated struct CompilerBuilder {
             lastSourceEnd = location
         }
 
-        for child in node.children {
+        for child in node.children where boxOnly == nil {
             if case .list = child.kind {
                 emit(child, styleStack: styleStack, listNesting: nesting + 1)
             } else {

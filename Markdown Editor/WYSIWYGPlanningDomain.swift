@@ -484,8 +484,16 @@ enum WYSIWYGPlanningDomain {
         // control run can emerge without changing the plain text. Compare semantic
         // structure while deliberately ignoring node IDs, shifted ranges, and atom
         // fragmentation, which are representation details of a fresh parse.
-        let preserves = built.renderedString == expected
-            && sameRunSemantics(built.runs, presentation.runs)
+        // In a document with no block, the first letter typed starts a paragraph, whose break
+        // is no typed text, and there is no styling yet for it to keep: it must be plain.
+        let startsTheFirstBlock = presentation.blocks.isEmpty
+        let rendersAsTyped = built.renderedString == expected
+            || (startsTheFirstBlock && built.renderedString == expected + "\n")
+        let keepsStyling = presentation.runs.isEmpty
+            ? visibleStyling(built.runs).allSatisfy { $0.styles.isEmpty && $0.linkDestination == nil && !$0.isLiteralFallback }
+            : sameRunSemantics(built.runs, presentation.runs)
+        let preserves = rendersAsTyped
+            && keepsStyling
             && sameAttachmentSemantics(built.attachments, presentation.attachments)
             && sameTableSemantics(built.tables, presentation.tables)
             && sameListSemantics(built.listMarkers, presentation.listMarkers)

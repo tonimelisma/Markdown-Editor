@@ -498,6 +498,27 @@ enum WYSIWYGEditor {
             guard let transition = edit.presentationTransition else {
                 preconditionFailure("Accepted WYSIWYG edit must carry a presentation transition")
             }
+            // The same characters with new attributes: Delete at a heading's start makes it a
+            // paragraph, and the page's text does not change. A text patch has nothing to
+            // replace; the attributes of the changed blocks are refreshed instead, as when the
+            // parse replaces a provisional snapshot.
+            if current.renderedString == transition.nextSnapshot.renderedString {
+                if let reason = incrementalRecoveryReason(
+                    from: current,
+                    to: transition.nextSnapshot,
+                    in: textView,
+                    intent: edit.intent,
+                    nativeTextAlreadyApplied: false
+                ) {
+                    recoverFullPresentation(to: transition.nextSnapshot, in: textView, reason: reason, intent: edit.intent)
+                    return
+                }
+                let caret = (edit.projectionSelectionAfter ?? transition.selectionAfter).range.utf16
+                session.updateOrigin.with(.programmaticPresentation) {
+                    textView.setSelectedRange(caret)
+                }
+                return
+            }
             // Only the touched semantic block scope is turned into attributed content. Building
             // the complete next presentation here would put the whole document's cost inside
             // every keystroke, which is exactly what ARC-019 exists to prevent.
