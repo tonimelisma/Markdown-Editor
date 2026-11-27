@@ -339,6 +339,11 @@ func typeText(_ string: String) {
         var character = unit
         for down in [true, false] {
             let event = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: down)
+            // No modifiers, said explicitly: an event takes the source's flags, which still held
+            // Command from the shortcut before it, so "." typed after ⌘K was ⌘. and cancelled
+            // the link sheet, and a name typed after ⌘A cancelled the Save panel (probes
+            // 45968255871, 45968276470).
+            event?.flags = []
             event?.keyboardSetUnicodeString(stringLength: 1, unicodeString: &character)
             event?.post(tap: .cghidEventTap)
         }
