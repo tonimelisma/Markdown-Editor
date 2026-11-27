@@ -7,7 +7,6 @@
 //
 
 import AppKit
-import SwiftUI
 import Synchronization
 import Testing
 @testable import Markdown_Editor
@@ -127,11 +126,12 @@ struct WindowCitizenshipTests {
         #expect(window.isRestorable, "window opts out of state restoration")
     }
 
-    // Verifies: REQ-131 — a document window is laid out once, at its final size. Creating it at
-    // another size and resizing it afterwards laid out the whole window twice — SwiftUI's first
-    // render, both editors and the toolbar — which on a CI runner was a third of what the first
-    // window cost (DECISIONS.md, 2026-11-27). `makeWindowControllers` runs synchronously on the main
-    // actor, so every resize it causes is posted inside this call and nothing else's can be.
+    // Verifies: REQ-131 — a document window is laid out at its final size only. Creating it at
+    // another size, or restyling and resizing it afterwards, laid out the whole window again —
+    // SwiftUI's first render, both editors and the toolbar — which on a CI runner was a third of
+    // what the first window cost (DECISIONS.md, 2026-11-27). `makeWindowControllers` runs
+    // synchronously on the main actor, so every resize it causes is posted inside this call and
+    // nothing else's can be.
     @Test func theDocumentWindowIsCreatedAtItsFinalSize() throws {
         // A frame AppKit saved under the autosave name is restored onto the next window, and that
         // restoration is a legitimate resize this test is not about. `toolbarRemainsUsableAtTheMinimumWindowSize`
@@ -153,9 +153,11 @@ struct WindowCitizenshipTests {
 
         let contentSize = window.contentRect(forFrameRect: window.frame).size
         #expect(contentSize == NSSize(width: 720, height: 560), "the window's content is \(contentSize), not its default size")
+        // Sizing a new window to its content is the one layout it needs. Any resize to another
+        // size lays the whole window out again: the restyle-then-resize this replaced went
+        // 720×560 → 720×592 → 720×560 (CI 45937955461).
         let sizes = resizes.withLock { $0 }
-        let sizing = (window.contentViewController as? NSHostingController<ContentView>)?.sizingOptions.rawValue
-        #expect(sizes.isEmpty, "the window was resized after it was created, so it was laid out again: \(sizes); sizingOptions \(String(describing: sizing))")
+        #expect(sizes.allSatisfy { $0 == "720.0×560.0" }, "the window passed through other sizes, each laid out: \(sizes)")
     }
 
     // Verifies: REQ-131 — the command surface stays usable at the minimum window size. A toolbar

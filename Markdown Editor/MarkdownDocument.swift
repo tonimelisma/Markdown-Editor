@@ -139,16 +139,22 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         // show every semantic construct at once. Width stays at the default, because the default
         // width is what the reading measure and the untruncated toolbar are reviewed against.
         let contentSize = NSSize(width: 720, height: MarkdownAppDelegate.smokeWindowHeight ?? 560)
-        // The hosting view takes its final size before the window exists. NSWindow(contentViewController:)
-        // lays out the whole tree — SwiftUI's first render, both editors, the toolbar — at the
-        // view's size, so a window created at another size and resized afterwards was laid out
-        // twice: on a CI runner the second pass (`setContentSize`) was 8 of the 24–28 main-thread
-        // samples the first window cost (repeat-smoke 45923942236). Now the first layout is the
-        // only one, and `setContentSize` below finds nothing to change.
+        // The window is created with its final style and size, and only then given its content.
+        // Each change to a window's frame lays out the whole tree again — SwiftUI's render, both
+        // editors, the toolbar — so a window made by NSWindow(contentViewController:), restyled and
+        // then resized was laid out three times (720×560, 720×592, 720×560; CI 45937955461). On
+        // a CI runner one of those extra passes was 8 of the first window's 24–28 main-thread
+        // samples (repeat-smoke 45923942236). Now every resize lands on the final size.
         hosting.view.frame = NSRect(origin: .zero, size: contentSize)
-        let window = NSWindow(contentViewController: hosting)
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        window.setContentSize(contentSize)
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: contentSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        // The window controller owns the window; AppKit must not also release it when it closes.
+        window.isReleasedWhenClosed = false
+        window.contentViewController = hosting
         window.minSize = NSSize(width: 320, height: 240)
         let controller = NSWindowController(window: window)
         controller.contentViewController = hosting
