@@ -392,8 +392,10 @@ struct DiagnosticLogTests {
         let session = EditorSession(performanceSamplerCoordinator: DiagnosticRunCoordinator())
         session.attach(document: document)
         defer { session.detach() }
-        // The parse runs off the main actor and then waits for it, held here.
-        occupyMainActor(seconds: 0.3)
+        // The parse runs off the main actor and then waits for it, held here for longer than
+        // any parse of three lines takes, even queued behind the suite's other parses for
+        // cmark's lock (CI 46019135155 timed one at 246 ms).
+        occupyMainActor(seconds: 1.5)
         let revision = document.sourceVersion
         for _ in 0..<400 where trace.eventsMatching({
             if case .reconciliationApplied(_, let applied, _, _) = $0 { return applied == revision }
@@ -403,7 +405,7 @@ struct DiagnosticLogTests {
         }
         let summary = session.performanceSampler?.drainSummaries().first { $0.metric == .parseProjection }
         #expect(summary != nil, "no parse was measured")
-        #expect((summary?.max ?? .max) < 150_000_000, "the wait for the main actor was timed as parsing: \(String(describing: summary))")
+        #expect((summary?.max ?? .max) < 1_000_000_000, "the wait for the main actor was timed as parsing: \(String(describing: summary))")
     }
 
     // Verifies: REQ-123 — a document opened before its window exists parses once when the window
