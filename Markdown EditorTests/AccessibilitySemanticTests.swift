@@ -177,10 +177,14 @@ struct KeyboardCommandMatrixTests {
         }
         let all = items(menu)
         try #require(all.contains { $0.title == "Undo" }, "the menu bar is not the app's: \(menu.items.map(\.title))")
-        let find = all.first {
-            $0.keyEquivalent == "f" && $0.keyEquivalentModifierMask.intersection(.deviceIndependentFlagsMask) == .command
+        func takes(_ key: String) -> NSMenuItem? {
+            all.first {
+                $0.keyEquivalent == key && $0.keyEquivalentModifierMask.intersection(.deviceIndependentFlagsMask) == .command
+            }
         }
-        #expect(find != nil, "no menu item takes ⌘F; the Edit menu offers \(all.map(\.title))")
+        #expect(takes("f") != nil, "no menu item takes ⌘F; the menus offer \(all.map(\.title))")
+        // Close: the File group the app replaces to restore Save also held it, and ⌘W did nothing.
+        #expect(takes("w") != nil, "no menu item takes ⌘W; the menus offer \(all.map(\.title))")
     }
 
     // Verifies: REQ-032 — no command's shortcut is one macOS or every Mac app already owns. Block

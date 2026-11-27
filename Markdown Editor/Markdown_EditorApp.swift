@@ -44,8 +44,13 @@ struct Markdown_EditorApp: App {
                 }
                 .keyboardShortcut("o")
             }
-            // REQ-014: restore standard document File actions removed with DocumentGroup.
+            // REQ-014: restore standard document File actions removed with DocumentGroup. The
+            // group replaced also held Close: without it ⌘W did nothing (tour 45968755636).
             CommandGroup(replacing: .saveItem) {
+                Button("Close") {
+                    NSApp.sendAction(#selector(NSWindow.performClose(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("w")
                 Button("Save") {
                     NSApp.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil)
                 }

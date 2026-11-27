@@ -288,7 +288,7 @@ tree p-showcase
 scroll "Markdown WYSIWYG" 30
 wait 1
 shot p-showcase-scrolled
-press "Open"
+press "Compare against last year's notebook"
 wait 1
 select "Markdown WYSIWYG" Swifts
 type "Terns"
@@ -297,6 +297,7 @@ key cmd+s
 wait 2
 file showcase.md p-showcase
 expect-file showcase.md "Terns back over the harbour"
+expect-file showcase.md "- [x] Compare against last year's notebook"
 no-dialogs
 expect-no-faults
 
