@@ -292,6 +292,11 @@ private nonisolated struct CompilerBuilder {
 
         if let checked = taskChecked {
             let label = boxOnly == nil ? plainText(of: node) : ""
+            // A task with no text ends where its line does, which is where typing in it writes.
+            // Its box and the space after it anchor at the item's start, so that a caret at the
+            // line's end maps after them and not before the box.
+            let hasText = boxOnly == nil && node.children.contains { if case .list = $0.kind { return false }; return true }
+            let boxLocation: Int? = hasText ? nil : itemStart
             appendAttachment(
                 nodeID: node.id,
                 kind: .task(checked: checked, label: label),
@@ -301,13 +306,15 @@ private nonisolated struct CompilerBuilder {
                 "\u{FFFC}",
                 kind: .taskCheckbox(checked: checked),
                 after: node,
-                refuseEdits: false
+                refuseEdits: false,
+                at: boxLocation
             )
             appendSynthetic(
                 " ",
                 kind: .listMarker(displayedText: " ", sourceText: " ", nesting: nesting),
                 after: node,
-                refuseEdits: false
+                refuseEdits: false,
+                at: boxLocation
             )
         }
 
@@ -561,7 +568,8 @@ private nonisolated struct CompilerBuilder {
         _ string: String,
         kind: SyntheticKind,
         after node: MarkdownNode,
-        refuseEdits: Bool
+        refuseEdits: Bool,
+        at location: Int? = nil
     ) {
         guard !string.isEmpty else { return }
         let start = utf16Length
@@ -569,7 +577,7 @@ private nonisolated struct CompilerBuilder {
         let utf16 = (string as NSString).length
         utf16Length += utf16
         let projection = NSRange(location: start, length: utf16)
-        let insertAt = sourceUTF16(of: node).map(NSMaxRange) ?? lastSourceEnd
+        let insertAt = location ?? sourceUTF16(of: node).map(NSMaxRange) ?? lastSourceEnd
         let policy: SyntheticInsertionPolicy = refuseEdits ? .refuse : .atSourceLocation(insertAt)
         segments.append(.synthetic(projection: projection, kind: kind, insertion: policy))
         runs.append(

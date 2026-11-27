@@ -273,7 +273,7 @@ nonisolated enum SemanticEditEngine {
                     }
                 }
 
-                return finishIdentityTransition(
+                let identity = finishIdentityTransition(
                     mutation: mutation,
                     presentation: presentation,
                     projectionRange: transitionRange,
@@ -282,6 +282,21 @@ nonisolated enum SemanticEditEngine {
                     affinity: projSel.affinity,
                     intent: intent
                 )
+                // A deletion beside a synthetic anchor, such as the last letter of a paragraph
+                // before its break, has no identity shift the planner can prove; the exact next
+                // presentation is built instead, as for typing that changes structure. The kernel
+                // still checks that the page reads as before with the character gone.
+                if case .refused = identity, case .deleteBackward = request.command {
+                    return planAuthoritativeTransition(
+                        mutation: mutation,
+                        snapshot: snapshot,
+                        presentation: presentation,
+                        nextSnapshotID: nextSnapshotID,
+                        affinity: projSel.affinity,
+                        intent: intent
+                    )
+                }
+                return identity
             }
         }
     }
