@@ -213,8 +213,11 @@ precedent. Code published under Apache-2.0 stays available under it. While the a
 switching to another licence for later versions costs one commit.
 
 **The icon** is drawn in code rather than in a design tool, so a cloud session can regenerate it.
-It uses the community's public-domain Markdown mark (an M and a down arrow) on a paper page. It is
-a placeholder of honest quality, not a brand.
+It is a cream legal pad on a sage tile, with a terracotta binding strip, ruled lines and a Markdown
+heading mark (#) in the margin. The owner chose it on 2026-11-27 from five drawn candidates. It
+replaced the first icon, the public-domain Markdown mark on a paper page. That one said "Markdown
+document" where the app is a notes-style editor. The pad is busy at Finder-list sizes, so 16 and
+32 px get simpler art: the pad, the strip and four heavier rules.
 
 ## 2026-11-26 — An ad hoc app needs the library-validation exception, and a release is proved by launching it
 
