@@ -252,7 +252,12 @@ func require(_ label: String) -> AXUIElement? {
 
 // MARK: Real input events
 
-/// Brings the app forward unless it, or a panel it is showing, already has the keyboard. The
+/// Brings the app forward, for the steps that act on a window by position or through
+/// accessibility (`raise`, `click`, `focus`, `select`, menus) and never for keys: a person does
+/// not bring an app forward before each key, and doing so ended the Save panel that had the
+/// keyboard (tour 45966446584). Keys go wherever the keyboard is, as they would for a person.
+///
+/// Unless it, or a panel it is showing, already has the keyboard. The
 /// Open and Save panels run in AppKit's own service process; activating the app behind one took
 /// the keyboard from the panel, and a file name typed into it went into the document instead
 /// (tour 45962151435).
@@ -318,7 +323,6 @@ func key(_ combo: String) -> Bool {
         }
     }
     guard let code else { return false }
-    activate()
     let source = CGEventSource(stateID: .hidSystemState)
     for down in [true, false] {
         let event = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: down)
@@ -330,7 +334,6 @@ func key(_ combo: String) -> Bool {
 }
 
 func typeText(_ string: String) {
-    activate()
     let source = CGEventSource(stateID: .hidSystemState)
     for unit in string.utf16 {
         var character = unit

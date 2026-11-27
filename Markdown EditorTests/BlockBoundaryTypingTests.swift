@@ -282,6 +282,22 @@ struct BlockBoundaryTypingTests {
         await typist.expect("```\nlet a = 1\nb\n```\n")
     }
 
+    // Verifies: REQ-084 — keys meant for a sheet never edit the document behind it. Return in
+    // the link sheet reached the page and replaced the selected text with a line break.
+    @Test func aWindowWithASheetTakesNoTyping() async throws {
+        let typist = try await Typist("Read the guide.")
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = typist.harness.textView
+        let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+        window.beginSheet(sheet)
+        defer { window.endSheet(sheet) }
+        try #require(window.attachedSheet === sheet, "the sheet did not attach")
+        try typist.click(after: "guide")
+        await typist.pressReturn()
+        await typist.type("x")
+        #expect(typist.text == "Read the guide.", "the document behind the sheet reads \(typist.text.debugDescription)")
+    }
+
     // MARK: - Backspace
 
     // Verifies: REQ-153 — Delete inside a word deletes the character before the caret. AppKit

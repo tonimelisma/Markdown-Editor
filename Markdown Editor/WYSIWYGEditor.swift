@@ -379,6 +379,12 @@ enum WYSIWYGEditor {
             if session.updateOrigin.current != .nativeUserInput { return true }
             // Attribute-only changes (nil replacement) stay native.
             guard let replacement = replacementString else { return true }
+            // A sheet on the window is modal: keys meant for it must never edit the document
+            // behind it. Return in the link sheet did (tour 45966446584).
+            if textView.window?.attachedSheet != nil {
+                document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.unavailable)))
+                return false
+            }
 
             // REQ-084: marked-text / IME updates stay transient until composition completes.
             if input.committingComposition || input.allowingMarkedText || textView.hasMarkedText() || input.composition.isComposing {
