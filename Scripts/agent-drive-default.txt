@@ -5,27 +5,38 @@ shot opened
 tree opened
 focused
 
-# A real click into the first paragraph, then a caret placed through accessibility, then real keys.
+# A real click into the first paragraph, a caret placed through accessibility at the start of the
+# heading, then real keys: one, then the rest, with the caret read between them.
 clickat 300 160
 focused
 caret "Markdown WYSIWYG" 0
-type "Agent "
+type "A"
 wait 1
+selection "Markdown WYSIWYG"
+type "gent "
+wait 1
+selection "Markdown WYSIWYG"
 shot typed
 expect-value "Markdown WYSIWYG" "Agent Typography proof"
 
-# The toolbar acts on a selection, and cmd-S saves it.
+# Formatting from the toolbar, then from the keyboard (through the menu bar's key equivalents),
+# and cmd-S saves it.
 caret "Markdown WYSIWYG" 0 5
 press Bold
 wait 1
 shot bold
+caret "Markdown WYSIWYG" 6 10
+key cmd+i
+wait 1
+shot italic
 key cmd+s
 wait 2
 file saved
-expect-file "Agent"
 expect-file "**Agent**"
+expect-file "*Typography*"
 
-# The mode control says which mode the editor is in, however the mode was chosen.
+# The mode control says which mode the editor is in, however the mode was chosen: the toolbar,
+# the View menu, the keyboard.
 press Source
 wait 1
 shot source
@@ -36,4 +47,7 @@ menu View "WYSIWYG Mode"
 wait 1
 shot wysiwyg-from-menu
 expect-value WYSIWYG 1
-expect-value Source 0
+key ctrl+cmd+2
+wait 1
+shot source-from-keyboard
+expect-value Source 1

@@ -364,7 +364,10 @@ enum WYSIWYGEditor {
             else {
                 // Applied storage is not the snapshot this keystroke targets. Resynchronizing is
                 // a full replacement, so it is recorded for the same reason a post-commit
-                // recovery is: storage drift must never be silent.
+                // recovery is: storage drift must never be silent. So is the refused keystroke:
+                // typing that vanished without a trace took an agent-drive run to see
+                // (45943545906).
+                document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.stalePresentation)))
                 applyProjectionIfNeeded(reason: .reapplyIfDrift)
                 return false
             }
@@ -378,6 +381,7 @@ enum WYSIWYGEditor {
             guard session.wysiwygModeState.selection == projectionSelection else {
                 // The native selection callback is the owner-state capture point. A mutation
                 // callback cannot promote its affected range into current state after the fact.
+                document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.ambiguousSelection)))
                 applyProjectionIfNeeded(reason: .reapplyIfDrift)
                 return false
             }

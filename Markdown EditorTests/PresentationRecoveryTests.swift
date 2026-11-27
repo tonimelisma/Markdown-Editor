@@ -265,6 +265,36 @@ struct PresentationRecoveryTests {
         #expect(selection.range.revision == installed.projectionRevision, "the caret belongs to a snapshot that is gone")
     }
 
+    // Verifies: REQ-109 — a keystroke anywhere is reconciled without a recovery. Every caret
+    // offset of a document with a heading, a paragraph with a bold run, a list and a quote: a
+    // shifted provisional snapshot was wrong exactly where a keystroke meets the start of a run or
+    // block, which a test of one interior offset could not see.
+    @Test func aKeystrokeAtAnyOffsetIsReconciledWithoutRecovery() async throws {
+        let source = "# Title\n\nSome **bold** text.\n\n- item\n\n> quote\n"
+        let rendered = try PerformanceBoundaryTests.EditorHarness(source: source).session.presentation?.renderedString ?? ""
+        var recovered: [String] = []
+        var typedAt = 0
+        for offset in 0...(rendered as NSString).length {
+            let trace = InMemoryEditorTrace()
+            let harness = try PerformanceBoundaryTests.EditorHarness(source: source, trace: trace)
+            await awaitReconciliations(trace, revision: harness.document.sourceVersion, count: 1)
+            harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
+            let before = harness.document.sourceVersion
+            harness.typeCharacter("x", at: NSRange(location: offset, length: 0))
+            guard harness.document.sourceVersion != before, let provisional = harness.session.presentation else {
+                continue // refused here, as on an attachment: no provisional snapshot to check
+            }
+            typedAt += 1
+            await awaitReconciliations(trace, revision: harness.document.sourceVersion, count: 1)
+            if !recoveries(trace).isEmpty {
+                let differences = harness.session.presentation.map { Self.differences(provisional, $0) } ?? []
+                recovered.append("offset \(offset): \(differences.first ?? "?")")
+            }
+        }
+        #expect(typedAt > 20, "only \(typedAt) offsets accepted a keystroke")
+        #expect(recovered.isEmpty, "\(recovered.count) offsets recovered:\n\(recovered.joined(separator: "\n"))")
+    }
+
     // Verifies: REQ-109 — typing at the start of a heading goes on being accepted, keystroke after
     // keystroke, as the authoritative parse of each lands between them. Agent-drive run
     // 45943545906 clicked into the app on a runner, typed "Agent " before "Typography proof",

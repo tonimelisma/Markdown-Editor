@@ -191,8 +191,8 @@ nonisolated enum SemanticEditEngine {
                                 nextSnapshotID: nextSnapshotID,
                                 intent: intent
                             ) {
-                            case .preservesPresentation:
-                                return finishIdentityTransition(
+                            case .preservesPresentation(let built):
+                                let identity = finishIdentityTransition(
                                     mutation: remade,
                                     presentation: presentation,
                                     projectionRange: transitionRange,
@@ -200,6 +200,27 @@ nonisolated enum SemanticEditEngine {
                                     nextSnapshotID: nextSnapshotID,
                                     affinity: projSel.affinity
                                 )
+                                // REQ-109; COR-71: the identity transition shifts runs and blocks by
+                                // projection position alone, so text typed exactly at the start of a
+                                // heading or paragraph lands outside it, where the parse puts it
+                                // inside (agent-drive run 45943545906). The exact next presentation
+                                // is already built; where the shifted one differs from it, the
+                                // exact one is installed instead of a provisional the authority
+                                // will reject.
+                                if case .accepted(let edit) = identity,
+                                   let next = edit.presentationTransition?.nextSnapshot,
+                                   !next.hasSameContent(as: built) {
+                                    return planAuthoritativeTransition(
+                                        mutation: remade,
+                                        snapshot: snapshot,
+                                        presentation: presentation,
+                                        nextSnapshotID: nextSnapshotID,
+                                        affinity: projSel.affinity,
+                                        prebuilt: built,
+                                        intent: intent
+                                    )
+                                }
+                                return identity
                             case .changesPresentation:
                                 break
                             case .unbuildable:
