@@ -44,12 +44,21 @@ Two more workflows serve CI without gating anything:
   `repeat-smoke-<run id>`. `configuration: Release` launches the hardened Release bundle,
   `fresh` a new copy each time, `settle` waits after the build, and `sample` takes a `spindump` of
   each launch. Use it to chase a failure that comes and goes, instead of re-running CI.
+- **`agent-drive.yml`**: started by hand (`run_workflow`, `ref` the branch to build). It opens a
+  fixture (`inputs.fixture`, from `Scripts/Fixtures`) and runs `inputs.scenario`, one step per
+  line in the language at the top of `Scripts/agent-drive.swift` (`clickat`, `type`, `key cmd+s`,
+  `press Bold`, `menu View "Source Mode"`, `shot`, `tree`, `value`, `file`, `expect-…`). An empty
+  scenario runs `Scripts/agent-drive-default.txt`. The artifact `agent-drive-<run id>` holds
+  `transcript.txt`, one numbered line per step, and that step's screenshots, accessibility trees,
+  values and saved file, plus the app's diagnostic log. `clickat` takes a point of the window in
+  screenshot pixels: the runner's display is 1×. A run takes about three minutes.
 
 Reading CI from a cloud session: the GitHub MCP tools.
 
 - `actions_list` with `list_workflow_runs`, then `list_workflow_jobs`.
 - `get_job_logs` with `failed_only`.
-- `actions_get` with `download_workflow_run_artifact`, for the screenshot.
+- `actions_get` with `download_workflow_run_artifact`, for the screenshot and agent-drive's
+  artifact; then `curl` the returned URL and look at each image.
 
 ## Releases (`.github/workflows/release.yml`, `Scripts/release.sh`)
 

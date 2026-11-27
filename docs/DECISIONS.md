@@ -3,6 +3,63 @@
 Decisions with consequences. Newest first. This is not an archive of everything ever decided —
 it is the short list of things someone will otherwise re-litigate or accidentally undo.
 
+## 2026-11-27 — An agent drives the app on a Mac runner, to look; tests still prove
+
+**Decision.** `.github/workflows/agent-drive.yml` lets an agent in a cloud session operate the
+real app on a GitHub Mac runner. The agent writes a scenario of real clicks, real keys, menu
+choices and accessibility presses (`Scripts/agent-drive.swift`) and dispatches it. Afterwards it
+downloads a screenshot, accessibility tree, element value or saved file for each step, plus the
+app's diagnostic log, and looks at them. CLAUDE.md §4 gains it as its one exception that drives
+the UI. It is never a gate and never a requirement's proof. A defect it finds is fixed with a unit
+or component test that fails for it.
+
+**What the runner allows** (UI probe, PR #97, run 45942394078, macOS 27.0.1 on `xcode-27`):
+
+- SIP is disabled.
+- `/bin/bash` holds Accessibility, AppleEvents and ScreenCapture grants in the system TCC
+  database, and `AXIsProcessTrusted()` is true for a tool the job runs.
+- The app's accessibility tree is complete: 210 elements, including the toolbar, the text area's
+  value, task checkboxes, images and the whole menu bar.
+- An accessibility press on the Source segment switched the mode (`modeToggle` in the app's log).
+- A real ⌘S key event saved the document (`documentSaveSucceeded`).
+- Typed text went nowhere, because nothing had keyboard focus.
+- System Events' `keystroke` did nothing either.
+- The display is 1×, so a screenshot pixel is a window point.
+
+**It found a bug on its first run.** After the Source press, the screenshot and the tree both
+showed Source text under a selected WYSIWYG segment. `EditorToolbarController` followed
+`session.mode` from a `$mode` sink, and `@Published` delivers in `willSet`. Every mode change,
+from a click, the View menu or its shortcut, therefore left the previous mode selected. No test
+looked at the control after a change. `theModeControlFollowsTheMode` now does.
+
+**Criteria** (VISION's evaluation section): automated verification must stay trustworthy, which is
+what §4 protects; correctness under mode switching, because the bug above lived where AppKit,
+Combine and the session meet, and no unit test was looking there; ownership clarity and absence
+of duplicate paths; and cost.
+
+**Alternatives.**
+
+- **An on-demand instrument for an agent's eyes, outside the gate (chosen).** Nothing in the
+  product changes and no test depends on it. A cloud session gains the one thing it lacked:
+  seeing what the app does when someone uses it. Each run costs about three minutes of a
+  macOS runner.
+- **An XCUITest target in the gate.** Rejected. It is the flaky, slow kind of proof §4 removed:
+  timing-dependent, at the mercy of the runner's TCC state, and over the five-minute budget. A
+  red UI test would block a merge for reasons that are not the change's.
+- **Claude Code with computer use, running on the runner.** Rejected for now. It needs an API-key
+  secret and would be a second agent, whose work this session sees only through its report.
+  The eyes are the same, screenshots and the accessibility tree, and a scenario the session
+  writes and reads back itself costs less and can be repeated exactly.
+- **An in-app scenario driver, named at launch like `MARKDOWN_EDITOR_SMOKE_SCENE`.** Rejected. It
+  would be a second path into the command model, which the 2026-08-29 decision refused. It also
+  could not show what real input does, which is where the bug above was.
+- **Do nothing.** The cloud session keeps seeing one passive screenshot per CI run. The toolbar
+  bug stays invisible.
+
+**Where the chosen option is worse.** Its findings are only as good as the scenario and the
+agent's looking. A run that "looked fine" proves nothing, which is why it can never be cited as
+a proof. A scenario also cannot reach what the runner's TCC grants do not allow.
+
 ## 2026-11-27 — The first window is laid out once; the Source editor stays eager
 
 **Decision.** The document window is created at its final size, so it is laid out once instead of
