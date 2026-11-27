@@ -989,9 +989,18 @@ struct ImagePlacementControllerLifecycleTests {
     @MainActor
     /// Generous by design: the assertion is that placement *reaches* idle, and tests run
     /// concurrently, so a tight deadline turns main-actor contention into a false failure.
-    private func waitUntilIdle(_ controller: ImagePlacementController, timeoutSeconds: Double = 15) async {
-        let deadline = Date().addingTimeInterval(timeoutSeconds)
-        while controller.phaseForTesting != .idle, Date() < deadline {
+    /// Waits for the controller to finish, bounded by main-actor turns rather than by the clock.
+    ///
+    /// A placement hops between the main actor and its executor several times before it is idle,
+    /// and so does each poll here. Under the parallel suite, other tests hold the main actor for
+    /// long stretches (13–39 s on CI 45926585599), so a wall-clock deadline expired while the
+    /// placement was still waiting its turn: `imagePlacementTraceOmitsFilenames` failed `.publishing`
+    /// at 15.95 s. Counting polls lets a starved main actor stretch the wait. A controller that
+    /// never reaches idle still fails, after `maxPolls` turns of at least 10 ms each.
+    private func waitUntilIdle(_ controller: ImagePlacementController, maxPolls: Int = 1_500) async {
+        var polls = 0
+        while controller.phaseForTesting != .idle, polls < maxPolls {
+            polls += 1
             try? await Task.sleep(for: .milliseconds(10))
         }
     }

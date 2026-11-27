@@ -178,7 +178,8 @@ struct SemanticCommandBudgetTests {
         // Deliberately loose. The gate runs Debug with tests in parallel, so these numbers carry
         // scheduling contention as well as the work; a tight bound here would be flaky rather
         // than informative. Their job is to catch a catastrophic regression, not drift. The
-        // Release table above is the contract.
+        // Release table above is the contract. In Debug the bound is on the median, not the worst
+        // sample (see the assertion below).
         switch corpus {
         case .degenerateParagraph: return 30
         case .codeHeavy: return 60
@@ -226,18 +227,31 @@ struct SemanticCommandBudgetTests {
             fixture.session.drainPerformanceSummaries().first { $0.metric == .semanticCommand },
             "no semanticCommand samples for \(corpus.rawValue)"
         )
-        // The worst of the samples, not a percentile. Five samples cannot express a 95th
-        // percentile honestly — `p95` over five is simply the maximum — so this asserts the
-        // maximum and says so. It is the stricter bound, so satisfying it satisfies REQ-143's
-        // p95 form as well.
+        // In Release, the worst of the samples, not a percentile. Five samples cannot express a
+        // 95th percentile honestly — `p95` over five is simply the maximum — so the Release
+        // assertion bounds the maximum and says so. It is the stricter bound, so satisfying it
+        // satisfies REQ-143's p95 form as well.
         let worstMillis = Double(summary.max) / 1_000_000
         let medianMillis = Double(summary.p50) / 1_000_000
-        let tail = Self.ceilingMillis(for: corpus)
+        let ceiling = Self.ceilingMillis(for: corpus)
+        let observed = "median \(String(format: "%.1f", medianMillis)) ms, worst \(String(format: "%.1f", worstMillis)) ms of \(Self.sampleCount)"
+        #if DEBUG
+        // The median, because in Debug the worst sample measures the suite as much as the command.
+        // Each sample waits for the main actor and for EditorSemanticWorker's one serial queue, and
+        // the parallel suite's other tests use both: on CI 45926585599 unrelated main-actor tests
+        // took 13–39 s, and codeHeavy's worst-of-5 read 64.4 ms against this 60 ms bound on the
+        // same tree that passed it minutes earlier. The five samples are the same command on the same
+        // paragraph of the same document, so a regression in that work moves every sample and with
+        // it the median; contention moves single samples, which the median ignores.
         #expect(
-            worstMillis <= tail,
-            "\(corpus.rawValue): semantic command worst-of-\(Self.sampleCount) \(String(format: "%.1f", worstMillis)) ms regressed past its \(tail) ms tail bound"
+            medianMillis <= ceiling,
+            "\(corpus.rawValue): semantic command \(observed) regressed past its \(ceiling) ms Debug bound"
         )
-        #if !DEBUG
+        #else
+        #expect(
+            worstMillis <= ceiling,
+            "\(corpus.rawValue): semantic command \(observed) regressed past its \(ceiling) ms tail bound"
+        )
         // REQ-143's budget, asserted where the evidence lives. Debug carries scheduling
         // contention that makes a 16 ms median meaningless.
         let medianCeiling = Self.releaseMedianCeilingMillis(for: corpus)

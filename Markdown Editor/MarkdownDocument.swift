@@ -135,12 +135,26 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         trace?.record(route: .documentOpened, .documentOpened(utf16Count: (text as NSString).length))
         let contentView = ContentView(document: self)
         let hosting = NSHostingController(rootView: contentView)
-        let window = NSWindow(contentViewController: hosting)
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         // REQ-104: the screenshot verification may make the window taller so one capture can
         // show every semantic construct at once. Width stays at the default, because the default
         // width is what the reading measure and the untruncated toolbar are reviewed against.
-        window.setContentSize(NSSize(width: 720, height: MarkdownAppDelegate.smokeWindowHeight ?? 560))
+        let contentSize = NSSize(width: 720, height: MarkdownAppDelegate.smokeWindowHeight ?? 560)
+        // The window is created with its final style and size, and only then given its content.
+        // Each change to a window's frame lays out the whole tree again — SwiftUI's render, both
+        // editors, the toolbar — so a window made by NSWindow(contentViewController:), restyled and
+        // then resized was laid out three times (720×560, 720×592, 720×560; CI 45937955461). On
+        // a CI runner one of those extra passes was 8 of the first window's 24–28 main-thread
+        // samples (repeat-smoke 45923942236). Now every resize lands on the final size.
+        hosting.view.frame = NSRect(origin: .zero, size: contentSize)
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: contentSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        // The window controller owns the window; AppKit must not also release it when it closes.
+        window.isReleasedWhenClosed = false
+        window.contentViewController = hosting
         window.minSize = NSSize(width: 320, height: 240)
         let controller = NSWindowController(window: window)
         controller.contentViewController = hosting

@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import Synchronization
 import Testing
 @testable import Markdown_Editor
 
@@ -123,6 +124,40 @@ struct WindowCitizenshipTests {
         // hide the other silently opting out. Observed values are "MarkdownDocumentWindow" / true.
         #expect(window.frameAutosaveName == "MarkdownDocumentWindow", "no frame autosave name, so AppKit cannot restore or cascade")
         #expect(window.isRestorable, "window opts out of state restoration")
+    }
+
+    // Verifies: REQ-131 — a document window is laid out at its final size only. Creating it at
+    // another size, or restyling and resizing it afterwards, laid out the whole window again —
+    // SwiftUI's first render, both editors and the toolbar — which on a CI runner was a third of
+    // what the first window cost (DECISIONS.md, 2026-11-27). `makeWindowControllers` runs
+    // synchronously on the main actor, so every resize it causes is posted inside this call and
+    // nothing else's can be.
+    @Test func theDocumentWindowIsCreatedAtItsFinalSize() throws {
+        // A frame AppKit saved under the autosave name is restored onto the next window, and that
+        // restoration is a legitimate resize this test is not about. `toolbarRemainsUsableAtTheMinimumWindowSize`
+        // leaves one at the minimum size: without this, the falsification run (CI 45936808313) saw
+        // 320×208 after five resizes, which said as much about test order as about layout.
+        UserDefaults.standard.removeObject(forKey: "NSWindow Frame MarkdownDocumentWindow")
+        let document = MarkdownDocument()
+        let resizes = Mutex<[String]>([])
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification, object: nil, queue: nil
+        ) { note in
+            let size = (note.object as? NSWindow).map { $0.contentRect(forFrameRect: $0.frame).size }
+            resizes.withLock { $0.append(size.map { "\($0.width)×\($0.height)" } ?? "?") }
+        }
+        document.makeWindowControllers()
+        NotificationCenter.default.removeObserver(observer)
+        defer { document.close() }
+        let window = try #require(document.windowControllers.first?.window)
+
+        let contentSize = window.contentRect(forFrameRect: window.frame).size
+        #expect(contentSize == NSSize(width: 720, height: 560), "the window's content is \(contentSize), not its default size")
+        // Sizing a new window to its content is the one layout it needs. Any resize to another
+        // size lays the whole window out again: the restyle-then-resize this replaced went
+        // 720×560 → 720×592 → 720×560 (CI 45937955461).
+        let sizes = resizes.withLock { $0 }
+        #expect(sizes.allSatisfy { $0 == "720.0×560.0" }, "the window passed through other sizes, each laid out: \(sizes)")
     }
 
     // Verifies: REQ-131 — the command surface stays usable at the minimum window size. A toolbar
