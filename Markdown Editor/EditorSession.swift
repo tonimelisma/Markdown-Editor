@@ -38,6 +38,10 @@ final class EditorSession: ObservableObject {
     // publishing it would invalidate the view graph for a fact the graph never consumes.
     @Published private(set) var mode: EditorMode = .wysiwyg
     @Published var presentation: PresentationSnapshot?
+    /// The snapshot `installPresentation` last installed as provisional, while it is still the
+    /// presentation. COR-71's reconciliation check applies only to it: comparing an authoritative
+    /// snapshot with another authoritative one is not a check of a local transition.
+    private(set) var provisionalPresentationID: PresentationSnapshot.ID?
     @Published var resolvedImages: [MarkdownNodeID: NSImage] = [:]
     var authoritativeTree: MarkdownTree?
     private(set) var sourceModeState = SourceModeState()
@@ -522,6 +526,7 @@ final class EditorSession: ObservableObject {
             return SourceSelection(utf16: sourceRange, affinity: existing.affinity)
         }()
         presentation = snapshot
+        provisionalPresentationID = provisional ? snapshot.id : nil
         if let intent {
             let supersededIntents = presentationIntents.values
             let alreadyLeasedForPresentation = supersededIntents.contains(intent)
@@ -824,6 +829,15 @@ final class EditorSession: ObservableObject {
                     )
                 }
                 publishSelectionRestoration(edit: edit)
+                // This commit's `objectWillChange` queued a deferred document-change parse of the
+                // same revision. This route schedules that parse itself, so the deferred one would
+                // parse it a second time, and when it landed after this one had installed, COR-71's
+                // check compared two authoritative snapshots (repeat-smoke 45925262536). It is
+                // dropped unless a native mutation staged an intent for it to carry.
+                if pendingDocumentMutationIntent == nil {
+                    pendingDocumentChangeTask?.cancel()
+                    pendingDocumentChangeTask = nil
+                }
                 scheduleParse(intent: intent)
                 handedOffToReconciliation = true
                 return .accepted(edit)

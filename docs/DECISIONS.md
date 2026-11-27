@@ -108,7 +108,10 @@ publishes by) differs from the newest release. If it does, the macOS job runs.
 **Also seen.** Control run 45925262536's second launch recorded `presentationRecovered`
 (`patchUnprovable`, COR-71): a provisional WYSIWYG presentation disagreed with the authoritative
 parse of the same revision. It was seen once in about 40 launches. It is an application fault,
-and a release that hits it is still refused. It is open in ROADMAP.
+and a release that hits it is still refused. It was two defects, both fixed the same day. The
+check compared snapshot IDs, which always differ, so it fired on any second snapshot of a
+revision, including after every WYSIWYG keystroke, where it also dropped the caret. And every
+semantic edit's revision was parsed twice (`PresentationRecoveryTests`; ENGINEERING §7).
 
 ## 2026-11-27 — Apache-2.0, a README, and an app icon drawn in code
 

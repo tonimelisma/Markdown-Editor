@@ -145,9 +145,16 @@ An accepted WYSIWYG edit is a synchronous atomic transition:
 5. Before the input callback returns, the session derives and applies the matching attributed
    `PresentationPatch`, advances the complete presentation snapshot, and restores selection. The
    next keystroke therefore targets the new source and presentation revisions.
-6. An off-main authoritative parse/projection is scheduled.
+6. An off-main authoritative parse/projection is scheduled, once for the revision. The deferred
+   document-change parse that the same commit's `objectWillChange` queues is dropped. It would
+   parse the revision a second time.
 7. Reconciliation may replace the provisional snapshot only if its complete input identity still
-   matches current state.
+   matches current state. If the authoritative snapshot's content differs from a provisional
+   snapshot of the same revision and location generation, the local transition was wrong. That is a
+   recorded fault (`presentationRecovered`, `patchUnprovable`; COR-71): WYSIWYG stops accepting
+   input until the authoritative snapshot is installed. The comparison is by content
+   (`PresentationSnapshot.hasSameContent`), never by snapshot identity, which always differs. It
+   applies only to a snapshot installed as provisional, not to a re-parse of an authoritative one.
 
 It is forbidden to commit source and leave the old projection editable while waiting for parsing.
 

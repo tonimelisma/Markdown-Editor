@@ -37,6 +37,27 @@ nonisolated struct PresentationSnapshot: Sendable, Equatable {
 
     var isOracleValid: Bool { oracleValid }
 
+    /// Whether two snapshots present the same thing, whatever their identities. The synthesized
+    /// `==` compares `id` too, and every snapshot gets a fresh one, so two snapshots that agree in
+    /// every field a reader sees are still `!=`: COR-71's check used `!=` and so fired whenever a
+    /// snapshot of the same revision existed, never on what it was meant to compare. The coordinate
+    /// map and the oracle result are derived from the fields compared here. Atoms are compared after
+    /// merging adjacent identity atoms that continue each other: a local transition splits identity
+    /// text at the edit (`{0,11} {11,1} {12,1}`) where the parser emits one atom (`{0,13}`), the same
+    /// mapping in a different number of pieces (CI 45939800494).
+    func hasSameContent(as other: PresentationSnapshot) -> Bool {
+        sourceRevision == other.sourceRevision
+            && locationGeneration == other.locationGeneration
+            && sourceUTF16Count == other.sourceUTF16Count
+            && renderedString == other.renderedString
+            && runs == other.runs
+            && attachments == other.attachments
+            && tables == other.tables
+            && blocks == other.blocks
+            && listMarkers == other.listMarkers
+            && ProjectionAtom.coalescingIdentity(atoms) == ProjectionAtom.coalescingIdentity(other.atoms)
+    }
+
     var projectionRevision: ProjectionRevision {
         ProjectionRevision(snapshotID: id)
     }

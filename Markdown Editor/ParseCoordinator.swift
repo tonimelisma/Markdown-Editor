@@ -230,9 +230,10 @@ final class ParseCoordinator {
                 let imageResolutionTotal = imageResolutionDuration
                 let applicationStart = DispatchTime.now().uptimeNanoseconds
                 if let provisional = session.presentation,
+                   session.provisionalPresentationID == provisional.id,
                    provisional.sourceRevision == authoritative.sourceRevision,
                    provisional.locationGeneration == authoritative.locationGeneration,
-                   provisional != authoritative {
+                   !provisional.hasSameContent(as: authoritative) {
                     // COR-71: a local transition disagreed with the pinned authority. Do not
                     // silently replace an editable provisional snapshot; record a fault, make
                     // WYSIWYG unavailable, and rebuild from canonical source in this same
