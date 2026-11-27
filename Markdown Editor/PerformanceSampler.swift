@@ -55,10 +55,22 @@ final class PerformanceSampler {
     ]
     struct Summary: Equatable { let metric: Metric; let count: Int; let p50: UInt64; let p95: UInt64; let max: UInt64 }
 
-    private let capacity = 512
-    private var samples: [Metric: [UInt64]] = [:]
-    /// Next slot to overwrite once a metric's buffer is full (COR-30).
-    private var writeCursor: [Metric: Int] = [:]
+    /// One metric's samples since the last summary: every sample's count and the largest exactly,
+    /// and a uniform reservoir of at most `capacity` of them for the percentiles.
+    ///
+    /// The reservoir replaced a ring that kept only the newest 512. The latency probe takes 600
+    /// samples a minute, so each minute's summary silently lost its first nine seconds: a print
+    /// panel's first load there left no trace in the count, the p95 or the max (probe
+    /// 46005844047). Memory and per-record work stay bounded, as COR-30 required of the ring.
+    fileprivate nonisolated struct Window {
+        var count = 0
+        var max: UInt64 = 0
+        var reservoir: [UInt64] = []
+    }
+
+    static let capacity = 512
+    private var windows: [Metric: Window] = [:]
+    private var random = SplitMix64(seed: 0x9E37_79B9_7F4A_7C15)
     private let trace: (any EditorTraceSink)?
     private weak var frameObserver: FrameObserver?
     private var timer: Timer?
@@ -86,18 +98,9 @@ final class PerformanceSampler {
 
     func record(_ metric: Metric, durationNanos: UInt64) {
         guard !invalidated else { return }
-        // COR-30: a ring rather than `Array.removeFirst`, which copied the remaining 511 samples
-        // on every record once full — O(n) work on the keystroke path, inside the very boundary
-        // the 8 ms budget measures.
-        var values = samples[metric, default: []]
-        if values.count < capacity {
-            values.append(durationNanos)
-        } else {
-            let cursor = writeCursor[metric, default: 0]
-            values[cursor] = durationNanos
-            writeCursor[metric] = (cursor + 1) % capacity
-        }
-        samples[metric] = values
+        // COR-30: constant work per record, never a copy of the buffer: this runs on the
+        // keystroke path, inside the very boundary the 8 ms budget measures.
+        windows[metric, default: Window()].add(durationNanos, capacity: Self.capacity, random: &random)
     }
 
     func attach(frameObserver: FrameObserver) {
@@ -105,12 +108,12 @@ final class PerformanceSampler {
     }
 
     func drainSummaries() -> [Summary] {
-        defer { samples.removeAll(); writeCursor.removeAll() }
+        defer { windows.removeAll() }
         return Metric.allCases.compactMap { metric in
-            let values = samples[metric, default: []].sorted()
-            guard !values.isEmpty else { return nil }
+            guard let window = windows[metric], window.count > 0 else { return nil }
+            let values = window.reservoir.sorted()
             let percentile: (Double) -> UInt64 = { p in values[min(values.count - 1, max(0, Int(ceil(Double(values.count) * p)) - 1))] }
-            return Summary(metric: metric, count: values.count, p50: percentile(0.5), p95: percentile(0.95), max: values.last!)
+            return Summary(metric: metric, count: window.count, p50: percentile(0.5), p95: percentile(0.95), max: window.max)
         }
     }
 
@@ -140,4 +143,33 @@ final class PerformanceSampler {
         coordinator.unregister(self)
     }
 
+}
+
+fileprivate extension PerformanceSampler.Window {
+    /// Algorithm R: once the reservoir is full, the n-th sample replaces a random slot with
+    /// probability capacity / n, so every sample of the window is kept with the same probability.
+    mutating func add(_ value: UInt64, capacity: Int, random: inout SplitMix64) {
+        count += 1
+        if value > max { max = value }
+        if reservoir.count < capacity {
+            reservoir.append(value)
+        } else {
+            let slot = Int(random.next() % UInt64(count))
+            if slot < capacity { reservoir[slot] = value }
+        }
+    }
+}
+
+/// A small, fast, seeded generator: the reservoir needs uniform choices, not secrecy, and a fixed
+/// seed makes a summary reproducible from the same samples.
+nonisolated struct SplitMix64: RandomNumberGenerator {
+    private var state: UInt64
+    init(seed: UInt64) { state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
+    }
 }

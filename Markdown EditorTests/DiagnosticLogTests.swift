@@ -20,6 +20,32 @@ struct DiagnosticLogTests {
         #expect(sampler.drainSummaries() == [.init(metric: .nativeInputCallback, count: 100, p50: 50, p95: 95, max: 100)])
     }
 
+    // Verifies: REQ-103 — a summary describes every sample of its window. The latency probe takes
+    // 600 a minute; a ring of the newest 512 lost the first nine seconds of each minute, and a
+    // print panel's first load there was absent from the count, the max and the p95.
+    @Test func aSummaryCountsEverySampleOfItsWindowAndKeepsTheLargest() {
+        let sampler = PerformanceSampler(trace: nil, coordinator: DiagnosticRunCoordinator())
+        sampler.record(.mainActorLatency, durationNanos: 1_500_000_000)
+        for _ in 1..<600 { sampler.record(.mainActorLatency, durationNanos: 1_000_000) }
+        let summary = sampler.drainSummaries().first { $0.metric == .mainActorLatency }
+        sampler.invalidate()
+        #expect(summary?.count == 600)
+        #expect(summary?.max == 1_500_000_000)
+    }
+
+    // Verifies: REQ-103 — the percentiles weigh the whole window, not its newest part: a slow
+    // first sixth of the minute still sets the p95.
+    @Test func thePercentilesWeighTheWholeWindow() {
+        let sampler = PerformanceSampler(trace: nil, coordinator: DiagnosticRunCoordinator())
+        for _ in 0..<200 { sampler.record(.mainActorLatency, durationNanos: 400_000_000) }
+        for _ in 0..<1_000 { sampler.record(.mainActorLatency, durationNanos: 1_000_000) }
+        let summary = sampler.drainSummaries().first { $0.metric == .mainActorLatency }
+        sampler.invalidate()
+        #expect(summary?.count == 1_200)
+        #expect(summary?.p95 == 400_000_000, "summary: \(String(describing: summary))")
+        #expect(summary?.p50 == 1_000_000, "summary: \(String(describing: summary))")
+    }
+
     // Verifies: REQ-090 — the evidence type refuses a run with no executed samples, so a
     // latency gate cannot be reported as satisfied by having measured nothing.
     @Test func performanceEvidenceRejectsZeroSamples() {
