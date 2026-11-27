@@ -92,8 +92,10 @@ struct NewWindowReadinessTests {
         defer { h.session.detach() }
         let hidden = try #require(h.host.sourceText)
         try #require(hidden.isHiddenOrHasHiddenAncestor, "the Source page is not hidden in WYSIWYG mode")
-        #expect(!h.window.makeFirstResponder(hidden), "the hidden Source page took the keyboard")
-        #expect(h.window.firstResponder !== hidden)
+        // What matters is who holds the keyboard afterwards, not makeFirstResponder's return,
+        // which reported success though the view declined (CI 45979591545).
+        _ = h.window.makeFirstResponder(hidden)
+        #expect(h.window.firstResponder !== hidden, "the hidden Source page took the keyboard")
     }
 
     // Verifies: REQ-058/REQ-032 — the first command in a new window applies at the caret the page

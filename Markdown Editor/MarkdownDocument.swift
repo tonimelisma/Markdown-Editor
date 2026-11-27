@@ -49,6 +49,17 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// Mirror of `fileURL` for SwiftUI observation (NSDocument's property is not @Published).
     @Published private(set) var publishedFileURL: URL?
 
+    /// The document an untitled duplicate was made from. Its images are `assets/` paths
+    /// relative to that document's folder, so the copy resolves them there until it is saved:
+    /// without it, File › Duplicate showed every image as missing (tour 45979207044).
+    private(set) var duplicateOrigin: URL?
+    /// Set across `duplicate()`, so the copy AppKit creates and shows inside it can adopt it.
+    private static var duplicatingFrom: URL?
+
+    /// The location relative image paths resolve against: the file, or for an untitled
+    /// duplicate the original it was copied from.
+    var imageBaseURL: URL? { publishedFileURL ?? duplicateOrigin }
+
     let selectionRestorations = PassthroughSubject<SourceSelection, Never>()
 
     private var trackingGeneration: Int = 0
@@ -132,7 +143,21 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         return autosavesInPlaceForProduction
     }
 
+    override func duplicate() throws -> NSDocument {
+        Self.duplicatingFrom = imageBaseURL
+        defer { Self.duplicatingFrom = nil }
+        let copy = try super.duplicate()
+        // AppKit makes and shows the copy inside super; one shown later adopts the origin here.
+        if let copy = copy as? MarkdownDocument, copy.fileURL == nil, copy.duplicateOrigin == nil {
+            copy.duplicateOrigin = imageBaseURL
+        }
+        return copy
+    }
+
     override func makeWindowControllers() {
+        if fileURL == nil, duplicateOrigin == nil, let origin = Self.duplicatingFrom {
+            duplicateOrigin = origin
+        }
         undoManager?.groupsByEvent = false
         attachUndoCheckpointObserverIfNeeded()
         trace?.record(route: .documentOpened, .documentOpened(utf16Count: (text as NSString).length))

@@ -198,22 +198,20 @@ struct KeyboardCommandMatrixTests {
     }
 
     // Verifies: REQ-014 — the File menu is that of a document that autosaves in place, as
-    // TextEdit's is: Duplicate, Rename, Move To and Revert To beside Save. The app replaced the
-    // standard group with Save, Save As and Revert to Saved alone, so a document's versions and
-    // its Duplicate, Rename and Move To were unreachable (tour 45978087015's File menu).
+    // TextEdit's is: Duplicate, Rename, Move To and Revert Document beside Save. The app replaced
+    // the standard group with Save, Save As and Revert to Saved alone, so Duplicate, Rename and
+    // Move To were unreachable (tour 45978087015's File menu).
     @Test func theFileMenuOffersTheAutosavingDocumentCommands() throws {
         let menu = try #require(NSApp.mainMenu, "the test host has no menu bar")
         let file = try #require(menu.item(withTitle: "File")?.submenu, "no File menu: \(menu.items.map(\.title))")
         let titles = file.items.map(\.title)
-        for title in ["Close", "Save", "Duplicate", "Save As…", "Rename…", "Move To…", "Revert To"] {
+        for title in ["Close", "Save", "Duplicate", "Save As…", "Rename…", "Move To…", "Revert Document…"] {
             #expect(titles.contains(title), "the File menu offers \(titles), not \(title)")
         }
-        let duplicate = file.item(withTitle: "Duplicate")
-        #expect(duplicate?.keyEquivalent.lowercased() == "s")
-        #expect(duplicate?.keyEquivalentModifierMask.contains(.shift) == true)
-        let revert = file.item(withTitle: "Revert To")?.submenu?.items.map(\.title) ?? []
-        #expect(revert.contains("Last Saved Version"), "Revert To offers \(revert)")
-        #expect(revert.contains("Browse All Versions…"), "Revert To offers \(revert)")
+        // Shift-Command-S: AppKit spells Shift as the capital letter, without the Shift flag.
+        let duplicate = try #require(file.item(withTitle: "Duplicate"))
+        #expect(duplicate.keyEquivalent == "S" || (duplicate.keyEquivalent == "s" && duplicate.keyEquivalentModifierMask.contains(.shift)))
+        #expect(duplicate.keyEquivalentModifierMask.contains(.command))
     }
 
     // Verifies: REQ-032 — no command's shortcut is one macOS or every Mac app already owns. Block

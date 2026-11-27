@@ -210,9 +210,11 @@ struct MeasurementSubstrateProofTests {
 @Test @MainActor func aHopThatWaitedOutAnAppModalAlertIsNotALatencySample() {
     let trace = InMemoryEditorTrace()
     let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
-    let probe = MainActorResponsivenessProbe(sampler: sampler)
+    // Its own sessions: the app's shared one would reach every other test's probe.
+    let sessions = AppModalSession()
+    let probe = MainActorResponsivenessProbe(sampler: sampler, modalSessions: sessions)
     probe.captureSampleNow()
-    AppModalSession.around { Thread.sleep(forTimeInterval: 0.2) }
+    sessions.around { Thread.sleep(forTimeInterval: 0.2) }
     RunLoop.current.run(until: Date().addingTimeInterval(0.15))
     probe.captureSampleNow()
     RunLoop.current.run(until: Date().addingTimeInterval(0.05))

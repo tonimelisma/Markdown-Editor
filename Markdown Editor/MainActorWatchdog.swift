@@ -10,18 +10,23 @@ import Synchronization
 /// person, such as "could not be opened". The main thread is responsive, but the main actor's
 /// queued jobs wait until the session ends, so a watchdog probe cannot land. The bad-file alert in
 /// tour 45974231615 was recorded as two main-actor stalls, while the app was only asking.
-nonisolated enum AppModalSession {
-    private struct State { var depth = 0; var epoch: UInt64 = 0 }
-    private static let state = Mutex(State())
+///
+/// One instance, `shared`, is the app's; a test makes its own, so a session it runs cannot reach
+/// another test's probe.
+nonisolated final class AppModalSession: Sendable {
+    static let shared = AppModalSession()
 
-    static var isActive: Bool { state.withLock { $0.depth > 0 } }
+    private struct State { var depth = 0; var epoch: UInt64 = 0 }
+    private let state = Mutex(State())
+
+    var isActive: Bool { state.withLock { $0.depth > 0 } }
 
     /// Advances as each session begins and ends: a measurement that starts at one epoch and ends
     /// at another overlapped a session, though none may be running at either end.
-    static var epoch: UInt64 { state.withLock { $0.epoch } }
+    var epoch: UInt64 { state.withLock { $0.epoch } }
 
     /// Runs `body`, an app-modal presentation that returns when the person dismisses it.
-    static func around<T>(_ body: () throws -> T) rethrows -> T {
+    func around<T>(_ body: () throws -> T) rethrows -> T {
         state.withLock { $0.depth += 1; $0.epoch &+= 1 }
         defer { state.withLock { $0.depth = max(0, $0.depth - 1); $0.epoch &+= 1 } }
         return try body()
@@ -100,7 +105,7 @@ final class MainActorWatchdog {
     /// (`AppModalSession`): the main thread is serving the alert, not blocked.
     nonisolated static func probeOnce(
         thresholdMillis: UInt64,
-        isModalSessionActive: @Sendable () -> Bool = { AppModalSession.isActive },
+        isModalSessionActive: @Sendable () -> Bool = { AppModalSession.shared.isActive },
         report: Report
     ) async {
         let started = DispatchTime.now().uptimeNanoseconds

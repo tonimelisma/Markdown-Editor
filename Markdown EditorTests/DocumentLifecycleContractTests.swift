@@ -188,6 +188,36 @@ struct DocumentLifecycleContractTests {
 
     // Verifies: REQ-002/014 — the standard New route creates and registers an empty Markdown
     // document without a custom document factory or view-owned source.
+    // Verifies: REQ-014 — an untitled duplicate resolves its `assets/` images beside the
+    // document it was copied from. The copy has no file of its own, so every image in it showed
+    // as missing (tour 45979207044, File › Duplicate).
+    @Test func aDuplicateResolvesImagesBesideItsOriginal() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("original.md")
+        try Data("![a](assets/a.png)\n".utf8).write(to: url)
+        let original: MarkdownDocument = try await withCheckedThrowingContinuation { continuation in
+            NSDocumentController.shared.openDocument(withContentsOf: url, display: false) { document, _, error in
+                if let document = document as? MarkdownDocument {
+                    continuation.resume(returning: document)
+                } else {
+                    continuation.resume(throwing: error ?? CocoaError(.fileReadUnknown))
+                }
+            }
+        }
+        defer { original.close() }
+        let copy = try #require(try original.duplicate() as? MarkdownDocument)
+        defer { copy.close() }
+        #expect(copy.fileURL == nil, "the duplicate is untitled")
+        #expect(copy.text == original.text)
+        #expect(
+            copy.imageBaseURL?.standardizedFileURL == url.standardizedFileURL,
+            "the duplicate resolves images against \(String(describing: copy.imageBaseURL))"
+        )
+    }
+
     @Test func newRouteCreatesEmptyDocument() throws {
         let controller = MarkdownDocumentController()
         let document = try #require(controller.openUntitledDocumentAndDisplay(false) as? MarkdownDocument)

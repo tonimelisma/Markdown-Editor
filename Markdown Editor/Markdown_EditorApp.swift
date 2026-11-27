@@ -46,8 +46,12 @@ struct Markdown_EditorApp: App {
                 .keyboardShortcut("o")
                 OpenRecentMenu(recents: RecentDocuments.shared)
             }
-            // REQ-014: the File menu of a document that autosaves in place, as TextEdit's: Close,
-            // Save, Duplicate, Rename, Move To and Revert To, with Save As kept on its own key.
+            // REQ-014: the File menu of a document that autosaves in place: Close, Save,
+            // Duplicate, Rename, Move To and Revert Document, with Save As kept on its own key.
+            // Revert Document opens the Versions browser, where the last saved version is on the
+            // right. AppKit's Revert To submenu tells its items apart by private menu-item tags,
+            // so an item sent from here without one opened the browser whatever its title said
+            // (tour 45979207044); Apple documents File › Revert Document as the browser's route.
             // The group replaced also held Close: without it ⌘W did nothing (tour 45968755636).
             // Each item sends NSDocument's own action down the responder chain, so AppKit
             // enables it only when the front document can do it.
@@ -62,10 +66,7 @@ struct Markdown_EditorApp: App {
                     .keyboardShortcut("S", modifiers: [.command, .option])
                 Button("Rename…") { Self.send("renameDocument:") }
                 Button("Move To…") { Self.send("moveDocument:") }
-                Menu("Revert To") {
-                    Button("Last Saved Version") { Self.send("revertDocumentToSaved:") }
-                    Button("Browse All Versions…") { Self.send("browseDocumentVersions:") }
-                }
+                Button("Revert Document…") { Self.send("revertDocumentToSaved:") }
             }
         }
     }
@@ -88,7 +89,6 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         "renameDocument:",
         "moveDocument:",
         "revertDocumentToSaved:",
-        "browseDocumentVersions:",
     ]
 
     /// Every launch argument and environment variable this application reads.
@@ -559,7 +559,7 @@ final class MarkdownDocumentController: NSDocumentController {
     /// The app-modal alert for a document that could not be opened. It holds the main thread's
     /// modal session until the person dismisses it, which the watchdog must not take for a stall.
     override func presentError(_ error: Error) -> Bool {
-        AppModalSession.around { super.presentError(error) }
+        AppModalSession.shared.around { super.presentError(error) }
     }
 
 }

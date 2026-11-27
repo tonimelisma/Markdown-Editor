@@ -76,7 +76,8 @@ WYSIWYG no spaces at a line's end, no Return and no Backspace (REQ-152, REQ-153)
 - an alert waiting for the person recorded as a main-actor stall.
 - an image overlapping the text after it;
 - no File › Open Recent, since SwiftUI dropped the item AppKit added;
-- no Duplicate, Rename, Move To or Revert To, though the document autosaves in place.
+- no Duplicate, Rename or Move To, though the document autosaves in place, and a duplicate
+  showing its original's images as missing.
 
 It is done when the tour runs through with no failed step and no unexpected fault in the app's log.
 

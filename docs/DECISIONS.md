@@ -3,6 +3,28 @@
 Decisions with consequences. Newest first. This is not an archive of everything ever decided —
 it is the short list of things someone will otherwise re-litigate or accidentally undo.
 
+## 2026-11-27 — File › Revert Document opens the Versions browser; there is no Revert To submenu
+
+**Decision.** The File menu offers Revert Document…, which sends `revertDocumentToSaved:` and opens
+the Versions browser. It offers no Revert To ▸ Last Saved Version.
+
+**Why.** AppKit builds Revert To from items it tells apart by private menu-item tags, and every
+item sent without one opens the browser. The tour chose Last Saved Version and got the browser
+(tour 45979207044). The menu is SwiftUI's, so AppKit's own submenu is not there to borrow.
+
+**Criteria:** behaving as a Mac document does; preserving the person's work; relying only on
+documented API.
+
+| Option | Mac behaviour | Work preserved | Documented |
+| --- | --- | --- | --- |
+| **Revert Document…, the browser (chosen)** | ✓ Apple's documented route; the last saved version is on the right | ✓ the current text becomes a version | ✓ |
+| Revert To with guessed private tags | ✓ when the guess is right | ✓ | ✗ breaks silently |
+| Our own Last Saved Version, from text kept at each save | ~ one step quicker | ~ bypasses the version AppKit keeps of the current text | ✓, but a second revert path |
+| Do nothing (the submenu as it was) | ✗ the title lies | ✓ | ✓ |
+
+**Where it is worse.** Going back to the last save takes two steps, Revert Document… then Restore,
+not one.
+
 ## 2026-11-27 — Off-main image resolution has the off-main budget
 
 **Decision.** `imageResolution` is budgeted at 100 ms p95, as the other off-main stages

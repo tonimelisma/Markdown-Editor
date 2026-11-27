@@ -2,18 +2,23 @@ import Foundation
 import Synchronization
 
 private nonisolated enum MainActorProbeRelay {
-    private static let callbacks = Mutex<[UUID: @MainActor @Sendable (UInt64, UInt64) -> Void]>([:])
+    private typealias Entry = (callback: @MainActor @Sendable (UInt64, UInt64) -> Void, sessions: AppModalSession)
+    private static let callbacks = Mutex<[UUID: Entry]>([:])
 
-    static func install(_ callback: @escaping @MainActor @Sendable (UInt64, UInt64) -> Void) -> UUID {
+    static func install(
+        _ callback: @escaping @MainActor @Sendable (UInt64, UInt64) -> Void,
+        sessions: AppModalSession
+    ) -> UUID {
         let token = UUID()
-        callbacks.withLock { $0[token] = callback }
+        callbacks.withLock { $0[token] = (callback, sessions) }
         return token
     }
 
     static func fire(_ token: UUID) {
-        let callback = callbacks.withLock { $0[token] }
-        guard let callback else { return }
-        let epoch = AppModalSession.epoch
+        let entry = callbacks.withLock { $0[token] }
+        guard let entry else { return }
+        let callback = entry.callback
+        let epoch = entry.sessions.epoch
         let start = DispatchTime.now().uptimeNanoseconds
         Task { @MainActor in callback(start, epoch) }
     }
@@ -40,16 +45,18 @@ final class MainActorResponsivenessProbe {
     private let sampler: PerformanceSampler
     private var relayToken: UUID?
     private var pendingSamples: [(start: UInt64, epoch: UInt64)] = []
+    private let modalSessions: AppModalSession
 
-    init(sampler: PerformanceSampler) {
+    init(sampler: PerformanceSampler, modalSessions: AppModalSession = .shared) {
         self.sampler = sampler
+        self.modalSessions = modalSessions
     }
 
     func start() {
         guard timer == nil else { return }
-        let token = MainActorProbeRelay.install { [weak self] start, epoch in
+        let token = MainActorProbeRelay.install({ [weak self] start, epoch in
             self?.completeSample(start: start, epoch: epoch)
-        }
+        }, sessions: modalSessions)
         relayToken = token
         let t = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
         t.schedule(deadline: .now() + .milliseconds(100), repeating: .milliseconds(100))
@@ -64,7 +71,7 @@ final class MainActorResponsivenessProbe {
     /// a delayed callback therefore measures time spent waiting for the actor, not only time
     /// after the callback has already arrived.
     func captureSampleNow() {
-        let epoch = AppModalSession.epoch
+        let epoch = modalSessions.epoch
         let start = DispatchTime.now().uptimeNanoseconds
         pendingSamples.append((start, epoch))
         DispatchQueue.main.async { [weak self] in
@@ -81,7 +88,7 @@ final class MainActorResponsivenessProbe {
 
     private func completeSample(start: UInt64, epoch: UInt64) {
         let end = DispatchTime.now().uptimeNanoseconds
-        guard !AppModalSession.isActive, AppModalSession.epoch == epoch else { return }
+        guard !modalSessions.isActive, modalSessions.epoch == epoch else { return }
         sampler.record(.mainActorLatency, durationNanos: end &- start)
     }
 
