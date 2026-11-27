@@ -225,7 +225,7 @@ enum SourceEditor {
             let highlighter = incrementalHighlighter
             task?.cancel()
             if let activeHighlightIntent {
-                activeHighlightIntent.recorder.finish(activeHighlightIntent, orphaned: true)
+                activeHighlightIntent.recorder.finish(activeHighlightIntent, superseded: true)
                 self.activeHighlightIntent = nil
             }
             if let intent {
@@ -437,7 +437,7 @@ enum SourceEditor {
 
         private func holdHighlightIntent(_ intent: IntentContext) {
             if let pendingHighlightIntent {
-                pendingHighlightIntent.recorder.finish(pendingHighlightIntent, orphaned: true)
+                pendingHighlightIntent.recorder.finish(pendingHighlightIntent, superseded: true)
             }
             guard intent.recorder.retain(intent) else { return }
             pendingHighlightIntent = intent

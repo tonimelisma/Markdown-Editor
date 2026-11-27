@@ -70,6 +70,7 @@ nonisolated final class IntentRecorder: @unchecked Sendable {
         var ledgers: [IntentID: WorkLedger] = [:]
         var leases: [IntentID: Int] = [:]
         var orphaned: Set<IntentID> = []
+        var superseded: Set<IntentID> = []
     }
 
     private let state = Mutex(State())
@@ -120,13 +121,22 @@ nonisolated final class IntentRecorder: @unchecked Sendable {
         state.withLock { $0.ledgers[context.id] }
     }
 
-    /// Completes an intent exactly once. A late/cancelled operation is terminally classified as
-    /// an orphan instead of silently losing the work it performed.
+    /// Completes an intent exactly once. An operation that ends without completing is terminally
+    /// classified instead of silently losing the work it performed: `superseded` when newer
+    /// demand replaced it or its owner went away, which latest-wins scheduling does by design and
+    /// is recorded at debug level; an orphan, a fault, when it ended incomplete for any other
+    /// reason. Until 2026-11-27 both were faults, so every document open and every burst of fast
+    /// typing logged one, and the smoke verifier had to admit them wholesale
+    /// (`--allow-orphaned-intents`), which hid a double parse on every open.
     @discardableResult
-    func finish(_ context: IntentContext, orphaned: Bool = false) -> Bool {
-        let result: (ledger: WorkLedger, orphaned: Bool)? = state.withLock { state in
+    func finish(_ context: IntentContext, orphaned: Bool = false, superseded: Bool = false) -> Bool {
+        let result: (ledger: WorkLedger, orphaned: Bool, superseded: Bool)? = state.withLock { state in
             guard state.ledgers[context.id] != nil else { return nil }
-            if orphaned { state.orphaned.insert(context.id) }
+            if superseded {
+                state.superseded.insert(context.id)
+            } else if orphaned {
+                state.orphaned.insert(context.id)
+            }
             let remaining = state.leases[context.id, default: 1] - 1
             if remaining > 0 {
                 state.leases[context.id] = remaining
@@ -134,8 +144,9 @@ nonisolated final class IntentRecorder: @unchecked Sendable {
             }
             let ledger = state.ledgers.removeValue(forKey: context.id)!
             state.leases.removeValue(forKey: context.id)
-            let wasOrphaned = state.orphaned.remove(context.id) != nil
-            return (ledger, wasOrphaned)
+            let wasSuperseded = state.superseded.remove(context.id) != nil
+            let wasOrphaned = state.orphaned.remove(context.id) != nil && !wasSuperseded
+            return (ledger, wasOrphaned, wasSuperseded)
         }
         guard let result else {
             // A live downstream lease makes this a normal release rather than a terminal report.
@@ -144,7 +155,8 @@ nonisolated final class IntentRecorder: @unchecked Sendable {
             if stillLive { return true }
             return false
         }
-        report(context: context, ledger: result.ledger, orphaned: result.orphaned, reason: result.orphaned ? .cancelled : nil)
+        let reason: DiagnosticSymbol? = result.orphaned ? .cancelled : (result.superseded ? .superseded : nil)
+        report(context: context, ledger: result.ledger, orphaned: result.orphaned, reason: reason)
         return true
     }
 

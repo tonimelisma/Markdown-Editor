@@ -156,9 +156,12 @@ host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-8}"
 # and holds the second launch to every check.
 # Deliberately not a general escape hatch: every value has to be a flag verify-smoke-log.py already
 # defines, and each one names the fault it admits rather than disabling the check.
+# No --allow-orphaned-intents: work replaced by newer demand is recorded as superseded, not as a
+# fault (DECISIONS.md, 2026-11-27), so an orphan here is real. The flag admitted the opening parse
+# that every open cancelled with a second one.
 # shellcheck disable=SC2086
 python3 "$repo_root/Scripts/verify-smoke-log.py" \
-    "$run_file" "$host_update_threshold" --label smoke --expect-edits --allow-orphaned-intents \
+    "$run_file" "$host_update_threshold" --label smoke --expect-edits \
     ${SMOKE_VERIFIER_EXTRA_ARGS:-}
 verdict=$?
 if (( verdict != 0 )); then

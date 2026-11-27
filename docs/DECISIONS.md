@@ -3,6 +3,30 @@
 Decisions with consequences. Newest first. This is not an archive of everything ever decided —
 it is the short list of things someone will otherwise re-litigate or accidentally undo.
 
+## 2026-11-27 — Replaced work is superseded, not orphaned
+
+**Decision.** An intent whose work was cancelled because newer demand replaced it, or because its
+session went away, finishes as `superseded`. It is recorded at debug level with that reason.
+Only work that ends incomplete for any other reason (an orphan) or arrives after its intent closed
+(`lateWork`) is a fault.
+
+**Why.** Latest-wins scheduling cancels work by design: every keystroke supersedes the parse in
+flight. All of it was recorded as a fault, so every document open and every burst of fast typing
+logged one, and `smoke-test.sh` admitted orphaned intents wholesale. That allowance hid a real
+defect: `bind(editorWindow:)` compared the window's scale with the previous window's, the first
+window has none, and every open parsed the document twice.
+
+**Criteria:** faults that mean something (a pristine run has none), honesty of the record, cost.
+
+| Option | Faults mean something | Honest | Cost |
+| --- | --- | --- | --- |
+| **Classify superseded work (chosen)** | ✓ | ✓ the record says why the work stopped | one symbol, one parameter |
+| Keep orphans as faults, allow them in every verifier | ✗ a real orphan hides among expected ones | ✓ | none |
+| Stop recording cancelled work | ✓ | ✗ the work done is lost from the ledger | small |
+
+**Where it is worse.** Wasted work is now only visible by counting parses. The double parse at open
+was found that way, and it is fixed, not reclassified.
+
 ## 2026-11-27 — An agent drives the app on a Mac runner, to look; tests still prove
 
 **Decision.** `.github/workflows/agent-drive.yml` lets an agent in a cloud session operate the
@@ -684,7 +708,9 @@ Kept here because ROADMAP's delivery ledger, where they used to live, is gone.
 - **`Scripts/smoke-screenshot.sh --allow-orphaned-intents`** (COR-83). The screenshot capture path
   terminates the app mid-open, so the work ledger honestly reports a cancelled intent. The flag
   admits **only** records whose own data marks them orphaned. It is not a general suppression and
-  must not become one.
+  must not become one. `smoke-test.sh` passed it too, which hid a double parse on every open; since
+  2026-11-27 replaced work is recorded as superseded, not orphaned, and `smoke-test.sh` no longer
+  passes the flag.
 - **The spec corpus deliberately excludes the specifications' expected HTML** (COR-80). 1,324
   examples are imported verbatim from CommonMark 0.31.2 and GFM 0.29 with version, licence,
   SHA-256, and a committed refresh command, and they drive structural properties only. This app is

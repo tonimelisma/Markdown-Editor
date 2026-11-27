@@ -127,6 +127,7 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case committing
     case committed
     case cancelled
+    case superseded
     case lateWork
     case failed
 

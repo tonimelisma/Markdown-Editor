@@ -18,6 +18,8 @@ final class ParseCoordinator {
     private var operationGeneration: UInt64 = 0
     private var pendingIntent: IntentContext?
     private let snapshotIDs: PresentationSnapshotIDFactory
+    /// The backing scale the newest scheduled parse decodes images for, or nil before the first.
+    private(set) var scheduledBackingScale: CGFloat?
 
     init(snapshotIDs: PresentationSnapshotIDFactory) {
         self.snapshotIDs = snapshotIDs
@@ -28,7 +30,7 @@ final class ParseCoordinator {
         parseTask?.cancel()
         parseTask = nil
         if let pendingIntent {
-            pendingIntent.recorder.finish(pendingIntent, orphaned: true)
+            pendingIntent.recorder.finish(pendingIntent, superseded: true)
             self.pendingIntent = nil
         }
         parseScheduler.cancel()
@@ -57,6 +59,7 @@ final class ParseCoordinator {
         let currentPresentation = session.presentation
         let imageDisplayService = session.imageDisplayService
         let backingScale = session.editorWindow?.backingScaleFactor ?? 2
+        scheduledBackingScale = backingScale
         let appearance: ImageDisplayAppearance = {
             switch NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) {
             case .darkAqua: return .dark
@@ -79,7 +82,7 @@ final class ParseCoordinator {
         let request = LatestParseRequest(source: snapshot, operationGeneration: generation)
         guard parseScheduler.submit(request) else {
             if let replaced = pendingIntent {
-                replaced.recorder.finish(replaced, orphaned: true)
+                replaced.recorder.finish(replaced, superseded: true)
             }
             pendingIntent = intent
             return
@@ -91,9 +94,13 @@ final class ParseCoordinator {
         let parseProjectionStart = DispatchTime.now().uptimeNanoseconds
         let task = Task.detached(priority: .userInitiated) { [weak session, weak document] in
             // The owning session explicitly retains this context through every async boundary.
-            // Any cancelled or stale operation that reaches this defer is a typed orphan.
+            // A parse is cancelled only by newer demand or by its session going away, both by
+            // design: that is a superseded intent. Any other incomplete operation is an orphan.
             var completed = false
-            defer { intent.recorder.finish(intent, orphaned: !completed) }
+            defer {
+                let cancelled = Task.isCancelled
+                intent.recorder.finish(intent, orphaned: !completed && !cancelled, superseded: !completed && cancelled)
+            }
             if Task.isCancelled {
                 await MainActor.run {
                     document?.trace?.record(route: .parseCancelled, .parseCancelled(sourceVersion: snapshot.sourceVersion))
