@@ -120,15 +120,17 @@ Still open:
   found no hotspot left in the first layout, and removed the tab merge that was over half of
   showing the window (`DECISIONS.md`, "New documents tab as the person's Prefer tabs setting
   says"). Nothing measures this on a real Mac yet.
-- The tour's remaining budget notes. With the warm-up launch and p95s judged only from twenty
-  samples, a Release tour (46019135012) leaves `mainActorLatency` p95s of 23–38 ms against 16 in
-  the minutes that open windows and save. A whole-tour Release profile (46020274732, `sudo
-  sample`) attributes them to three things: building a window (⌘N, Duplicate, Open), which is
-  SwiftUI's own layout with no hotspot, the app's code under a seventh of it; AppKit marking each
-  saved file for Spotlight (`_MDItemMarkWithUserAndDate`, a synchronous call to `mds` inside
-  NSDocument's save completion); and creating the open panel for Add Image. None is the app's own
-  computation, but the first is partly its SwiftUI content, so it stays counted. Cutting it means
-  leaving SwiftUI for the window's content, against CLAUDE.md §1.
+- The tour's remaining budget notes. A Release tour (46021355668, 46027043019) passes every check
+  and still logs two or three `mainActorLatency` notes, minute p95s of 21–56 ms against 16. Run one
+  section per minute (probe 46023988152), every section holds a p95 of 0.1 ms. The notes are
+  density: the tour acts every one to three seconds, and many of its actions are single main-thread
+  blocks of 0.1–0.7 s that AppKit or SwiftUI spend on the app's behalf — building a window
+  (SwiftUI's first layout, no hotspot; probes 46014139254, 46018864413), redrawing everything for
+  Dark Mode, creating panels and sheets, marking each saved file for Spotlight
+  (`_MDItemMarkWithUserAndDate`), and answering accessibility presses. A person working at that
+  pace would see the same pauses. Leaving any one kind out of the histogram moved the notes and did
+  not clear them (PR 104, closed), so none is left out: the budget keeps measuring responsiveness
+  between operations, and the watchdog bounds each operation at a second.
 - Mac runners that never come. Twice on 2026-11-26 a `main` job waited 15 minutes for an
   `xcode-27` runner and was dropped (CI 45860219913, Release 45866221874 attempt 1), while
   pull-request jobs started within a minute. Both ended after exactly 15 minutes with no runner and
