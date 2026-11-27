@@ -55,6 +55,15 @@ comes after the test suite has warmed the runner. The 2.9 s first-window cost on
 is real work, though. Building the Source editor only when Source is first shown is one way to
 cut it, and it is recorded as open in ROADMAP.
 
+**Also changed: a docs-only push no longer publishes an app that `main` has not built.** v1.0.1
+was published from #91, a documentation change. #90's own `main` run had failed two timing-bound
+tests, and its re-run was cancelled when #91 landed. #91's CI skipped macOS, because its diff was
+documentation, and passed, and Release then published the app #90 had changed. That tree had
+passed `check.sh` as pull request #90, and both of the release's launches passed, so v1.0.1 is
+the tree that was tested. Even so, nothing on `main` had required it. CI's `changes` job now also
+asks, on a push to `main`, whether the app (`Scripts/lib/app-paths.sh`, the list `release.sh`
+publishes by) differs from the newest release. If it does, the macOS job runs.
+
 **Also seen.** Control run 45925262536's second launch recorded `presentationRecovered`
 (`patchUnprovable`, COR-71): a provisional WYSIWYG presentation disagreed with the authoritative
 parse of the same revision. It was seen once in about 40 launches. It is an application fault,
