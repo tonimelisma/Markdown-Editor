@@ -138,7 +138,8 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         // REQ-104: the screenshot verification may make the window taller so one capture can
         // show every semantic construct at once. Width stays at the default, because the default
         // width is what the reading measure and the untruncated toolbar are reviewed against.
-        let contentSize = NSSize(width: 720, height: MarkdownAppDelegate.smokeWindowHeight ?? 560)
+        var contentSize = Self.defaultContentSize(visibleFrame: NSScreen.main?.visibleFrame)
+        if let height = MarkdownAppDelegate.smokeWindowHeight { contentSize.height = height }
         // The window is created with its final style and size, and only then given its content.
         // Each change to a window's frame lays out the whole tree again — SwiftUI's render, both
         // editors, the toolbar — so a window made by NSWindow(contentViewController:), restyled and
@@ -155,16 +156,54 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         // The window controller owns the window; AppKit must not also release it when it closes.
         window.isReleasedWhenClosed = false
         window.contentViewController = hosting
-        window.minSize = NSSize(width: 320, height: 240)
+        window.contentMinSize = Self.minimumContentSize
         let controller = NSWindowController(window: window)
         controller.contentViewController = hosting
         controller.shouldCascadeWindows = true
         if !MarkdownAppDelegate.isSmokeRun {
-            controller.windowFrameAutosaveName = "MarkdownDocumentWindow"
+            let name = Self.frameAutosaveName
+            // Restore what AppKit saved, but not a size no reader chose: the owner's copy opened
+            // stamp-sized, from a frame a unit test had shrunk to the minimum and AppKit saved
+            // into the app's own defaults. Saving the corrected frame back means the controller,
+            // which applies the saved frame again, cannot put the small one back.
+            if window.setFrameUsingName(name) {
+                let restored = window.contentRect(forFrameRect: window.frame).size
+                if restored.width < Self.smallestRestorableContentSize.width
+                    || restored.height < Self.smallestRestorableContentSize.height {
+                    window.setContentSize(contentSize)
+                    window.center()
+                    window.saveFrame(usingName: name)
+                }
+            }
+            controller.windowFrameAutosaveName = name
         }
         window.tabbingIdentifier = "MarkdownDocument"
         window.tabbingMode = .preferred
         addWindowController(controller)
+    }
+
+    /// The size a new document window opens at: wide enough for the whole toolbar beside the
+    /// title and a full reading measure, tall enough to read a page, and never larger than the
+    /// screen allows. It was 720×560, at which the toolbar already overflowed.
+    nonisolated static func defaultContentSize(visibleFrame: NSRect?) -> NSSize {
+        let wanted = NSSize(width: 880, height: 720)
+        guard let visible = visibleFrame else { return wanted }
+        return NSSize(
+            width: max(minimumContentSize.width, min(wanted.width, visible.width - 80)),
+            height: max(minimumContentSize.height, min(wanted.height, visible.height - 120))
+        )
+    }
+
+    nonisolated static let minimumContentSize = NSSize(width: 420, height: 300)
+
+    /// A saved frame smaller than this is a leftover, not a choice, and is not restored.
+    nonisolated static let smallestRestorableContentSize = NSSize(width: 480, height: 340)
+
+    /// The name AppKit saves the window frame under, in the app's defaults. Unit tests run inside
+    /// the app and share those defaults, so they save under their own name: a test that shrank a
+    /// window to its minimum size left the real app opening stamp-sized (owner, 2026-11-27).
+    nonisolated static var frameAutosaveName: String {
+        MarkdownAppDelegate.isRunningUnitTests ? "MarkdownDocumentWindow.tests" : "MarkdownDocumentWindow"
     }
 
     override func printOperation(
