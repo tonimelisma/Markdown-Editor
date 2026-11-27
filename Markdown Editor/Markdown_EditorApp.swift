@@ -20,6 +20,13 @@ struct Markdown_EditorApp: App {
             EmptyView()
         }
         .commands {
+            // REQ-033: offered only by a build that updates itself (AppUpdater).
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    appDelegate.checkForUpdates()
+                }
+                .disabled(!AppUpdater.isEnabledForThisProcess)
+            }
             EditorMenuCommands()
             CommandGroup(replacing: .newItem) {
                 Button("New Document") {
@@ -210,6 +217,8 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
     private var responsivenessProbe: MainActorResponsivenessProbe?
     private var frameObserver: FrameObserver?
     private var applicationSampler: PerformanceSampler?
+    /// REQ-033: `nil` unless this build updates itself.
+    private var updater: AppUpdater?
 
     override init() {
         // REQ-098: window-state restoration is vetoed for smoke runs by Scripts/smoke-test.sh
@@ -240,6 +249,8 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         _ = documentController
         guard !Self.isRunningUnitTests else { return }
         ensureOpenRecentMenuItem()
+        // REQ-033: never in a smoke or benchmark run (AppUpdater.isEnabledForThisProcess).
+        updater = AppUpdater.startIfEnabled()
         // The reporter writes through the serialized diagnostic sink directly because the main
         // actor may be the thing that is stalled.
         let report: MainActorWatchdog.Report
@@ -399,6 +410,11 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
             }
             return controller.perform(.editLink) == .started
         }
+    }
+
+    /// App ▸ Check for Updates… (REQ-033).
+    func checkForUpdates() {
+        updater?.checkForUpdates()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

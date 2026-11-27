@@ -61,11 +61,42 @@ the rejected alternatives, and the respect in which the chosen one is worse.
 
 ## Next
 
-**Packaging and distribution.** The engineering is finished and the product is not shippable: no
-app icon, no README (though `docs/screenshots/` now holds the images one would
-use), no LICENSE, no CI, and no sign/notarize/staple/DMG path, against a VISION
-that promises direct download signed with a Developer ID and notarized by Apple. Deliberately
-sequenced after the queue above, while the app still has no users and changes are cheapest.
+**Packaging and distribution** (🔵 Active, 2026-11-26). Cloud-first development is in place:
+
+- CI on GitHub's `xcode-27` runner;
+- a Sparkle updater (REQ-033, REQ-034);
+- a release workflow that publishes a signed disk image and the update feed for every `main`
+  commit that changes the app (`DECISIONS.md`, 2026-11-26; `DEVELOPMENT.md`).
+
+Still open:
+
+- The five-minute budget. The first green run (CI 45855830007, 628 tests) took 5m12s from push to
+  `CI gate`. Once the screenshot step stopped rebuilding the app, CI 45858255326 took about 4m50s,
+  3m33s of it in `check.sh`, with an empty compilation cache. Measure again after the first merge
+  saves that cache.
+- An unexplained `mainActorStall` on CI. On CI 45856817544, the smoke run recorded two main-actor
+  stalls over one second, and launch to exit took 11 s. The runs before and after it, on the same
+  code, passed. The stall records were not kept then, so the cause is unknown. A failed smoke run
+  now uploads its records (`smoke-records/` in `check-logs-*`). The next failure is to be read from
+  them, not re-run.
+- An installed copy seen updating itself. v1.0.0 (build 202) was published on 2026-11-26 by
+  Release run 45866221874. Its feed, archive length and EdDSA signature were checked from
+  GitHub against the `SPARKLE_SEED` public key, and its app carries that key — but the app itself
+  could not start: installed, it died in dyld on every launch, because an ad hoc build cannot load
+  its own `Sparkle.framework` under the hardened runtime (`DECISIONS.md`, 2026-11-26). Everything
+  checked about build 202 was checked statically; nothing had launched it. The release path now
+  re-signs the ad hoc build with the library-validation exception, asserts on the entitlements it
+  publishes, and refuses to publish a bundle that has not launched and passed REQ-098's assertions.
+  The entitlement assertion, not the launch, is what catches this defect: GitHub's runners enforce
+  no library validation, so build 202 would have launched there too. REQ-033 stays `Active` until a copy
+  installed from a disk image takes the next release by itself — which the broken v1.0.0 cannot do,
+  so the first install has to be by hand from the next release.
+- Mac runners that never come. Twice on 2026-11-26 a `main` job waited 15 minutes for an
+  `xcode-27` runner and was dropped (CI 45860219913, Release 45866221874 attempt 1), while
+  pull-request jobs started within a minute. The cause is unknown. A dropped job breaks the
+  five-minute budget whatever the code does.
+- Notarization, once a Developer ID exists.
+- An app icon, a README and a LICENSE. `docs/screenshots/` holds the images a README would use.
 
 ## Later — post-MVP backlog
 

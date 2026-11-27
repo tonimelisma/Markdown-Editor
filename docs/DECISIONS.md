@@ -3,6 +3,234 @@
 Decisions with consequences. Newest first. This is not an archive of everything ever decided —
 it is the short list of things someone will otherwise re-litigate or accidentally undo.
 
+## 2026-11-26 — An ad hoc app needs the library-validation exception, and a release is proved by launching it
+
+**Decision.** The ad hoc Release build is re-signed with
+`com.apple.security.cs.disable-library-validation` (`Scripts/adhoc-harden.sh`), and no release is
+published until that exact bundle has been launched and has passed REQ-098's smoke assertions
+(`Scripts/release.sh`). `get-task-allow` is dropped from the published signature at the same time.
+
+**What happened.** v1.0.0 (build 202) was published, installed, and could not start. Every launch
+died in dyld before `main`:
+
+```text
+Library not loaded: @rpath/Sparkle.framework/Versions/B/Sparkle
+Reason: ... not valid for use in process: mapping process and mapped file (non-platform)
+have different Team IDs
+```
+
+An ad hoc signature carries no Team ID. Library validation, part of the hardened runtime, loads
+only a library whose team matches the process's, and "no team" never matches "no team" — so an ad
+hoc app cannot load its own embedded framework. Signing the bundle deeply in one pass does not
+help; observed on the published bundle and on a build from source.
+
+**Why CI was green.** The gate's smoke run launches the *Debug* app, and Debug is signed without
+the hardened runtime: it sets `ENABLE_DEBUG_DYLIB = YES` (previews), and library validation would
+refuse that build's own `Markdown Editor.debug.dylib` exactly as it refused Sparkle. Re-signing the
+Debug bundle with `--options runtime` and nothing else changed reproduces the crash, which is the
+evidence that the hardened runtime is the single switch. `ENABLE_HARDENED_RUNTIME = YES` in both
+configurations, so the project setting said nothing. Release signs `0x10002(adhoc,runtime)`, Debug
+`0x2(adhoc)`. The release path then checked only `codesign --verify --deep --strict`, which is
+content with an app that cannot start, and nothing ever launched a Release build.
+
+**Criteria** (VISION: the product is installable and it works; honesty of evidence; no step on the
+owner's Mac; one obvious path, cost).
+
+| Option | Installs and runs | Security given up | No Mac | Cost |
+| --- | --- | --- | --- | --- |
+| **A. Library-validation exception on the ad hoc build only (chosen)** | ✓ | the one exception; the rest of the hardened runtime stays | ✓ | ✓ one script |
+| B. Require a Developer ID (`CERTIFICATE_P12`) | ✓ | none — and notarization becomes possible | ✗ needs a paid account first; no release until then | ✗ |
+| C. Drop the hardened runtime from Release | ✓ | all of it, and notarization is then impossible | ✓ | ✓ |
+| D. Link Sparkle statically, or drop the updater | ✓ | none | ✓ | ✗ Sparkle ships as a framework; REQ-033 would go |
+| E. Do nothing | ✗ | — | ✓ | — |
+
+B is the right end state and A does not block it: the exception is granted only when there is no
+identity, so the day `CERTIFICATE_P12` is set, library validation comes back on by itself. C gives
+up far more for the same benefit. D trades a shipped requirement for a signing nicety.
+
+**Where A is worse.** The app can load any library placed inside its bundle. For an unsigned
+distribution this changes little — anyone who can write into the bundle can also re-sign it ad hoc
+— but under a Developer ID it would matter, which is why the exception is not granted then.
+
+**Proof.**
+
+- The defect, from source: a Release build with the release path's own flags, launched, dies in
+  dyld with the message above. The same bundle after `Scripts/adhoc-harden.sh` starts and passes
+  the smoke assertions (64 records, 5 host updates).
+- `Scripts/test-adhoc-harden.sh`, run by the gate: it builds the smallest bundle that can show the
+  defect — an ad hoc app, hardened runtime, loading a dylib from its own `Contents/Frameworks` —
+  and requires that bundle to **fail** to launch before `Scripts/adhoc-harden.sh` touches it, and
+  to run after. Mutations turn it red: dropping the exception (the app stays unable to launch) and
+  keeping `get-task-allow`. It also requires the script to refuse an app whose entitlements are
+  not the ones Xcode generates, rather than re-sign it with fewer.
+- `Scripts/release.sh` refuses to publish unless the signed bundle carries the exception, does not
+  carry `get-task-allow`, and passes `SMOKE_APP=… Scripts/smoke-test.sh` — a launch of the bundle
+  that is about to be published, asserted on by REQ-098's verifier, whose own discrimination
+  `Scripts/test-verify-smoke-log.sh` proves in the gate.
+
+**Where the proof is weaker than it looks.** **GitHub's macOS runners do not enforce library
+validation.** The probe above launches there, unhardened — found when this change's own test failed
+on CI for exactly that reason, which is the only reason it is known. Two consequences, and they are
+the ones to remember:
+
+- A release-time launch **could not have caught build 202**, and cannot catch the next defect of
+  this kind. The app would have started on the runner and still died on every Mac. The launch is
+  kept because it catches everything else a release can be broken by; what catches *this* is the
+  entitlement assertion, which is static and the same on every host.
+- The gate's test discriminates only where library validation is enforced — the owner's Mac, and
+  anyone else's. On a host without it, it says so in its own output and reports only the
+  entitlement half as proved. It never reports a proof it did not make.
+- That launch installs nothing: REQ-034 keeps a smoke run from checking for updates
+  (`onlyAKeyedBuildOutsideVerificationUpdatesItself`).
+- Not yet observed: a published release that a person has installed and opened.
+
+## 2026-11-26 — No Mac, not even once: the update key comes from a secret, and signing is ad hoc
+
+**Decision.** Releasing needs nothing from the owner's Mac. The owner reacted to
+`Scripts/release-setup.sh`, a one-time script run on the Mac: "Wtf are these scripts. The repo is
+supposed to work without my macbook." latchkey and Otos both export their certificate and update key
+from the Mac's keychain, and Otos repeats that yearly, so copying them was wrong here.
+
+- The EdDSA update key is derived on GitHub's runner from one environment secret, `SPARKLE_SEED`, a
+  random password the owner sets in GitHub's web settings (`Scripts/sparkle-key.sh`).
+- The build is signed ad hoc unless an optional `CERTIFICATE_P12` is set.
+- `Scripts/release-setup.sh` is deleted.
+
+**Criteria.**
+
+1. The owner's constraint: no step on the Mac, ever.
+2. Updates keep working for every installed copy.
+3. Security: no key in the repository, in logs, or in a session's transcript.
+4. One obvious path, cost.
+
+**Alternatives, ranked.**
+
+| Option | 1 | 2 | 3 | 4 |
+| --- | --- | --- | --- | --- |
+| **A. Key derived from a secret password; ad hoc signing (chosen)** | ✓ | ✓ Sparkle accepts any identity while the EdDSA key is unchanged | ✓ only the secret holds it | ✓ one secret |
+| B. Key generated by a workflow, stored as a secret with a personal access token | ✓ | ✓ | ✗ a token that can write secrets | ✗ a token to create, rotate, and an extra workflow |
+| C. Key generated in this cloud session and handed to the owner | ✓ | ✓ | ✗ the key passes through a transcript | ✓ |
+| D. Certificate created through the App Store Connect API in CI | ✓ | ✓ | ✓ | ✗ needs a paid account and an API key first |
+| E. Keep `release-setup.sh` (the siblings' shape) | ✗ | ✓ | ✓ | ✓ |
+
+**Where A is worse.**
+
+- **Losing the password breaks updates.** Installed copies reject every later update until
+  reinstalled by hand, so it belongs in a password manager.
+- **The key is only as strong as the password.** A generated password of 32 or more characters is
+  well beyond guessing, but it is not a keychain.
+- **Ad hoc signing.** The first open needs "Open Anyway". Each update has a new code identity, so
+  macOS may ask again for permissions it granted to the previous build. A Developer ID removes
+  both and can be added later without breaking updates (Sparkle 2.10.1 `SUUpdateValidator`: the
+  same EdDSA key with any signing identity passes). Until then VISION's notarized download is
+  not met.
+- **An ad hoc app cannot load its own frameworks** under the hardened runtime, which cost build 202
+  every launch. It now carries the library-validation exception, which a Developer ID build does
+  not need (the entry above).
+
+**Proof.**
+
+- `Scripts/test-release-scripts.sh`:
+  - the same password gives the same key, and a different one a different key;
+  - a signature verifies under Python's `cryptography`, an implementation independent of the
+    OpenSSL that made it;
+  - a changed file fails to verify;
+  - mutations of the derivation and of the signed input turn it red.
+- Every release also checks its signature with Sparkle's own `sign_update --verify` before
+  publishing.
+- Observed since: v1.0.0 (build 202) published and installed, and it could not start at all — the
+  signing above was published unlaunched (the entry above).
+- Not yet observed: an update installing on a real Mac.
+
+## 2026-11-26 — Cloud-first development: CI is the Mac, Sparkle is the installer
+
+**Decision.** Claude Code cloud sessions are this repository's default environment. A cloud session
+has no Xcode, so GitHub Actions' `xcode-27` runner runs `Scripts/check.sh` for every pull request and
+every push to `main`. That run, on a pull request's last commit, verifies a change made in the cloud.
+A session on the owner's Mac is optional: it runs the same gate locally and does not wait for CI. Where
+there is no Xcode, `Scripts/check.sh` ends `INCOMPLETE` with exit status 3, never `PASS`.
+
+Every `main` commit that passes CI and changes the app is published by `.github/workflows/release.yml`:
+a signed Release build, a disk image, and Sparkle's feed. Installed copies update themselves within
+the hour (REQ-033). The shape is Otos's ADR 0059, adapted. The evidence is in
+[research/2026-11-26-cloud-first-development.md](research/2026-11-26-cloud-first-development.md).
+
+**Criteria**, from VISION's objectives and evaluation order:
+
+1. No silent pass. `CLAUDE.md` §3: the build and the tests are either observed or reported as not run.
+2. Trustworthy files. An update must not cost the user an edit.
+3. Local and private (objective 5). Any network access is bounded, named and carries no content.
+4. One obvious path, and cost. One gate everywhere, one installer, and no apparatus the
+   2026-08-22 entry below would recognise.
+5. The owner's stated constraint: no dependency on the MacBook.
+
+**Alternatives, ranked.**
+
+| Option | 1 | 2 | 3 | 4 | 5 |
+| --- | --- | --- | --- | --- | --- |
+| **A. Cloud sessions + GitHub macOS runner + Sparkle (chosen)** | ✓ CI's run is observed output | ✓ installs on quit, after autosave | ✓ one feed request, no profile | ✓ one gate, one workflow | ✓ |
+| B. Cloud sessions drive the Mac (latchkey's `shell_run`, Remote Control) | ✓ | ✓ | ✓ | ✗ two verification paths | ✗ needs the Mac awake |
+| C. A self-hosted runner on the Mac | ✓ | ✓ | ✓ | ✓ | ✗ needs the Mac awake; runs CI code on it |
+| D. Sparkle replaced by a hand-rolled updater or an install script | ✓ | ? | ✓ | ✗ re-implements signature checks and replace-and-relaunch | ✓ |
+| E. Do nothing (develop on the Mac) | ✓ | — | ✓ | ✓ | ✗ |
+
+B was closest. It would let a cloud session see a real local run. It still depends on the Mac being
+awake, and it adds a second way to verify the same change.
+
+**Choices inside A, and where each is worse.**
+
+- **Two ways to work, as latchkey settled the same day.** A cloud session never reaches the
+  MacBook during development (owner, in latchkey: "never via latchkey MCP access to my macbook
+  from the cloud env during dev process"), except for a live check the owner asks for. A local
+  session is one the owner started on the Mac. Both are described in `CLAUDE.md` itself (owner:
+  "All in CLAUDE.md").
+- **Five minutes per commit, local and CI together** (owner, in Otos: "just try to ensure each
+  commit wraps up in 5 minutes of testing"). `check.sh` prints its duration. CI restores Xcode's
+  compilation cache, and only a push to `main` saves it. Otos's prefix mapping is left out because
+  it rewrites `#filePath`, which the tests here use to find files. A CI run's checkout path is
+  constant, so its cache hits without it. Not yet measured here: the first CI runs give the
+  baseline.
+
+- **Automatic checks and installs, with no consent prompt.** `SUEnableAutomaticChecks` and
+  `SUAutomaticallyUpdate` are set, as in latchkey and Otos, because the owner asked for
+  auto-updates. This is worse for "no surprises" for any future user who did not expect an hourly
+  request to GitHub. Sparkle's second-launch permission prompt is the change to make when the app is
+  distributed to others.
+- **The update key is set only in the Release configuration.** Debug and Release share a bundle
+  identifier (see the restoration note in `MarkdownAppDelegate.init`). A Debug build that carried
+  the key would replace itself, in DerivedData, with the published build.
+- **Signing takes what it is given.** With a Developer ID identity and App Store Connect API key
+  secrets, the release is notarized and stapled, as VISION's Distribution section promises. With
+  none it is signed ad hoc (entry above), and the release notes say how to open it. That is worse
+  than VISION until a Developer ID exists.
+- **The repository is public** (owner, 2026-11-26: "Make repo public"), as latchkey and Otos are.
+  A private repository's release assets cannot be downloaded without credentials, so the feed
+  would be unreachable. Standard macOS runners are also free for public repositories, and the first
+  CI run, while the repository was private, was never started. Publishing to a separate public
+  repository was the alternative, and it was dropped from the scripts once this was chosen. The
+  history was checked before publication: no credential, no personal path or location metadata.
+  The one private value in it is the Apple team ID in `project.pbxproj`, which latchkey and Otos
+  keep out of their repositories. It is also visible in every signed build. Removing it from
+  history would need a rewrite of `main` and stays the owner's call.
+- **Documentation-only changes skip the macOS job**, which builds nothing they could change. The
+  `changes` job lists exactly which paths count as documentation; anything else, `.github/`
+  included, runs macOS.
+
+**Consequences.**
+
+- REQ-030 now allows one network access: the update check, REQ-033. `PrivacyBoundaryTests` bounds it
+  to the one file that imports Sparkle.
+- `CLAUDE.md` was rebuilt around this, with its section numbers kept because other documents
+  cite them. The stale model-named commit trailer gave way to the harness's attribution, and "small
+  doc fixes can go straight to `main`" gave way to one pull request per session.
+- Verification builds (`check.sh`, the smoke scripts) sign ad hoc wherever they run
+  (`Scripts/lib/build-settings.sh`). The first CI run failed because the project's automatic
+  signing wanted a team certificate the runner does not have, and no verification should depend
+  on one person's Apple account. latchkey settled the same for its sandbox Mac the same day. Only
+  `Scripts/release.sh` signs with a configured identity, when one is set.
+- The repository gained a shared scheme. CI's fresh checkout has no autocreated scheme to rely on.
+- Not yet observed: a published release, and an installed copy updating itself. Both wait on the
+  owner's `SPARKLE_SEED` secret. Until then REQ-033 is `Active`, not `Done`.
 ## 2026-08-30 — Mode scroll state is an offset from the top of the document (COR-93)
 
 **Decision.** `SourceModeState.scrollOffset` and `WYSIWYGModeState.scrollOffset` are offsets from

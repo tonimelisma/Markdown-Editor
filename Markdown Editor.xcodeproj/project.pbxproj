@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		A1B2C3D43010892B00668304 /* cmark-gfm in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D43010892B00668302 /* cmark-gfm */; };
 		A1B2C3D43010892B00668305 /* cmark-gfm-extensions in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D43010892B00668303 /* cmark-gfm-extensions */; };
+		5EA9C1E03010892B00668307 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 5EA9C1E03010892B00668306 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,6 +59,7 @@
 			files = (
 				A1B2C3D43010892B00668304 /* cmark-gfm in Frameworks */,
 				A1B2C3D43010892B00668305 /* cmark-gfm-extensions in Frameworks */,
+				5EA9C1E03010892B00668307 /* Sparkle in Frameworks */,
 			);
 		};
 		3B3530963010892A00668387 /* Frameworks */ = {
@@ -106,6 +108,7 @@
 			packageProductDependencies = (
 				A1B2C3D43010892B00668302 /* cmark-gfm */,
 				A1B2C3D43010892B00668303 /* cmark-gfm-extensions */,
+				5EA9C1E03010892B00668306 /* Sparkle */,
 			);
 			productName = "Markdown Editor";
 			productReference = 3B3530893010892900668387 /* Markdown Editor.app */;
@@ -162,6 +165,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A1B2C3D43010892B00668301 /* XCRemoteSwiftPackageReference "swift-cmark" */,
+				5EA9C1E03010892B00668305 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3B35308A3010892900668387 /* Products */;
@@ -234,6 +238,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SPARKLE_FEED_URL = "https://github.com/tonimelisma/Markdown-Editor/releases/latest/download/appcast.xml";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
@@ -268,6 +273,8 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SPARKLE_FEED_URL = "https://github.com/tonimelisma/Markdown-Editor/releases/latest/download/appcast.xml";
+				SPARKLE_PUBLIC_ED_KEY = "";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
@@ -480,6 +487,14 @@
 				revision = 5d9bdaa4228b381639fff09403e39a04926e2dbe;
 			};
 		};
+		5EA9C1E03010892B00668305 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.10.1;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -492,6 +507,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A1B2C3D43010892B00668301 /* XCRemoteSwiftPackageReference "swift-cmark" */;
 			productName = "cmark-gfm-extensions";
+		};
+		5EA9C1E03010892B00668306 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5EA9C1E03010892B00668305 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

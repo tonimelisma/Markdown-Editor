@@ -1,0 +1,155 @@
+# The verification of every change (CLAUDE.md, "The loop"). A cloud session has no Xcode, so for a
+# change made there, the macOS job's run of Scripts/check.sh on the pull request's last commit is
+# the gate. A change made on the Mac is verified by its local run; CI repeats it.
+#
+# A change confined to documentation skips the macOS job: it could not change what that job builds,
+# and the five-minute budget (CLAUDE.md §2) is better spent elsewhere.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Does it need macOS?
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      mac: ${{ steps.classify.outputs.mac }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == workflow_dispatch || -z "$BASE" || "$BASE" =~ ^0+$ ]] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "mac=true" >> "$GITHUB_OUTPUT"; echo "full run ($EVENT)"; exit 0
+          fi
+          # Everything outside this documentation set can change what builds, tests or ships.
+          others="$(git diff --name-only "$(git merge-base "$BASE" "$HEAD")" "$HEAD" \
+            | grep -vE '^(docs/.*|[^/]*\.md|\.claude/.*|\.markdownlint-cli2\.jsonc|\.gitignore)$' || true)"
+          if [[ -n "$others" ]]; then
+            echo "mac=true" >> "$GITHUB_OUTPUT"; printf 'needs macOS:\n%s\n' "$others"
+          else
+            echo "mac=false" >> "$GITHUB_OUTPUT"; echo "documentation only"
+          fi
+
+  portable:
+    name: Portable steps (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Exit 3 is check.sh's INCOMPLETE: every portable step passed and the build is the macOS job's.
+      - run: |
+          status=0
+          Scripts/check.sh || status=$?
+          [[ "$status" == 3 ]]
+
+  macos:
+    name: Build, test and smoke (Xcode 27)
+    needs: changes
+    if: needs.changes.outputs.mac == 'true'
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Select the newest Xcode 27
+        id: xcode
+        run: |
+          set -euo pipefail
+          xcode="$(ls -d /Applications/Xcode_27*.app | sort -V | tail -n 1)"
+          sudo xcode-select --switch "$xcode/Contents/Developer"
+          xcodebuild -version
+          echo "build=$(xcodebuild -version | awk '/Build version/ { print $3 }')" >> "$GITHUB_OUTPUT"
+      # The compilation cache (Scripts/lib/build-settings.sh) and the Swift packages, as main's
+      # newest run left them. Only a push to main saves, so every pull request reads one trusted
+      # copy and no branch's entries reach another. The key names the Xcode build: another
+      # Xcode's entries could never be hits.
+      - name: Restore the build caches
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/CompilationCache.noindex
+            .build/check/SourcePackages
+          key: build-${{ runner.os }}-${{ steps.xcode.outputs.build }}-${{ github.sha }}
+          restore-keys: build-${{ runner.os }}-${{ steps.xcode.outputs.build }}-
+      - name: Scripts/check.sh
+        run: Scripts/check.sh
+      - name: Save the build caches
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/CompilationCache.noindex
+            .build/check/SourcePackages
+          key: build-${{ runner.os }}-${{ steps.xcode.outputs.build }}-${{ github.sha }}
+      # Evidence for human eyes, never a requirement's proof (CLAUDE.md §4): one capture of the
+      # app's own window over the rich fixture, downloadable from the run. It does not gate.
+      - name: Window screenshot
+        if: success()
+        continue-on-error: true
+        env:
+          SMOKE_SCREENSHOT_OUT: ${{ runner.temp }}/screenshot/smoke-screenshot.png
+          # The smoke step's build folder (Scripts/check.sh): its app is already built, so this
+          # build is a no-op instead of a second full one (about 50 s of the five-minute budget).
+          SMOKE_DERIVED_DATA: .build/check/smoke
+        run: |
+          mkdir -p "$(dirname "$SMOKE_SCREENSHOT_OUT")"
+          Scripts/smoke-screenshot.sh
+      - uses: actions/upload-artifact@v7
+        if: success()
+        continue-on-error: true
+        with:
+          name: screenshot-${{ github.run_id }}
+          path: ${{ runner.temp }}/screenshot/
+          if-no-files-found: ignore
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: check-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .build/check.log
+            .build/check/*.log
+            .build/check/smoke-records/
+          if-no-files-found: warn
+          retention-days: 14
+
+  gate:
+    name: CI gate
+    needs: [changes, portable, macos]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - env:
+          CHANGES: ${{ needs.changes.result }}
+          PORTABLE: ${{ needs.portable.result }}
+          MACOS: ${{ needs.macos.result }}
+          NEEDS_MAC: ${{ needs.changes.outputs.mac }}
+        run: |
+          set -euo pipefail
+          echo "changes=$CHANGES portable=$PORTABLE macos=$MACOS needsMac=$NEEDS_MAC"
+          [[ "$CHANGES" == success && "$PORTABLE" == success ]]
+          if [[ "$NEEDS_MAC" == true ]]; then [[ "$MACOS" == success ]]; else [[ "$MACOS" == skipped ]]; fi

@@ -9,7 +9,8 @@ import Testing
 
 struct PrivacyBoundaryTests {
     // Verifies: REQ-030/031 — production source and project configuration contain no network,
-    // account, authentication, analytics, telemetry, or tracking capability.
+    // account, authentication, analytics, telemetry, or tracking capability of their own (the
+    // update check, REQ-033, is Sparkle's and is bounded by `onlyTheUpdaterImportsSparkle`).
     @Test func productionBoundaryRejectsNetworkAccountAndAnalyticsCapabilities() throws {
         let root = sourceURL("")
         let productionFiles = (FileManager.default.enumerator(at: root.appendingPathComponent("Markdown Editor"), includingPropertiesForKeys: nil)?
@@ -40,9 +41,41 @@ struct PrivacyBoundaryTests {
         #expect(!project.contains("Analytics"))
         #expect(!project.contains("AuthenticationServices"))
 
-        let entitlements = (FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?
-            .compactMap { $0 as? URL } ?? []).filter { $0.pathExtension == "entitlements" }
-        #expect(entitlements.isEmpty)
+        // The repository's own files, not build output: a package checkout carries its own
+        // entitlements (Sparkle's does) and none of them is this app's. Hidden folders (`.build`,
+        // `.git`) are skipped, and so are the gitignored build directories that are not hidden —
+        // `build/`, where Scripts/release.sh and Scripts/benchmark.sh put their derived data, and
+        // `DerivedData/`. Hidden-only was not enough: a local release build left Sparkle's
+        // checkouts under `build/` and turned this red, which said nothing about the product.
+        // The walk proves it saw the project by finding its Info.plist, so an empty walk cannot
+        // pass for "no entitlements".
+        let buildOutputDirectories: Set<String> = ["build", "DerivedData"]
+        let walk = FileManager.default.enumerator(
+            at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+        )
+        var repositoryFiles: [URL] = []
+        while let url = walk?.nextObject() as? URL {
+            let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            if isDirectory, buildOutputDirectories.contains(url.lastPathComponent) {
+                walk?.skipDescendants()
+                continue
+            }
+            repositoryFiles.append(url)
+        }
+        #expect(repositoryFiles.contains { $0.path.hasSuffix("Markdown Editor/Info.plist") }, "the walk did not reach the project")
+        let entitlements = repositoryFiles.filter { $0.pathExtension == "entitlements" }
+        #expect(entitlements.isEmpty, "entitlements files: \(entitlements.map(\.path))")
+    }
+
+    // Verifies: REQ-030/033 — Sparkle, the application's only network access, is imported by one
+    // production file, so no other code can reach the network through it. The detector proves
+    // itself by finding that one file.
+    @Test func onlyTheUpdaterImportsSparkle() throws {
+        let importers = try productionSourceFiles().filter { file in
+            let text = try String(contentsOf: file, encoding: .utf8)
+            return text.range(of: #"(?m)^\s*(@preconcurrency\s+)?import\s+Sparkle\b"#, options: .regularExpression) != nil
+        }.map(\.lastPathComponent)
+        #expect(importers == ["AppUpdater.swift"], "Sparkle importers: \(importers)")
     }
 
     // Verifies: REQ-031/089; ARC-016 — diagnostic payloads are a closed, local-safe value set and
