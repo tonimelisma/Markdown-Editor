@@ -242,6 +242,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         trace?.record(route: .documentOpened, .documentOpened(utf16Count: (text as NSString).length))
         let contentView = ContentView(document: self)
         let hosting = NSHostingController(rootView: contentView)
+        // The window's size, and its minimum, are AppKit's (below, and `contentMinSize`); the
+        // SwiftUI content only fills it. The default, `.standardBounds`, also installs minimum,
+        // intrinsic and maximum size constraints from the content, which SwiftUI answers by
+        // measuring the whole tree on every layout pass, the first included: most of a window's
+        // opening was that first layout (probes 46014139254, 46018864413).
+        hosting.sizingOptions = []
         // REQ-104: the screenshot verification may make the window taller so one capture can
         // show every semantic construct at once. Width stays at the default, because the default
         // width is what the reading measure and the untruncated toolbar are reviewed against.

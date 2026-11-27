@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import SwiftUI
 import Synchronization
 import Testing
 @testable import Markdown_Editor
@@ -149,6 +150,19 @@ struct WindowCitizenshipTests {
         // real app restores (a test-shrunk frame left the owner's copy opening stamp-sized).
         #expect(MarkdownDocument.frameAutosaveName != "MarkdownDocumentWindow")
         #expect(window.isRestorable, "window opts out of state restoration")
+    }
+
+    // Verifies: REQ-131 — the window, not its SwiftUI content, owns its size: the hosting
+    // controller installs no size constraints from the content, which SwiftUI would answer by
+    // measuring the whole tree on every layout pass. The window still keeps its minimum.
+    @Test func theWindowNotItsSwiftUIContentOwnsItsSize() throws {
+        let document = MarkdownDocument()
+        document.makeWindowControllers()
+        defer { document.close() }
+        let window = try #require(document.windowControllers.first?.window)
+        let hosting = try #require(window.contentViewController as? NSHostingController<ContentView>)
+        #expect(hosting.sizingOptions == [], "the content sizes the window: \(hosting.sizingOptions)")
+        #expect(window.contentMinSize == MarkdownDocument.minimumContentSize)
     }
 
     // Verifies: REQ-131 — a document window is laid out at its final size only. Creating it at
