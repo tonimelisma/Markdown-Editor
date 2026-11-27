@@ -1,0 +1,39 @@
+# The scenario .github/workflows/agent-drive.yml runs when none is given: one pass over every kind of
+# step, on Scripts/Fixtures/smoke-rich.md, so a change to the driver shows that each still works.
+# Steps are listed at the top of Scripts/agent-drive.swift.
+shot opened
+tree opened
+focused
+
+# A real click into the first paragraph, then a caret placed through accessibility, then real keys.
+clickat 300 160
+focused
+caret "Markdown WYSIWYG" 0
+type "Agent "
+wait 1
+shot typed
+expect-value "Markdown WYSIWYG" "Agent Typography proof"
+
+# The toolbar acts on a selection, and cmd-S saves it.
+caret "Markdown WYSIWYG" 0 5
+press Bold
+wait 1
+shot bold
+key cmd+s
+wait 2
+file saved
+expect-file "Agent"
+expect-file "**Agent**"
+
+# The mode control says which mode the editor is in, however the mode was chosen.
+press Source
+wait 1
+shot source
+expect-value Source 1
+expect-value WYSIWYG 0
+value "Markdown source"
+menu View "WYSIWYG Mode"
+wait 1
+shot wysiwyg-from-menu
+expect-value WYSIWYG 1
+expect-value Source 0
