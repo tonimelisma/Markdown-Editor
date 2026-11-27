@@ -133,7 +133,9 @@ jobs:
                 sudo spindump "$pid" 6 10 -file "$records/spindump-$i.txt" > /dev/null 2>&1 || true
               fi
             fi
-            wait "$smoke"; verdict=$?
+            # The step's shell is bash -e: a bare failing `wait` would end the loop at the first failure.
+            verdict=0
+            wait "$smoke" || verdict=$?
             wait # top, so one launch's sampling of the host never overlaps the next launch
             if (( verdict == 0 )); then
               echo "run $i: PASS $(grep -o 'launch→exit took [0-9]*s' "$records/smoke-$i.log")"
