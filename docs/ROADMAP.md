@@ -8,8 +8,8 @@ Git records the sequence; [DECISIONS.md](DECISIONS.md) records the choices that 
 
 ## What the app is today
 
-Every row in [REQUIREMENTS.md](REQUIREMENTS.md) is `Done` except two explicit `Deferred` rows and
-the two `Active` rows the tour opened (TOUR-01, below). The application includes:
+Every row in [REQUIREMENTS.md](REQUIREMENTS.md) is `Done` except two explicit `Deferred` rows. The
+application includes:
 
 - ordinary UTF-8 Markdown documents through `NSDocument` — New, Open, Save, Save As, autosave,
   Versions, tabs, Recents, undo/redo, spelling, Find, and printing;
