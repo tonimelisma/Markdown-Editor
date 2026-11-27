@@ -59,13 +59,35 @@ the rejected alternatives, and the respect in which the chosen one is worse.
 
 ## Next
 
-**TOUR-01 — the whole app, used as a person uses it** (🔵 Active, 2026-11-27). A long scenario,
+**TOUR-01 — the whole app, used as a person uses it** (✅ Done, 2026-11-27). A long scenario,
 `Scripts/agent-drive/tour.txt`, drives every feature on a Mac runner from a plain launch to a
 relaunch (`.github/workflows/agent-drive.yml`), and each defect it finds is fixed with a test that
-fails for it. Found so far: no window at a plain launch, a stamp-sized window, no keyboard focus in
-a new window, Block Quote's shortcut locking the screen, a second parse at every open, and in
-WYSIWYG no spaces at a line's end, no Return and no Backspace (REQ-152, REQ-153). It is done when the
-tour runs through with no failed step and no fault in the app's log.
+fails for it where one can. It found: no window at a plain launch, a stamp-sized window, no
+keyboard focus in a new window, Block Quote's shortcut locking the screen, a second parse at every open, and in
+WYSIWYG no spaces at a line's end, no Return and no Backspace (REQ-152, REQ-153). Then:
+
+- typing discarded by another app's write, since an open typing group read as clean;
+- a hang when closing a window after typing;
+- Add Image refused after the caret moved;
+- no Find menu, and no ⌘W;
+- the caret lost on returning from Source mode;
+- quote text and code backgrounds left in Light colours after a switch to Dark;
+- the keyboard nowhere after closing the find bar;
+- an alert waiting for the person recorded as a main-actor stall;
+- an image overlapping the text after it;
+- no File › Open Recent, since SwiftUI dropped the item AppKit added;
+- no Duplicate, Rename or Move To, though the document autosaves in place, and a duplicate
+  showing its original's images as missing, as the Versions browser showed a past version's;
+- every autosave holding the main thread for its whole write, 133–413 ms on a runner, while the
+  person typed;
+- the Versions browser's animation and a duplicate's close dialog recorded as main-actor stalls;
+- no Print or Page Setup in the File menu, so ⌘P never printed, a gap every earlier tour missed
+  because its print step looked only for faults;
+- saving a moment after typing hung the app, as did any save after Print was cancelled.
+
+It ran through on 7ab3517 twice, every step and expectation holding: 340 steps, 77 checks, and no
+fault or error in the app's log but the one section Q expects (runs 46001113929, 46001121084).
+It runs on every pull request that changes the driver or the tour, and on demand.
 
 **Packaging and distribution** (🔵 Active, 2026-11-26). Cloud-first development is in place:
 

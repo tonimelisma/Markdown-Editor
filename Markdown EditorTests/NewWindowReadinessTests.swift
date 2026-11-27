@@ -71,6 +71,33 @@ struct NewWindowReadinessTests {
         #expect(h.window.initialFirstResponder === page)
     }
 
+    // Verifies: REQ-084 — closing the find bar gives the keyboard back to the page it searched.
+    // Closed with Done it left no first responder, and the next keys went nowhere.
+    @Test func closingTheFindBarReturnsTheKeyboardToThePage() throws {
+        let h = Self.makeHost(text: "Milk and Eggs\n")
+        defer { h.session.detach() }
+        let scroll = try #require(h.host.wysiwygScroll)
+        let page = try #require(h.host.wysiwygText)
+        scroll.isFindBarVisible = true
+        h.window.makeFirstResponder(nil)
+        try #require(h.window.firstResponder === h.window, "the keyboard was not put nowhere")
+        scroll.isFindBarVisible = false
+        #expect(h.window.firstResponder === page, "the keyboard is with \(String(describing: h.window.firstResponder))")
+    }
+
+    // Verifies: REQ-086 — the editor of the mode not shown never takes the keyboard. AppKit gave
+    // it to the hidden Source page when the find bar closed, and keys went to a caret nobody saw.
+    @Test func theHiddenEditorDeclinesTheKeyboard() throws {
+        let h = Self.makeHost(text: "Milk and Eggs\n")
+        defer { h.session.detach() }
+        let hidden = try #require(h.host.sourceText)
+        try #require(hidden.isHiddenOrHasHiddenAncestor, "the Source page is not hidden in WYSIWYG mode")
+        // What matters is who holds the keyboard afterwards, not makeFirstResponder's return,
+        // which reported success though the view declined (CI 45979591545).
+        _ = h.window.makeFirstResponder(hidden)
+        #expect(h.window.firstResponder !== hidden, "the hidden Source page took the keyboard")
+    }
+
     // Verifies: REQ-058/REQ-032 — the first command in a new window applies at the caret the page
     // shows. The caret had never moved, so no selection callback reported it, and the command was
     // refused.

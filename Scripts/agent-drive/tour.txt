@@ -31,7 +31,7 @@ select "Markdown WYSIWYG" "plain Markdown"
 key cmd+i
 select "Markdown WYSIWYG" fixed
 key cmd+shift+x
-select "Markdown WYSIWYG" note
+select "Markdown WYSIWYG" wrote
 key ctrl+cmd+c
 wait 1
 shot b-formatted
@@ -124,7 +124,7 @@ expect-file notes/notes.md "# Weekly notes"
 expect-file notes/notes.md "**printer**"
 expect-file notes/notes.md "*plain Markdown*"
 expect-file notes/notes.md "~~fixed~~"
-expect-file notes/notes.md "`note`"
+expect-file notes/notes.md "`wrote`"
 expect-file notes/notes.md "[project page](https://example.com/guide)"
 expect-file notes/notes.md "- Milk"
 expect-file notes/notes.md "- [ ] Call the plumber"
@@ -159,7 +159,9 @@ type "Eggs"
 key return
 wait 1
 shot h-find
-key escape
+press Done
+wait 1
+focused
 expect-no-faults
 
 # --- I. Images: Add Image… from the Format menu, then a pasted one.
@@ -244,25 +246,41 @@ shot-screen m-external-dirty
 expect-value "Markdown WYSIWYG" "Unsaved words."
 key cmd+s
 wait 2
+shot-screen m-save-asks
+press "Save Anyway"
+wait 2
 shot-screen m-after-save
+expect-file notes/notes.md "Unsaved words."
 file notes/notes.md m-notes
 expect-no-faults
 
-# --- N. Print.
+# --- N. Print: File › Print… shows the print panel, and Cancel closes it. The first time, the
+# panel's search for printers makes macOS ask whether the app may find devices on the local
+# network; the prompt is answered as a person would, or it keeps the keyboard.
 key cmd+p
 wait 3
 shot-screen n-print
-key escape
+system-prompt "Don't Allow"
+wait 1
+press Cancel
 wait 1
 no-dialogs
 expect-no-faults
 
-# --- O. A second document, closed without saving.
+# --- O. A second document closed without saving, Revert Document, and Duplicate.
 key cmd+n
 wait 2
 windows
 shot o-new
 type "Scratch"
+# ⌘S at once, while the typing is still one open group: the Save panel opens.
+key cmd+s
+wait 2
+type-field "Scratch.md"
+shot-screen o-save-panel
+key escape
+wait 1
+no-dialogs
 key cmd+w
 wait 2
 shot-screen o-close-asks
@@ -270,6 +288,42 @@ press "Delete"
 wait 1
 windows
 no-dialogs
+expect-window notes.md
+# Edits to the note, then File › Revert Document…: AppKit asks whether to go back to the last
+# saved version or browse older ones, and Last Saved Version takes the edits back.
+type " Discarded."
+wait 1
+expect-value "Markdown WYSIWYG" "Discarded."
+menu File "Revert Document…"
+wait 3
+shot-screen o-revert-asks
+press "Last Saved Version"
+wait 3
+shot o-restored
+expect-no-value "Markdown WYSIWYG" "Discarded."
+expect-value "Markdown WYSIWYG" "Unsaved words."
+# File › Duplicate: an untitled copy of the note, whose name AppKit offers for editing in the
+# title bar; Escape keeps it. The copy is edited, then closed without keeping it.
+menu File Duplicate
+wait 2
+windows
+expect-window "notes copy"
+shot o-duplicate-naming
+key escape
+wait 1
+expect-value "Markdown WYSIWYG" "Unsaved words."
+type "Copy edit."
+wait 1
+expect-value "Markdown WYSIWYG" "Copy edit."
+key cmd+w
+wait 2
+shot-screen o-copy-close-asks
+press "Delete Copy"
+wait 1
+expect-no-window "notes copy"
+no-dialogs
+expect-file notes/notes.md "Unsaved words."
+expect-no-file notes/notes.md "Discarded."
 expect-no-faults
 
 # --- P. Opening an existing document: rich content, a task box, a table cell.
@@ -288,7 +342,7 @@ tree p-showcase
 scroll "Markdown WYSIWYG" 30
 wait 1
 shot p-showcase-scrolled
-press "Open"
+press "Compare against last year's notebook"
 wait 1
 select "Markdown WYSIWYG" Swifts
 type "Terns"
@@ -297,6 +351,7 @@ key cmd+s
 wait 2
 file showcase.md p-showcase
 expect-file showcase.md "Terns back over the harbour"
+expect-file showcase.md "- [x] Compare against last year's notebook"
 no-dialogs
 expect-no-faults
 
@@ -315,14 +370,21 @@ key return
 wait 1
 no-dialogs
 expect-no-window bad.md
+expect-no-faults documentLoadFailed
 
-# --- R. Quit and relaunch: the documents come back.
+# --- R. Quit and relaunch. With macOS's default "close windows when quitting", a plain launch opens
+# an untitled document, as TextEdit does; the note comes back through File › Open Recent.
 quit
 expect-not-running
 launch
 wait 3
 windows
+expect-window Untitled
 shot r-relaunched
+menu File "Open Recent" notes.md
+wait 2
+windows
 expect-window notes.md
-faults
+expect-value "Markdown WYSIWYG" "Unsaved words."
+shot r-reopened
 expect-no-faults

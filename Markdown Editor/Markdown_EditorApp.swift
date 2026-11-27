@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -28,6 +29,10 @@ struct Markdown_EditorApp: App {
                 .disabled(!AppUpdater.isEnabledForThisProcess)
             }
             EditorMenuCommands()
+            // REQ-084: Find, Spelling and Grammar, Substitutions, Transformations and Speech, which
+            // a SwiftUI app's Edit menu has only when asked. Without them ⌘F did nothing in either
+            // editor, though both use the find bar (agent-drive probe 45969842167).
+            TextEditingCommands()
             CommandGroup(replacing: .newItem) {
                 Button("New Document") {
                     NSDocumentController.shared.newDocument(nil)
@@ -39,21 +44,57 @@ struct Markdown_EditorApp: App {
                     NSDocumentController.shared.openDocument(nil)
                 }
                 .keyboardShortcut("o")
+                OpenRecentMenu(recents: RecentDocuments.shared)
             }
-            // REQ-014: restore standard document File actions removed with DocumentGroup.
+            // REQ-014: the File menu of a document that autosaves in place: Close, Save,
+            // Duplicate, Rename, Move To and Revert Document, with Save As kept on its own key.
+            // Revert Document asks AppKit to revert: for an edited document it offers the last
+            // saved version or the Versions browser. AppKit's Revert To submenu tells its items
+            // apart by private menu-item tags, so an item sent from here without one could not
+            // choose among them (tour 45979207044).
+            // The group replaced also held Close: without it ⌘W did nothing (tour 45968755636).
+            // Each item sends NSDocument's own action down the responder chain, so AppKit
+            // enables it only when the front document can do it.
             CommandGroup(replacing: .saveItem) {
-                Button("Save") {
-                    NSApp.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("s")
-                Button("Save As…") {
-                    NSApp.sendAction(#selector(NSDocument.saveAs(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("S")
-                Button("Revert to Saved") {
-                    NSApp.sendAction(#selector(NSDocument.revertToSaved(_:)), to: nil, from: nil)
-                }
+                Button("Close") { Self.send("performClose:") }
+                    .keyboardShortcut("w")
+                Button("Save") { Self.send("saveDocument:") }
+                    .keyboardShortcut("s")
+                Button("Duplicate") { Self.send("duplicateDocument:") }
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
+                Button("Save As…") { Self.send("saveDocumentAs:") }
+                    .keyboardShortcut("s", modifiers: [.command, .option, .shift])
+                Button("Rename…") { Self.send("renameDocument:") }
+                Button("Move To…") { Self.send("moveDocument:") }
+                Button("Revert Document…") { Self.send("revertDocumentToSaved:") }
             }
+            // REQ-130: the File menu had no Print or Page Setup, so ⌘P reached no menu item and
+            // printing was unreachable (tour 45990628438; every tour's print step showed no
+            // panel). NSDocument's own actions, which print through printOperation(withSettings:).
+            CommandGroup(replacing: .printItem) {
+                Button("Page Setup…") { Self.send("runPageLayout:") }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+                Button("Print…") { Self.send("printDocument:") }
+                    .keyboardShortcut("p")
+            }
+        }
+    }
+
+    /// Sends a document action down the key window's responder chain, as a nib's menu item does.
+    /// The front document's typing is counted first, before AppKit starts the action's activity
+    /// (`MarkdownDocument.prepareForDocumentCommand`).
+    private static func send(_ action: String) {
+        let selector = NSSelectorFromString(action)
+        let endedTyping = (NSDocumentController.shared.currentDocument as? MarkdownDocument)?
+            .prepareForDocumentCommand() ?? false
+        guard endedTyping else {
+            NSApp.sendAction(selector, to: nil, from: nil)
+            return
+        }
+        // AppKit counts the ended typing in an activity queued on the main queue; the command
+        // waits that turn, or its own activity waits for it with the main thread held.
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { _ = NSApp.sendAction(selector, to: nil, from: nil) }
         }
     }
 }
@@ -66,6 +107,9 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
     static let requiredDocumentSelectors: [String] = [
         "saveDocument:",
         "saveDocumentAs:",
+        "duplicateDocument:",
+        "renameDocument:",
+        "moveDocument:",
         "revertDocumentToSaved:",
     ]
 
@@ -214,6 +258,7 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
 
     /// Detects an unresponsive main actor for the process lifetime (REQ-096).
     private var watchdog: MainActorWatchdog?
+    private var versionBrowserSessions: VersionBrowserSessions?
     private var responsivenessProbe: MainActorResponsivenessProbe?
     private var frameObserver: FrameObserver?
     private var applicationSampler: PerformanceSampler?
@@ -247,8 +292,8 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = documentController
+        RecentDocuments.shared.refresh()
         guard !Self.isRunningUnitTests else { return }
-        ensureOpenRecentMenuItem()
         // REQ-033: never in a smoke or benchmark run (AppUpdater.isEnabledForThisProcess).
         updater = AppUpdater.startIfEnabled()
         // The reporter writes through the serialized diagnostic sink directly because the main
@@ -262,6 +307,7 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         let watchdog = MainActorWatchdog(report: report)
         watchdog.start()
         self.watchdog = watchdog
+        versionBrowserSessions = VersionBrowserSessions()
         if let log = DiagnosticLog.shared {
             // Process-wide sampler and frame records have no document owner. Keeping them
             // documentless prevents a single opened fixture from appearing as two documents in
@@ -509,27 +555,6 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         if Self.isSmokeRun { return false }
         return true
     }
-
-    /// NSDocumentController populates Open Recent when a standard menu item exists.
-    // Internal for the component proof that the production menu route remains AppKit-owned.
-    func ensureOpenRecentMenuItem() {
-        guard let mainMenu = NSApp.mainMenu else { return }
-        guard let fileMenu = mainMenu.item(withTitle: "File")?.submenu else { return }
-        if fileMenu.items.contains(where: { $0.title == "Open Recent" }) { return }
-        let recent = fileMenu.insertItem(
-            withTitle: "Open Recent",
-            action: nil,
-            keyEquivalent: "",
-            at: min(2, fileMenu.numberOfItems)
-        )
-        let recentMenu = NSMenu(title: "Open Recent")
-        recent.submenu = recentMenu
-        recentMenu.addItem(
-            withTitle: "Clear Menu",
-            action: #selector(NSDocumentController.clearRecentDocuments(_:)),
-            keyEquivalent: ""
-        )
-    }
 }
 
 /// Ensures MarkdownDocument is the shared controller's document class.
@@ -544,4 +569,58 @@ final class MarkdownDocumentController: NSDocumentController {
         return super.documentClass(forType: typeName) ?? MarkdownDocument.self
     }
 
+    /// REQ-021: every document opened or saved is noted here; Open Recent follows.
+    override func noteNewRecentDocumentURL(_ url: URL) {
+        super.noteNewRecentDocumentURL(url)
+        RecentDocuments.shared.refresh()
+    }
+
+    override func clearRecentDocuments(_ sender: Any?) {
+        super.clearRecentDocuments(sender)
+        RecentDocuments.shared.refresh()
+    }
+
+    /// The app-modal alert for a document that could not be opened. It holds the main thread's
+    /// modal session until the person dismisses it, which the watchdog must not take for a stall.
+    override func presentError(_ error: Error) -> Bool {
+        AppModalSession.shared.around { super.presentError(error) }
+    }
+
+}
+
+
+/// REQ-021: the documents File › Open Recent lists, as the document controller records them.
+///
+/// Part of the app's SwiftUI commands. An Open Recent item added to the File menu through AppKit
+/// was dropped whenever SwiftUI rebuilt that menu from the commands, after launch and as it
+/// opened, so the File menu had none (tours 45976057730, 45977189566).
+@MainActor
+final class RecentDocuments: ObservableObject {
+    static let shared = RecentDocuments()
+
+    @Published private(set) var urls: [URL] = []
+
+    func refresh() {
+        let current = NSDocumentController.shared.recentDocumentURLs
+        if current != urls { urls = current }
+    }
+}
+
+struct OpenRecentMenu: View {
+    @ObservedObject var recents: RecentDocuments
+
+    var body: some View {
+        Menu("Open Recent") {
+            ForEach(recents.urls, id: \.self) { url in
+                Button(url.lastPathComponent) {
+                    NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+                }
+            }
+            Divider()
+            Button("Clear Menu") {
+                NSDocumentController.shared.clearRecentDocuments(nil)
+            }
+            .disabled(recents.urls.isEmpty)
+        }
+    }
 }

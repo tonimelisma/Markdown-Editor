@@ -39,6 +39,9 @@
 //   faults                     the app's fault, error and warn records since the last `faults`
 // Doing
 //   press LABEL                accessibility press: buttons, segments, checkboxes, menu buttons
+//   system-prompt LABEL        press LABEL in another process's window, as a person answers a
+//                              system prompt the app caused (the print panel's local-network
+//                              request); passes, noting it, when no such prompt is showing
 //   menu TOP ITEM [SUBITEM…]   open a menu and choose an item, e.g. menu View "Source Mode"
 //   click LABEL                a real mouse click on the middle of the element's visible part
 //   clickat X Y                a real mouse click at a point of the front window, in points
@@ -59,6 +62,8 @@
 //   expect-value LABEL TEXT    the element's value contains TEXT
 //   expect-no-value LABEL TEXT the element's value does not contain TEXT
 //   expect-element LABEL / expect-no-element LABEL
+//   expect-no-faults [EVENT…]  no fault or error records in the app's log since the last check,
+//                              apart from the EVENTs named, which this section expects and requires
 //   no-dialogs                 the front window is a document with no sheet; any dialog still
 //                              open is a failure, and is closed with Escape so the next section
 //                              starts from a document, as a person would close it
@@ -66,7 +71,6 @@
 //   expect-file PATH TEXT      the file contains TEXT
 //   expect-no-file PATH TEXT   the file does not contain TEXT
 //   expect-exists PATH / expect-missing PATH
-//   expect-no-faults           no fault or error record since the last `faults` or `expect-no-faults`
 //   file PATH NAME             a copy of the file, to NAME.md
 //
 // Everything is written to transcript.txt in the out-dir, one numbered, timed line per step, and
@@ -531,6 +535,40 @@ while let raw = readLine() {
         if let element = require(rest[0]) {
             log("  \(describe(element)) → \(AXUIElementPerformAction(element, kAXPressAction as CFString).rawValue)")
         }
+    case ("system-prompt", 1):
+        // A system prompt belongs to another process, so the app's own tree does not hold it.
+        // Titles are compared with straight apostrophes: "Don’t Allow" is typeset.
+        func plain(_ s: String) -> String { s.replacingOccurrences(of: "\u{2019}", with: "'") }
+        let wanted = plain(rest[0])
+        // Only a button on screen: a prompt's process can also hold a hidden, zero-size copy,
+        // and pressing that answered nothing (tour 45996638231).
+        func button(in element: AXUIElement, depth: Int = 0) -> AXUIElement? {
+            guard depth <= 12 else { return nil }
+            if text(element, kAXRoleAttribute) == (kAXButtonRole as String),
+               plain(text(element, kAXTitleAttribute)) == wanted,
+               frame(element).width > 0, frame(element).height > 0 {
+                return element
+            }
+            for child in children(element) { if let found = button(in: child, depth: depth + 1) { return found } }
+            return nil
+        }
+        var answered = false
+        for other in NSWorkspace.shared.runningApplications where other.processIdentifier != pid && !answered {
+            let root = AXUIElementCreateApplication(other.processIdentifier)
+            let windows = (attribute(root, kAXWindowsAttribute) as? [AXUIElement]) ?? []
+            for window in windows {
+                if let found = button(in: window) {
+                    // A real click, as a person answers it; system prompts honour mouse events
+                    // where an accessibility press may not reach them.
+                    let target = frame(found)
+                    click(CGPoint(x: target.midX, y: target.midY))
+                    log("  \(other.localizedName ?? "pid \(other.processIdentifier)"): clicked \(describe(found))")
+                    answered = true
+                    break
+                }
+            }
+        }
+        if !answered { log("  no prompt offers \"\(rest[0])\"") }
     case ("menu-items", 1):
         // Opens one menu bar menu, lists every item with its enabled state and shortcut, and
         // closes it again: what the menu offers right now, as AppKit has just validated it.
@@ -569,17 +607,27 @@ while let raw = readLine() {
             usleep(200_000)
         }
         var current: AXUIElement? = bar
-        for title in rest {
-            // A menu bar item and a menu item hold their menu as their only child.
+        var offered: [String] = []
+        for (depth, title) in rest.enumerated() {
+            // A menu bar item and a menu item hold their menu as their only child. A submenu is
+            // opened before its items are read, as a person opens it: AppKit fills some menus,
+            // Open Recent among them, only when they open (tour 45975261360 found it empty).
+            if depth >= 2, let parent = current {
+                _ = AXUIElementPerformAction(parent, kAXPressAction as CFString)
+                usleep(400_000)
+            }
             let candidates = current.map(children) ?? []
             let items = candidates.count == 1 && text(candidates[0], kAXRoleAttribute) == "AXMenu"
                 ? children(candidates[0]) : candidates
+            offered = items.map { text($0, kAXTitleAttribute) }
             current = items.first { text($0, kAXTitleAttribute) == title }
+            if current == nil { break }
         }
         if let item = current {
             log("  \(describe(item)) → \(AXUIElementPerformAction(item, kAXPressAction as CFString).rawValue)")
         } else {
-            fail("no menu item at \(rest.joined(separator: " › "))")
+            fail("no menu item at \(rest.joined(separator: " › ")); that menu offers \(offered)")
+            _ = key("escape")
             _ = key("escape")
         }
     case ("click", 1):
@@ -707,13 +755,21 @@ while let raw = readLine() {
         let records = newFaultRecords()
         log("  \(records.count) fault, error or warn record(s)")
         for record in records { log("    " + record) }
-    case ("expect-no-faults", 0):
+    case ("expect-no-faults", _):
+        // Events named after the step are expected of this section (refusing a file that is not
+        // UTF-8 records documentLoadFailed): listed, and required, but not failures.
         let records = newFaultRecords().filter { $0.contains("\"lvl\":\"fault\"") || $0.contains("\"lvl\":\"error\"") }
-        if records.isEmpty {
-            pass("no fault or error records")
+        let expected = records.filter { record in rest.contains { record.contains("\"ev\":\"\($0)\"") } }
+        let unexpected = records.filter { record in !rest.contains { record.contains("\"ev\":\"\($0)\"") } }
+        for name in rest where !expected.contains(where: { $0.contains("\"ev\":\"\(name)\"") }) {
+            fail("no \(name) record, which this section expects")
+        }
+        for record in expected { log("  expected: " + record) }
+        if unexpected.isEmpty {
+            pass("no unexpected fault or error records")
         } else {
-            fail("\(records.count) fault or error record(s)")
-            for record in records { log("    " + record) }
+            fail("\(unexpected.count) fault or error record(s)")
+            for record in unexpected { log("    " + record) }
         }
     case ("file", 2):
         let url = outFile(rest[1], "md")

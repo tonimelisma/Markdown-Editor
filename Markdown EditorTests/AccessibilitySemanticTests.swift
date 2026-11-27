@@ -168,6 +168,59 @@ struct KeyboardCommandMatrixTests {
         )
     }
 
+    // Verifies: REQ-084 — the Edit menu offers Find, on ⌘F. A SwiftUI app's Edit menu has no
+    // Find items unless its commands ask for them, and this app's did not: ⌘F did nothing.
+    @Test func theEditMenuOffersFind() throws {
+        let menu = try #require(NSApp.mainMenu, "the test host has no menu bar")
+        func items(_ menu: NSMenu) -> [NSMenuItem] {
+            menu.items.flatMap { [$0] + ($0.submenu.map(items) ?? []) }
+        }
+        let all = items(menu)
+        try #require(all.contains { $0.title == "Undo" }, "the menu bar is not the app's: \(menu.items.map(\.title))")
+        func takes(_ key: String) -> NSMenuItem? {
+            all.first {
+                $0.keyEquivalent == key && $0.keyEquivalentModifierMask.intersection(.deviceIndependentFlagsMask) == .command
+            }
+        }
+        #expect(takes("f") != nil, "no menu item takes ⌘F; the menus offer \(all.map(\.title))")
+        // Close: the File group the app replaces to restore Save also held it, and ⌘W did nothing.
+        #expect(takes("w") != nil, "no menu item takes ⌘W; the menus offer \(all.map(\.title))")
+    }
+
+    // Verifies: REQ-021 — the real File menu offers Open Recent. The app added it through
+    // AppKit, SwiftUI rebuilt the File menu from the commands, and it was gone.
+    @Test func theFileMenuOffersOpenRecent() throws {
+        let menu = try #require(NSApp.mainMenu, "the test host has no menu bar")
+        let file = try #require(menu.item(withTitle: "File")?.submenu, "no File menu: \(menu.items.map(\.title))")
+        let recent = file.item(withTitle: "Open Recent")
+        #expect(recent != nil, "the File menu offers \(file.items.map(\.title))")
+        #expect(recent?.submenu?.items.contains { $0.title == "Clear Menu" } == true)
+    }
+
+    // Verifies: REQ-014 — the File menu is that of a document that autosaves in place, as
+    // TextEdit's is: Duplicate, Rename, Move To and Revert Document beside Save. The app replaced
+    // the standard group with Save, Save As and Revert to Saved alone, so Duplicate, Rename and
+    // Move To were unreachable (tour 45978087015's File menu).
+    @Test func theFileMenuOffersTheAutosavingDocumentCommands() throws {
+        let menu = try #require(NSApp.mainMenu, "the test host has no menu bar")
+        let file = try #require(menu.item(withTitle: "File")?.submenu, "no File menu: \(menu.items.map(\.title))")
+        let titles = file.items.map(\.title)
+        for title in ["Close", "Save", "Duplicate", "Save As…", "Rename…", "Move To…", "Revert Document…"] {
+            #expect(titles.contains(title), "the File menu offers \(titles), not \(title)")
+        }
+        // REQ-130: Print and Page Setup, on their standard keys. The menu had neither.
+        let print = try #require(file.item(withTitle: "Print…"), "the File menu offers \(titles)")
+        #expect(print.keyEquivalent.lowercased() == "p" && print.keyEquivalentModifierMask.contains(.command))
+        #expect(titles.contains("Page Setup…"), "the File menu offers \(titles)")
+        // Shift-Command-S, which AppKit may spell as a capital letter instead of the Shift flag.
+        let duplicate = try #require(file.item(withTitle: "Duplicate"))
+        let key = duplicate.keyEquivalent
+        let mask = duplicate.keyEquivalentModifierMask
+        let shifted = key == "S" || (key == "s" && mask.contains(.shift))
+        #expect(shifted && mask.contains(.command) && !mask.contains(.option),
+                "Duplicate's shortcut is \(key.debugDescription) with \(mask.rawValue)")
+    }
+
     // Verifies: REQ-032 — no command's shortcut is one macOS or every Mac app already owns. Block
     // Quote was control-command-Q, which is the system's Lock Screen: an agent-drive tour
     // (45955987611) pressed it and locked the runner's screen, as it would have locked a user's.

@@ -313,6 +313,155 @@ struct ReconciliationInvariantTests {
         #expect((values.last ?? 0) >= 100)
     }
 
+    // Verifies: REQ-096 — a main thread waiting in AppKit's own loop, as the title bar's rename
+    // after Duplicate waits on its view service, is not a stall: tour 45986962172 reported one
+    // that the sample of the same step (45982413288) showed inside NSRemoteViewSemaphore.
+    @Test func watchdogReportsNoStallWhileAppKitWaitsInItsOwnLoop() async {
+        let reported = ReportBox()
+        await Self.stallMainActor(seconds: 0.6) {
+            await MainActorWatchdog.probeOnce(
+                thresholdMillis: 100,
+                // Far past any wait the suite's other tests impose on the main actor (CI 45989392525
+                // saw 16 s), so only the mode decides.
+                appKitWaitBoundMillis: 120_000,
+                isModalSessionActive: { false },
+                mainRunLoopMode: { "com.apple.HIServices.RunLoopSemaphore" }
+            ) { millis in reported.append(millis) }
+        }
+        let values = await reported.awaitingCount(1, timeoutSeconds: 0.5)
+        #expect(values.isEmpty, "AppKit's wait was reported as a stall: \(values)")
+    }
+
+    // Verifies: REQ-096 — AppKit's wait runs its loop in slices, between which the outer default
+    // mode shows. A look that falls between two slices does not make the wait a stall.
+    @Test func watchdogSeesAnAppKitWaitBetweenItsSlices() async {
+        let reported = ReportBox()
+        let looks = Mutex(0)
+        await Self.stallMainActor(seconds: 0.6) {
+            await MainActorWatchdog.probeOnce(
+                thresholdMillis: 100,
+                appKitWaitBoundMillis: 120_000,
+                isModalSessionActive: { false },
+                mainRunLoopMode: {
+                    let look = looks.withLock { $0 += 1; return $0 }
+                    return look.isMultiple(of: 2) ? "com.apple.HIServices.RunLoopSemaphore" : CFRunLoopMode.defaultMode.rawValue as String
+                }
+            ) { millis in reported.append(millis) }
+        }
+        let values = await reported.awaitingCount(1, timeoutSeconds: 0.5)
+        #expect(values.isEmpty, "a look between AppKit's slices was taken for a stall: \(values)")
+    }
+
+    // Verifies: REQ-096 — a wait in AppKit's own loop that outlasts the bound is reported: the
+    // close hang was a deadlock in such a loop, and it never ended.
+    @Test func watchdogReportsAnAppKitWaitThatOutlastsItsBound() async {
+        let reported = ReportBox()
+        await Self.stallMainActor(seconds: 0.8) {
+            await MainActorWatchdog.probeOnce(
+                thresholdMillis: 100,
+                appKitWaitBoundMillis: 300,
+                isModalSessionActive: { false },
+                mainRunLoopMode: { "com.apple.HIServices.RunLoopSemaphore" }
+            ) { millis in reported.append(millis) }
+        }
+        let values = await reported.awaitingCount(1, timeoutSeconds: 2)
+        #expect(!values.isEmpty, "a wait past the bound went unreported")
+    }
+
+    // Verifies: REQ-096 — a stall in a mode that serves the main queue is reported at once.
+    @Test func watchdogReportsAStallInTheDefaultMode() async {
+        let reported = ReportBox()
+        await Self.stallMainActor(seconds: 0.6) {
+            await MainActorWatchdog.probeOnce(
+                thresholdMillis: 100,
+                appKitWaitBoundMillis: 5_000,
+                isModalSessionActive: { false },
+                mainRunLoopMode: { CFRunLoopMode.defaultMode.rawValue as String }
+            ) { millis in reported.append(millis) }
+        }
+        let values = await reported.awaitingCount(1, timeoutSeconds: 2)
+        #expect(!values.isEmpty, "a default-mode stall went unreported")
+    }
+
+    /// Holds the main actor for `seconds` while `probe` runs from a background task.
+    private static func stallMainActor(seconds: TimeInterval, probe: @escaping @Sendable () async -> Void) async {
+        let scenario = Task.detached {
+            let occupied = Mutex(false)
+            let blocker = Task { @MainActor in
+                occupied.withLock { $0 = true }
+                occupyMainActor(seconds: seconds)
+            }
+            while !occupied.withLock({ $0 }) {
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+            await probe()
+            await blocker.value
+        }
+        await scenario.value
+    }
+
+    // Verifies: REQ-096 — while an app-modal alert waits for the person, the main actor's jobs
+    // wait too, and that is not a stall. The bad-file alert in tour 45974231615 was recorded as
+    // two. The blocker stands in for the modal session; the session is declared to the probe.
+    @Test func watchdogReportsNoStallDuringAnAppModalSession() async {
+        let reported = ReportBox()
+        let scenario = Task.detached {
+            let occupied = Mutex(false)
+            let blocker = Task { @MainActor in
+                occupied.withLock { $0 = true }
+                occupyMainActor(seconds: 1)
+            }
+            while !occupied.withLock({ $0 }) {
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+            await MainActorWatchdog.probeOnce(thresholdMillis: 100, isModalSessionActive: { true }) { millis in
+                reported.append(millis)
+            }
+            await blocker.value
+        }
+        await scenario.value
+        let values = await reported.awaitingCount(1, timeoutSeconds: 0.5)
+        #expect(values.isEmpty, "a modal session was reported as a stall: \(values)")
+    }
+
+    // Verifies: REQ-124 — the Versions browser is an app-modal session from the moment it opens
+    // until it has closed, so its closing animation, run after Restore, is not counted as
+    // main-actor latency (tours 45985053390 and 45985821997: a 361–391 ms p95 per visit).
+    @Test func theVersionsBrowserIsAnAppModalSessionWhileItIsOpen() {
+        let sessions = AppModalSession()
+        let center = NotificationCenter()
+        let observer = VersionBrowserSessions(sessions: sessions, center: center)
+        let window = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+        let before = sessions.epoch
+        center.post(name: NSWindow.willEnterVersionBrowserNotification, object: window)
+        #expect(sessions.isActive, "entering the browser opened no session")
+        center.post(name: NSWindow.willEnterVersionBrowserNotification, object: window)
+        center.post(name: NSWindow.didExitVersionBrowserNotification, object: window)
+        #expect(!sessions.isActive, "the session outlived the browser")
+        #expect(sessions.epoch != before)
+        // An exit with no matching entry closes nothing.
+        center.post(name: NSWindow.didExitVersionBrowserNotification, object: window)
+        #expect(!sessions.isActive)
+        withExtendedLifetime(observer) {}
+    }
+
+    // Verifies: REQ-096 — a close runs as an app-modal session: a duplicate's "keep this new
+    // document?" dialog runs modally inside it, and was reported as a 1.5 s main-actor stall
+    // while it waited for the person (probe 45982413288).
+    @Test func closingADocumentIsAnAppModalSession() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("Clean.\n")
+        let delegate = CloseDecisionRecorder()
+        document.canClose(
+            withDelegate: delegate,
+            shouldClose: #selector(CloseDecisionRecorder.document(_:shouldClose:contextInfo:)),
+            contextInfo: nil
+        )
+        #expect(delegate.decided, "a clean document did not decide at once")
+        #expect(delegate.wasModalWhileDeciding, "the close's decision ran outside an app-modal session")
+        #expect(!AppModalSession.shared.isActive)
+    }
+
     // Verifies: REQ-099 — "WYSIWYG went read-only and I don't know why" must have a log line,
     // but only the transition, not every mode-state mutation that leaves availability unchanged.
     @Test func availabilityChangedRecordsOnlyOnTransition() {
@@ -392,5 +541,17 @@ actor ReportBox {
             try? await Task.sleep(for: .milliseconds(10))
         }
         return values
+    }
+}
+
+/// Records a close decision and whether an app-modal session was open while it was made.
+@MainActor
+private final class CloseDecisionRecorder: NSObject {
+    private(set) var decided = false
+    private(set) var wasModalWhileDeciding = false
+
+    @objc func document(_ document: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        decided = true
+        wasModalWhileDeciding = AppModalSession.shared.isActive
     }
 }

@@ -1090,6 +1090,32 @@ struct EditorTransactionKernelTests {
         session.detach()
     }
 
+    // Verifies: REQ-060 — an image reference lands at its insertion point wherever the caret has
+    // gone since. The owner boundary bound it to the Source editor's selection, which WYSIWYG
+    // caret movement does not change, and Add Image after moving the caret was refused.
+    @Test func anImageReferenceIsNotBoundToTheCurrentSelection() {
+        let document = MarkdownDocument()
+        defer { document.close() }
+        document.installTextForTesting("Hello.\n")
+        let source = document.sourceSnapshot()
+        let mutation = SourceMutation(
+            expectedRevision: source.sourceVersion,
+            range: NSRange(location: 7, length: 0),
+            expectedText: "",
+            replacement: "![](assets/photo.png)",
+            selectionBefore: SourceSelection(utf16: NSRange(location: 7, length: 0)),
+            selectionAfter: SourceSelection(utf16: NSRange(location: 9, length: 0)),
+            actionName: "Insert Image",
+            grouping: .discrete
+        )
+        let result = document.commitEditorInput(
+            .imageReference(EditorReplacementInput(mutation: mutation)),
+            state: EditorStateSnapshot(source: source, sourceSelection: SourceSelection(utf16: NSRange(location: 0, length: 0)))
+        )
+        #expect({ if case .committed = result { return true }; return false }(), "the image reference was \(result)")
+        #expect(document.text == "Hello.\n![](assets/photo.png)")
+    }
+
     // Verifies: COR-70 — native source/image replacements cannot install an out-of-bounds caret.
     @Test func replacementRejectsOutOfBoundsSelection() {
         for route in [EditorInputRoute.sourceReplacement, .imageReference] {

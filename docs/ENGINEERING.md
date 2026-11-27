@@ -432,14 +432,23 @@ Rules:
 ## 9. Document and concurrency model
 
 - `MarkdownDocument` is main-actor-owned mutable state.
-- AppKit's default serialized `NSDocument` read/write behavior is used. The app does not maintain
-  a second mutex-protected text mirror or asynchronous load gate unless a future measured platform
-  requirement proves it necessary.
+- Reads use AppKit's default serialized `NSDocument` behavior. The app keeps no long-lived second
+  text mirror and no asynchronous load gate.
 - Swift imports the data-read override as `nonisolated`, but AppKit performs background document
   opening only when the subclass opts into concurrent reads. The override asserts the main thread
   under the retained default and enters `MainActor.assumeIsolated` for the canonical load.
-- Asynchronous writes remain disabled. The data-write override likewise asserts the serialized
-  main-thread contract and snapshots canonical document data inside the main-actor boundary.
+- Saves write asynchronously (`canAsynchronouslyWrite`).
+- A File command, Save included, ends the front document's typing group before it starts, and
+  when that ends a group the command starts on the next turn of the main queue. AppKit counts the
+  ended group in an activity of the document's own, queued on the main queue; a command started
+  in the same turn waited synchronously for it, holding the main thread it needed. `save(to:ofType:for:completionHandler:)`
+  takes the bytes to write on the main actor before AppKit starts, and keeps them until the next
+  save replaces them: AppKit completes a save stopped for the conflict alert, then writes on Save
+  Anyway without a second `save(to:…)`. On AppKit's background thread, `writeSafely` releases the
+  main thread at once (`unblockUserInteraction`), and `data(ofType:)` returns those bytes. It never
+  reads the document there, and throws if it has no snapshot. On the main thread, `data(ofType:)`
+  reads the document itself, so a write there, such as a duplicate's, is never an earlier save's. Serialized writes held the main thread for
+  every autosave, 133–413 ms on a runner, while the person typed (DECISIONS, 2026-11-27).
 - A failed executor assertion is an architecture counterexample, not permission to restore a
   long-lived mirrored source.
 - `save(to:ofType:for:completionHandler:)` is the AppKit override every save that determines a
@@ -581,6 +590,14 @@ by an automated proof** — the same class of documented gap as the Save-panel c
 - Undo and redo validate current content, apply exactly once, and publish one one-shot selection
   restoration.
 - Asset files are not part of text undo.
+- AppKit counts a change only when an undo group closes, and a typing group stays open while
+  typing goes on. A typing group holding edits therefore makes the document edited
+  (`isDocumentEdited`), for external writes and the close prompt alike.
+- An undo group is never ended inside one of NSDocument's activities (close, revert, the write of
+  a save). Ending one posts the did-close-group notification. NSDocument answers by updating its
+  change count with synchronous waiting, which, inside its own activity, waits forever: closing a
+  window after typing hung the app. Save and Save As end the typing group at their entry, before
+  the activity starts. Close and load drop it, since its history is dropped or cleared.
 
 ## 11. Image placement
 
@@ -677,6 +694,16 @@ ordinary files the user owns and can read, delete, or ignore.
   threshold crossing is written through the non-main process route while the stall is still in
   progress, including when it never recovers. A recovery record carries the measured duration
   once the hop lands. Both records use the same diagnostic sink and schema.
+- Neither the watchdog nor the main-actor latency probe counts time inside an app-modal session
+  (`AppModalSession`): an alert, a close's dialogs, or the Versions browser from opening to closed.
+  There AppKit runs its own event loop or a blocking animation, the main thread serves the person,
+  and only the main actor's queued jobs wait.
+- Nor do they count a main thread inside one of AppKit's own loops, told by the main run loop's
+  mode (`MainRunLoop`). The main queue is served in the common modes: default, event tracking and
+  modal panel. A main actor that does not run in one of them is held by a callout, and that is a
+  stall. In any other mode AppKit is waiting in a loop that serves no queue, as the title bar's
+  rename after Duplicate waits on its view service. The watchdog reports such a wait only past ten
+  seconds, so a deadlock inside one, as the close hang was, is still reported.
 - Reconciliation instrumentation records any session publication during view reconciliation, and
   the host-update meter reports a sustained update rate — the signature of a self-feeding loop,
   which presents as high CPU rather than as a hang.
@@ -715,7 +742,8 @@ Metric names describe their actual boundaries:
   patch application, and selection restoration;
 - `modeTransition`: requested mode change through visibility, focus, and selection restoration;
 - `parseProjection`: parser, source index, and semantic projection only;
-- `imageResolution`: inspection, metadata identity, thumbnail decode, and cache lookup; and
+- `imageResolution`: inspection, metadata identity, thumbnail decode, and cache lookup, off the
+  main actor, so budgeted as parsing is (100 ms); and
 - `authoritativeApplication`: main-actor application of a completed authoritative result; and
 - `sourceHighlightCompute`: off-main incremental source lexing for the captured document/session;
   its duration starts at incremental-lexer actor entry, excluding time queued behind a superseded

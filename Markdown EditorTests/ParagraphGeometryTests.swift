@@ -56,6 +56,51 @@ struct ParagraphGeometryTests {
 
     private enum GeometryError: Error { case noLayoutManager }
 
+    // Verifies: REQ-081 — an image takes the height it is drawn at: the block after it starts
+    // below the image, not over it. In the showcase the heading after the image was drawn over
+    // its bottom edge (tour 45976057730).
+    @Test func theBlockAfterAnImageStartsBelowIt() throws {
+        let source = "Before.\n\n![Sky](sky.png)\n\n## Two questions\n"
+        let version: UInt64 = 1
+        let tree = try #require(MarkdownParser.parse(source, sourceVersion: version).get())
+        let index = MarkdownSourceIndex(source: source, sourceVersion: version)
+        let model = MarkdownProjectionModel.build(tree: tree, index: index)
+        let attachment = try #require(model.attachments.first {
+            if case .image = $0.kind { return true }
+            return false
+        })
+        let image = NSImage(size: NSSize(width: 1200, height: 700))
+        let built = AttributedPresentationBuilder.build(
+            model: model, theme: MarkdownTypography(), images: [attachment.nodeID: image]
+        )
+
+        let width: CGFloat = 760
+        let view = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 4000))
+        view.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
+        view.textContainer?.widthTracksTextView = false
+        view.textStorage?.setAttributedString(built.attributed)
+        let layoutManager = try #require(view.layoutManager)
+        let container = try #require(view.textContainer)
+        layoutManager.ensureLayout(for: container)
+
+        let imageGlyph = layoutManager.glyphIndexForCharacter(at: attachment.utf16Location)
+        let imageLine = layoutManager.lineFragmentRect(forGlyphAt: imageGlyph, effectiveRange: nil)
+        let imageSize = layoutManager.attachmentSize(forGlyphAt: imageGlyph)
+        let baseline = layoutManager.location(forGlyphAt: imageGlyph).y
+        // TextKit draws an attachment upward from its glyph's baseline.
+        let imageTop = imageLine.minY + baseline - imageSize.height
+        let imageBottom = imageLine.minY + baseline
+
+        let heading = (built.attributed.string as NSString).range(of: "Two questions")
+        let headingGlyph = layoutManager.glyphIndexForCharacter(at: heading.location)
+        let headingLine = layoutManager.lineFragmentRect(forGlyphAt: headingGlyph, effectiveRange: nil)
+
+        let report = "image line \(imageLine), size \(imageSize), baseline \(baseline); heading line \(headingLine)"
+        #expect(imageSize.height > 300, "the image was not drawn at its scaled size: \(report)")
+        #expect(imageTop >= imageLine.minY - 0.5, "the image starts above its own line: \(report)")
+        #expect(headingLine.minY >= imageBottom - 0.5, "the heading starts over the image: \(report)")
+    }
+
     /// Lays a document out and returns, for each laid-out line, the x origin of the text it
     /// actually draws and the text itself.
     ///

@@ -86,12 +86,16 @@ nonisolated enum DocumentIOFailure: Sendable, Equatable {
     case invalidUTF8
     case fileUnreadable
     case saveFailedOrCancelled
+    /// A save while another app's write is unresolved (REQ-146): AppKit stops it and asks the
+    /// person to save anyway, revert or save elsewhere. The app asking, not failing.
+    case awaitingConflictDecision
 
     var symbol: DiagnosticSymbol {
         switch self {
         case .invalidUTF8: return .invalidUTF8
         case .fileUnreadable: return .fileUnreadable
         case .saveFailedOrCancelled: return .saveFailedOrCancelled
+        case .awaitingConflictDecision: return .awaitingConflictDecision
         }
     }
 }

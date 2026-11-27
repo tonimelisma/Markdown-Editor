@@ -96,7 +96,7 @@ struct MeasurementSubstrateProofTests {
     // Verifies: REQ-124
     @Test func responsivenessMutationProof() async throws {
         let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
-        let probe = MainActorResponsivenessProbe(sampler: sampler)
+        let probe = MainActorResponsivenessProbe(sampler: sampler, modalSessions: AppModalSession())
         probe.captureSampleNow()
         try await Task.sleep(for: .milliseconds(30))
         probe.stop()
@@ -179,7 +179,7 @@ struct MeasurementSubstrateProofTests {
 @Test @MainActor func responsivenessProbeRecordsLatencyDistribution() async throws {
     let trace = InMemoryEditorTrace()
     let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
-    let probe = MainActorResponsivenessProbe(sampler: sampler)
+    let probe = MainActorResponsivenessProbe(sampler: sampler, modalSessions: AppModalSession())
     probe.captureSampleNow()
     try await Task.sleep(for: .milliseconds(50))
     probe.stop()
@@ -192,7 +192,7 @@ struct MeasurementSubstrateProofTests {
 @Test @MainActor func aTwoHundredMillisecondMainActorBlockAppearsInTheLatencyDistribution() {
     let trace = InMemoryEditorTrace()
     let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
-    let probe = MainActorResponsivenessProbe(sampler: sampler)
+    let probe = MainActorResponsivenessProbe(sampler: sampler, modalSessions: AppModalSession())
     probe.captureSampleNow()
     Thread.sleep(forTimeInterval: 0.2)
     RunLoop.current.run(until: Date().addingTimeInterval(0.15))
@@ -203,13 +203,61 @@ struct MeasurementSubstrateProofTests {
     #expect(summary?.max ?? 0 >= 150_000_000)
 }
 
+// Verifies: REQ-124 — a hop that waited while the main thread ran one of AppKit's own loops is
+// not a latency sample. Here every timer tick sees AppKit's loop, so a 200 ms block, which
+// `aTwoHundredMillisecondMainActorBlockAppearsInTheLatencyDistribution` shows is counted in the
+// default mode, leaves no sample of that size.
+@Test @MainActor func aHopThatWaitedOnAppKitsOwnLoopIsNotALatencySample() async throws {
+    let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
+    let probe = MainActorResponsivenessProbe(
+        sampler: sampler,
+        modalSessions: AppModalSession(),
+        mainRunLoopMode: { "com.apple.HIServices.RunLoopSemaphore" }
+    )
+    probe.start()
+    try await Task.sleep(for: .milliseconds(150))
+    occupyMainActor(seconds: 0.25)
+    try await Task.sleep(for: .milliseconds(150))
+    probe.stop()
+    let summary = sampler.drainSummaries().first { $0.metric == .mainActorLatency }
+    sampler.invalidate()
+    #expect((summary?.max ?? 0) < 150_000_000, "AppKit's wait was counted: \(String(describing: summary))")
+}
+
+// Verifies: REQ-124 — a hop that waited out an app-modal alert is not a latency sample. The
+// main thread ran the alert, and the wait was the person reading it: tour 45974231615's
+// bad-file alert alone put the p95 at 896 ms. The 200 ms block above, outside a session, is
+// still counted.
+@Test @MainActor func aHopThatWaitedOutAnAppModalAlertIsNotALatencySample() {
+    let trace = InMemoryEditorTrace()
+    let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
+    // Its own sessions: the app's shared one would reach every other test's probe.
+    let sessions = AppModalSession()
+    let probe = MainActorResponsivenessProbe(sampler: sampler, modalSessions: sessions)
+    probe.captureSampleNow()
+    sessions.around { Thread.sleep(forTimeInterval: 0.2) }
+    RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+    probe.captureSampleNow()
+    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    probe.stop()
+    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    let summary = sampler.drainSummaries().first { $0.metric == .mainActorLatency }
+    sampler.invalidate()
+    #expect(summary?.count == 1, "samples: \(String(describing: summary))")
+    #expect(summary?.max ?? .max < 150_000_000, "the alert's wait was counted: \(String(describing: summary))")
+}
+
 // Verifies: REQ-125
 @Test @MainActor func frameBudgetFollowsTheDisplayLinkCadenceRatherThanAConstant() async {
     let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
     let clock = ControlledFrameClock()
     let observer = FrameObserver(sampler: sampler, clock: clock)
     observer.startControlled()
-    let base = DispatchTime.now().uptimeNanoseconds
+    // The ticks are stamped a minute ahead, so every acknowledgement lands before its callback
+    // and none counts as late: this measures cadence alone. Stamped "now", a parallel suite that
+    // kept the main actor away for seconds made the acknowledgements late, and the test reported
+    // an 83 ms/s hitch that was the suite's (CI 45974231640).
+    let base = DispatchTime.now().uptimeNanoseconds + 60_000_000_000
     clock.emit(callbackUptimeNanos: base, cadenceNanos: 1_000_000_000)
     clock.emit(callbackUptimeNanos: base + 1_000_000_000, cadenceNanos: 1_000_000_000)
     clock.emit(callbackUptimeNanos: base + 3_000_000_000, cadenceNanos: 2_000_000_000)

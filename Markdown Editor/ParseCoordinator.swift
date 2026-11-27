@@ -60,6 +60,7 @@ final class ParseCoordinator {
     /// Extracted verbatim from EditorSession.scheduleParse — no behavior change.
     func scheduleParse(session: EditorSession, document: MarkdownDocument, intent: IntentContext? = nil) {
         let snapshot = document.sourceSnapshot()
+        let imageBaseURL = document.imageBaseURL
         operationGeneration &+= 1
         let generation = operationGeneration
         let currentPresentation = session.presentation
@@ -173,7 +174,7 @@ final class ParseCoordinator {
                 if case .image(let destination, _) = attachment.kind {
                     let request = ImageDecodeRequest(
                         destination: destination,
-                        documentURL: snapshot.fileURL,
+                        documentURL: imageBaseURL,
                         nodeID: attachment.nodeID,
                         sourceRevision: snapshot.sourceVersion,
                         locationGeneration: snapshot.locationGeneration,

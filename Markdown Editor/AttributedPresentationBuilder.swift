@@ -160,7 +160,7 @@ enum AttributedPresentationBuilder {
                 attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
             case .code:
                 monospaced = true
-                attrs[.backgroundColor] = EditorColorCatalog.color(.codeBackground).withAlphaComponent(MarkdownTypography.codeBackgroundAlpha)
+                attrs[.backgroundColor] = EditorColorCatalog.color(.codeBackground, alpha: MarkdownTypography.codeBackgroundAlpha)
             case .codeBlock:
                 // REQ-107; COR-28: monospaced only. The block's `NSTextBlock` container already
                 // supplies the background and padding; adding the inline run background here is
@@ -221,7 +221,14 @@ enum AttributedPresentationBuilder {
         }
         switch block.kind {
         case .paragraph:
-            break
+            // An image alone in its paragraph is laid out at its own height. The body's line
+            // height multiple, applied to an image's line, let the next block's text draw over
+            // the bottom of the image (tour 45976057730, showcase).
+            let text = (storage.string as NSString).substring(with: range)
+            if text.contains("\u{FFFC}"),
+               text.unicodeScalars.allSatisfy({ $0 == "\u{FFFC}" || $0 == "\n" || $0 == " " }) {
+                style.lineHeightMultiple = 1
+            }
         case .heading(let level):
             let spacing = typography.headingSpacing(for: level)
             style.paragraphSpacingBefore = spacing.before

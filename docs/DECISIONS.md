@@ -3,6 +3,148 @@
 Decisions with consequences. Newest first. This is not an archive of everything ever decided —
 it is the short list of things someone will otherwise re-litigate or accidentally undo.
 
+## 2026-11-27 — A main thread waiting in AppKit's own loop is not a stall until ten seconds
+
+**Decision.** The watchdog reads the main run loop's mode when a hop misses its one-second
+threshold. In a mode that serves the main queue (default, event tracking, modal panel), it reports
+a stall at once, as before. In any other mode it waits, and reports only if the wait outlasts ten
+seconds or the loop returns to a serving mode. The latency probe drops every sample pending across
+such a wait. REQ-096 and ENGINEERING §10 state it.
+
+**Why.** After every other fix, a tour (45986962172) still failed on a 1 s main-actor stall after
+File › Duplicate. A sample of the same step (probe 45982413288) showed the main thread in AppKit's
+title-bar rename session, waiting on its remote view service in a private run-loop mode that
+serves no queue. Nothing in the app ran, and the person saw the title become editable. On a
+runner the wait sometimes passes a second, so the tour failed or passed by chance.
+
+**Criteria:** a fault must mean the app is stalled (CLAUDE.md §3); a real deadlock must still be
+reported, as the close hang was, in a private mode; the tour's verdict must not depend on chance.
+
+| Option | Fault means the app stalled | Deadlock in AppKit's loop caught | Deterministic tour |
+| --- | --- | --- | --- |
+| **Classify by run-loop mode, bound private waits at 10 s (chosen)** | ✓ | ✓ at 10 s | ✓ |
+| Wrap each AppKit call that waits in an app-modal session | ✓ where wrapped | ✓ | ✗ the rename starts after our call returns; there is no hook |
+| Exclude private modes without a bound | ✓ | ✗ the close hang would go unreported | ✓ |
+| Raise the threshold for everyone | ✗ hides real one-second stalls | ✓ | ~ |
+| Do nothing | ✗ | ✓ | ✗ |
+
+**Where it is worse.** A deadlock in one of AppKit's private loops is reported after ten seconds,
+not one. A stall in the app's code that happens while AppKit waits in such a loop is hidden for as
+long as the loop runs, since the main actor could not run then anyway.
+
+## 2026-11-27 — Saves write in the background, from bytes taken as the save begins
+
+**Decision.** `MarkdownDocument` returns true from `canAsynchronouslyWrite` for every save.
+`save(to:ofType:for:completionHandler:)` takes the bytes on the main actor before AppKit starts and
+keeps them until the next save. On the background thread, `writeSafely` calls
+`unblockUserInteraction()` and `data(ofType:)` returns the bytes.
+ENGINEERING §9 states the contract.
+
+**Why.** Two probes timed the tour's documents minute by minute. Every autosave was a save record of
+133–413 ms and a main-actor stall of the same size, which the person feels as typing that freezes
+(probes 45979646302, 45980923448). The serialized write held the main thread for file coordination,
+version preservation and the write itself. §9 had kept serialized writes "unless a future measured
+platform requirement proves it necessary"; this is that measurement.
+
+**Criteria:** the person's typing never waits on the disk (VISION: responsiveness); the document's
+state stays the main actor's (ARC-011); every save still writes exactly the text it was asked to;
+cost.
+
+| Option | Typing during a save | ARC-011 | Exact bytes | Cost |
+| --- | --- | --- | --- | --- |
+| **Async write from a snapshot taken at save (chosen)** | ✓ held only while bytes are encoded | ✓ background reads an immutable value | ✓ the text as the save began | small |
+| Autosave less often | ✗ still freezes, less often | ✓ | ✓ | none, and more work at risk |
+| A long-lived mirrored text for writers | ✓ | ✗ a second source of truth | ~ mirror can lag | large |
+| Do nothing | ✗ 0.1–0.4 s freeze per autosave | ✓ | ✓ | none |
+
+**Amended the same day.** Saving a moment after typing hung the app. The cause was not the
+background write: ending the typing group makes AppKit count the change in an activity queued on
+the main queue, and a save started in the same turn waited for it with the main thread held
+(probe 45999625665). A File command that ends a typing group now starts on the next turn.
+
+**Where it is worse.** A background write that arrives with no snapshot fails instead of reading
+the document; no path in AppKit was seen to do that, and the failure is a save error, not a wrong
+file. Encoding the bytes still happens on the main actor, which is linear in the document's size.
+
+## 2026-11-27 — File › Revert Document asks AppKit to revert; there is no Revert To submenu
+
+**Decision.** The File menu offers Revert Document…, which sends `revertDocumentToSaved:`. For an
+edited document AppKit asks whether to go back to the last saved version or browse older ones; for
+one with no unsaved changes it opens the Versions browser. The menu has no Revert To submenu.
+
+**Amended the same day.** Revert Document first opened the browser even after typing, because the
+open typing group was not yet a change AppKit knew of. Once File commands counted the typing first,
+AppKit offered Last Saved Version as well (tour 46000331975), which is what the submenu was for.
+
+**Why.** AppKit builds Revert To from items it tells apart by private menu-item tags, and every
+item sent without one opens the browser. The tour chose Last Saved Version and got the browser
+(tour 45979207044). The menu is SwiftUI's, so AppKit's own submenu is not there to borrow.
+
+**Criteria:** behaving as a Mac document does; preserving the person's work; relying only on
+documented API.
+
+| Option | Mac behaviour | Work preserved | Documented |
+| --- | --- | --- | --- |
+| **Revert Document…, the browser (chosen)** | ✓ Apple's documented route; the last saved version is on the right | ✓ the current text becomes a version | ✓ |
+| Revert To with guessed private tags | ✓ when the guess is right | ✓ | ✗ breaks silently |
+| Our own Last Saved Version, from text kept at each save | ~ one step quicker | ~ bypasses the version AppKit keeps of the current text | ✓, but a second revert path |
+| Do nothing (the submenu as it was) | ✗ the title lies | ✓ | ✓ |
+
+**Where it is worse.** Going back to the last save takes two steps, Revert Document… then Restore,
+not one.
+
+## 2026-11-27 — Off-main image resolution has the off-main budget
+
+**Decision.** `imageResolution` is budgeted at 100 ms p95, as the other off-main stages
+(`parseProjection`, `sourceHighlightCompute`) are, not at a 16 ms frame.
+
+**Why.** The tour's log reported `imageResolution` over budget at 19.7 ms on opening the showcase
+document. The stage reads, inspects and decodes image files in the parse task, off the main actor
+(REQ-090 requires that). No frame waits on it, so the frame budget described nothing the person
+sees, and it warned on every rich document opened on a slow machine.
+
+**Criteria:** a measurement must bound what it describes (CLAUDE.md §3); a warning in the log must
+mean something the person would notice; cost.
+
+| Option | Bound describes the stage | Warning means a problem | Cost |
+| --- | --- | --- | --- |
+| **100 ms, the off-main allowance (chosen)** | ✓ the parse task's whole result waits on it | ✓ | none |
+| Keep 16 ms | ✗ a frame, for work no frame waits on | ✗ every rich open on a slow Mac | none |
+| Remove the metric | ✗ unbounded work then goes unmeasured | — | loses the decode cost's only number |
+| Move decoding lazily onto display | ✗ puts decode work on the main actor, which REQ-090 forbids | — | large |
+
+**Where it is worse.** A decode slower than a frame but under 100 ms no longer warns. The person
+sees it only as an image arriving that much after the text, which the 100 ms covers.
+
+## 2026-11-27 — Unsaved typing is edited before AppKit counts it; undo groups end outside AppKit's activities
+
+**Decision.** A document is edited when AppKit says so, or while a typing undo group holds edits.
+The typing group is ended at the entry of Save and Save As. Close and load drop it without ending
+it. ENGINEERING §10 states both rules.
+
+**Why.** The tour found two defects with one cause.
+
+- Typing stays in one open undo group, and AppKit counts a change only when a group closes.
+  After a sentence typed since the last save, the document read as clean, and another app's write
+  was adopted over the sentence.
+- Closing a window after typing ended that group inside NSDocument's close activity. The
+  resulting change-count update waited on the activity itself, and the app hung for good. A
+  sample of the hung process showed the cycle.
+
+**Criteria:** preservation of the person's work above all (VISION's first objective); behaving as
+a Mac document does (Edited, the close prompt, undo to the saved point); cost.
+
+| Option | Work preserved | Mac document behaviour | Cost |
+| --- | --- | --- | --- |
+| **Open typing group counts as edited; end it only outside activities (chosen)** | ✓ | ✓ undo to the saved point still clears Edited | small |
+| Mark edited by revision: any revision but the file's | ✓ | ✗ undo back to the saved text stays Edited | small |
+| Group typing by event, as AppKit does by default | ✓ | ✓ | the undo history's shape changes for every edit route |
+| Do nothing | ✗ data loss, a hang | — | none |
+
+**Where it is worse.** Autosave does not end the typing group, which a deadlock risk inside its
+activity rules out. After an autosave during typing, Edited can linger until the group closes.
+That costs nothing but a prompt.
+
 ## 2026-11-27 — Return and Backspace are structural commands, planned from the source
 
 **Decision.** In WYSIWYG, Return is `insertParagraphBreak` and Backspace over a block boundary is

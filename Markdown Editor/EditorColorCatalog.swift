@@ -58,14 +58,27 @@ enum EditorColorCatalog {
         case .primaryText: return .labelColor
         // Measured: 5.74:1 Light, 6.77:1 Dark — clears the 4.5:1 text bound with margin while
         // staying clearly de-emphasised against full `labelColor` at 14.94:1. `secondaryLabelColor`
-        // was 3.95:1 in Light. Alpha over the window background, so appearance still resolves it.
-        case .secondaryText: return NSColor.labelColor.withAlphaComponent(0.6)
+        // was 3.95:1 in Light. Alpha over the window background.
+        //
+        // Dynamic, resolved per appearance: `labelColor.withAlphaComponent(_:)` is a fixed colour
+        // resolved in the appearance current when it is made, so a page built in Light kept
+        // near-black quote text after a switch to Dark (tour 45974231615, section L).
+        case .secondaryText:
+            return NSColor(name: "EditorSecondaryText") { _ in NSColor.labelColor.withAlphaComponent(0.6) }
         case .link: return .linkColor
         case .codeBackground: return .quaternaryLabelColor
         // Measured: 3.26:1 Light, 5.81:1 Dark — clears the 3:1 component bound in both.
         case .structuralRule: return .systemGray
         case .accent: return .controlAccentColor
         }
+    }
+
+    /// A role at an alpha, still resolved per appearance. `withAlphaComponent(_:)` on a system
+    /// colour returns a fixed colour for the appearance current when it is made, so a page built
+    /// in Light kept its Light colours after a switch to Dark.
+    static func color(_ role: EditorColorRole, alpha: CGFloat) -> NSColor {
+        let base = color(role)
+        return NSColor(name: nil) { _ in base.withAlphaComponent(alpha) }
     }
 
     /// The surface a role is drawn on. Text is measured against the window background; the code

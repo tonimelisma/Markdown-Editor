@@ -241,6 +241,12 @@ struct EditorHostView: NSViewRepresentable {
             wysiwygText = wText
             observeScrollBounds(sScroll)
             observeScrollBounds(wScroll)
+            findBarObservations = [sScroll, wScroll].map { scroll in
+                scroll.observe(\.isFindBarVisible, options: [.new]) { [weak self] scroll, change in
+                    guard change.newValue == false else { return }
+                    MainActor.assumeIsolated { self?.returnKeyboardAfterFind(in: scroll) }
+                }
+            }
             placementController.attach(actions: document)
             placementController.updateDocumentURL(document.fileURL)
 
@@ -357,6 +363,22 @@ struct EditorHostView: NSViewRepresentable {
                     if shouldFocus { wysiwygText.window?.makeFirstResponder(wysiwygText) }
                 }
             }
+        }
+
+        private var findBarObservations: [NSKeyValueObservation] = []
+
+        /// When the find bar closes with the keyboard nowhere, the page it searched takes it back,
+        /// as TextEdit's does. Closed with Done, it left no first responder: the next ⌘↓ and
+        /// Return went nowhere, and Add Image replaced the word Find had selected (tour
+        /// 45974231615).
+        func returnKeyboardAfterFind(in scroll: NSScrollView) {
+            guard let window = scroll.window, let page = scroll.documentView as? NSTextView,
+                  !scroll.isHidden else { return }
+            let responder = window.firstResponder
+            let inFindBar = (responder as? NSView).map { $0.isDescendant(of: scroll) && !$0.isDescendant(of: page) } ?? false
+            let hidden = (responder as? NSView)?.isHiddenOrHasHiddenAncestor ?? false
+            guard responder == nil || responder === window || inFindBar || hidden else { return }
+            window.makeFirstResponder(page)
         }
 
         func refreshVisibleEditor() {

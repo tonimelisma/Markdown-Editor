@@ -63,6 +63,49 @@ struct ContrastConformanceTests {
         _ = previous
     }
 
+    // Verifies: REQ-139/141 — a colour made in one appearance is the right colour in another, as a
+    // page built in Light and shown after a switch to Dark has. Quote text was made with a fixed
+    // alpha copy of the label colour and stayed near-black in Dark (tour 45974231615). The other
+    // tests make each colour inside the appearance they measure, so they could not see it.
+    @Test func everyColorRoleFollowsAnAppearanceChangeMadeAfterIt() {
+        for role in EditorColorRole.allCases {
+            var madeInLight: NSColor?
+            withAppearance(.aqua) { madeInLight = EditorColorCatalog.color(role) }
+            var lightInDark: NSColor?
+            var madeInDark: NSColor?
+            withAppearance(.darkAqua) {
+                lightInDark = madeInLight?.usingColorSpace(.sRGB)
+                madeInDark = EditorColorCatalog.color(role).usingColorSpace(.sRGB)
+            }
+            guard let lightInDark, let madeInDark else {
+                Issue.record("\(role) did not resolve")
+                continue
+            }
+            let apart = abs(lightInDark.redComponent - madeInDark.redComponent)
+                + abs(lightInDark.greenComponent - madeInDark.greenComponent)
+                + abs(lightInDark.blueComponent - madeInDark.blueComponent)
+                + abs(lightInDark.alphaComponent - madeInDark.alphaComponent)
+            #expect(apart < 0.01, "\(role) made in Light resolves in Dark to \(lightInDark), not \(madeInDark)")
+
+            // The same for a role drawn at an alpha, as the code background is.
+            var fillInLight: NSColor?
+            withAppearance(.aqua) { fillInLight = EditorColorCatalog.color(role, alpha: 0.5) }
+            var fillLightInDark: NSColor?
+            var fillMadeInDark: NSColor?
+            withAppearance(.darkAqua) {
+                fillLightInDark = fillInLight?.usingColorSpace(.sRGB)
+                fillMadeInDark = EditorColorCatalog.color(role, alpha: 0.5).usingColorSpace(.sRGB)
+            }
+            if let a = fillLightInDark, let b = fillMadeInDark {
+                let fillApart = abs(a.redComponent - b.redComponent) + abs(a.greenComponent - b.greenComponent)
+                    + abs(a.blueComponent - b.blueComponent) + abs(a.alphaComponent - b.alphaComponent)
+                #expect(fillApart < 0.01, "\(role) at an alpha, made in Light, resolves in Dark to \(a), not \(b)")
+            } else {
+                Issue.record("\(role) at an alpha did not resolve")
+            }
+        }
+    }
+
     // Verifies: REQ-139 — every declared colour role meets its WCAG 2.1 bound against the surface
     // it is drawn on, in Light and Dark. The enumeration is `EditorColorRole.allCases`, so a new
     // role fails this test until its contrast is measured: the requirement quantifies over "any

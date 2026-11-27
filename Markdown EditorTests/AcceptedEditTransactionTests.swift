@@ -595,8 +595,11 @@ struct EditorStateOwnershipTests {
         for symbol in displaced {
             #expect(!haystack.contains(symbol), "displaced route still present: \(symbol)")
         }
-        // INC-06: no application-modal formatting dialog.
-        #expect(!haystack.contains("runModal("))
+        // INC-06: no application-modal dialog. Every runModal is the window-modal form, a sheet
+        // on a document's window, which is how Print runs its panel.
+        let modal = haystack.components(separatedBy: "runModal(").count - 1
+        let sheets = haystack.components(separatedBy: "runModal(for: ").count - 1
+        #expect(modal == sheets, "an application-modal runModal is present")
         // COR-20: the ordinary edit path may not reach a whole-document replacement.
         #expect(!haystack.contains("applyRecoveryPresentation(built, to: textView)\n                appliedSnapshotID"))
     }
@@ -787,11 +790,82 @@ struct NativeUpdateOriginTests {
 @MainActor
 struct DocumentSerializedIOTests {
 
-    // Verifies: REQ-015; ARC-001/011 — default serialized NSDocument I/O opt-ins remain false.
-    @Test func concurrentReadAndAsyncWriteDefaultsRemainDisabled() {
+    // Verifies: REQ-015; ARC-001/011 — reads stay serialized on the main thread; every kind of
+    // save writes asynchronously, so an autosave no longer holds the main thread for the write
+    // (133–413 ms per autosave on a runner, probes 45979646302 and 45980923448).
+    @Test func readsAreSerializedAndSavesWriteAsynchronously() {
         #expect(MarkdownDocument.canConcurrentlyReadDocuments(ofType: "net.daringfireball.markdown") == false)
         let doc = MarkdownDocument()
-        #expect(doc.canAsynchronouslyWrite(to: URL(fileURLWithPath: "/tmp/x.md"), ofType: "net.daringfireball.markdown", for: .saveOperation) == false)
+        let url = URL(fileURLWithPath: "/tmp/x.md")
+        for operation: NSDocument.SaveOperationType in [.saveOperation, .saveAsOperation, .saveToOperation, .autosaveInPlaceOperation, .autosaveElsewhereOperation] {
+            #expect(doc.canAsynchronouslyWrite(to: url, ofType: "net.daringfireball.markdown", for: operation), "\(operation.rawValue) writes on the main thread")
+        }
+    }
+
+    // Verifies: REQ-015/018; ARC-011 — the background write reads only the bytes taken on the
+    // main actor when the save began: typing that lands after that point is not in them, and the
+    // background thread never reads the document's text.
+    @Test func aBackgroundWriteWritesTheTextAsTheSaveBegan() async throws {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("Saved words.\n")
+        doc.prepareWriteSnapshot()
+        doc.installTextForTesting("Saved words. Typed during the write.\n")
+        // As AppKit's writer thread holds it: the document is not Sendable.
+        nonisolated(unsafe) let writer = doc
+        let written = try await Task.detached { try writer.data(ofType: "net.daringfireball.markdown") }.value
+        #expect(String(decoding: written, as: UTF8.self) == "Saved words.\n")
+    }
+
+    // Verifies: REQ-015/018 — the bytes a save took outlive its completion. AppKit completes a
+    // save stopped for the conflict alert, then writes on Save Anyway without a second
+    // `save(to:…)`; the snapshot was cleared at the completion, so that write found none and
+    // the person was told the file could not be saved (tour 45982296007).
+    @Test func aWriteAfterTheSaveCompletedStillHasTheSavedBytes() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("conflict.md")
+        try Data("On disk.\n".utf8).write(to: url)
+        let doc: MarkdownDocument = try await withCheckedThrowingContinuation { continuation in
+            NSDocumentController.shared.openDocument(withContentsOf: url, display: false) { document, _, error in
+                if let document = document as? MarkdownDocument {
+                    continuation.resume(returning: document)
+                } else {
+                    continuation.resume(throwing: error ?? CocoaError(.fileReadUnknown))
+                }
+            }
+        }
+        defer { doc.close() }
+        let edit = SourceMutation(
+            expectedRevision: doc.sourceVersion,
+            range: NSRange(location: 0, length: 0),
+            expectedText: "",
+            replacement: "Saved. ",
+            selectionBefore: SourceSelection(utf16: NSRange(location: 0, length: 0)),
+            selectionAfter: SourceSelection(utf16: NSRange(location: 7, length: 0)),
+            actionName: "Typing",
+            grouping: .discrete
+        )
+        guard case .committed = commitSourceMutationForTest(doc, edit) else {
+            Issue.record("the edit was refused")
+            return
+        }
+        let outcome = await doc.saveDocument()
+        #expect(outcome == .succeeded, "the save ended \(outcome)")
+        nonisolated(unsafe) let writer = doc
+        let written = try await Task.detached { try writer.data(ofType: "net.daringfireball.markdown") }.value
+        #expect(String(decoding: written, as: UTF8.self) == "Saved. On disk.\n")
+    }
+
+    // Verifies: REQ-015; ARC-011 — a background write with no snapshot refuses rather than read
+    // main-actor state from another thread.
+    @Test func aBackgroundWriteWithoutASnapshotRefuses() async {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("Words.\n")
+        nonisolated(unsafe) let writer = doc
+        await #expect(throws: CocoaError.self) {
+            _ = try await Task.detached { try writer.data(ofType: "net.daringfireball.markdown") }.value
+        }
     }
 
     // Verifies: REQ-015; ARC-001/011 — actual NSDocumentController open/save uses canonical I/O.

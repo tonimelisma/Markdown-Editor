@@ -6,6 +6,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import Synchronization
 import UniformTypeIdentifiers
 
 /// NSDocument owner of canonical Markdown source, revision, URL generation, and undo.
@@ -48,6 +49,42 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     let canonicalAssetReferenceUpdates = PassthroughSubject<CanonicalAssetReferences, Never>()
     /// Mirror of `fileURL` for SwiftUI observation (NSDocument's property is not @Published).
     @Published private(set) var publishedFileURL: URL?
+
+    /// The bytes the latest save writes, taken on the main actor as it began. AppKit writes them on
+    /// a background thread (`canAsynchronouslyWrite`), which reads only this value, never the
+    /// document. Writing on the main thread stalled it for the whole of every autosave: 133–413 ms
+    /// on a GitHub runner, while the person typed (probes 45979646302, 45980923448).
+    ///
+    /// It is kept until the next save replaces it, not cleared when a save completes: AppKit
+    /// completes a save stopped for the conflict alert, then writes on Save Anyway without coming
+    /// through `save(to:…)` again (tour 45982296007). The alert is a sheet, so the text cannot
+    /// change between the two.
+    nonisolated private let writeSnapshot = Mutex<Data?>(nil)
+
+    /// The document an untitled duplicate was made from. Its images are `assets/` paths
+    /// relative to that document's folder, so the copy resolves them there until it is saved:
+    /// without it, File › Duplicate showed every image as missing (tour 45979207044).
+    private(set) var duplicateOrigin: URL?
+    /// Set across `duplicate()`, so the copy AppKit creates and shows inside it can adopt it.
+    private static var duplicatingFrom: URL?
+
+    /// For a past version AppKit opens in the Versions browser, the document being browsed. The
+    /// version's file is in the version store, where none of its `assets/` images are: the
+    /// browser showed the older version's images as missing (tour 45980851977).
+    private(set) var versionOf: URL?
+    /// The document whose versions the browser shows; versions it opens for viewing adopt it.
+    private static var browsingVersionsOf: URL?
+
+    /// The location relative image paths resolve against.
+    var imageBaseURL: URL? {
+        Self.imageBase(versionOf: versionOf, fileURL: publishedFileURL, duplicateOrigin: duplicateOrigin)
+    }
+
+    /// A past version resolves beside the document it is a version of, a file beside itself, and
+    /// an untitled duplicate beside the original it was copied from.
+    nonisolated static func imageBase(versionOf: URL?, fileURL: URL?, duplicateOrigin: URL?) -> URL? {
+        versionOf ?? fileURL ?? duplicateOrigin
+    }
 
     let selectionRestorations = PassthroughSubject<SourceSelection, Never>()
 
@@ -98,6 +135,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// AppKit records marked-text changes on the document undo manager. The document owns the
     /// short-lived group opened for that native transient route.
     private var markedTextGroupOpen = false
+    /// Whether the open typing group holds an edit. AppKit counts a change only when a group
+    /// closes, and nothing closes a typing group while typing goes on.
+    private var typingGroupHasChanges = false
     private var undoCheckpointObserver: NSObjectProtocol?
 
     /// Notification center seam for observer lifecycle tests.
@@ -129,7 +169,48 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         return autosavesInPlaceForProduction
     }
 
+    override func duplicate() throws -> NSDocument {
+        Self.duplicatingFrom = imageBaseURL
+        defer { Self.duplicatingFrom = nil }
+        let copy = try super.duplicate()
+        // AppKit makes and shows the copy inside super; one shown later adopts the origin here.
+        if let copy = copy as? MarkdownDocument, copy.fileURL == nil, copy.duplicateOrigin == nil {
+            copy.duplicateOrigin = imageBaseURL
+        }
+        return copy
+    }
+
+    // Entering the Versions browser runs AppKit's blocking animation inside this call, and a
+    // duplicate's "keep this new document?" dialog runs modally inside the close. The main thread
+    // is animating or waiting for the person, while the main actor's queued jobs wait: each was
+    // reported as a main-actor stall of 1–3 s (probe 45982413288's samples). They run as app-modal
+    // sessions, as alerts do (`AppModalSession`).
+    override func browseVersions(_ sender: Any?) {
+        Self.browsingVersionsOf = imageBaseURL
+        AppModalSession.shared.around { super.browseVersions(sender) }
+    }
+
+    override func revertToSaved(_ sender: Any?) {
+        // With autosave in place this opens the Versions browser (DECISIONS, 2026-11-27).
+        Self.browsingVersionsOf = imageBaseURL
+        AppModalSession.shared.around { super.revertToSaved(sender) }
+    }
+
+    override func canClose(
+        withDelegate delegate: Any, shouldClose shouldCloseSelector: Selector?, contextInfo: UnsafeMutableRawPointer?
+    ) {
+        AppModalSession.shared.around {
+            super.canClose(withDelegate: delegate, shouldClose: shouldCloseSelector, contextInfo: contextInfo)
+        }
+    }
+
     override func makeWindowControllers() {
+        if fileURL == nil, duplicateOrigin == nil, let origin = Self.duplicatingFrom {
+            duplicateOrigin = origin
+        }
+        if isInViewingMode, versionOf == nil, let origin = Self.browsingVersionsOf {
+            versionOf = origin
+        }
         undoManager?.groupsByEvent = false
         attachUndoCheckpointObserverIfNeeded()
         trace?.record(route: .documentOpened, .documentOpened(utf16Count: (text as NSString).length))
@@ -206,6 +287,27 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         MarkdownAppDelegate.isRunningUnitTests ? "MarkdownDocumentWindow.tests" : "MarkdownDocumentWindow"
     }
 
+    /// Runs the print panel as a sheet on the document's window, outside NSDocument's activity
+    /// queue. NSDocument prints inside an activity that ends only when the print operation reports
+    /// back; after Cancel on a fresh Mac, with the print system still waiting on macOS's
+    /// local-network prompt, it never did, and every later save of every document waited for it
+    /// forever (tours 45990628438, 45996638231; probe 45992765502). Printing reads the
+    /// presentation and changes nothing, so it needs none of that serialization.
+    override func printDocument(_ sender: Any?) {
+        guard let window = windowForSheet else { NSSound.beep(); return }
+        let operation: NSPrintOperation
+        do {
+            operation = try printOperation(withSettings: [:])
+        } catch {
+            presentError(error, modalFor: window, delegate: nil, didPresent: nil, contextInfo: nil)
+            return
+        }
+        operation.showsPrintPanel = true
+        operation.showsProgressPanel = true
+        operation.jobTitle = displayName
+        operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+    }
+
     override func printOperation(
         withSettings printSettings: [NSPrintInfo.AttributeKey: Any]
     ) throws -> NSPrintOperation {
@@ -224,6 +326,52 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         return NSPrintOperation(view: currentPrintView, printInfo: printInfo)
     }
 
+    // A save is a boundary in the history: the typing before it is counted first, so the saved
+    // point follows it and the group closing later cannot mark the saved document edited. It is
+    // done here, before AppKit starts its save activity, never inside it: ending a group makes
+    // NSDocument update its change count with synchronous waiting, which inside its own activity
+    // waits forever (the close hang, probe 45972423807).
+    //
+    // When that ends a group, the save starts on the next turn of the main queue. AppKit counts
+    // the ended group in an activity of the document's own, queued on the main queue; a save
+    // started in the same turn waited synchronously for it, holding the main thread it needed,
+    // and the app hung (probe 45999625665: ⌘S a moment after typing hung; the same save after
+    // the Edit menu had ended the group did not).
+    override func save(withDelegate delegate: Any?, didSave didSaveSelector: Selector?, contextInfo: UnsafeMutableRawPointer?) {
+        guard closeTypingGroupIfNeeded() else {
+            super.save(withDelegate: delegate, didSave: didSaveSelector, contextInfo: contextInfo)
+            return
+        }
+        nonisolated(unsafe) let delegate = delegate
+        nonisolated(unsafe) let contextInfo = contextInfo
+        DispatchQueue.main.async { [self] in
+            MainActor.assumeIsolated {
+                self.saveAfterTypingCounted(withDelegate: delegate, didSave: didSaveSelector, contextInfo: contextInfo)
+            }
+        }
+    }
+
+    private func saveAfterTypingCounted(
+        withDelegate delegate: Any?, didSave didSaveSelector: Selector?, contextInfo: UnsafeMutableRawPointer?
+    ) {
+        super.save(withDelegate: delegate, didSave: didSaveSelector, contextInfo: contextInfo)
+    }
+
+    override func saveAs(_ sender: Any?) {
+        guard closeTypingGroupIfNeeded() else {
+            super.saveAs(sender)
+            return
+        }
+        nonisolated(unsafe) let sender = sender
+        DispatchQueue.main.async { [self] in
+            MainActor.assumeIsolated { self.saveAsAfterTypingCounted(sender) }
+        }
+    }
+
+    private func saveAsAfterTypingCounted(_ sender: Any?) {
+        super.saveAs(sender)
+    }
+
     // REQ-100: the one override AppKit routes every save through — manual Save, Save As,
     // autosave-in-place, and the delegate-based DocumentSaveBridge path this app's own
     // operation-scoped saveDocument() uses — verified empirically (both real call paths land
@@ -239,6 +387,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         let utf16Count = (text as NSString).length
         trace?.record(route: .documentSaveStarted, .documentSaveStarted(utf16Count: utf16Count))
         let start = DispatchTime.now().uptimeNanoseconds
+        prepareWriteSnapshot()
         super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
             self?.recordSaveOutcome(error: error, utf16Count: utf16Count, startUptimeNanos: start)
             completionHandler(error)
@@ -255,7 +404,11 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     func recordSaveOutcome(error: Error?, utf16Count: Int, startUptimeNanos: UInt64) {
         saveOutcomeSequence &+= 1
         if error != nil {
-            trace?.record(route: .documentSaveFailed, .documentSaveFailed(reason: .saveFailedOrCancelled))
+            // With another app's write unresolved, AppKit stops the save to ask the person: the
+            // app's designed outcome (REQ-146), recorded as such rather than as an error.
+            trace?.record(route: .documentSaveFailed, .documentSaveFailed(
+                reason: hasUnresolvedExternalChange ? .awaitingConflictDecision : .saveFailedOrCancelled
+            ))
         } else {
             // REQ-146: writing the buffer to the file is the user resolving the disagreement in
             // favour of their own edits, which is the only way it resolves without a revert.
@@ -300,6 +453,13 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// // product ranks preservation above convenience, and choosing a winner without being asked
     /// // discards someone's work.
     @Published private(set) var hasUnresolvedExternalChange = false
+
+    /// Edited also while a typing group holds edits AppKit has not counted yet. After a sentence
+    /// typed since the last save the document read as clean: an external write was adopted over
+    /// the sentence (tour 45968755636), and closing the window would not have asked to save.
+    override var isDocumentEdited: Bool {
+        super.isDocumentEdited || typingGroupHasChanges
+    }
 
     /// Applies an external file event. The single route; the `NSFilePresenter` callbacks below
     /// are one line each so the behaviour lives here, where it is directly testable.
@@ -425,15 +585,43 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         }
     }
 
-    // REQ-015/018; ARC-011: AppKit's default serialized write — snapshot canonical text on main.
+    /// Takes the bytes a save is about to write, on the main actor, before AppKit starts it.
+    func prepareWriteSnapshot() {
+        let bytes = MarkdownDocumentData(text: text).data()
+        writeSnapshot.withLock { $0 = bytes }
+    }
+
+    // REQ-015/018; ARC-011: a save writes on a background thread, from bytes taken on the main
+    // actor as it began; the document's state stays the main actor's (DECISIONS, 2026-11-27).
+    nonisolated override func canAsynchronouslyWrite(
+        to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType
+    ) -> Bool {
+        true
+    }
+
+    // The background write begins here: with the bytes already taken, the main thread AppKit holds
+    // is released before the version of the old file is preserved and the new one written.
+    nonisolated override func writeSafely(
+        to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType
+    ) throws {
+        if !Thread.isMainThread, writeSnapshot.withLock({ $0 != nil }) { unblockUserInteraction() }
+        try super.writeSafely(to: url, ofType: typeName, for: saveOperation)
+    }
+
+    // REQ-015/018; ARC-011: off the main thread, only the snapshot `save(to:…)` took is read, and
+    // the main thread, which AppKit holds until then, is released at once. On the main thread a
+    // write that did not come through that save (a duplicate's) reads the document itself.
     nonisolated override func data(ofType typeName: String) throws -> Data {
-        precondition(
-            Thread.isMainThread,
-            "ARC-011 counterexample: NSDocument data(ofType:) invoked off-main while canAsynchronouslyWrite remains false"
-        )
-        return MainActor.assumeIsolated {
-            MarkdownDocumentData(text: self.text).data()
+        if Thread.isMainThread {
+            // The snapshot may be an earlier save's; on the main thread the text itself is current.
+            return MainActor.assumeIsolated {
+                MarkdownDocumentData(text: self.text).data()
+            }
         }
+        // A background write with no snapshot would have to read main-actor state.
+        guard let snapshot = writeSnapshot.withLock({ $0 }) else { throw CocoaError(.fileWriteUnknown) }
+        unblockUserInteraction()
+        return snapshot
     }
 
     // REQ-019: advance location generation on URL change (except expected untitled Save).
@@ -719,7 +907,16 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     override func close() {
         trace?.record(route: .documentClosed, .documentClosed(sourceRevision: sourceVersion))
-        detachUndoCheckpointObserver()
+        // A closing document's open typing group is dropped, never ended. Ending it posts the
+        // did-close-group notification, NSDocument then updates its change count with synchronous
+        // waiting, and that waits on the close activity already in progress: closing a window
+        // after typing hung the app for good (agent-drive probe 45972423807, sampled). The
+        // history goes with the document, so there is nothing left to count.
+        if let token = undoCheckpointObserver {
+            notificationCenterForTesting.removeObserver(token)
+            undoCheckpointObserver = nil
+        }
+        abandonTypingGroup()
         // COR-89's memos retain one source, tree and snapshot. Correctness does not depend on
         // clearing them — a new key supersedes the entry — but a closed document should not leave
         // megabytes resident.
@@ -766,7 +963,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// // `fileURL` is not reliable either — NSDocument's own opening machinery may already
     /// // have set it before `read(from:ofType:)` runs even on the very first load.
     private func installLoadedText(_ value: String) {
-        closeTypingGroupIfNeeded()
+        // Dropped, not ended: a revert runs inside NSDocument's activity, where ending a group
+        // waits on that activity forever. The history is cleared just below.
+        abandonTypingGroup()
         let isInitialLoad = !hasCompletedInitialLoad && !isRevertingViaAppKit
         hasCompletedInitialLoad = true
         text = value
@@ -889,18 +1088,32 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             undoManager.registerUndo(withTarget: self) { [patch] doc in
                 _ = doc.applyHistoryPatch(patch, direction: .undo)
             }
+            typingGroupHasChanges = true
             trace?.record(route: .undoRegistered, .undoRegistered(actionNameLength: patch.actionName.count, groupingTyping: true)
             )
         }
     }
 
-    private func closeTypingGroupIfNeeded() {
-        guard typingGroupOpen else { return }
+    /// Forgets the open typing group without ending it, for a document whose history is about
+    /// to be cleared or dropped. Ending it posts the did-close-group notification, and NSDocument
+    /// answers that by updating its change count with synchronous waiting; inside one of its own
+    /// activities (close, revert) that wait never ends.
+    private func abandonTypingGroup() {
         typingGroupOpen = false
+        typingGroupHasChanges = false
+    }
+
+    /// Ends the open typing group; returns whether it ended one.
+    @discardableResult
+    private func closeTypingGroupIfNeeded() -> Bool {
+        guard typingGroupOpen else { return false }
+        typingGroupOpen = false
+        typingGroupHasChanges = false
         // Only end a group we actually opened — AppKit/checkpoint churn can leave
         // groupingLevel 0 while our flag was still set.
-        guard let undoManager, undoManager.groupingLevel > 0 else { return }
+        guard let undoManager, undoManager.groupingLevel > 0 else { return false }
         undoManager.endUndoGrouping()
+        return true
     }
 
     private func beginMarkedTextGroupIfNeeded() {
@@ -920,6 +1133,19 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         closeTypingGroupIfNeeded()
     }
 
+    /// Ends the typing group before a File command (Save, Print, Duplicate, Revert, Close…) starts
+    /// NSDocument's activity for it. Ending the group counts the typing as a change, and for an
+    /// untitled document AppKit autosaves at its first change. Left open, the group was ended by
+    /// the undo checkpoint observer at whatever moment the main queue next ran: once inside the
+    /// print panel, where that autosave began and never finished, and every later save of the
+    /// document waited for it forever (probes 45994331916, 45992765502).
+    /// Returns whether it ended a group: the command then waits a turn of the main queue, for
+    /// the activity in which AppKit counts it (see `save(withDelegate:didSave:contextInfo:)`).
+    @discardableResult
+    func prepareForDocumentCommand() -> Bool {
+        closeTypingGroupIfNeeded()
+    }
+
     /// Close an open typing group before undo/redo so UndoManager is never left nested.
     private func attachUndoCheckpointObserverIfNeeded() {
         guard undoCheckpointObserver == nil, let undoManager else { return }
@@ -929,7 +1155,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.closeTypingGroupIfNeeded()
+                _ = self?.closeTypingGroupIfNeeded()
             }
         }
     }

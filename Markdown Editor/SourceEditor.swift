@@ -448,6 +448,18 @@ enum SourceEditor {
 // REQ-060/064: narrow AppKit adapter — intercept image paste/drop; otherwise native.
 @MainActor
 final class MarkdownSourceTextView: NSTextView {
+    /// A hidden editor declines the keyboard; see `MarkdownWYSIWYGTextView.acceptsFirstResponder`.
+    override var acceptsFirstResponder: Bool {
+        !isHiddenOrHasHiddenAncestor && super.acceptsFirstResponder
+    }
+
+    /// `makeFirstResponder(_:)` does not ask `acceptsFirstResponder`; refusing here is what keeps
+    /// a hidden editor from the keyboard.
+    override func becomeFirstResponder() -> Bool {
+        guard !isHiddenOrHasHiddenAncestor else { return false }
+        return super.becomeFirstResponder()
+    }
+
     weak var sourceCoordinator: SourceEditor.Coordinator?
     weak var placementController: ImagePlacementController?
     weak var documentActions: DocumentActionInterface?

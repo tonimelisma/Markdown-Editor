@@ -3,6 +3,7 @@
 //  Markdown EditorTests
 //
 
+import Synchronization
 import Testing
 import Foundation
 import AppKit
@@ -297,6 +298,67 @@ struct EditorIntegrationTests {
 
     // MARK: - D10 observer teardown
 
+    // Verifies: REQ-100 — loading over a document with typing in an open undo group (a revert)
+    // ends no undo group, as closing must not, and leaves none open behind it.
+    @Test func reloadingAfterTypingEndsNoUndoGroupAndLeavesNoneOpen() throws {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("x")
+        _ = commitSourceMutationForTest(doc,
+            SourceMutation(
+                expectedRevision: 0,
+                range: NSRange(location: 1, length: 0),
+                expectedText: "",
+                replacement: "y",
+                selectionBefore: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+                selectionAfter: SourceSelection(utf16: NSRange(location: 2, length: 0)),
+                actionName: "Typing",
+                grouping: .typing
+            )
+        )
+        let undoManager = doc.undoManager
+        #expect((undoManager?.groupingLevel ?? 0) > 0, "the typing left no open group, so this proves nothing")
+        let groupsClosed = Mutex(0)
+        let token = NotificationCenter.default.addObserver(
+            forName: .NSUndoManagerDidCloseUndoGroup, object: undoManager, queue: nil
+        ) { _ in groupsClosed.withLock { $0 += 1 } }
+        defer { NotificationCenter.default.removeObserver(token) }
+        try doc.read(from: Data("from disk\n".utf8), ofType: MarkdownContentType.identifier)
+        let closed = groupsClosed.withLock { $0 }
+        #expect(closed == 0, "loading ended \(closed) undo group(s)")
+        #expect(undoManager?.groupingLevel == 0, "an undo group was left open: level \(undoManager?.groupingLevel ?? -1)")
+        #expect(doc.text == "from disk\n")
+    }
+
+    // Verifies: REQ-005/REQ-015 — closing a document with typing in an open undo group ends no
+    // undo group. Ending it at close made NSDocument update its change count with synchronous
+    // waiting inside its own close activity, and the app hung for good (probe 45972423807).
+    @Test func closingADocumentAfterTypingEndsNoUndoGroup() {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("x")
+        _ = commitSourceMutationForTest(doc,
+            SourceMutation(
+                expectedRevision: 0,
+                range: NSRange(location: 1, length: 0),
+                expectedText: "",
+                replacement: "y",
+                selectionBefore: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+                selectionAfter: SourceSelection(utf16: NSRange(location: 2, length: 0)),
+                actionName: "Typing",
+                grouping: .typing
+            )
+        )
+        let undoManager = doc.undoManager
+        #expect((undoManager?.groupingLevel ?? 0) > 0, "the typing left no open group, so this proves nothing")
+        let groupsClosed = Mutex(0)
+        let token = NotificationCenter.default.addObserver(
+            forName: .NSUndoManagerDidCloseUndoGroup, object: undoManager, queue: nil
+        ) { _ in groupsClosed.withLock { $0 += 1 } }
+        defer { NotificationCenter.default.removeObserver(token) }
+        doc.close()
+        let closed = groupsClosed.withLock { $0 }
+        #expect(closed == 0, "closing ended \(closed) undo group(s)")
+    }
+
     // Verifies: REQ-015 — undo checkpoint observer is removed deterministically.
     @Test func undoCheckpointObserverRemovedOnDetach() {
         let doc = MarkdownDocument()
@@ -503,6 +565,33 @@ struct EditorIntegrationTests {
             return false
         }
         #expect(discrete)
+    }
+
+    // Verifies: REQ-014/017 — a File command ends the typing group before AppKit starts its
+    // activity, so the typing is counted then, not by the checkpoint observer at whatever
+    // moment the main queue next runs. Ended inside the print panel, the untitled document's
+    // first-change autosave began and never finished, and every later save waited for it
+    // (probes 45994331916, 45992765502).
+    @Test func aFileCommandCountsTheTypingBeforeItStarts() {
+        let doc = MarkdownDocument()
+        doc.installTextForTesting("hi\n")
+        let typed = SourceMutation(
+            expectedRevision: 0,
+            range: NSRange(location: 0, length: 0),
+            expectedText: "",
+            replacement: "a",
+            selectionBefore: SourceSelection(utf16: NSRange(location: 0, length: 0)),
+            selectionAfter: SourceSelection(utf16: NSRange(location: 1, length: 0)),
+            actionName: "Typing",
+            grouping: .typing
+        )
+        _ = commitSourceMutationForTest(doc, typed)
+        #expect(doc.undoManager?.groupingLevel == 1, "typing left no group open to end")
+        #expect(doc.prepareForDocumentCommand(), "it reported no group ended, so the command would not wait its turn")
+        #expect(doc.undoManager?.groupingLevel == 0, "the typing group is still open as the command starts")
+        #expect(!doc.prepareForDocumentCommand(), "with no group open, a command need not wait")
+        #expect(doc.isDocumentEdited)
+        #expect(doc.undoManager?.canUndo == true)
     }
 
     // Verifies: REQ-016 — closeTypingUndoGroup ends an open typing group.
