@@ -3,17 +3,12 @@
 # the Sparkle archive with the app's EdDSA update key, and publishes v<x.y.z> with a disk image and
 # Sparkle's feed. Installed copies find it within the hour. Nothing here needs the owner's Mac.
 #
-# It runs only after CI passed on a push to main, so no pull request ever reaches these secrets,
-# which live in the environment "release" and are all set in GitHub's web settings:
-#   SPARKLE_SEED                 required: a random password of 32+ characters; the update key is
-#                                derived from it (Scripts/sparkle-key.sh). Changing it breaks
-#                                updates for every installed copy, so it is set once and kept.
-#   CERTIFICATE_P12, CERTIFICATE_PASSWORD
-#                                optional: a signing identity (.p12, base64). Without it the app
-#                                is signed ad hoc; adding one later does not break updates.
-#   NOTARY_KEY_P8, NOTARY_KEY_ID, NOTARY_ISSUER_ID
-#                                optional, with a Developer ID: notarize and staple.
-# Until SPARKLE_SEED exists, the job says so and publishes nothing.
+# It runs only after CI passed on a push to main, so no pull request ever reaches its one secret,
+# SPARKLE_SEED, in the environment "release", set in GitHub's web settings: a random password of
+# 32+ characters the update key is derived from (Scripts/sparkle-key.sh). Changing it breaks updates
+# for every installed copy, so it is set once and kept. Until it exists, the job says so and
+# publishes nothing. The app is signed ad hoc and is not notarized: there is no Apple Developer
+# account (docs/DECISIONS.md, 2026-11-27).
 name: Release
 
 on:
@@ -72,60 +67,10 @@ jobs:
           "$prefix/bin/openssl" version
           echo "openssl=$prefix/bin/openssl" >> "$GITHUB_OUTPUT"
 
-      - name: The signing identity, if one is set, in a keychain of this run's own
-        id: keychain
-        if: steps.ready.outputs.ready == 'true'
-        env:
-          P12: ${{ secrets.CERTIFICATE_P12 }}
-          P12_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
-        run: |
-          set -euo pipefail
-          if [ -z "$P12" ]; then
-            echo "No CERTIFICATE_P12: the app is signed ad hoc."
-            exit 0
-          fi
-          kc="$RUNNER_TEMP/release.keychain-db"
-          pw="$(uuidgen)"
-          echo "::add-mask::$pw"
-          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security create-keychain -p "$pw" "$kc"
-          security set-keychain-settings -lut 3600 "$kc"
-          security unlock-keychain -p "$pw" "$kc"
-          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$P12_PASSWORD" -T /usr/bin/codesign
-          rm -f "$RUNNER_TEMP/cert.p12"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pw" "$kc" > /dev/null
-          # Apple's intermediates, so a chain to Apple's root can be built. An intermediate grants
-          # nothing by itself: signing needs the identity's private key.
-          for cer in AppleWWDRCAG3.cer DeveloperIDG2CA.cer; do
-            curl -sSfL -o "$RUNNER_TEMP/$cer" "https://www.apple.com/certificateauthority/$cer"
-            security import "$RUNNER_TEMP/$cer" -k "$kc" > /dev/null || true
-            rm -f "$RUNNER_TEMP/$cer"
-          done
-          security list-keychains -d user -s "$kc" "$HOME/Library/Keychains/login.keychain-db"
-          identities="$(security find-identity -v -p codesigning "$kc")"
-          identity="$(printf '%s\n' "$identities" | awk '/"Developer ID Application/ { print $2; exit }')"
-          [ -n "$identity" ] || identity="$(printf '%s\n' "$identities" | awk '/"Apple Development/ { print $2; exit }')"
-          [ -n "$identity" ] || { echo "::error::CERTIFICATE_P12 holds no Developer ID Application or Apple Development identity"; exit 1; }
-          echo "identity=$identity" >> "$GITHUB_OUTPUT"
-          echo "keychain=$kc" >> "$GITHUB_OUTPUT"
-
       - name: Build, sign and publish (Scripts/release.sh)
         if: steps.ready.outputs.ready == 'true'
         env:
           SPARKLE_SEED: ${{ secrets.SPARKLE_SEED }}
           OPENSSL: ${{ steps.tools.outputs.openssl }}
-          SIGNING_IDENTITY: ${{ steps.keychain.outputs.identity }}
-          SIGNING_KEYCHAIN: ${{ steps.keychain.outputs.keychain }}
-          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
-          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
           GH_TOKEN: ${{ github.token }}
         run: Scripts/release.sh
-
-      - name: Remove the keychain
-        if: always()
-        env:
-          KEYCHAIN: ${{ steps.keychain.outputs.keychain }}
-        run: |
-          [ -z "$KEYCHAIN" ] || security delete-keychain "$KEYCHAIN" || true
-          rm -f "$RUNNER_TEMP/cert.p12"

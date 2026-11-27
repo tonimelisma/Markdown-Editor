@@ -83,7 +83,7 @@ owner sets in a browser. A script or procedure that needs the Mac is a defect.
 ## 2c. Merging ships
 
 `.github/workflows/release.yml` runs after CI passes on a push to `main`. When the app changed, it
-builds Release, signs it, notarizes it when the identity is a Developer ID, and publishes
+builds Release, signs it ad hoc (there is no Apple Developer account, so no notarization), and publishes
 `v<x.y.z>`: the disk image, the Sparkle archive and `appcast.xml`. Installed copies update within
 the hour.
 
