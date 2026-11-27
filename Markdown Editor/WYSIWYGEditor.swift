@@ -360,6 +360,10 @@ enum WYSIWYGEditor {
             }
         }
 
+        /// True while a keystroke refused against a page that was behind is replayed, so it is
+        /// replayed at most once.
+        private var replayingKeystroke = false
+
         func textView(
             _ textView: NSTextView,
             shouldChangeTextIn affectedCharRange: NSRange,
@@ -394,8 +398,28 @@ enum WYSIWYGEditor {
                 // recovery is: storage drift must never be silent. So is the refused keystroke:
                 // typing that vanished without a trace took an agent-drive run to see
                 // (45943545906).
+                let viewWasBehind = appliedSnapshotID != session.presentation?.id
                 document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.stalePresentation)))
                 applyProjectionIfNeeded(reason: .reapplyIfDrift)
+                // A key pressed just after a formatting command arrives before SwiftUI has put
+                // the command's snapshot on the page: Return after Heading 1 was lost this way
+                // (tour 45964220766). The page is current now, so the key is replayed once at
+                // the caret the command left, which is where the person was typing.
+                if viewWasBehind, !replayingKeystroke,
+                   let current = session.presentation, appliedSnapshotID == current.id,
+                   let caret = session.wysiwygModeState.selection,
+                   caret.range.revision == current.projectionRevision {
+                    let target: NSRange
+                    if replacement.isEmpty, caret.range.utf16.length == 0 {
+                        guard caret.range.utf16.location > 0 else { return false }
+                        target = (current.renderedString as NSString).rangeOfComposedCharacterSequence(at: caret.range.utf16.location - 1)
+                    } else {
+                        target = caret.range.utf16
+                    }
+                    replayingKeystroke = true
+                    defer { replayingKeystroke = false }
+                    return self.textView(textView, shouldChangeTextIn: target, replacementString: replacement)
+                }
                 return false
             }
             let appliedPresentation = presentation
@@ -467,6 +491,14 @@ enum WYSIWYGEditor {
                 return (.insertText(replacement), owner)
             }
             let caret = owner.range.utf16
+            // Typing at a collapsed caret AppKit shows elsewhere than the owner's: the person
+            // types where they see the caret, so the keystroke goes there. Refused, it was lost
+            // (tour 45964220766, `ambiguousSelection` mid-word).
+            if !replacement.isEmpty, caret.length == 0, affected.length == 0,
+               owner.range.revision == native.revision {
+                let there = ProjectionSelection(utf16: affected, revision: native.revision, affinity: owner.affinity)
+                return (isParagraphBreak(replacement) ? .insertParagraphBreak : .insertText(replacement), there)
+            }
             guard replacement.isEmpty,
                   caret.length == 0,
                   affected.length > 0,

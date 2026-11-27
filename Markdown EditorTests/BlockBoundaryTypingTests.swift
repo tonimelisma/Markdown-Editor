@@ -191,6 +191,21 @@ struct BlockBoundaryTypingTests {
         await typist.expect("# Weekly notes\n\nBody")
     }
 
+    // Verifies: REQ-152 — a key pressed right after a formatting command, before the page shows
+    // the command's result, is typed, not lost. The tour typed "Weekly notes", ⌘1 and Return, and
+    // Return was refused as stale because SwiftUI had not yet applied Heading 1 to the page.
+    @Test func aKeyPressedRightAfterACommandIsTyped() async throws {
+        let typist = try await Typist("")
+        try typist.click()
+        await typist.type("Weekly notes")
+        let heading = await typist.perform(.heading(1))
+        #expect(heading == .accepted, "Heading 1 was \(heading)")
+        // No view update between the command and the key, as when the key comes first.
+        await typist.pressReturn()
+        await typist.type("Body")
+        await typist.expect("# Weekly notes\n\nBody")
+    }
+
     // Verifies: REQ-152 — Return before a paragraph's text opens an empty paragraph above it,
     // and the caret stays with the paragraph, as in TextEdit.
     @Test func returnBeforeAParagraphOpensOneAboveIt() async throws {
