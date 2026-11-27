@@ -346,9 +346,15 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         nonisolated(unsafe) let contextInfo = contextInfo
         DispatchQueue.main.async { [self] in
             MainActor.assumeIsolated {
-                super.save(withDelegate: delegate, didSave: didSaveSelector, contextInfo: contextInfo)
+                self.saveAfterTypingCounted(withDelegate: delegate, didSave: didSaveSelector, contextInfo: contextInfo)
             }
         }
+    }
+
+    private func saveAfterTypingCounted(
+        withDelegate delegate: Any?, didSave didSaveSelector: Selector?, contextInfo: UnsafeMutableRawPointer?
+    ) {
+        super.save(withDelegate: delegate, didSave: didSaveSelector, contextInfo: contextInfo)
     }
 
     override func saveAs(_ sender: Any?) {
@@ -358,8 +364,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         }
         nonisolated(unsafe) let sender = sender
         DispatchQueue.main.async { [self] in
-            MainActor.assumeIsolated { super.saveAs(sender) }
+            MainActor.assumeIsolated { self.saveAsAfterTypingCounted(sender) }
         }
+    }
+
+    private func saveAsAfterTypingCounted(_ sender: Any?) {
+        super.saveAs(sender)
     }
 
     // REQ-100: the one override AppKit routes every save through — manual Save, Save As,
