@@ -44,7 +44,7 @@ struct PresentationRecoveryTests {
         // shown from both sides: a whole array is too long to read either side in a message.
         let atomsA = ProjectionAtom.coalescingIdentity(a.atoms), atomsB = ProjectionAtom.coalescingIdentity(b.atoms)
         if atomsA != atomsB {
-            let index = zip(atomsA, atomsB).firstIndex { $0 != $1 } ?? min(atomsA.count, atomsB.count)
+            let index = zip(atomsA, atomsB).enumerated().first { $0.element.0 != $0.element.1 }?.offset ?? min(atomsA.count, atomsB.count)
             let left = atomsA.indices.contains(index) ? String(describing: atomsA[index]) : "none"
             let right = atomsB.indices.contains(index) ? String(describing: atomsB[index]) : "none"
             out.append("atoms (\(atomsA.count) vs \(atomsB.count)) first differ at \(index): \(left) ≠ \(right)")
