@@ -376,7 +376,8 @@ struct EditorHostView: NSViewRepresentable {
                   !scroll.isHidden else { return }
             let responder = window.firstResponder
             let inFindBar = (responder as? NSView).map { $0.isDescendant(of: scroll) && !$0.isDescendant(of: page) } ?? false
-            guard responder == nil || responder === window || inFindBar else { return }
+            let hidden = (responder as? NSView)?.isHiddenOrHasHiddenAncestor ?? false
+            guard responder == nil || responder === window || inFindBar || hidden else { return }
             window.makeFirstResponder(page)
         }
 

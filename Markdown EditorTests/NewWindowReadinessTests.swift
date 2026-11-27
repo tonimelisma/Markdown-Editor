@@ -85,6 +85,17 @@ struct NewWindowReadinessTests {
         #expect(h.window.firstResponder === page, "the keyboard is with \(String(describing: h.window.firstResponder))")
     }
 
+    // Verifies: REQ-086 — the editor of the mode not shown never takes the keyboard. AppKit gave
+    // it to the hidden Source page when the find bar closed, and keys went to a caret nobody saw.
+    @Test func theHiddenEditorDeclinesTheKeyboard() throws {
+        let h = Self.makeHost(text: "Milk and Eggs\n")
+        defer { h.session.detach() }
+        let hidden = try #require(h.host.sourceText)
+        try #require(hidden.isHiddenOrHasHiddenAncestor, "the Source page is not hidden in WYSIWYG mode")
+        #expect(!h.window.makeFirstResponder(hidden), "the hidden Source page took the keyboard")
+        #expect(h.window.firstResponder !== hidden)
+    }
+
     // Verifies: REQ-058/REQ-032 — the first command in a new window applies at the caret the page
     // shows. The caret had never moved, so no selection callback reported it, and the command was
     // refused.

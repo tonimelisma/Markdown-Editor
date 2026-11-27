@@ -716,6 +716,14 @@ enum WYSIWYGEditor {
 
 @MainActor
 final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
+    /// The editor of the other mode is hidden, never gone, and AppKit will hand the keyboard to a
+    /// hidden view: after the find bar closed, the hidden Source page took it, the next ⌘↓ moved
+    /// a caret nobody could see, and Add Image replaced the word Find had selected (tour
+    /// 45976057730). A hidden editor declines the keyboard.
+    override var acceptsFirstResponder: Bool {
+        !isHiddenOrHasHiddenAncestor && super.acceptsFirstResponder
+    }
+
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
         if accepted { adapterCoordinator?.adoptNativeSelectionIfUnowned() }
