@@ -69,6 +69,7 @@ struct Markdown_EditorApp: App {
 
 @MainActor
 final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
+    private var menuTrackingObserver: NSObjectProtocol?
     private let documentController: MarkdownDocumentController
 
     /// Document File-menu selectors that must remain reachable via First Responder.
@@ -256,6 +257,14 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = documentController
+        // REQ-021: SwiftUI rebuilds the File menu from the app's commands after launch, which
+        // drops an Open Recent added once: the File menu had none (tour 45976057730). It is put
+        // back whenever a menu starts tracking, before the File menu shows.
+        menuTrackingObserver = NotificationCenter.default.addObserver(
+            forName: NSMenu.didBeginTrackingNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.ensureOpenRecentMenuItem() }
+        }
         guard !Self.isRunningUnitTests else { return }
         ensureOpenRecentMenuItem()
         // REQ-033: never in a smoke or benchmark run (AppUpdater.isEnabledForThisProcess).
