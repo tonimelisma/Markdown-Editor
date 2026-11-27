@@ -47,7 +47,8 @@ Two more workflows serve CI without gating anything:
 - **`agent-drive.yml`**: started by hand (`run_workflow`, `ref` the branch to build). It opens a
   fixture (`inputs.fixture`, from `Scripts/Fixtures`) and runs `inputs.scenario`, one step per
   line in the language at the top of `Scripts/agent-drive.swift` (`clickat`, `type`, `key cmd+s`,
-  `press Bold`, `menu View "Source Mode"`, `shot`, `tree`, `value`, `file`, `expect-…`). An empty
+  `press Bold`, `menu View "Source Mode"`, `menu-items Format`, `shot`, `tree`, `value`, `file`,
+  `expect-…`). An empty
   scenario runs `Scripts/agent-drive-default.txt`. The artifact `agent-drive-<run id>` holds
   `transcript.txt`, one numbered line per step, and that step's screenshots, accessibility trees,
   values and saved file, plus the app's diagnostic log. `clickat` takes a point of the window in

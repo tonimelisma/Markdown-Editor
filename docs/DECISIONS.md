@@ -26,11 +26,23 @@ or component test that fails for it.
 - System Events' `keystroke` did nothing either.
 - The display is 1×, so a screenshot pixel is a window point.
 
-**It found a bug on its first run.** After the Source press, the screenshot and the tree both
-showed Source text under a selected WYSIWYG segment. `EditorToolbarController` followed
-`session.mode` from a `$mode` sink, and `@Published` delivers in `willSet`. Every mode change,
-from a click, the View menu or its shortcut, therefore left the previous mode selected. No test
-looked at the control after a change. `theModeControlFollowsTheMode` now does.
+**What it found, in its first morning.** None of these was caught by the test suite, which drives
+the editor through harnesses that set the selection before every keystroke and call the planners
+directly:
+
+| Found | Run | Cause | Now proved by |
+| --- | --- | --- | --- |
+| Pressing Source switched the editor and left WYSIWYG selected | probe 45942394078 | the toolbar followed `session.mode` from a `$mode` sink, which runs in `willSet` | `theModeControlFollowsTheMode` |
+| Typing in WYSIWYG stopped after one character | 45943545906, 45944610103 | a recovery dropped the selection, and the keystroke guard compared AppKit's affinity with the owner's | `aRecoveryKeepsTheCaret`; `typingAtTheStartOfAHeadingContinues` |
+| A keystroke at the start of a heading or other block was recovered as a COR-71 fault | 45943545906 | the parser-free transition shifts runs and blocks by projection position only | `aKeystrokeAtAnyOffsetIsReconciledWithoutRecovery` |
+| Every keystroke before a soft line break was recovered | 45945859891; CI on 2625fc4 | cmark gives breaks no source position, and their insertion fell back to 0 | `lineBreaksInsertWhereTheirLineEnds`; `typingAWordIntoTheRichFixtureIsReconciledWithoutRecovery` |
+| The View and Format menus were disabled and every formatting shortcut did nothing | 45944610103, 45945859891 | document windows are AppKit windows, and the menu's `@FocusedValue` never reached them; once it did, `.disabled` was decided once, before the first parse | `theMenuReachesTheKeyDocumentWindowsCommands`; `theMenuFollowsAvailabilityAfterItWasBuilt` |
+| Sixteen of nineteen approved shortcuts were on no menu item | reading the code the menu failure led to | hand-written buttons, three of which called the function that attaches shortcuts | the menu is built from one table through one function |
+| After an edit in WYSIWYG, Source mode drew every paragraph in the heading's font | 45945859891 | a whole-text replacement kept the highlighter's line cache | `everyLineIsRestyledAfterTheTextChangedElsewhere` |
+
+Run 45949097608 is the first in which every expectation of the default scenario held: a word
+typed at the start of a heading, toolbar bold, cmd-I, cmd-S, Source from the toolbar, WYSIWYG
+from the View menu, Source from ctrl-cmd-2.
 
 **Criteria** (VISION's evaluation section): automated verification must stay trustworthy, which is
 what §4 protects; correctness under mode switching, because the bug above lived where AppKit,
