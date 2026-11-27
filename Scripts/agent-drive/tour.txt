@@ -323,12 +323,19 @@ wait 1
 no-dialogs
 expect-no-window bad.md
 
-# --- R. Quit and relaunch: the documents come back.
+# --- R. Quit and relaunch. With macOS's default "close windows when quitting", a plain launch opens
+# an untitled document, as TextEdit does; the note comes back through File › Open Recent.
 quit
 expect-not-running
 launch
 wait 3
 windows
+expect-window Untitled
 shot r-relaunched
+menu File "Open Recent" notes.md
+wait 2
+windows
 expect-window notes.md
+expect-value "Markdown WYSIWYG" "Unsaved words."
+shot r-reopened
 expect-no-faults

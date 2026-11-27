@@ -4,6 +4,24 @@
 //
 
 import Foundation
+import Synchronization
+
+/// Whether AppKit is running an app-modal session on the main thread: an alert waiting for the
+/// person, such as "could not be opened". The main thread is responsive, but the main actor's
+/// queued jobs wait until the session ends, so a watchdog probe cannot land. The bad-file alert in
+/// tour 45974231615 was recorded as two main-actor stalls, while the app was only asking.
+nonisolated enum AppModalSession {
+    private static let depth = Mutex(0)
+
+    static var isActive: Bool { depth.withLock { $0 > 0 } }
+
+    /// Runs `body`, an app-modal presentation that returns when the person dismisses it.
+    static func around<T>(_ body: () throws -> T) rethrows -> T {
+        depth.withLock { $0 += 1 }
+        defer { depth.withLock { $0 = max(0, $0 - 1) } }
+        return try body()
+    }
+}
 
 /// One-shot completion flag observable from another isolation domain.
 ///
@@ -72,7 +90,14 @@ final class MainActorWatchdog {
     /// // detached probe task would have to acquire the main actor before it could start timing —
     /// // so it would queue behind the very stall it exists to report, and could only ever
     /// // describe a stall that had already ended.
-    nonisolated static func probeOnce(thresholdMillis: UInt64, report: Report) async {
+    ///
+    /// No stall is reported while an app-modal session is waiting for the person
+    /// (`AppModalSession`): the main thread is serving the alert, not blocked.
+    nonisolated static func probeOnce(
+        thresholdMillis: UInt64,
+        isModalSessionActive: @Sendable () -> Bool = { AppModalSession.isActive },
+        report: Report
+    ) async {
         let started = DispatchTime.now().uptimeNanoseconds
         let flag = WatchdogProbeFlag()
         let probe = Task<Void, Never> { @MainActor in
@@ -80,6 +105,10 @@ final class MainActorWatchdog {
         }
         try? await Task.sleep(for: .milliseconds(Int(thresholdMillis)))
         guard await flag.isCompleted == false else { return }
+        guard !isModalSessionActive() else {
+            await probe.value
+            return
+        }
         // Still stalled: report now rather than only on recovery.
         report(thresholdMillis)
         await probe.value

@@ -313,6 +313,30 @@ struct ReconciliationInvariantTests {
         #expect((values.last ?? 0) >= 100)
     }
 
+    // Verifies: REQ-096 — while an app-modal alert waits for the person, the main actor's jobs
+    // wait too, and that is not a stall. The bad-file alert in tour 45974231615 was recorded as
+    // two. The blocker stands in for the modal session; the session is declared to the probe.
+    @Test func watchdogReportsNoStallDuringAnAppModalSession() async {
+        let reported = ReportBox()
+        let scenario = Task.detached {
+            let occupied = Mutex(false)
+            let blocker = Task { @MainActor in
+                occupied.withLock { $0 = true }
+                occupyMainActor(seconds: 1)
+            }
+            while !occupied.withLock({ $0 }) {
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+            await MainActorWatchdog.probeOnce(thresholdMillis: 100, isModalSessionActive: { true }) { millis in
+                reported.append(millis)
+            }
+            await blocker.value
+        }
+        await scenario.value
+        let values = await reported.awaitingCount(1, timeoutSeconds: 0.5)
+        #expect(values.isEmpty, "a modal session was reported as a stall: \(values)")
+    }
+
     // Verifies: REQ-099 — "WYSIWYG went read-only and I don't know why" must have a log line,
     // but only the transition, not every mode-state mutation that leaves availability unchanged.
     @Test func availabilityChangedRecordsOnlyOnTransition() {

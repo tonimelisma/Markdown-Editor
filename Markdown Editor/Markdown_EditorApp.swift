@@ -553,4 +553,10 @@ final class MarkdownDocumentController: NSDocumentController {
         return super.documentClass(forType: typeName) ?? MarkdownDocument.self
     }
 
+    /// The app-modal alert for a document that could not be opened. It holds the main thread's
+    /// modal session until the person dismisses it, which the watchdog must not take for a stall.
+    override func presentError(_ error: Error) -> Bool {
+        AppModalSession.around { super.presentError(error) }
+    }
+
 }
