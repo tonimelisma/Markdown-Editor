@@ -139,7 +139,7 @@ struct WindowCitizenshipTests {
         let window = try #require(document.windowControllers.first?.window)
 
         #expect(window.tabbingIdentifier == "MarkdownDocument")
-        #expect(window.tabbingMode == .preferred)
+        #expect(window.tabbingMode == .automatic, "tabbing overrides the person's Prefer tabs setting")
         // A frame autosave name is what makes AppKit restore and cascade; an empty one means the
         // app is silently not participating.
         // Both signals asserted separately rather than with `||`: either one alone passing would

@@ -161,7 +161,7 @@ struct DocumentLifecycleContractTests {
 
         let window = try #require(document.windowControllers.first?.window)
         #expect(window.tabbingIdentifier == "MarkdownDocument")
-        #expect(window.tabbingMode == .preferred)
+        #expect(window.tabbingMode == .automatic, "tabbing overrides the person's Prefer tabs setting")
         #expect(window.windowController?.document === document)
         #expect(document.isInViewingMode == false)
 

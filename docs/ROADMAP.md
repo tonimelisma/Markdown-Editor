@@ -116,7 +116,10 @@ Still open:
   either editor would pay first. A second full layout was another 80 ms, and it is gone: the
   window is created at its final size (`theDocumentWindowIsCreatedAtItsFinalSize`). Building the
   Source editor lazily would save roughly another 10–20 ms, and REQ-052's persistent editors make
-  it a larger change than that is worth. Nothing measures this on a real Mac yet.
+  it a larger change than that is worth. A warm profile of three ⌘N opens (probe 46014139254)
+  found no hotspot left in the first layout, and removed the tab merge that was over half of
+  showing the window (`DECISIONS.md`, "New documents tab as the person's Prefer tabs setting
+  says"). Nothing measures this on a real Mac yet.
 - Mac runners that never come. Twice on 2026-11-26 a `main` job waited 15 minutes for an
   `xcode-27` runner and was dropped (CI 45860219913, Release 45866221874 attempt 1), while
   pull-request jobs started within a minute. Both ended after exactly 15 minutes with no runner and

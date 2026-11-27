@@ -284,8 +284,12 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             }
             controller.windowFrameAutosaveName = name
         }
+        // Tabs as the person set them in System Settings (Desktop & Dock, "Prefer tabs when
+        // opening documents"), as TextEdit does. `.preferred` forced every new document into a
+        // tab, against that setting, and merging into the tab group was over half of showing a
+        // window (probe 46014139254).
         window.tabbingIdentifier = "MarkdownDocument"
-        window.tabbingMode = .preferred
+        window.tabbingMode = .automatic
         addWindowController(controller)
     }
 
