@@ -307,6 +307,42 @@ struct PresentationRecoveryTests {
         #expect(recovered.isEmpty, "\(recovered.count) offsets recovered:\n\(recovered.joined(separator: "\n"))")
     }
 
+    // Verifies: REQ-109 — typing a word into a real document is reconciled without a recovery,
+    // whether each keystroke's parse lands before the next or the keystrokes outrun them.
+    // Agent-drive run 45945859891 typed "Agent " at the start of smoke-rich.md's heading and
+    // three of the keystrokes inside the word were recovered, which a plain heading did not show.
+    @Test(arguments: [true, false])
+    func typingAWordIntoTheRichFixtureIsReconciledWithoutRecovery(waitingForEachParse: Bool) async throws {
+        let fixture = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Scripts/Fixtures/smoke-rich.md")
+        let source = try String(contentsOf: fixture, encoding: .utf8)
+        let trace = InMemoryEditorTrace()
+        let harness = try PerformanceBoundaryTests.EditorHarness(source: source, trace: trace)
+        await awaitReconciliations(trace, revision: harness.document.sourceVersion, count: 1)
+        harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
+
+        var disagreements: [String] = []
+        for (offset, character) in "Agent ".enumerated() {
+            let before = recoveries(trace).count
+            harness.typeCharacter(String(character), at: NSRange(location: offset, length: 0))
+            guard let provisional = harness.session.presentation else { continue }
+            let revision = harness.document.sourceVersion
+            if waitingForEachParse {
+                await awaitReconciliations(trace, revision: revision, count: 1)
+                harness.coordinator.applyProjectionIfNeeded(reason: .newSnapshot)
+                if recoveries(trace).count > before {
+                    let differences = harness.session.presentation.map { Self.differences(provisional, $0) } ?? []
+                    disagreements.append("\(character.debugDescription) at \(offset): \(differences.map { $0.prefix(400) })")
+                }
+            }
+        }
+        await awaitReconciliations(trace, revision: harness.document.sourceVersion, count: 1)
+
+        #expect(harness.document.text.hasPrefix("# Agent Typography proof"), "typed \(harness.document.text.prefix(30).debugDescription)")
+        #expect(recoveries(trace).isEmpty, "\(recoveries(trace).count) keystrokes recovered: \(disagreements)")
+    }
+
     // Verifies: REQ-109 — typing at the start of a heading goes on being accepted, keystroke after
     // keystroke, as the authoritative parse of each lands between them. Agent-drive run
     // 45943545906 clicked into the app on a runner, typed "Agent " before "Typography proof",

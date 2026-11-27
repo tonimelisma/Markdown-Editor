@@ -383,8 +383,13 @@ final class EditorSession: ObservableObject {
     }
 
     /// // REQ-094; ARC-015: mode state records real editor events, never reconciliation.
+    /// Every change to mode state, published or not: the menu bar's availability reads the
+    /// selection, which lives in unpublished mode state (`KeyWindowCommands`).
+    let commandStateChanges = PassthroughSubject<Void, Never>()
+
     private func noteModeStateMutation() {
         modeStateMutationCount &+= 1
+        commandStateChanges.send()
         if viewReconciliationDepth > 0 {
             reportReconciliationViolation(.liveStateCapture)
         }

@@ -20,7 +20,14 @@ final class KeyWindowCommands: ObservableObject {
     static let shared = KeyWindowCommands()
 
     @Published private(set) var controller: EditorCommandController?
+    /// The key window's enabled commands, recomputed after every change to its session's state.
+    /// A menu item's `.disabled` is decided when the menu's body is evaluated, and the body was
+    /// evaluated when the key window changed: at a window's set-up, before its first parse, when
+    /// formatting is unavailable. Cmd-I stayed refused after the document was ready (agent-drive
+    /// run 45945859891).
+    @Published private(set) var enabled: Set<EditorCommand> = []
     private var observers: [NSObjectProtocol] = []
+    private var stateSubscription: AnyCancellable?
 
     private init() {
         let center = NotificationCenter.default
@@ -40,7 +47,21 @@ final class KeyWindowCommands: ObservableObject {
 
     func refresh(keyWindow: NSWindow? = NSApp.keyWindow) {
         let next = Self.controller(of: keyWindow)
-        if next !== controller { controller = next }
+        if next !== controller {
+            controller = next
+            stateSubscription = next?.session.map { session in
+                session.objectWillChange.map { _ in () }
+                    .merge(with: session.commandStateChanges)
+                    .receive(on: RunLoop.main)
+                    .sink { [weak self] in MainActor.assumeIsolated { self?.recomputeEnabled() } }
+            }
+        }
+        recomputeEnabled()
+    }
+
+    func recomputeEnabled() {
+        let next = Set(EditorCommand.allCases.filter { controller?.availability(for: $0).isEnabled == true })
+        if next != enabled { enabled = next }
     }
 
     static func controller(of window: NSWindow?) -> EditorCommandController? {
@@ -131,7 +152,7 @@ struct EditorMenuCommands: Commands {
     }
 
     private func isEnabled(_ command: EditorCommand) -> Bool {
-        keyWindow.controller?.availability(for: command).isEnabled ?? false
+        keyWindow.enabled.contains(command)
     }
 
     @ViewBuilder

@@ -58,8 +58,43 @@ struct EditorMenuCommandTests {
         let registry = KeyWindowCommands.shared
         registry.refresh(keyWindow: window)
         #expect(registry.controller === commands, "the key document window's commands were not published")
-        #expect(registry.controller?.availability(for: .sourceMode).isEnabled == true)
+        #expect(registry.enabled.contains(.sourceMode))
         registry.refresh(keyWindow: nil)
         #expect(registry.controller == nil, "a window that is no longer key kept the menu bar")
+        #expect(registry.enabled.isEmpty)
+    }
+
+    // Verifies: REQ-058/108 — the menu's availability follows the key window's state after the
+    // menu was built. Formatting is unavailable in WYSIWYG before the first parse lands, and the
+    // menu decided `.disabled` once, at the window's set-up: cmd-I was refused for good
+    // (agent-drive run 45945859891). Leaving WYSIWYG for Source makes formatting available.
+    @Test func theMenuFollowsAvailabilityAfterItWasBuilt() async {
+        let document = MarkdownDocument()
+        document.installTextForTesting("Hello.\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        defer { session.detach() }
+        session.setMode(.wysiwyg)
+        session.presentation = nil
+        let commands = EditorCommandController()
+        commands.bind(document: document, session: session, actionRouter: EditorActionRouter(), window: nil)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 480),
+            styleMask: [.titled], backing: .buffered, defer: true
+        )
+        let toolbar = EditorToolbarController()
+        toolbar.commandController = commands
+        toolbar.install(on: window)
+        let registry = KeyWindowCommands.shared
+        registry.refresh(keyWindow: window)
+        defer { registry.refresh(keyWindow: nil) }
+        #expect(!registry.enabled.contains(.italic), "italic was available with no presentation in WYSIWYG")
+
+        session.setMode(.source)
+        for _ in 0..<50 where !registry.enabled.contains(.italic) {
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(registry.enabled.contains(.italic), "the menu kept italic disabled after it became available")
     }
 }
