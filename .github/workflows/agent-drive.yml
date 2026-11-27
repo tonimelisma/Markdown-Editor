@@ -64,7 +64,7 @@ jobs:
           xcodebuild -project "Markdown Editor.xcodeproj" -scheme "Markdown Editor" -configuration Debug \
             -derivedDataPath .build/check -destination 'platform=macOS' \
             "${verification_build_settings[@]}" build > out/build.log 2>&1 \
-            || { tail -n 60 out/build.log; exit 1; }
+            || { grep -A4 ': error:' out/build.log | head -n 60; tail -n 20 out/build.log; exit 1; }
           swiftc -O Scripts/agent-drive.swift -o .build/agent-drive
           swiftc -O Scripts/find-window-id.swift -o .build/find-window-id
       - name: Drive
