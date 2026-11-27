@@ -453,6 +453,13 @@ final class MarkdownSourceTextView: NSTextView {
         !isHiddenOrHasHiddenAncestor && super.acceptsFirstResponder
     }
 
+    /// `makeFirstResponder(_:)` does not ask `acceptsFirstResponder`; refusing here is what keeps
+    /// a hidden editor from the keyboard.
+    override func becomeFirstResponder() -> Bool {
+        guard !isHiddenOrHasHiddenAncestor else { return false }
+        return super.becomeFirstResponder()
+    }
+
     weak var sourceCoordinator: SourceEditor.Coordinator?
     weak var placementController: ImagePlacementController?
     weak var documentActions: DocumentActionInterface?

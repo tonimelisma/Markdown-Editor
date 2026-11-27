@@ -724,7 +724,10 @@ final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
         !isHiddenOrHasHiddenAncestor && super.acceptsFirstResponder
     }
 
+    /// `makeFirstResponder(_:)` does not ask `acceptsFirstResponder`; refusing here is what keeps
+    /// a hidden editor from the keyboard (CI 45977189648).
     override func becomeFirstResponder() -> Bool {
+        guard !isHiddenOrHasHiddenAncestor else { return false }
         let accepted = super.becomeFirstResponder()
         if accepted { adapterCoordinator?.adoptNativeSelectionIfUnowned() }
         return accepted
