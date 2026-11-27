@@ -6,8 +6,9 @@ it is the short list of things someone will otherwise re-litigate or accidentall
 ## 2026-11-27 — Saves write in the background, from bytes taken as the save begins
 
 **Decision.** `MarkdownDocument` returns true from `canAsynchronouslyWrite` for every save.
-`save(to:ofType:for:completionHandler:)` takes the bytes on the main actor before AppKit starts.
-On the background thread, `data(ofType:)` returns them and calls `unblockUserInteraction()`.
+`save(to:ofType:for:completionHandler:)` takes the bytes on the main actor before AppKit starts and
+keeps them until the next save. On the background thread, `writeSafely` calls
+`unblockUserInteraction()` and `data(ofType:)` returns the bytes.
 ENGINEERING §9 states the contract.
 
 **Why.** Two probes timed the tour's documents minute by minute. Every autosave was a save record of

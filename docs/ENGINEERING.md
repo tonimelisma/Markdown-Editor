@@ -438,11 +438,12 @@ Rules:
   opening only when the subclass opts into concurrent reads. The override asserts the main thread
   under the retained default and enters `MainActor.assumeIsolated` for the canonical load.
 - Saves write asynchronously (`canAsynchronouslyWrite`). `save(to:ofType:for:completionHandler:)`
-  takes the bytes to write on the main actor before AppKit starts, and clears them when the save
-  completes. On AppKit's background thread, `data(ofType:)` returns those bytes and releases the
-  main thread at once (`unblockUserInteraction`). It never reads the document there, and throws
-  if it has no snapshot. A write that does not come through that save, such as a duplicate's, runs
-  on the main thread and reads the document directly. Serialized writes held the main thread for
+  takes the bytes to write on the main actor before AppKit starts, and keeps them until the next
+  save replaces them: AppKit completes a save stopped for the conflict alert, then writes on Save
+  Anyway without a second `save(to:…)`. On AppKit's background thread, `writeSafely` releases the
+  main thread at once (`unblockUserInteraction`), and `data(ofType:)` returns those bytes. It never
+  reads the document there, and throws if it has no snapshot. On the main thread, `data(ofType:)`
+  reads the document itself, so a write there, such as a duplicate's, is never an earlier save's. Serialized writes held the main thread for
   every autosave, 133–413 ms on a runner, while the person typed (DECISIONS, 2026-11-27).
 - A failed executor assertion is an architecture counterexample, not permission to restore a
   long-lived mirrored source.

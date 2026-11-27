@@ -813,6 +813,47 @@ struct DocumentSerializedIOTests {
         #expect(String(decoding: written, as: UTF8.self) == "Saved words.\n")
     }
 
+    // Verifies: REQ-015/018 — the bytes a save took outlive its completion. AppKit completes a
+    // save stopped for the conflict alert, then writes on Save Anyway without a second
+    // `save(to:…)`; the snapshot was cleared at the completion, so that write found none and
+    // the person was told the file could not be saved (tour 45982296007).
+    @Test func aWriteAfterTheSaveCompletedStillHasTheSavedBytes() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("conflict.md")
+        try Data("On disk.\n".utf8).write(to: url)
+        let doc: MarkdownDocument = try await withCheckedThrowingContinuation { continuation in
+            NSDocumentController.shared.openDocument(withContentsOf: url, display: false) { document, _, error in
+                if let document = document as? MarkdownDocument {
+                    continuation.resume(returning: document)
+                } else {
+                    continuation.resume(throwing: error ?? CocoaError(.fileReadUnknown))
+                }
+            }
+        }
+        defer { doc.close() }
+        let edit = SourceMutation(
+            expectedRevision: doc.sourceVersion,
+            range: NSRange(location: 0, length: 0),
+            expectedText: "",
+            replacement: "Saved. ",
+            selectionBefore: SourceSelection(utf16: NSRange(location: 0, length: 0)),
+            selectionAfter: SourceSelection(utf16: NSRange(location: 7, length: 0)),
+            actionName: "Typing",
+            grouping: .discrete
+        )
+        guard case .committed = commitSourceMutationForTest(doc, edit) else {
+            Issue.record("the edit was refused")
+            return
+        }
+        let outcome = await doc.saveDocument()
+        #expect(outcome == .succeeded, "the save ended \(outcome)")
+        nonisolated(unsafe) let writer = doc
+        let written = try await Task.detached { try writer.data(ofType: "net.daringfireball.markdown") }.value
+        #expect(String(decoding: written, as: UTF8.self) == "Saved. On disk.\n")
+    }
+
     // Verifies: REQ-015; ARC-011 — a background write with no snapshot refuses rather than read
     // main-actor state from another thread.
     @Test func aBackgroundWriteWithoutASnapshotRefuses() async {

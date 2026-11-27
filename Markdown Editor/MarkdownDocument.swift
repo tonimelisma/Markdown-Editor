@@ -50,10 +50,15 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// Mirror of `fileURL` for SwiftUI observation (NSDocument's property is not @Published).
     @Published private(set) var publishedFileURL: URL?
 
-    /// The bytes the save in progress writes, taken on the main actor as it began. AppKit writes
-    /// them on a background thread (`canAsynchronouslyWrite`), which reads only this value, never
-    /// the document. Writing on the main thread stalled it for the whole of every autosave:
-    /// 133–413 ms on a GitHub runner, while the person typed (probes 45979646302, 45980923448).
+    /// The bytes the latest save writes, taken on the main actor as it began. AppKit writes them on
+    /// a background thread (`canAsynchronouslyWrite`), which reads only this value, never the
+    /// document. Writing on the main thread stalled it for the whole of every autosave: 133–413 ms
+    /// on a GitHub runner, while the person typed (probes 45979646302, 45980923448).
+    ///
+    /// It is kept until the next save replaces it, not cleared when a save completes: AppKit
+    /// completes a save stopped for the conflict alert, then writes on Save Anyway without coming
+    /// through `save(to:…)` again (tour 45982296007). The alert is a sheet, so the text cannot
+    /// change between the two.
     nonisolated private let writeSnapshot = Mutex<Data?>(nil)
 
     /// The document an untitled duplicate was made from. Its images are `assets/` paths
@@ -332,7 +337,6 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         let start = DispatchTime.now().uptimeNanoseconds
         prepareWriteSnapshot()
         super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
-            self?.writeSnapshot.withLock { $0 = nil }
             self?.recordSaveOutcome(error: error, utf16Count: utf16Count, startUptimeNanos: start)
             completionHandler(error)
         }
@@ -543,21 +547,29 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         true
     }
 
+    // The background write begins here: with the bytes already taken, the main thread AppKit holds
+    // is released before the version of the old file is preserved and the new one written.
+    nonisolated override func writeSafely(
+        to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType
+    ) throws {
+        if !Thread.isMainThread, writeSnapshot.withLock({ $0 != nil }) { unblockUserInteraction() }
+        try super.writeSafely(to: url, ofType: typeName, for: saveOperation)
+    }
+
     // REQ-015/018; ARC-011: off the main thread, only the snapshot `save(to:…)` took is read, and
     // the main thread, which AppKit holds until then, is released at once. On the main thread a
     // write that did not come through that save (a duplicate's) reads the document itself.
     nonisolated override func data(ofType typeName: String) throws -> Data {
-        if let snapshot = writeSnapshot.withLock({ $0 }) {
-            if !Thread.isMainThread { unblockUserInteraction() }
-            return snapshot
+        if Thread.isMainThread {
+            // The snapshot may be an earlier save's; on the main thread the text itself is current.
+            return MainActor.assumeIsolated {
+                MarkdownDocumentData(text: self.text).data()
+            }
         }
-        guard Thread.isMainThread else {
-            // A background write with no snapshot would have to read main-actor state.
-            throw CocoaError(.fileWriteUnknown)
-        }
-        return MainActor.assumeIsolated {
-            MarkdownDocumentData(text: self.text).data()
-        }
+        // A background write with no snapshot would have to read main-actor state.
+        guard let snapshot = writeSnapshot.withLock({ $0 }) else { throw CocoaError(.fileWriteUnknown) }
+        unblockUserInteraction()
+        return snapshot
     }
 
     // REQ-019: advance location generation on URL change (except expected untitled Save).
