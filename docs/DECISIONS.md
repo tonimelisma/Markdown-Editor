@@ -3,6 +3,31 @@
 Decisions with consequences. Newest first. This is not an archive of everything ever decided —
 it is the short list of things someone will otherwise re-litigate or accidentally undo.
 
+## 2026-11-27 — A document window's content stays SwiftUI
+
+**Decision.** The document window keeps its SwiftUI content (`ContentView` in an
+`NSHostingController`). Opening a window, 0.15–0.3 s warm and 0.6–0.9 s for a process's first on
+a CI runner, is not cut by rebuilding that content in AppKit.
+
+**Why.** Release profiles of window opening (probes 46014139254, 46018864413) put most of the cost
+in the window's first layout, spread over SwiftUI's view graph, the Swift runtime, CoreFoundation
+and AppKit layout, with no hotspot; the app's own code is 48 of 345 samples (the toolbar 40, both
+editors 8). SwiftUI is roughly a third of the rest. The tour's latency notes that remain come from
+its pace, several such operations a minute, while every section alone holds a p95 under 1 ms
+(probes 46023988152, 46028521303).
+
+**Criteria:** VISION's objective order (correct editing first, fast and light seventh); CLAUDE.md §1,
+SwiftUI-first with narrow AppKit adapters; cost and risk.
+
+| Option | Product direction | Expected gain | Risk |
+| --- | --- | --- | --- |
+| **Keep SwiftUI content (chosen)** | ✓ | none | none |
+| Rebuild the window's content in AppKit | ✗ reverses §1 | about a third of a window's opening, not the first window's first-use costs | every binding `ContentView` owns: sessions, sheets, alerts, toolbar |
+| Build the Source editor lazily | ✓ | 10–20 ms (2026-11-27, "The first window is laid out once") | REQ-052's persistent editors |
+
+**Where it is worse.** A window still takes a perceptible moment to open on a slow machine, and
+the tour keeps logging the minutes that open several.
+
 ## 2026-11-27 — A p95 is judged from twenty samples or more
 
 **Decision.** A performance summary is written once a metric has at least 20 samples; fewer
