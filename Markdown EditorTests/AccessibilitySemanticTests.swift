@@ -168,6 +168,21 @@ struct KeyboardCommandMatrixTests {
         )
     }
 
+    // Verifies: REQ-084 — the Edit menu offers Find, on ⌘F. A SwiftUI app's Edit menu has no
+    // Find items unless its commands ask for them, and this app's did not: ⌘F did nothing.
+    @Test func theEditMenuOffersFind() throws {
+        let menu = try #require(NSApp.mainMenu, "the test host has no menu bar")
+        func items(_ menu: NSMenu) -> [NSMenuItem] {
+            menu.items.flatMap { [$0] + ($0.submenu.map(items) ?? []) }
+        }
+        let all = items(menu)
+        try #require(all.contains { $0.title == "Undo" }, "the menu bar is not the app's: \(menu.items.map(\.title))")
+        let find = all.first {
+            $0.keyEquivalent == "f" && $0.keyEquivalentModifierMask.intersection(.deviceIndependentFlagsMask) == .command
+        }
+        #expect(find != nil, "no menu item takes ⌘F; the Edit menu offers \(all.map(\.title))")
+    }
+
     // Verifies: REQ-032 — no command's shortcut is one macOS or every Mac app already owns. Block
     // Quote was control-command-Q, which is the system's Lock Screen: an agent-drive tour
     // (45955987611) pressed it and locked the runner's screen, as it would have locked a user's.

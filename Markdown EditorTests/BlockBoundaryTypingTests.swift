@@ -298,6 +298,23 @@ struct BlockBoundaryTypingTests {
         #expect(typist.text == "Read the guide.", "the document behind the sheet reads \(typist.text.debugDescription)")
     }
 
+    // Verifies: REQ-086 — back from Source mode, the caret is where the person was writing there
+    // when the text changed in Source mode. It went to the start of the document, and the next
+    // word was typed into the first heading.
+    @Test func backFromSourceTheCaretIsWhereTheTypingWas() async throws {
+        let typist = try await Typist("Milk and Eggs")
+        let session = typist.harness.session
+        session.setMode(.source)
+        let end = SourceSelection(utf16: NSRange(location: 13, length: 0))
+        session.captureSelection(.source(end))
+        let outcome = session.perform(.insertText("!"), selection: .source(end), expectedSourceRevision: SourceRevision(value: typist.harness.document.sourceVersion))
+        try #require({ if case .accepted = outcome { return true }; return false }(), "typing in Source was \(outcome)")
+        session.setMode(.wysiwyg)
+        await typist.settle()
+        let caret = session.pendingSelectionRestoration?.projectionSelection ?? session.wysiwygModeState.selection
+        #expect(caret?.range.utf16 == NSRange(location: 14, length: 0), "the caret is at \(String(describing: caret))")
+    }
+
     // MARK: - Backspace
 
     // Verifies: REQ-153 — Delete inside a word deletes the character before the caret. AppKit

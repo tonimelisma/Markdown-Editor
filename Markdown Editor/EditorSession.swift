@@ -320,6 +320,19 @@ final class EditorSession: ObservableObject {
             }
             mode = acceptedMode
             traceModeToggle(toSource: acceptedMode == .source)
+            // REQ-086: WYSIWYG restores its own caret while the text is the one it was in. After
+            // edits in Source mode that caret belongs to no current page, and the caret went to
+            // the start of the document, where the next word was typed (probe 45969842167). It
+            // comes from Source mode's caret instead, which is where the person was writing.
+            if acceptedMode == .wysiwyg {
+                let ownCaretIsCurrent = presentation.map {
+                    $0.sourceRevision.value == document.sourceVersion
+                        && wysiwygModeState.selection?.range.revision.snapshotID == $0.id
+                } ?? false
+                if !ownCaretIsCurrent {
+                    requestSelectionRestoration(sourceModeState.selection)
+                }
+            }
             intent.recorder.finish(intent)
             return
         }

@@ -28,6 +28,10 @@ struct Markdown_EditorApp: App {
                 .disabled(!AppUpdater.isEnabledForThisProcess)
             }
             EditorMenuCommands()
+            // REQ-084: Find, Spelling and Grammar, Substitutions, Transformations and Speech, which
+            // a SwiftUI app's Edit menu has only when asked. Without them ⌘F did nothing in either
+            // editor, though both use the find bar (agent-drive probe 45969842167).
+            TextEditingCommands()
             CommandGroup(replacing: .newItem) {
                 Button("New Document") {
                     NSDocumentController.shared.newDocument(nil)
