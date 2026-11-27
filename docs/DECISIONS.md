@@ -229,8 +229,8 @@ awake, and it adds a second way to verify the same change.
   on one person's Apple account. latchkey settled the same for its sandbox Mac the same day. Only
   `Scripts/release.sh` signs with a configured identity, when one is set.
 - The repository gained a shared scheme. CI's fresh checkout has no autocreated scheme to rely on.
-- Not yet observed: a published release, and an installed copy updating itself. Both wait on the
-  owner's `SPARKLE_SEED` secret. Until then REQ-033 is `Active`, not `Done`.
+- Not yet observed: an installed copy updating itself. Until then REQ-033 is `Active`, not `Done`.
+
 ## 2026-08-30 — Mode scroll state is an offset from the top of the document (COR-93)
 
 **Decision.** `SourceModeState.scrollOffset` and `WYSIWYGModeState.scrollOffset` are offsets from
