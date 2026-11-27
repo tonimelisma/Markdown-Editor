@@ -263,7 +263,7 @@ wait 1
 no-dialogs
 expect-no-faults
 
-# --- O. A second document, closed without saving.
+# --- O. A second document closed without saving, Revert To, and Duplicate.
 key cmd+n
 wait 2
 windows
@@ -276,6 +276,34 @@ press "Delete"
 wait 1
 windows
 no-dialogs
+expect-window notes.md
+# Edits to the note, then File › Revert To › Last Saved Version takes them back.
+type " Discarded."
+wait 1
+expect-value "Markdown WYSIWYG" "Discarded."
+menu File "Revert To" "Last Saved Version"
+wait 2
+shot-screen o-revert-asks
+press "Revert"
+wait 2
+expect-no-value "Markdown WYSIWYG" "Discarded."
+expect-value "Markdown WYSIWYG" "Unsaved words."
+# File › Duplicate: an untitled copy of the note, edited, then closed without keeping it.
+menu File Duplicate
+wait 2
+windows
+expect-window "notes copy"
+expect-value "Markdown WYSIWYG" "Unsaved words."
+type "Copy edit."
+key cmd+w
+wait 2
+shot-screen o-copy-close-asks
+press "Delete"
+wait 1
+expect-no-window "notes copy"
+no-dialogs
+expect-file notes/notes.md "Unsaved words."
+expect-no-file notes/notes.md "Discarded."
 expect-no-faults
 
 # --- P. Opening an existing document: rich content, a task box, a table cell.

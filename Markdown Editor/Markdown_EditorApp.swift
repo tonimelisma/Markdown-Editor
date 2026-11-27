@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -45,26 +46,33 @@ struct Markdown_EditorApp: App {
                 .keyboardShortcut("o")
                 OpenRecentMenu(recents: RecentDocuments.shared)
             }
-            // REQ-014: restore standard document File actions removed with DocumentGroup. The
-            // group replaced also held Close: without it ⌘W did nothing (tour 45968755636).
+            // REQ-014: the File menu of a document that autosaves in place, as TextEdit's: Close,
+            // Save, Duplicate, Rename, Move To and Revert To, with Save As kept on its own key.
+            // The group replaced also held Close: without it ⌘W did nothing (tour 45968755636).
+            // Each item sends NSDocument's own action down the responder chain, so AppKit
+            // enables it only when the front document can do it.
             CommandGroup(replacing: .saveItem) {
-                Button("Close") {
-                    NSApp.sendAction(#selector(NSWindow.performClose(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("w")
-                Button("Save") {
-                    NSApp.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("s")
-                Button("Save As…") {
-                    NSApp.sendAction(#selector(NSDocument.saveAs(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("S")
-                Button("Revert to Saved") {
-                    NSApp.sendAction(#selector(NSDocument.revertToSaved(_:)), to: nil, from: nil)
+                Button("Close") { Self.send("performClose:") }
+                    .keyboardShortcut("w")
+                Button("Save") { Self.send("saveDocument:") }
+                    .keyboardShortcut("s")
+                Button("Duplicate") { Self.send("duplicateDocument:") }
+                    .keyboardShortcut("S")
+                Button("Save As…") { Self.send("saveDocumentAs:") }
+                    .keyboardShortcut("S", modifiers: [.command, .option])
+                Button("Rename…") { Self.send("renameDocument:") }
+                Button("Move To…") { Self.send("moveDocument:") }
+                Menu("Revert To") {
+                    Button("Last Saved Version") { Self.send("revertDocumentToSaved:") }
+                    Button("Browse All Versions…") { Self.send("browseDocumentVersions:") }
                 }
             }
         }
+    }
+
+    /// Sends a document action down the key window's responder chain, as a nib's menu item does.
+    private static func send(_ action: String) {
+        NSApp.sendAction(NSSelectorFromString(action), to: nil, from: nil)
     }
 }
 
@@ -76,7 +84,11 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
     static let requiredDocumentSelectors: [String] = [
         "saveDocument:",
         "saveDocumentAs:",
+        "duplicateDocument:",
+        "renameDocument:",
+        "moveDocument:",
         "revertDocumentToSaved:",
+        "browseDocumentVersions:",
     ]
 
     /// Every launch argument and environment variable this application reads.
