@@ -307,8 +307,10 @@ the ones to remember:
 supposed to work without my macbook." latchkey and Otos both export their certificate and update key
 from the Mac's keychain, and Otos repeats that yearly, so copying them was wrong here.
 
-- The EdDSA update key is derived on GitHub's runner from one environment secret, `SPARKLE_SEED`, a
-  random password the owner sets in GitHub's web settings (`Scripts/sparkle-key.sh`).
+- The EdDSA update key is derived on GitHub's runner from one secret, `SPARKLE_SEED`, a random
+  password (`Scripts/sparkle-key.sh`). It was first a GitHub environment secret; its master copy is
+  now Azure Key Vault `kv-melisma-release`, which the release job reads keylessly through OIDC
+  (`docs/DEVELOPMENT.md`).
 - The build is signed ad hoc unless an optional `CERTIFICATE_P12` is set.
 - `Scripts/release-setup.sh` is deleted.
 

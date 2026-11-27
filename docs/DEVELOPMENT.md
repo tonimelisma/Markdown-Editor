@@ -97,8 +97,8 @@ and `releases/latest/download/Markdown-Editor.dmg` (the first install).
 
 ## Owner setup (only the owner can do these, all in GitHub's web settings, from any device)
 
-Steps 1 to 3 were done on 2026-11-26: the repository is public, `main`'s ruleset is active, and
-`SPARKLE_SEED` is set, with a copy the owner keeps outside GitHub.
+Steps 1 to 3 are done: the repository is public, `main`'s ruleset is active, and the update key's
+seed is in Azure Key Vault.
 
 1. **Make the repository public** (owner's choice, 2026-11-26): Settings → General → Danger Zone
    → Change visibility → Public. Sparkle can then read the release feed, which a private
@@ -107,11 +107,16 @@ Steps 1 to 3 were done on 2026-11-26: the repository is public, `main`'s ruleset
 2. **Protect `main`.** A ruleset named `main` requires the status check `CI gate` and a pull
    request, allows squash merges only, and blocks force-pushes and deletion. The repository allows
    only squash merges, allows auto-merge, and deletes merged branches.
-3. **The update key.** Settings → Environments → New environment `release` → Add environment
-   secret `SPARKLE_SEED`: a random password of at least 32 characters, for example one a password
-   manager generates. Keep a copy in the password manager. The release derives the app's EdDSA key
-   from it on every run. Changing or losing it means installed copies reject every later update,
-   until they are reinstalled by hand. The next app change after this publishes the first release.
+3. **The update key.** Its seed, a random password of at least 32 characters, has its master copy
+   in Azure Key Vault `kv-melisma-release` as the secret `markdown-editor-sparkle-seed`, managed
+   from the private repository `tonimelisma/secrets`. The `Release` job's first step fetches it
+   keylessly into `SPARKLE_SEED`: GitHub's OIDC token for the environment `release` is exchanged
+   for a token of the Entra app `gh-markdown-editor-release`, which trusts only
+   `repo:tonimelisma/Markdown-Editor:environment:release`. The environment `release` holds only
+   the variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_KEY_VAULT`, none of them secret;
+   there is no GitHub secret. The release derives the app's EdDSA key from the seed on every run.
+   Changing or losing it means installed copies reject every later update, until they are
+   reinstalled by hand.
 4. **Install once** from `releases/latest/download/Markdown-Editor.dmg`. Without notarization, the
    first open needs System Settings → Privacy & Security → Open Anyway. From then on it updates
    itself.
@@ -119,4 +124,5 @@ Steps 1 to 3 were done on 2026-11-26: the repository is public, `main`'s ruleset
 There is no Apple Developer account and there will not be one (owner, 2026-11-27), so there is no
 certificate or notarization step.
 
-Until step 3 is done, the `Release` job warns that `SPARKLE_SEED` is missing and publishes nothing.
+If the fetch fails (the vault, the secret or the Entra app's federated credential is missing), the
+`Release` job fails at its first step and publishes nothing.

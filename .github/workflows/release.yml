@@ -4,11 +4,15 @@
 # Sparkle's feed. Installed copies find it within the hour. Nothing here needs the owner's Mac.
 #
 # It runs only after CI passed on a push to main, so no pull request ever reaches its one secret,
-# SPARKLE_SEED, in the environment "release", set in GitHub's web settings: a random password of
-# 32+ characters the update key is derived from (Scripts/sparkle-key.sh). Changing it breaks updates
-# for every installed copy, so it is set once and kept. Until it exists, the job says so and
-# publishes nothing. The app is signed ad hoc and is not notarized: there is no Apple Developer
-# account (docs/DECISIONS.md, 2026-11-27).
+# SPARKLE_SEED: a random password of 32+ characters the update key is derived from
+# (Scripts/sparkle-key.sh). Its master copy is the secret markdown-editor-sparkle-seed in Azure Key
+# Vault kv-melisma-release, managed from the private repository tonimelisma/secrets. The first step
+# fetches it keylessly: GitHub's OIDC token for the environment "release" is exchanged for an Entra
+# token of the app gh-markdown-editor-release, which trusts only this repository's environment
+# "release". The environment holds only the variables AZURE_CLIENT_ID, AZURE_TENANT_ID and
+# AZURE_KEY_VAULT, none of them secret. Changing the seed breaks updates for every installed copy,
+# so it is set once and kept. The app is signed ad hoc and is not notarized: there is no Apple
+# Developer account (docs/DECISIONS.md, 2026-11-27).
 name: Release
 
 on:
@@ -33,21 +37,38 @@ jobs:
     environment: release
     permissions:
       contents: write
+      id-token: write # the OIDC token the Key Vault fetch exchanges
     steps:
-      - name: Is the release set up?
-        id: ready
+      - name: Fetch release secrets from Azure Key Vault
         env:
-          SEED: ${{ secrets.SPARKLE_SEED }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_KEY_VAULT: ${{ vars.AZURE_KEY_VAULT }}
+          # ENV_NAME=vault-secret-name, one per line
+          SECRET_MAP: |
+            SPARKLE_SEED=markdown-editor-sparkle-seed
         run: |
-          if [ -z "$SEED" ]; then
-            echo "::warning::Releases aren't set up yet: add the secret SPARKLE_SEED (a random password of 32+ characters) to the environment release in the repository's settings (docs/DEVELOPMENT.md). Nothing was published."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          fi
+          set -euo pipefail
+          j() { python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"; }
+          oidc=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | j value)
+          echo "::add-mask::$oidc"
+          tok=$(curl -sSf "https://login.microsoftonline.com/$AZURE_TENANT_ID/oauth2/v2.0/token" \
+            -d client_id="$AZURE_CLIENT_ID" -d grant_type=client_credentials \
+            --data-urlencode scope=https://vault.azure.net/.default \
+            --data-urlencode client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer \
+            --data-urlencode client_assertion="$oidc" | j access_token)
+          echo "::add-mask::$tok"
+          while IFS='=' read -r name secret; do
+            [ -n "$name" ] || continue
+            v=$(curl -sSf -H "Authorization: Bearer $tok" \
+              "https://$AZURE_KEY_VAULT.vault.azure.net/secrets/$secret?api-version=7.4" | j value)
+            echo "::add-mask::$v"
+            d="EOF_$(openssl rand -hex 8)"
+            printf '%s<<%s\n%s\n%s\n' "$name" "$d" "$v" "$d" >> "$GITHUB_ENV"
+          done <<< "$SECRET_MAP"
 
       - uses: actions/checkout@v7
-        if: steps.ready.outputs.ready == 'true'
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0 # the build number is the commit count
@@ -55,7 +76,6 @@ jobs:
 
       - name: Select the newest Xcode 27, and OpenSSL 3
         id: tools
-        if: steps.ready.outputs.ready == 'true'
         run: |
           set -euo pipefail
           xcode="$(ls -d /Applications/Xcode_27*.app | sort -V | tail -n 1)"
@@ -68,9 +88,8 @@ jobs:
           echo "openssl=$prefix/bin/openssl" >> "$GITHUB_OUTPUT"
 
       - name: Build, sign and publish (Scripts/release.sh)
-        if: steps.ready.outputs.ready == 'true'
         env:
-          SPARKLE_SEED: ${{ secrets.SPARKLE_SEED }}
+          SPARKLE_SEED: ${{ env.SPARKLE_SEED }}
           OPENSSL: ${{ steps.tools.outputs.openssl }}
           GH_TOKEN: ${{ github.token }}
         run: Scripts/release.sh
