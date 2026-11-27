@@ -187,16 +187,14 @@ struct KeyboardCommandMatrixTests {
         #expect(takes("w") != nil, "no menu item takes ⌘W; the menus offer \(all.map(\.title))")
     }
 
-    // Verifies: REQ-021 — the File menu offers Open Recent when it opens. SwiftUI rebuilds the
-    // File menu from the commands after launch, and the item the app added once was gone.
-    @Test func theFileMenuOffersOpenRecentWhenItOpens() throws {
+    // Verifies: REQ-021 — the real File menu offers Open Recent. The app added it through
+    // AppKit, SwiftUI rebuilt the File menu from the commands, and it was gone.
+    @Test func theFileMenuOffersOpenRecent() throws {
         let menu = try #require(NSApp.mainMenu, "the test host has no menu bar")
         let file = try #require(menu.item(withTitle: "File")?.submenu, "no File menu: \(menu.items.map(\.title))")
-        if let stale = file.item(withTitle: "Open Recent") { file.removeItem(stale) }
-        NotificationCenter.default.post(name: NSMenu.didBeginTrackingNotification, object: menu)
         let recent = file.item(withTitle: "Open Recent")
         #expect(recent != nil, "the File menu offers \(file.items.map(\.title))")
-        #expect(recent?.submenu?.items.contains { $0.action == #selector(NSDocumentController.clearRecentDocuments(_:)) } == true)
+        #expect(recent?.submenu?.items.contains { $0.title == "Clear Menu" } == true)
     }
 
     // Verifies: REQ-032 — no command's shortcut is one macOS or every Mac app already owns. Block

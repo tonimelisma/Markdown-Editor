@@ -43,6 +43,7 @@ struct Markdown_EditorApp: App {
                     NSDocumentController.shared.openDocument(nil)
                 }
                 .keyboardShortcut("o")
+                OpenRecentMenu(recents: RecentDocuments.shared)
             }
             // REQ-014: restore standard document File actions removed with DocumentGroup. The
             // group replaced also held Close: without it ⌘W did nothing (tour 45968755636).
@@ -69,7 +70,6 @@ struct Markdown_EditorApp: App {
 
 @MainActor
 final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
-    private var menuTrackingObserver: NSObjectProtocol?
     private let documentController: MarkdownDocumentController
 
     /// Document File-menu selectors that must remain reachable via First Responder.
@@ -257,16 +257,8 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = documentController
-        // REQ-021: SwiftUI rebuilds the File menu from the app's commands after launch, which
-        // drops an Open Recent added once: the File menu had none (tour 45976057730). It is put
-        // back whenever a menu starts tracking, before the File menu shows.
-        menuTrackingObserver = NotificationCenter.default.addObserver(
-            forName: NSMenu.didBeginTrackingNotification, object: nil, queue: nil
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.ensureOpenRecentMenuItem() }
-        }
+        RecentDocuments.shared.refresh()
         guard !Self.isRunningUnitTests else { return }
-        ensureOpenRecentMenuItem()
         // REQ-033: never in a smoke or benchmark run (AppUpdater.isEnabledForThisProcess).
         updater = AppUpdater.startIfEnabled()
         // The reporter writes through the serialized diagnostic sink directly because the main
@@ -527,27 +519,6 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         if Self.isSmokeRun { return false }
         return true
     }
-
-    /// NSDocumentController populates Open Recent when a standard menu item exists.
-    // Internal for the component proof that the production menu route remains AppKit-owned.
-    func ensureOpenRecentMenuItem() {
-        guard let mainMenu = NSApp.mainMenu else { return }
-        guard let fileMenu = mainMenu.item(withTitle: "File")?.submenu else { return }
-        if fileMenu.items.contains(where: { $0.title == "Open Recent" }) { return }
-        let recent = fileMenu.insertItem(
-            withTitle: "Open Recent",
-            action: nil,
-            keyEquivalent: "",
-            at: min(2, fileMenu.numberOfItems)
-        )
-        let recentMenu = NSMenu(title: "Open Recent")
-        recent.submenu = recentMenu
-        recentMenu.addItem(
-            withTitle: "Clear Menu",
-            action: #selector(NSDocumentController.clearRecentDocuments(_:)),
-            keyEquivalent: ""
-        )
-    }
 }
 
 /// Ensures MarkdownDocument is the shared controller's document class.
@@ -562,10 +533,58 @@ final class MarkdownDocumentController: NSDocumentController {
         return super.documentClass(forType: typeName) ?? MarkdownDocument.self
     }
 
+    /// REQ-021: every document opened or saved is noted here; Open Recent follows.
+    override func noteNewRecentDocumentURL(_ url: URL) {
+        super.noteNewRecentDocumentURL(url)
+        RecentDocuments.shared.refresh()
+    }
+
+    override func clearRecentDocuments(_ sender: Any?) {
+        super.clearRecentDocuments(sender)
+        RecentDocuments.shared.refresh()
+    }
+
     /// The app-modal alert for a document that could not be opened. It holds the main thread's
     /// modal session until the person dismisses it, which the watchdog must not take for a stall.
     override func presentError(_ error: Error) -> Bool {
         AppModalSession.around { super.presentError(error) }
     }
 
+}
+
+
+/// REQ-021: the documents File › Open Recent lists, as the document controller records them.
+///
+/// Part of the app's SwiftUI commands. An Open Recent item added to the File menu through AppKit
+/// was dropped whenever SwiftUI rebuilt that menu from the commands, after launch and as it
+/// opened, so the File menu had none (tours 45976057730, 45977189566).
+@MainActor
+final class RecentDocuments: ObservableObject {
+    static let shared = RecentDocuments()
+
+    @Published private(set) var urls: [URL] = []
+
+    func refresh() {
+        let current = NSDocumentController.shared.recentDocumentURLs
+        if current != urls { urls = current }
+    }
+}
+
+struct OpenRecentMenu: View {
+    @ObservedObject var recents: RecentDocuments
+
+    var body: some View {
+        Menu("Open Recent") {
+            ForEach(recents.urls, id: \.self) { url in
+                Button(url.lastPathComponent) {
+                    NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+                }
+            }
+            Divider()
+            Button("Clear Menu") {
+                NSDocumentController.shared.clearRecentDocuments(nil)
+            }
+            .disabled(recents.urls.isEmpty)
+        }
+    }
 }

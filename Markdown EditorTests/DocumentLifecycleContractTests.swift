@@ -199,36 +199,8 @@ struct DocumentLifecycleContractTests {
     }
 
     // Verifies: REQ-021 — the standard NSDocumentController route records a recently opened
-    // document, while the app only supplies the required Clear Menu item.
+    // document, and File › Open Recent lists what it records.
     @Test func recentsUseTheStandardDocumentControllerRoute() throws {
-        let originalMenu = NSApp.mainMenu
-        let menu = originalMenu ?? NSMenu(title: "Main")
-        NSApp.mainMenu = menu
-        let fileItem = menu.item(withTitle: "File") ?? menu.addItem(
-            withTitle: "File",
-            action: nil,
-            keyEquivalent: ""
-        )
-        let fileMenu = fileItem.submenu ?? NSMenu(title: "File")
-        fileItem.submenu = fileMenu
-        let hadOpenRecent = fileMenu.item(withTitle: "Open Recent") != nil
-        let appDelegate = MarkdownAppDelegate()
-        appDelegate.ensureOpenRecentMenuItem()
-        let openRecent = fileMenu.item(withTitle: "Open Recent")
-        let clearMenu = openRecent?.submenu?.item(withTitle: "Clear Menu")
-        #expect(clearMenu != nil)
-        // The standard route, asserted on the constructed menu item rather than on the text of
-        // Markdown_EditorApp.swift: a nil target sends the action up the responder chain to
-        // NSDocumentController, which is what makes this AppKit's Recents rather than the app's.
-        #expect(clearMenu?.action == #selector(NSDocumentController.clearRecentDocuments(_:)))
-        #expect(clearMenu?.target == nil)
-        defer {
-            if !hadOpenRecent, let insertedOpenRecent = fileMenu.item(withTitle: "Open Recent") {
-                fileMenu.removeItem(insertedOpenRecent)
-            }
-            NSApp.mainMenu = originalMenu
-        }
-
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("cor74-recent-" + UUID().uuidString + ".md")
         try Data().write(to: url)
@@ -251,6 +223,10 @@ struct DocumentLifecycleContractTests {
         // AppKit documents recentDocumentURLs as the URLs currently represented by Open Recent;
         // use that public menu contract rather than depending on private dynamic submenu items.
         #expect(controller.recentDocumentURLs.contains { $0.path == canonicalPath })
+        // Open Recent lists the controller's record, updated as each document is noted: the
+        // shared controller is the app's, which refreshes the list in noteNewRecentDocumentURL.
+        #expect(controller is MarkdownDocumentController, "the shared controller is \(type(of: controller))")
+        #expect(RecentDocuments.shared.urls.contains { $0.path == canonicalPath })
     }
 
     // Verifies: REQ-013/015/019 — the lifecycle boundary is one NSDocument owner with serialized
