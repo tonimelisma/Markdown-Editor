@@ -597,7 +597,7 @@ struct EditorIntegrationTests {
     // Verifies: REQ-014/017 — a close ends the typing group, then starts AppKit's review a turn
     // later, so the change AppKit counts on the main queue is counted first. Quit's review
     // reached `canClose` with the group open and hung the app (tour 46011070302).
-    @Test func aCloseCountsTheTypingBeforeAppKitReviewsIt() {
+    @Test func aCloseCountsTheTypingBeforeAppKitReviewsIt() async {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
         let typed = SourceMutation(
@@ -619,7 +619,10 @@ struct EditorIntegrationTests {
 
         #expect(doc.undoManager?.groupingLevel == 0, "the typing group is still open as the close starts")
         #expect(reviews.isEmpty, "AppKit's review started in the same turn the typing group ended")
-        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        // Suspending lets the main queue run the deferred review, however busy the suite is.
+        for _ in 0..<1_000 where reviews.isEmpty {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
         #expect(reviews == [0], "the review did not follow a turn later: \(reviews)")
 
         // With no typing open, the review starts at once.
