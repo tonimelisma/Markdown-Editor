@@ -19,6 +19,7 @@
 //   tree NAME                  the accessibility tree, to NAME.txt
 //   press LABEL                accessibility press: buttons, segments, checkboxes, menu buttons
 //   menu TOP ITEM [SUBITEM…]   open a menu and choose an item, e.g. menu View "Source Mode"
+//   menu-items TOP             list a menu's items: enabled or not, and their shortcuts
 //   click LABEL                a real mouse click on the middle of the element's visible part
 //   clickat X Y                a real mouse click at a point of the window, in screenshot points
 //   focus LABEL                give the element keyboard focus
@@ -274,6 +275,28 @@ while let raw = readLine() {
     case ("press", 1):
         if let element = require(rest[0]) {
             log("  \(describe(element)) → \(AXUIElementPerformAction(element, kAXPressAction as CFString).rawValue)")
+        }
+    case ("menu-items", 1):
+        // Opens one menu bar menu, lists every item with its enabled state and shortcut, and
+        // closes it again: what the menu offers right now, as AppKit has just validated it.
+        activate()
+        let bar: AXUIElement? = attribute(app, kAXMenuBarAttribute).map { $0 as! AXUIElement }
+        if let top = bar.map(children)?.first(where: { text($0, kAXTitleAttribute) == rest[0] }) {
+            _ = AXUIElementPerformAction(top, kAXPressAction as CFString)
+            usleep(400_000)
+            for menu in children(top) {
+                for item in children(menu) {
+                    let title = text(item, kAXTitleAttribute)
+                    guard !title.isEmpty else { continue }
+                    let enabled = (attribute(item, kAXEnabledAttribute) as? Bool) ?? true
+                    let shortcut = text(item, "AXMenuItemCmdChar")
+                    let modifiers = (attribute(item, "AXMenuItemCmdModifiers") as? NSNumber)?.intValue
+                    log("  \(enabled ? "enabled " : "DISABLED") \(title)\(shortcut.isEmpty ? "" : "  key=\(shortcut) mods=\(modifiers ?? -1)")")
+                }
+            }
+            _ = key("escape")
+        } else {
+            log("  no menu titled \(rest[0])"); failures += 1
         }
     case ("menu", 2...):
         // Opened first, as a person opens it: AppKit validates a menu's items when it opens, so an

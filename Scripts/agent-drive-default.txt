@@ -26,6 +26,7 @@ press Bold
 wait 1
 shot bold
 caret "Markdown WYSIWYG" 6 10
+menu-items Format
 key cmd+i
 wait 1
 shot italic
@@ -43,6 +44,7 @@ shot source
 expect-value Source 1
 expect-value WYSIWYG 0
 value "Markdown source"
+menu-items View
 menu View "WYSIWYG Mode"
 wait 1
 shot wysiwyg-from-menu
