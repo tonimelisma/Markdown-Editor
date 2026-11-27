@@ -180,13 +180,14 @@ struct SemanticCommandBudgetTests {
         // than informative. Their job is to catch a catastrophic regression, not drift. The
         // Release table above is the contract. In Debug the bound is on the median, not the worst
         // sample (see the assertion below).
+        // FALSIFICATION (reverted next commit): every Debug bound at 1% of itself.
         switch corpus {
-        case .degenerateParagraph: return 30
-        case .codeHeavy: return 60
-        case .imageHeavy: return 170
-        case .structuredProse: return 200
-        case .tableDense: return 480
-        case .heavyLists: return 440
+        case .degenerateParagraph: return 0.30
+        case .codeHeavy: return 0.60
+        case .imageHeavy: return 1.70
+        case .structuredProse: return 2.00
+        case .tableDense: return 4.80
+        case .heavyLists: return 4.40
         }
         #else
         return releaseTailCeilingMillis(for: corpus)

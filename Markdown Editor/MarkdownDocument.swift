@@ -145,7 +145,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         // twice: on a CI runner the second pass (`setContentSize`) was 8 of the 24–28 main-thread
         // samples the first window cost (repeat-smoke 45923942236). Now the first layout is the
         // only one, and `setContentSize` below finds nothing to change.
-        hosting.view.frame = NSRect(origin: .zero, size: contentSize)
+        // FALSIFICATION (reverted next commit): hosting.view.frame = NSRect(origin: .zero, size: contentSize)
         let window = NSWindow(contentViewController: hosting)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.setContentSize(contentSize)
