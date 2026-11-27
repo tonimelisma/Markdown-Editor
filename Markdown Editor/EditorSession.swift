@@ -241,6 +241,9 @@ final class EditorSession: ObservableObject {
             intent.recorder.finish(intent, superseded: true)
         }
         cancellables.removeAll()
+        // The session's parse memo holds one whole source and tree; a closed document keeps
+        // neither resident (REQ-090), as `MarkdownDocument.close()` releases the shared one.
+        intentRecorder.parseMemo.release()
         performanceSampler?.invalidate()
         performanceSampler = nil
         publicationObserver?.cancel()

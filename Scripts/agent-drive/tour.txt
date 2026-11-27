@@ -389,8 +389,16 @@ expect-value "Markdown WYSIWYG" "Unsaved words."
 shot r-reopened
 expect-no-faults
 
-# --- S. Quit once more. The relaunch was a warm launch, and quitting writes its last performance
-# summaries, so every tour also measures a launch that a cold runner disk does not distort.
+# --- S. Quit with a new document that was never saved. macOS asks whether to keep it, as TextEdit
+# does when windows close on quitting; Delete lets the quit finish. The relaunch was a warm launch,
+# and quitting writes its last performance summaries, so every tour also measures a launch that a
+# cold runner disk does not distort.
+key cmd+n
+wait 2
+type "Thrown away."
 quit
+shot-screen s-quit-asks
+press "Delete"
+wait 3
 expect-not-running
 expect-no-faults

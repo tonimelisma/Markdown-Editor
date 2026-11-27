@@ -74,6 +74,15 @@ nonisolated final class IntentRecorder: @unchecked Sendable {
     }
 
     private let state = Mutex(State())
+
+    /// The session's parse memo, which every parse that carries one of this recorder's intents
+    /// uses (`MarkdownParser.parse`). A command parses its candidate text to check a postcondition
+    /// and again to build the snapshot, and the reconciliation that follows parses it a third
+    /// time; the memo makes the second and third free. It was one entry for the whole process, so
+    /// another document's background parse could evict it between two of those, and a test
+    /// counting the command's parses counted every other suite's too (CI 46009037920 saw 3).
+    /// Per session, only the session's own work touches it.
+    let parseMemo = MarkdownParser.ParseMemo()
     private let durableWriter = Mutex<(writer: DiagnosticWriteCoordinator?, startUptimeNanos: UInt64)>((nil, 0))
     private let reporterState = Mutex<Reporter?>(nil)
 
