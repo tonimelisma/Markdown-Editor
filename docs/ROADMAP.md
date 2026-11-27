@@ -81,6 +81,14 @@ Still open:
   allows it on its first launch only and holds a second launch to every check (`DECISIONS.md`,
   2026-11-27). CI 45856817544's one Debug stall was probably the same thing. Building the Source
   editor only when Source is first shown would cut the work; nothing measures it on a real Mac yet.
+- Two timing-bound tests failed on `main` together (CI 45926585599 attempt 1). The same tree had
+  passed as the pull request (CI 45926211612). `SemanticCommandBudgetTests` measured a codeHeavy
+  worst-of-5 of 64.4 ms against its 60 ms Debug bound. `imagePlacementTraceOmitsFilenames` hit
+  `waitUntilIdle`'s 15 s deadline with the controller still `.publishing`. On that runner many
+  unrelated main-actor tests took 13–16 s and one took 39 s. Under parallel suites, both bounds
+  include the time other tests hold the main actor, so they measure the runner's contention
+  along with their own subject. Not yet fixed: the bound should be on the work, not on
+  wall-clock time shared with the rest of the suite.
 - `presentationRecovered` (`patchUnprovable`, COR-71) in a smoke run. Repeat-smoke 45925262536's
   second launch recorded a provisional WYSIWYG presentation that disagreed with the authoritative
   parse of the same revision. The smoke edits had landed while a slow parse was still running. It
