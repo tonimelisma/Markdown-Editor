@@ -104,8 +104,10 @@ Still open:
   - The app carries that key and the feed URL, checks every hour, and sends no system profile.
   - Its entitlements include the library-validation exception, and `get-task-allow` is absent.
 
-  REQ-033 stays `Active` until a copy installed by hand from v1.0.1's disk image takes the next
-  release by itself.
+  v1.0.2 (build 209, Release run 45929312450) followed, after `main`'s CI had run its full macOS
+  job (CI 45928952330). It was checked the same way, and both of its launches passed. REQ-033
+  stays `Active` until a copy installed by hand from a published disk image takes a later release
+  by itself.
 - Mac runners that never come. Twice on 2026-11-26 a `main` job waited 15 minutes for an
   `xcode-27` runner and was dropped (CI 45860219913, Release 45866221874 attempt 1), while
   pull-request jobs started within a minute. Both ended after exactly 15 minutes with no runner and
