@@ -96,7 +96,7 @@ struct MeasurementSubstrateProofTests {
     // Verifies: REQ-124
     @Test func responsivenessMutationProof() async throws {
         let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
-        let probe = MainActorResponsivenessProbe(sampler: sampler)
+        let probe = MainActorResponsivenessProbe(sampler: sampler, modalSessions: AppModalSession())
         probe.captureSampleNow()
         try await Task.sleep(for: .milliseconds(30))
         probe.stop()
@@ -179,7 +179,7 @@ struct MeasurementSubstrateProofTests {
 @Test @MainActor func responsivenessProbeRecordsLatencyDistribution() async throws {
     let trace = InMemoryEditorTrace()
     let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
-    let probe = MainActorResponsivenessProbe(sampler: sampler)
+    let probe = MainActorResponsivenessProbe(sampler: sampler, modalSessions: AppModalSession())
     probe.captureSampleNow()
     try await Task.sleep(for: .milliseconds(50))
     probe.stop()
@@ -192,7 +192,7 @@ struct MeasurementSubstrateProofTests {
 @Test @MainActor func aTwoHundredMillisecondMainActorBlockAppearsInTheLatencyDistribution() {
     let trace = InMemoryEditorTrace()
     let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
-    let probe = MainActorResponsivenessProbe(sampler: sampler)
+    let probe = MainActorResponsivenessProbe(sampler: sampler, modalSessions: AppModalSession())
     probe.captureSampleNow()
     Thread.sleep(forTimeInterval: 0.2)
     RunLoop.current.run(until: Date().addingTimeInterval(0.15))
