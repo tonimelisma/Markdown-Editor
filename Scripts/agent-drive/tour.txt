@@ -1,0 +1,328 @@
+# The tour: the whole app, used the way a person uses it on a Mac, from a plain launch to a
+# relaunch. `.github/workflows/agent-drive.yml` runs it with Scripts/agent-drive.swift, which
+# lists the steps. Each section says what a person would be doing; screenshots and trees are for
+# the agent's eyes, `expect` steps for the verdict, and `expect-no-faults` asks the app's own log.
+#
+# $WORK holds a copy of Scripts/Fixtures. The tour writes its own notes into $WORK/notes.
+
+shell mkdir -p "$WORK/notes" "$WORK/pictures" && cp "$WORK/assets/sample.png" "$WORK/pictures/photo.png"
+
+# --- A. A plain launch, as from the Dock, opens an untitled document big enough to read in.
+launch
+expect-windows 1
+expect-window Untitled
+windows
+shot a-launched
+tree a-launched
+expect-no-faults
+
+# --- B. Writing a note from the keyboard: a heading, a paragraph, inline formatting.
+type "Weekly notes"
+key cmd+1
+key return
+type "Today I fixed the printer and wrote this note in plain Markdown."
+wait 1
+shot b-typed
+expect-value "Markdown WYSIWYG" "Weekly notes"
+expect-value "Markdown WYSIWYG" "Today I fixed the printer and wrote this note in plain Markdown."
+select "Markdown WYSIWYG" printer
+key cmd+b
+select "Markdown WYSIWYG" "plain Markdown"
+key cmd+i
+select "Markdown WYSIWYG" fixed
+key cmd+shift+x
+select "Markdown WYSIWYG" note
+key ctrl+cmd+c
+wait 1
+shot b-formatted
+value "Markdown WYSIWYG"
+expect-no-faults
+
+# --- C. A link, through the link sheet.
+key cmd+down
+key return
+type "Read the guide on the project page."
+select "Markdown WYSIWYG" "project page"
+key cmd+k
+wait 1
+shot-screen c-link-sheet
+tree c-link-sheet
+type "https://example.com/guide"
+key return
+wait 1
+shot c-linked
+no-dialogs
+expect-no-faults
+
+# --- D. Lists, a task, a quote and code, from the Format shortcuts.
+key cmd+down
+key return
+type "Milk"
+key cmd+shift+7
+key return
+type "Eggs"
+key return
+type "Bread"
+wait 1
+shot d-list
+key return
+key return
+type "Call the plumber"
+key cmd+shift+9
+wait 1
+shot d-task
+key cmd+down
+key return
+key return
+type "Simplicity is prerequisite for reliability."
+key cmd+'
+key cmd+down
+key return
+key return
+type "let answer = 42"
+key ctrl+shift+cmd+c
+wait 1
+shot d-blocks
+caret-after "Markdown WYSIWYG" "Read the guide"
+key cmd+2
+wait 1
+shot d-heading-two
+value "Markdown WYSIWYG"
+expect-no-faults
+
+# --- E. Undo and redo.
+key cmd+z
+key cmd+z
+key cmd+z
+wait 1
+shot e-undone
+key shift+cmd+z
+key shift+cmd+z
+key shift+cmd+z
+wait 1
+shot e-redone
+expect-no-faults
+
+# --- F. Saving the untitled note through the Save panel.
+key cmd+s
+wait 2
+shot-screen f-save-panel
+key cmd+a
+type-field "notes.md"
+key cmd+shift+g
+type-field "$WORK/notes"
+shot-screen f-folder-typed
+key return
+wait 1
+key return
+wait 3
+shot-screen f-saved
+expect-exists notes/notes.md
+file notes/notes.md f-notes
+expect-window notes.md
+expect-file notes/notes.md "# Weekly notes"
+expect-file notes/notes.md "**printer**"
+expect-file notes/notes.md "*plain Markdown*"
+expect-file notes/notes.md "~~fixed~~"
+expect-file notes/notes.md "`note`"
+expect-file notes/notes.md "[project page](https://example.com/guide)"
+expect-file notes/notes.md "- Milk"
+expect-file notes/notes.md "- [ ] Call the plumber"
+expect-file notes/notes.md "> Simplicity is prerequisite for reliability."
+expect-file notes/notes.md "let answer = 42"
+no-dialogs
+expect-no-faults
+
+# --- G. Source mode: the same note as Markdown, edited there, and back.
+key ctrl+cmd+2
+wait 1
+shot g-source
+expect-value "Source" 1
+value "Markdown source"
+expect-value "Markdown source" "# Weekly notes"
+key cmd+down
+key return
+type "Typed in Source with **stars**."
+wait 1
+shot g-source-typed
+key ctrl+cmd+1
+wait 1
+shot g-back-to-wysiwyg
+expect-value "WYSIWYG" 1
+expect-value "Markdown WYSIWYG" "Typed in Source with stars."
+expect-no-faults
+
+# --- H. Find.
+key cmd+f
+wait 1
+type "Eggs"
+key return
+wait 1
+shot h-find
+key escape
+expect-no-faults
+
+# --- I. Images: Add Image… from the Format menu, then a pasted one.
+key cmd+down
+menu Format "Add Image…"
+wait 2
+shot-screen i-open-panel
+key cmd+shift+g
+type-field "$WORK/pictures/photo.png"
+shot-screen i-path-typed
+key return
+wait 1
+key return
+wait 3
+shot i-added
+shell ls -la "$WORK/notes/assets"
+expect-exists notes/assets/photo.png
+key cmd+s
+wait 1
+expect-file notes/notes.md "](assets/photo.png)"
+key cmd+down
+key return
+clipboard-image "$WORK/pictures/photo.png"
+key cmd+v
+wait 3
+shot i-pasted
+key cmd+s
+wait 1
+shell ls -la "$WORK/notes/assets" && grep -n "assets/" "$WORK/notes/notes.md"
+no-dialogs
+expect-no-faults
+
+# --- J. Plain-text paste.
+key cmd+down
+key return
+clipboard-text "Pasted plain text, with *no* formatting inferred."
+key cmd+v
+wait 1
+expect-value "Markdown WYSIWYG" "Pasted plain text"
+expect-no-faults
+
+# --- K. Window sizes: the toolbar at full width, and what a narrow window shows.
+resize 880 720
+wait 1
+shot k-wide
+tree k-wide
+resize 600 500
+wait 1
+shot k-medium
+resize 420 320
+wait 1
+shot k-narrow
+tree k-narrow
+press "more toolbar items"
+wait 1
+shot-screen k-overflow-menu
+key escape
+resize 880 720
+expect-no-faults
+
+# --- L. Dark appearance.
+appearance dark
+wait 2
+shot l-dark
+appearance light
+wait 2
+expect-no-faults
+
+# --- M. Another app changes the file: adopted while clean, kept while there are unsaved edits.
+key cmd+s
+wait 2
+shell printf '\nAdded by another app.\n' >> "$WORK/notes/notes.md"
+wait 4
+shot m-external-clean
+expect-value "Markdown WYSIWYG" "Added by another app."
+key cmd+down
+key return
+type "Unsaved words."
+shell printf '\nSecond outside edit.\n' >> "$WORK/notes/notes.md"
+wait 4
+shot-screen m-external-dirty
+expect-value "Markdown WYSIWYG" "Unsaved words."
+key cmd+s
+wait 2
+shot-screen m-after-save
+file notes/notes.md m-notes
+expect-no-faults
+
+# --- N. Print.
+key cmd+p
+wait 3
+shot-screen n-print
+key escape
+wait 1
+no-dialogs
+expect-no-faults
+
+# --- O. A second document, closed without saving.
+key cmd+n
+wait 2
+windows
+shot o-new
+type "Scratch"
+key cmd+w
+wait 2
+shot-screen o-close-asks
+press "Delete"
+wait 1
+windows
+no-dialogs
+expect-no-faults
+
+# --- P. Opening an existing document: rich content, a task box, a table cell.
+key cmd+o
+wait 2
+shot-screen p-open-panel
+key cmd+shift+g
+type-field "$WORK/showcase.md"
+key return
+wait 1
+key return
+wait 3
+expect-window showcase.md
+shot p-showcase
+tree p-showcase
+scroll "Markdown WYSIWYG" 30
+wait 1
+shot p-showcase-scrolled
+press "Open"
+wait 1
+select "Markdown WYSIWYG" Swifts
+type "Terns"
+wait 1
+key cmd+s
+wait 2
+file showcase.md p-showcase
+expect-file showcase.md "Terns back over the harbour"
+no-dialogs
+expect-no-faults
+
+# --- Q. A file that is not UTF-8 is refused with a message, not opened corrupted.
+shell printf 'caf\xe9 \xff\xfe' > "$WORK/bad.md"
+key cmd+o
+wait 2
+key cmd+shift+g
+type-field "$WORK/bad.md"
+key return
+wait 1
+key return
+wait 2
+shot-screen q-bad-file
+key return
+wait 1
+no-dialogs
+expect-no-window bad.md
+
+# --- R. Quit and relaunch: the documents come back.
+quit
+expect-not-running
+launch
+wait 3
+windows
+shot r-relaunched
+expect-window notes.md
+faults
+expect-no-faults

@@ -70,8 +70,9 @@ struct EditorHostView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSView {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: 480))
+        let root = EditorHostRootView(frame: NSRect(x: 0, y: 0, width: 640, height: 480))
         let host = context.coordinator
+        root.onWindow = { [weak host] in host?.focusVisibleEditorIfUnfocused() }
         host.buildEditors(in: root)
         host.applyMode(session.mode, focus: false)
         return root
@@ -270,6 +271,19 @@ struct EditorHostView: NSViewRepresentable {
         /// // REQ-094; ARC-015: reconciling an unchanged mode performs no work and mutates no
         /// // session state. Visibility, focus, and restoration are consequences of a real mode
         /// // change, not of the view graph running an update pass.
+        /// A new window gives its page keyboard focus, as TextEdit does, so typing works at once.
+        /// Nothing did: a plain launch opened an untitled window whose first keystrokes went
+        /// nowhere until the page was clicked (agent-drive tour 45955987611). Only a window
+        /// nobody has focused yet is touched.
+        func focusVisibleEditorIfUnfocused() {
+            let editor: NSTextView? = session.mode == .source ? sourceText : wysiwygText
+            guard let editor, let window = editor.window else { return }
+            window.initialFirstResponder = editor
+            let responder = window.firstResponder
+            guard responder == nil || responder === window else { return }
+            window.makeFirstResponder(editor)
+        }
+
         func applyModeIfChanged(_ mode: EditorMode) {
             guard lastAppliedMode != mode else { return }
             applyMode(mode, focus: false)
@@ -366,6 +380,7 @@ struct EditorHostView: NSViewRepresentable {
                 }
             } else {
                 wysiwygCoordinator?.applyProjectionIfNeeded(reason: .newSnapshot)
+                wysiwygCoordinator?.adoptNativeSelectionIfUnowned()
             }
             applyPendingSelectionIfNeeded()
         }
@@ -488,5 +503,17 @@ struct EditorHostView: NSViewRepresentable {
             dragTypes.append(contentsOf: FilePromiseBridge.readableDraggedTypes)
             textView.registerForDraggedTypes(dragTypes)
         }
+    }
+}
+
+/// The editors' container: it tells the host when it joins a window, which is the first moment
+/// the page can be given keyboard focus.
+final class EditorHostRootView: NSView {
+    var onWindow: (() -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        onWindow?()
     }
 }

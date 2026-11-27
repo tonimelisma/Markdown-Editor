@@ -27,6 +27,22 @@ struct EditorToolbarConstructionTests {
         }
     }
 
+    // Verifies: REQ-108 — in a window too narrow for the toolbar, every item AppKit moves into the
+    // overflow (») menu is there as a menu item that does something. The mode control had no
+    // menu form, so a narrow window's overflow menu had no way to switch modes.
+    @Test func everyToolbarItemHasAWorkingOverflowForm() {
+        let controller = EditorToolbarController()
+        let toolbar = NSToolbar(identifier: EditorToolbarController.toolbarIdentifier)
+        for identifier in controller.toolbarAllowedItemIdentifiers(toolbar)
+        where identifier != .flexibleSpace && identifier != .space {
+            let item = controller.toolbar(toolbar, itemForItemIdentifier: identifier, willBeInsertedIntoToolbar: true)
+            let form = item?.menuFormRepresentation
+            #expect(form != nil, "\(identifier) has no overflow menu form")
+            let acts = form?.action != nil || !(form?.submenu?.items.allSatisfy { $0.action == nil } ?? true)
+            #expect(acts, "\(identifier)'s overflow menu item does nothing")
+        }
+    }
+
     // Verifies: REQ-108 — grouped Paragraph/Structure controls expose a real visible toolbar
     // menu; an overflow-only menu representation would silently execute just the default tag.
     @Test func groupedToolbarCommandsUseVisibleMenuItems() {

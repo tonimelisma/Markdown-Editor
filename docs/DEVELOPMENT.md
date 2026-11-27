@@ -44,15 +44,17 @@ Two more workflows serve CI without gating anything:
   `repeat-smoke-<run id>`. `configuration: Release` launches the hardened Release bundle,
   `fresh` a new copy each time, `settle` waits after the build, and `sample` takes a `spindump` of
   each launch. Use it to chase a failure that comes and goes, instead of re-running CI.
-- **`agent-drive.yml`**: started by hand (`run_workflow`, `ref` the branch to build). It opens a
-  fixture (`inputs.fixture`, from `Scripts/Fixtures`) and runs `inputs.scenario`, one step per
-  line in the language at the top of `Scripts/agent-drive.swift` (`clickat`, `type`, `key cmd+s`,
-  `press Bold`, `menu View "Source Mode"`, `menu-items Format`, `shot`, `tree`, `value`, `file`,
-  `expect-…`). An empty
-  scenario runs `Scripts/agent-drive-default.txt`. The artifact `agent-drive-<run id>` holds
-  `transcript.txt`, one numbered line per step, and that step's screenshots, accessibility trees,
-  values and saved file, plus the app's diagnostic log. `clickat` takes a point of the window in
-  screenshot pixels: the runner's display is 1×. A run takes about three minutes.
+- **`agent-drive.yml`**: started by hand (`run_workflow`, `ref` the branch to build), and on a pull
+  request that changes the driver or its scenarios. The driver (`Scripts/agent-drive.swift`, whose
+  header lists every step) launches the app through Launch Services, as the Dock and Finder do, and
+  uses it: real keys, clicks and scrolls, menus and panels, the clipboard, shell commands standing in
+  for other apps, Light and Dark, quit and relaunch. `inputs.scenario` holds steps; empty, it runs
+  `inputs.scenario_file` from `Scripts/agent-drive/`, by default `tour.txt`, the whole app from a plain
+  launch to a relaunch. `$WORK` in a step is a copy of `Scripts/Fixtures`. The artifact
+  `agent-drive-<run id>` holds `transcript.txt` (one numbered, timed line per step), each step's
+  captures, trees, values and files, the work directory as the tour left it, and the app's
+  diagnostic logs. `clickat` takes a point of the window in screenshot pixels: the runner's display
+  is 1×.
 
 Reading CI from a cloud session: the GitHub MCP tools.
 

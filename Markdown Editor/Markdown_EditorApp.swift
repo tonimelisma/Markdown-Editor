@@ -315,6 +315,47 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
                 Foundation.exit(EXIT_SUCCESS)
             }
         }
+
+        // REQ-002/REQ-131: a plain launch shows an untitled document, as TextEdit does. AppKit
+        // asks `applicationShouldOpenUntitledFile` only of the application's own delegate, which
+        // in a SwiftUI-lifecycle app is SwiftUI's: launched from the Dock the app opened no window
+        // at all (owner, 2026-11-27). `launchIsDefaultUserInfoKey` is false for a launch that
+        // opens a file or restores windows, so neither gets an extra untitled one, and a document
+        // AppKit did open by then is seen on the next turn.
+        let isDefaultLaunch = (notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool) ?? false
+        Task { @MainActor in
+            Self.openUntitledIfNeeded(isDefaultLaunch: isDefaultLaunch)
+        }
+    }
+
+    /// Whether a launch or a Dock click with no windows should show a new untitled document.
+    nonisolated static func shouldOpenUntitled(
+        isDefaultLaunch: Bool,
+        openDocuments: Int,
+        isRunningUnitTests: Bool,
+        isSmokeRun: Bool,
+        isBenchmark: Bool
+    ) -> Bool {
+        isDefaultLaunch && openDocuments == 0 && !isRunningUnitTests && !isSmokeRun && !isBenchmark
+    }
+
+    @MainActor
+    private static func openUntitledIfNeeded(isDefaultLaunch: Bool) {
+        guard shouldOpenUntitled(
+            isDefaultLaunch: isDefaultLaunch,
+            openDocuments: NSDocumentController.shared.documents.count,
+            isRunningUnitTests: isRunningUnitTests,
+            isSmokeRun: isSmokeRun,
+            isBenchmark: BenchmarkDriver.isRequested
+        ) else { return }
+        _ = try? NSDocumentController.shared.openUntitledDocumentAndDisplay(true)
+    }
+
+    /// A click on the Dock icon with no window open shows an untitled document, as TextEdit does.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !flag, NSDocumentController.shared.documents.isEmpty else { return true }
+        Self.openUntitledIfNeeded(isDefaultLaunch: true)
+        return false
     }
 
     /// Drives one accepted insertion and one accepted semantic command through the ordinary

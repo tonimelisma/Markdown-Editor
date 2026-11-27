@@ -93,6 +93,14 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     // Presentation recovery reasons
     case patchUnprovable
     case appliedStorageMismatch
+    case disagreedOnIdentity
+    case disagreedOnRenderedString
+    case disagreedOnRuns
+    case disagreedOnAttachments
+    case disagreedOnTables
+    case disagreedOnBlocks
+    case disagreedOnListMarkers
+    case disagreedOnAtoms
 
     // Reconciliation violations
     case publication
@@ -116,6 +124,8 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case toggleTask
     case replaceTableCell
     case insertImageMarkdown
+    case insertParagraphBreak
+    case joinBlockBackward
 
     // Image-placement phases
     case idle
@@ -127,6 +137,7 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case committing
     case committed
     case cancelled
+    case superseded
     case lateWork
     case failed
 

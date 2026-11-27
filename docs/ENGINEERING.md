@@ -151,7 +151,8 @@ An accepted WYSIWYG edit is a synchronous atomic transition:
 7. Reconciliation may replace the provisional snapshot only if its complete input identity still
    matches current state. If the authoritative snapshot's content differs from a provisional
    snapshot of the same revision and location generation, the local transition was wrong. That is a
-   recorded fault (`presentationRecovered`, `patchUnprovable`; COR-71): WYSIWYG stops accepting
+   recorded fault (`presentationRecovered`, reason `disagreedOn…` naming the first part of the
+   content that differed; COR-71): WYSIWYG stops accepting
    input until the authoritative snapshot is installed, and the caret, read through the provisional
    snapshot the user was looking at, is carried into it so typing goes on. The comparison is by content
    (`PresentationSnapshot.hasSameContent`), never by snapshot identity, which always differs. It
@@ -191,6 +192,53 @@ shows the literal character without exposing the protective source syntax.
 
 Formatting is performed by semantic toolbar/menu commands. If literal encoding cannot be proven,
 the edit refuses before source mutation.
+
+### Return and Backspace at block boundaries
+
+A line break typed as text is a soft break in Markdown, not a new paragraph, so Return is not
+typing. The native callback turns Return into `insertParagraphBreak`, and Backspace whose previous
+character is a paragraph break, an empty paragraph, or a list marker or task box into
+`joinBlockBackward` (`WYSIWYGEditor.Coordinator.command(replacing:…)`). `BlockBoundaryPlanner` plans
+both from the source and its parse, as a writer of Markdown would edit it, and the exact next
+presentation is built from the result (`planAuthoritativeTransition`), so the kernel checks them as
+structural edits.
+
+- Return: in a code block, a line break with the line's indentation; in a table, refused; in a list
+  item, the next item (same marker, a number one higher, an unchecked box for a task), and in an
+  empty item, the end of the list; before a paragraph's or heading's text, an empty paragraph above
+  it; anywhere else, quotes included, two line breaks. A quote is left, not continued: a second
+  paragraph inside a quote has no empty-line presentation to put the caret in.
+- Backspace: in an empty paragraph, or at the start of the block after one, that empty paragraph
+  goes; at a list item's text the marker goes; at a heading's text the heading becomes a paragraph;
+  at a paragraph's start it joins the paragraph or heading before it, or the rule before it goes.
+  Anything else at a block's start is refused.
+
+AppKit asks to delete the character before the caret (or the word, or the character after it),
+never the caret itself. The callback accepts such a deletion when it touches the owner's collapsed
+caret; any range other than the single character before it becomes the owner's selection first.
+
+The projection gives these edits somewhere to put the caret:
+
+- a paragraph's or heading's trailing blanks are identity text, which cmark trims from its content;
+- `EmptyParagraphLayout` lays out empty paragraphs between, before and after top-level blocks, from
+  the blank lines in each gap (between two blocks `blank / 2`, at either end `(blank + 1) / 2`, in a
+  document with no block `blank / 2`), each a synthetic line break whose insertion point is the
+  start of its middle blank line or the end of the file. Return writes two line breaks, which adds
+  exactly one;
+- a list item with no text ends its line with a synthetic break, and one whose only text is a task
+  box (`- [ ]` and a space: no task to cmark-gfm until text follows the box) is shown as the empty task it is
+  about to be;
+- a task's box and the space after it anchor at the item's start, so a caret at the end of the
+  task's text maps after them.
+
+Return in an empty item replaces the item, and the blank lines before it, with the two line
+breaks of a new paragraph, so a tight and a loose list end alike.
+
+A keystroke that the exact route plans is checked twice. First, the candidate proof requires the
+built page to read as typed, with the same visible styling: runs in order, neighbours with the same
+styling taken as one. A trailing space, or a letter typed into an empty paragraph, changes run
+boundaries but not what the page shows. Second, the kernel compares the page with the typed text,
+line breaks aside, since the first letter in an empty document starts a paragraph.
 
 ### Selection classification
 
@@ -357,6 +405,13 @@ Rules:
   the accepted/refused result. The completed composition is a separate source transaction.
 - Native plain-text paste, spelling, Find, keyboard input, selection, and accessibility remain
   available. There are no UI-test dependencies.
+- A key is never lost to timing. A formatting command's snapshot reaches the page on SwiftUI's next
+  update. A key that arrives first finds the page behind the session. The page is then brought
+  current and the key replayed once, at the caret the command left. A collapsed insertion where
+  AppKit shows the caret somewhere other than the owner's selection goes where the person sees the
+  caret.
+- A window with a sheet attached takes no typing. Keys meant for the sheet must not edit the
+  document behind it.
 
 ### Native command surface
 

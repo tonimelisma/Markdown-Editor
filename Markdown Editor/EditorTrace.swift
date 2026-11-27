@@ -41,11 +41,16 @@ nonisolated enum PresentationRecoveryReason: Sendable, Equatable {
     case patchUnprovable
     /// Applied storage no longer matched the snapshot the patch was built against.
     case appliedStorageMismatch
+    /// COR-71: a provisional snapshot disagreed with the parse of the same revision, first in
+    /// this part of its content. Recorded as `patchUnprovable` until tour 45964220766 needed to
+    /// tell the two apart.
+    case provisionalDisagreed(PresentationSnapshot.ContentField)
 
     var symbol: DiagnosticSymbol {
         switch self {
         case .patchUnprovable: return .patchUnprovable
         case .appliedStorageMismatch: return .appliedStorageMismatch
+        case .provisionalDisagreed(let field): return field.symbol
         }
     }
 }
@@ -154,6 +159,8 @@ nonisolated enum PlannerKind: Sendable, Equatable {
     case toggleTask
     case replaceTableCell
     case insertImageMarkdown
+    case insertParagraphBreak
+    case joinBlockBackward
 
     init(_ command: SemanticCommand) {
         switch command {
@@ -174,6 +181,8 @@ nonisolated enum PlannerKind: Sendable, Equatable {
         case .toggleTask: self = .toggleTask
         case .replaceTableCell: self = .replaceTableCell
         case .insertImageMarkdown: self = .insertImageMarkdown
+        case .insertParagraphBreak: self = .insertParagraphBreak
+        case .joinBlockBackward: self = .joinBlockBackward
         }
     }
 
@@ -196,6 +205,8 @@ nonisolated enum PlannerKind: Sendable, Equatable {
         case .toggleTask: return .toggleTask
         case .replaceTableCell: return .replaceTableCell
         case .insertImageMarkdown: return .insertImageMarkdown
+        case .insertParagraphBreak: return .insertParagraphBreak
+        case .joinBlockBackward: return .joinBlockBackward
         }
     }
 }

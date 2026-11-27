@@ -162,6 +162,12 @@ enum WYSIWYGEditor {
                 appliedSnapshot = presentation
                 appliedImageIdentities = imageIdentities(for: presentation)
                 restoreSelection(for: presentation, in: textView, limit: built.attributed.length)
+                // A document opens with the caret at its start, as TextEdit's do. Replacing the
+                // storage left AppKit's caret at the end, and that is where the first keystroke
+                // of a newly opened document went (NewWindowReadinessTests).
+                if session.wysiwygModeState.selection == nil {
+                    textView.setSelectedRange(NSRange(location: 0, length: 0))
+                }
             }
         }
 
@@ -333,6 +339,31 @@ enum WYSIWYGEditor {
             appliedSnapshotID == id
         }
 
+        /// The caret AppKit shows becomes the owner's selection when the owner has none and the
+        /// page has keyboard focus: when a new window's page gains focus, or a presentation lands
+        /// under a focused page. Only a selection *change* reported it before, and an untouched
+        /// caret never changes, so a new document's first keystroke and first command were
+        /// refused as `ambiguousSelection` (agent-drive tour 45955987611). Deferred one turn so it
+        /// never writes session state from inside view reconciliation (ARC-015), and it goes
+        /// through the same guarded capture a real selection change does.
+        func adoptNativeSelectionIfUnowned() {
+            guard let textView, textView.window?.firstResponder === textView,
+                  session.wysiwygModeState.selection == nil else { return }
+            Task { @MainActor [weak self] in
+                guard let self, let textView = self.textView,
+                      textView.window?.firstResponder === textView,
+                      self.session.wysiwygModeState.selection == nil,
+                      self.session.updateOrigin.current == .nativeUserInput else { return }
+                self.textViewDidChangeSelection(
+                    Notification(name: NSTextView.didChangeSelectionNotification, object: textView)
+                )
+            }
+        }
+
+        /// True while a keystroke refused against a page that was behind is replayed, so it is
+        /// replayed at most once.
+        private var replayingKeystroke = false
+
         func textView(
             _ textView: NSTextView,
             shouldChangeTextIn affectedCharRange: NSRange,
@@ -348,6 +379,12 @@ enum WYSIWYGEditor {
             if session.updateOrigin.current != .nativeUserInput { return true }
             // Attribute-only changes (nil replacement) stay native.
             guard let replacement = replacementString else { return true }
+            // A sheet on the window is modal: keys meant for it must never edit the document
+            // behind it. Return in the link sheet did (tour 45966446584).
+            if textView.window?.attachedSheet != nil {
+                document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.unavailable)))
+                return false
+            }
 
             // REQ-084: marked-text / IME updates stay transient until composition completes.
             if input.committingComposition || input.allowingMarkedText || textView.hasMarkedText() || input.composition.isComposing {
@@ -367,8 +404,28 @@ enum WYSIWYGEditor {
                 // recovery is: storage drift must never be silent. So is the refused keystroke:
                 // typing that vanished without a trace took an agent-drive run to see
                 // (45943545906).
-                document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.stalePresentation)))
+                let viewWasBehind = appliedSnapshotID != session.presentation?.id
                 applyProjectionIfNeeded(reason: .reapplyIfDrift)
+                // A key pressed just after a formatting command arrives before SwiftUI has put
+                // the command's snapshot on the page: Return after Heading 1 was lost this way
+                // (tour 45964220766). The page is current now, so the key is replayed once at
+                // the caret the command left, which is where the person was typing.
+                if viewWasBehind, !replayingKeystroke,
+                   let current = session.presentation, appliedSnapshotID == current.id,
+                   let caret = session.wysiwygModeState.selection,
+                   caret.range.revision == current.projectionRevision {
+                    let target: NSRange
+                    if replacement.isEmpty, caret.range.utf16.length == 0 {
+                        guard caret.range.utf16.location > 0 else { return false }
+                        target = (current.renderedString as NSString).rangeOfComposedCharacterSequence(at: caret.range.utf16.location - 1)
+                    } else {
+                        target = caret.range.utf16
+                    }
+                    replayingKeystroke = true
+                    defer { replayingKeystroke = false }
+                    return self.textView(textView, shouldChangeTextIn: target, replacementString: replacement)
+                }
+                document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.stalePresentation)))
                 return false
             }
             let appliedPresentation = presentation
@@ -377,21 +434,26 @@ enum WYSIWYGEditor {
             // programmatic insertion need not match the owner's for the same caret, and comparing
             // it refused every keystroke after the first (agent-drive run 45944610103).
             let nativeRange = ProjectionRange(affectedCharRange, revision: presentation.projectionRevision)
-            guard let projectionSelection = session.wysiwygModeState.selection,
-                  projectionSelection.range == nativeRange else {
+            guard let ownerSelection = session.wysiwygModeState.selection,
+                  let resolved = Self.command(
+                      replacing: affectedCharRange,
+                      with: replacement,
+                      owner: ownerSelection,
+                      native: nativeRange,
+                      presentation: presentation
+                  ) else {
                 // The native selection callback is the owner-state capture point. A mutation
                 // callback cannot promote its affected range into current state after the fact.
                 document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.ambiguousSelection)))
                 applyProjectionIfNeeded(reason: .reapplyIfDrift)
                 return false
             }
-            let command: SemanticCommand
-            if replacement.isEmpty && affectedCharRange.length > 0 {
-                command = .insertText("")
-            } else if replacement.isEmpty {
-                command = .deleteBackward
-            } else {
-                command = .insertText(replacement)
+            let (command, projectionSelection) = resolved
+            if projectionSelection != ownerSelection {
+                // A deletion AppKit derived from the caret, such as Option-Delete or Forward
+                // Delete: the range it names becomes the owner's selection, as the caret it
+                // came from was.
+                session.captureSelection(.projection(projectionSelection))
             }
             let outcome = session.perform(
                 command,
@@ -411,6 +473,61 @@ enum WYSIWYGEditor {
             }
         }
 
+        /// The semantic command a native replacement asks for, and the selection it acts on.
+        ///
+        /// The owner's selection decides. A replacement of exactly that selection is typing,
+        /// Return or a deletion of it. A deletion next to a collapsed caret is AppKit's own reading
+        /// of Delete, which names the character before the caret (or the word, or the character
+        /// after) rather than the caret: refused as a mismatch, Backspace did nothing in WYSIWYG.
+        /// Backspace over a block boundary is the block planner's.
+        nonisolated static func command(
+            replacing affected: NSRange,
+            with replacement: String,
+            owner: ProjectionSelection,
+            native: ProjectionRange,
+            presentation: PresentationSnapshot
+        ) -> (SemanticCommand, ProjectionSelection)? {
+            if owner.range == native {
+                if replacement.isEmpty, affected.length > 0 { return (.insertText(""), owner) }
+                if replacement.isEmpty {
+                    let caret = affected.location
+                    return (BlockBoundaryPlanner.deletesBlockBoundary(atCaret: caret, in: presentation) ? .joinBlockBackward : .deleteBackward, owner)
+                }
+                if isParagraphBreak(replacement) { return (.insertParagraphBreak, owner) }
+                return (.insertText(replacement), owner)
+            }
+            let caret = owner.range.utf16
+            // Typing at a collapsed caret AppKit shows elsewhere than the owner's: the person
+            // types where they see the caret, so the keystroke goes there. Refused, it was lost
+            // (tour 45964220766, `ambiguousSelection` mid-word).
+            if !replacement.isEmpty, caret.length == 0, affected.length == 0,
+               owner.range.revision == native.revision {
+                let there = ProjectionSelection(utf16: affected, revision: native.revision, affinity: owner.affinity)
+                return (isParagraphBreak(replacement) ? .insertParagraphBreak : .insertText(replacement), there)
+            }
+            guard replacement.isEmpty,
+                  caret.length == 0,
+                  affected.length > 0,
+                  owner.range.revision == native.revision,
+                  NSMaxRange(affected) == caret.location || affected.location == caret.location else {
+                return nil
+            }
+            let rendered = presentation.renderedString as NSString
+            if NSMaxRange(affected) == caret.location,
+               affected == rendered.rangeOfComposedCharacterSequence(at: caret.location - 1) {
+                let command: SemanticCommand = BlockBoundaryPlanner.deletesBlockBoundary(atCaret: caret.location, in: presentation)
+                    ? .joinBlockBackward
+                    : .deleteBackward
+                return (command, owner)
+            }
+            return (.insertText(""), ProjectionSelection(utf16: affected, revision: native.revision, affinity: owner.affinity))
+        }
+
+        /// Return and Enter, as AppKit spells them.
+        nonisolated static func isParagraphBreak(_ text: String) -> Bool {
+            text == "\n" || text == "\r" || text == "\r\n" || text == "\u{2029}"
+        }
+
         func applyAcceptedEdit(
             _ edit: AcceptedEdit,
             from current: PresentationSnapshot,
@@ -418,6 +535,27 @@ enum WYSIWYGEditor {
         ) {
             guard let transition = edit.presentationTransition else {
                 preconditionFailure("Accepted WYSIWYG edit must carry a presentation transition")
+            }
+            // The same characters with new attributes: Delete at a heading's start makes it a
+            // paragraph, and the page's text does not change. A text patch has nothing to
+            // replace; the attributes of the changed blocks are refreshed instead, as when the
+            // parse replaces a provisional snapshot.
+            if current.renderedString == transition.nextSnapshot.renderedString {
+                if let reason = incrementalRecoveryReason(
+                    from: current,
+                    to: transition.nextSnapshot,
+                    in: textView,
+                    intent: edit.intent,
+                    nativeTextAlreadyApplied: false
+                ) {
+                    recoverFullPresentation(to: transition.nextSnapshot, in: textView, reason: reason, intent: edit.intent)
+                    return
+                }
+                let caret = (edit.projectionSelectionAfter ?? transition.selectionAfter).range.utf16
+                session.updateOrigin.with(.programmaticPresentation) {
+                    textView.setSelectedRange(caret)
+                }
+                return
             }
             // Only the touched semantic block scope is turned into attributed content. Building
             // the complete next presentation here would put the whole document's cost inside
@@ -578,6 +716,12 @@ enum WYSIWYGEditor {
 
 @MainActor
 final class MarkdownWYSIWYGTextView: NSTextView, NSLayoutManagerDelegate {
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        if accepted { adapterCoordinator?.adoptNativeSelectionIfUnowned() }
+        return accepted
+    }
+
     weak var session: EditorSession?
     weak var documentActions: DocumentActionInterface?
     weak var placementController: ImagePlacementController?

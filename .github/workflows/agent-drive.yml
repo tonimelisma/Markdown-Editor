@@ -1,8 +1,9 @@
 # An agent's hands and eyes on the real app (CLAUDE.md §4, docs/DECISIONS.md 2026-11-27). A cloud
-# session cannot see a Mac; this builds the app on a GitHub Mac runner, opens a fixture, runs a
-# scenario of clicks, keys, menu choices and accessibility presses (Scripts/agent-drive.swift), and
-# uploads what it saw after each step: window screenshots, accessibility trees, element values, the
-# saved file and the app's own diagnostic log. The agent downloads the artifact and looks.
+# session cannot see a Mac; this builds the app on a GitHub Mac runner and runs a scenario
+# (Scripts/agent-drive.swift) that launches it, as the Dock and Finder do, and uses it: clicks, keys,
+# menu choices, panels, the clipboard, other apps changing its files, quitting and relaunching. It
+# uploads what it saw after each step: window and screen captures, accessibility trees, element
+# values, files and the app's own diagnostic log. The agent downloads the artifact and looks.
 #
 # Never a gate and never a requirement's proof: nothing requires this workflow, and what it finds is
 # fixed with a unit or component test that fails for it.
@@ -17,16 +18,16 @@ on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: Steps, one per line (Scripts/agent-drive.swift); empty runs Scripts/agent-drive-default.txt
+        description: Steps, one per line (Scripts/agent-drive.swift); empty runs scenario_file
         default: ""
-      fixture:
-        description: The document to open, a file in Scripts/Fixtures
-        default: smoke-rich.md
+      scenario_file:
+        description: A scenario in Scripts/agent-drive, used when scenario is empty
+        default: tour.txt
   pull_request:
     paths:
       - .github/workflows/agent-drive.yml
       - Scripts/agent-drive.swift
-      - Scripts/agent-drive-default.txt
+      - Scripts/agent-drive/**
 
 permissions:
   contents: read
@@ -66,35 +67,24 @@ jobs:
             "${verification_build_settings[@]}" build > out/build.log 2>&1 \
             || { grep -A4 ': error:' out/build.log | head -n 60; tail -n 20 out/build.log; exit 1; }
           swiftc -O Scripts/agent-drive.swift -o .build/agent-drive
-          swiftc -O Scripts/find-window-id.swift -o .build/find-window-id
       - name: Drive
         env:
           SCENARIO: ${{ inputs.scenario }}
-          FIXTURE: ${{ inputs.fixture || 'smoke-rich.md' }}
+          SCENARIO_FILE: ${{ inputs.scenario_file || 'tour.txt' }}
         run: |
           set -uo pipefail
-          [[ "$FIXTURE" =~ ^[A-Za-z0-9._-]+$ && -f "Scripts/Fixtures/$FIXTURE" ]] \
-            || { echo "::error::fixture must be a file in Scripts/Fixtures"; exit 1; }
           if [[ -n "$SCENARIO" ]]; then printf '%s\n' "$SCENARIO" > out/scenario.txt
-          else cp Scripts/agent-drive-default.txt out/scenario.txt; fi
-          app=".build/check/Build/Products/Debug/Markdown Editor.app"
-          work="$(mktemp -d)"; cp -R Scripts/Fixtures/. "$work/"; doc="$work/$FIXTURE"
-          caffeinate -d -i -u -t 900 &
-          MARKDOWN_EDITOR_DIAGNOSTICS_DIR="$PWD/out/diagnostics" \
-            "$app/Contents/MacOS/Markdown Editor" -ApplePersistenceIgnoreState YES "$doc" > out/app-output.txt 2>&1 &
-          pid=$!
-          wid=""
-          for _ in $(seq 1 150); do
-            wid="$(.build/find-window-id "$pid" 2>/dev/null | head -n 1)"
-            [[ -n "$wid" ]] && break
-            sleep 0.2
-          done
-          [[ -n "$wid" ]] || { echo "::error::the app's window never appeared"; kill "$pid"; exit 1; }
-          sleep 2 # let the opening parse land before the first step
+          else
+            [[ "$SCENARIO_FILE" =~ ^[A-Za-z0-9._-]+$ && -f "Scripts/agent-drive/$SCENARIO_FILE" ]] \
+              || { echo "::error::scenario_file must be a file in Scripts/agent-drive"; exit 1; }
+            cp "Scripts/agent-drive/$SCENARIO_FILE" out/scenario.txt
+          fi
+          app="$PWD/.build/check/Build/Products/Debug/Markdown Editor.app"
+          work="$RUNNER_TEMP/work"; rm -rf "$work"; mkdir -p "$work"; cp -R Scripts/Fixtures/. "$work/"
+          caffeinate -d -i -u -t 1800 &
           verdict=0
-          .build/agent-drive "$pid" "$wid" out "$doc" < out/scenario.txt || verdict=$?
-          kill "$pid" 2>/dev/null || true
-          wait "$pid" 2>/dev/null || true
+          .build/agent-drive "$app" "$work" out "$PWD/out/diagnostics" < out/scenario.txt || verdict=$?
+          cp -R "$work" out/work 2>/dev/null || true
           case "$verdict" in
             0) echo "agent-drive: every expectation held" ;;
             1) echo "::warning::agent-drive: an expectation failed (transcript.txt)" ;;

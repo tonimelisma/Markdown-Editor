@@ -33,6 +33,26 @@ enum WYSIWYGPlanningDomain {
         )
 
         switch command {
+        case .insertParagraphBreak:
+            return BlockBoundaryPlanner.paragraphBreak(
+                selection: selection,
+                snapshot: snapshot,
+                presentation: presentation,
+                tree: tree,
+                grouping: grouping,
+                intent: intent
+            )
+
+        case .joinBlockBackward:
+            return BlockBoundaryPlanner.joinBackward(
+                selection: selection,
+                snapshot: snapshot,
+                presentation: presentation,
+                tree: tree,
+                grouping: grouping,
+                intent: intent
+            )
+
         case .toggleTask(let nodeID):
             guard case .taskMarker(let classifiedNodeID) = classification,
                   classifiedNodeID == nodeID else {
@@ -464,20 +484,44 @@ enum WYSIWYGPlanningDomain {
         // control run can emerge without changing the plain text. Compare semantic
         // structure while deliberately ignoring node IDs, shifted ranges, and atom
         // fragmentation, which are representation details of a fresh parse.
-        let preserves = built.renderedString == expected
-            && sameRunSemantics(built.runs, presentation.runs)
+        // In a document with no block, the first letter typed starts a paragraph, whose break
+        // is no typed text, and there is no styling yet for it to keep: it must be plain.
+        let startsTheFirstBlock = presentation.blocks.isEmpty
+        let rendersAsTyped = built.renderedString == expected
+            || (startsTheFirstBlock && built.renderedString == expected + "\n")
+        let keepsStyling = presentation.runs.isEmpty
+            ? visibleStyling(built.runs).allSatisfy { $0.styles.isEmpty && $0.linkDestination == nil && !$0.isLiteralFallback }
+            : sameRunSemantics(built.runs, presentation.runs)
+        let preserves = rendersAsTyped
+            && keepsStyling
             && sameAttachmentSemantics(built.attachments, presentation.attachments)
             && sameTableSemantics(built.tables, presentation.tables)
             && sameListSemantics(built.listMarkers, presentation.listMarkers)
         return preserves ? .preservesPresentation(built: built) : .changesPresentation(built: built)
     }
 
+    /// Whether two presentations style their text alike: their runs in order, neighbours with
+    /// the same styling taken as one. Run boundaries alone are representation: a trailing space
+    /// is a run of its own, and a letter typed into an empty paragraph turns its break into text
+    /// and a break. Counted run by run, every such keystroke looked like a change of formatting
+    /// and was refused or escaped (agent-drive tour 45957180019).
     static func sameRunSemantics(_ lhs: [ProjectionRun], _ rhs: [ProjectionRun]) -> Bool {
-        lhs.count == rhs.count && zip(lhs, rhs).allSatisfy {
-            $0.styles == $1.styles
-                && $0.linkDestination == $1.linkDestination
-                && $0.isLiteralFallback == $1.isLiteralFallback
+        visibleStyling(lhs) == visibleStyling(rhs)
+    }
+
+    nonisolated struct RunStyling: Equatable {
+        let styles: Set<ProjectionStyleTag>
+        let linkDestination: String?
+        let isLiteralFallback: Bool
+    }
+
+    static func visibleStyling(_ runs: [ProjectionRun]) -> [RunStyling] {
+        var result: [RunStyling] = []
+        for run in runs {
+            let styling = RunStyling(styles: run.styles, linkDestination: run.linkDestination, isLiteralFallback: run.isLiteralFallback)
+            if result.last != styling { result.append(styling) }
         }
+        return result
     }
 
     static func sameAttachmentSemantics(

@@ -225,6 +225,11 @@ struct PresentationRecoveryTests {
         await awaitReconciliations(trace, revision: revision, count: 2)
 
         #expect(recoveries(trace).count == 1, "a provisional snapshot that disagreed with the parse was not recorded: \(recoveries(trace))")
+        // The record names the part that disagreed, so a run's log says where to look.
+        #expect(recoveries(trace).first.map {
+            if case .presentationRecovered(_, _, .provisionalDisagreed(.runs)) = $0 { return true }
+            return false
+        } == true, "the recovery does not say the runs disagreed: \(recoveries(trace))")
         #expect(session.presentation?.runs.isEmpty == false, "the wrong provisional snapshot was kept")
     }
 

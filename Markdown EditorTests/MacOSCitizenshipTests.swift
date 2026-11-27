@@ -122,7 +122,10 @@ struct WindowCitizenshipTests {
         // app is silently not participating.
         // Both signals asserted separately rather than with `||`: either one alone passing would
         // hide the other silently opting out. Observed values are "MarkdownDocumentWindow" / true.
-        #expect(window.frameAutosaveName == "MarkdownDocumentWindow", "no frame autosave name, so AppKit cannot restore or cascade")
+        #expect(window.frameAutosaveName == MarkdownDocument.frameAutosaveName, "no frame autosave name, so AppKit cannot restore or cascade")
+        // Tests run inside the app and share its defaults: they must never save the frame the
+        // real app restores (a test-shrunk frame left the owner's copy opening stamp-sized).
+        #expect(MarkdownDocument.frameAutosaveName != "MarkdownDocumentWindow")
         #expect(window.isRestorable, "window opts out of state restoration")
     }
 
@@ -137,7 +140,7 @@ struct WindowCitizenshipTests {
         // restoration is a legitimate resize this test is not about. `toolbarRemainsUsableAtTheMinimumWindowSize`
         // leaves one at the minimum size: without this, the falsification run (CI 45936808313) saw
         // 320×208 after five resizes, which said as much about test order as about layout.
-        UserDefaults.standard.removeObject(forKey: "NSWindow Frame MarkdownDocumentWindow")
+        UserDefaults.standard.removeObject(forKey: "NSWindow Frame \(MarkdownDocument.frameAutosaveName)")
         let document = MarkdownDocument()
         let resizes = Mutex<[String]>([])
         let observer = NotificationCenter.default.addObserver(
@@ -152,12 +155,60 @@ struct WindowCitizenshipTests {
         let window = try #require(document.windowControllers.first?.window)
 
         let contentSize = window.contentRect(forFrameRect: window.frame).size
-        #expect(contentSize == NSSize(width: 720, height: 560), "the window's content is \(contentSize), not its default size")
+        let expected = MarkdownDocument.defaultContentSize(visibleFrame: NSScreen.main?.visibleFrame)
+        #expect(contentSize == expected, "the window's content is \(contentSize), not its default size")
         // Sizing a new window to its content is the one layout it needs. Any resize to another
         // size lays the whole window out again: the restyle-then-resize this replaced went
         // 720×560 → 720×592 → 720×560 (CI 45937955461).
         let sizes = resizes.withLock { $0 }
-        #expect(sizes.allSatisfy { $0 == "720.0×560.0" }, "the window passed through other sizes, each laid out: \(sizes)")
+        let final = "\(expected.width)×\(expected.height)"
+        #expect(sizes.allSatisfy { $0 == final }, "the window passed through other sizes, each laid out: \(sizes)")
+    }
+
+    // Verifies: REQ-131 — a new window is big enough to read a document and to show the whole
+    // toolbar. It opened at 720×560, at which the toolbar already overflowed, and the owner saw
+    // windows "stamp-sized".
+    @Test func aNewWindowIsBigEnoughToRead() {
+        let roomy = MarkdownDocument.defaultContentSize(visibleFrame: NSRect(x: 0, y: 0, width: 1728, height: 1079))
+        #expect(roomy.width >= 860 && roomy.height >= 680, "a new window on a laptop screen is only \(roomy)")
+        let small = MarkdownDocument.defaultContentSize(visibleFrame: NSRect(x: 0, y: 0, width: 800, height: 560))
+        #expect(small.width <= 720 && small.height <= 440, "a new window does not fit a small screen: \(small)")
+        #expect(small.width >= MarkdownDocument.minimumContentSize.width)
+    }
+
+    // Verifies: REQ-131 — a saved frame too small to read in is not restored. Unit tests run
+    // inside the app and shared its defaults, and one of them shrank a window to its minimum:
+    // the owner's copy then opened stamp-sized. A frame like that is replaced by the default.
+    @Test func aStampSizedSavedFrameIsNotRestored() throws {
+        let key = "NSWindow Frame \(MarkdownDocument.frameAutosaveName)"
+        UserDefaults.standard.set("100 100 320 240 0 0 1440 875 ", forKey: key)
+        defer { UserDefaults.standard.removeObject(forKey: key) }
+        let document = MarkdownDocument()
+        document.makeWindowControllers()
+        defer { document.close() }
+        let window = try #require(document.windowControllers.first?.window)
+
+        let size = window.contentRect(forFrameRect: window.frame).size
+        #expect(
+            size.width >= MarkdownDocument.smallestRestorableContentSize.width
+                && size.height >= MarkdownDocument.smallestRestorableContentSize.height,
+            "a stamp-sized saved frame was restored: \(size)"
+        )
+    }
+
+    // Verifies: REQ-002 — a plain launch shows an untitled document, as TextEdit does, and only a
+    // plain launch: not one that opens a file or restores windows, and not a verification run.
+    @Test func onlyAPlainLaunchWithNoDocumentOpensAnUntitledOne() {
+        func decide(_ isDefault: Bool, _ documents: Int, tests: Bool = false, smoke: Bool = false, bench: Bool = false) -> Bool {
+            MarkdownAppDelegate.shouldOpenUntitled(
+                isDefaultLaunch: isDefault, openDocuments: documents,
+                isRunningUnitTests: tests, isSmokeRun: smoke, isBenchmark: bench
+            )
+        }
+        #expect(decide(true, 0))
+        #expect(!decide(false, 0), "a launch that opened a file or restored windows got an untitled one too")
+        #expect(!decide(true, 1), "a second, untitled window beside a document AppKit already opened")
+        #expect(!decide(true, 0, tests: true) && !decide(true, 0, smoke: true) && !decide(true, 0, bench: true))
     }
 
     // Verifies: REQ-131 — the command surface stays usable at the minimum window size. A toolbar

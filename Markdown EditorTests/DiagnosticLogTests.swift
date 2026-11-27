@@ -317,8 +317,10 @@ struct DiagnosticLogTests {
         session.detach()
     }
 
-    // Verifies: ARC-023 — a scale change notification from the session's own window invalidates
-    // the current generation and schedules a fresh display request.
+    // Verifies: ARC-023 — a backing change from the session's own window that changes the scale
+    // images were decoded for invalidates the current generation and schedules a fresh display
+    // request; one that leaves the scale as it was (a colour-space change, say) parses nothing.
+    // The first window bound used to count as a change, and every open parsed twice.
     @Test func owningWindowBackingChangeStartsNewGeneration() async {
         let document = MarkdownDocument()
         document.installTextForTesting("hello\n")
@@ -326,9 +328,14 @@ struct DiagnosticLogTests {
         let window = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
         session.bind(editorWindow: window)
         session.attach(document: document)
+        let unchanged = session.parseCoordinator.generation()
+        NotificationCenter.default.post(name: NSWindow.didChangeBackingPropertiesNotification, object: window)
+        #expect(session.parseCoordinator.generation() == unchanged, "a backing change at the same scale parsed again")
+
+        session.parseCoordinator.overrideScheduledBackingScaleForTesting(window.backingScaleFactor + 1)
         let before = session.parseCoordinator.generation()
         NotificationCenter.default.post(name: NSWindow.didChangeBackingPropertiesNotification, object: window)
-        #expect(session.parseCoordinator.generation() > before)
+        #expect(session.parseCoordinator.generation() > before, "a scale change did not start a new generation")
         session.detach()
     }
 

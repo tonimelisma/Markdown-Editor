@@ -32,6 +32,54 @@ struct MeasurementSubstrateProofTests {
         #expect(reasons.withLock { $0 } == [.lateWork])
     }
 
+    // Verifies: REQ-123 — work replaced by newer demand is superseded, recorded without a fault;
+    // work that ends incomplete for any other reason is still an orphan. Both were faults, so
+    // every document open and every burst of fast typing logged one.
+    @Test func supersededWorkIsNotAnOrphan() {
+        let recorder = IntentRecorder()
+        let reports = Mutex<[(Bool, DiagnosticSymbol?)]>([])
+        recorder.setReporter { _, _, orphaned, reason in reports.withLock { $0.append((orphaned, reason)) } }
+        let replaced = recorder.begin(.reconciliation)
+        #expect(recorder.finish(replaced, superseded: true))
+        let abandoned = recorder.begin(.reconciliation)
+        #expect(recorder.finish(abandoned, orphaned: true))
+        let seen = reports.withLock { $0 }
+        #expect(seen.count == 2)
+        #expect(seen.first.map { !$0.0 && $0.1 == .superseded } == true, "superseded work was reported as \(String(describing: seen.first))")
+        #expect(seen.last.map { $0.0 && $0.1 == .cancelled } == true, "abandoned work was reported as \(String(describing: seen.last))")
+    }
+
+    // Verifies: REQ-123 — a parse cancelled because a newer one was scheduled is superseded. The
+    // opening parse was cancelled this way on every open, and recorded a fault each time.
+    @Test func anOpeningParseReplacedByANewerOneIsSuperseded() async {
+        let reports = Mutex<[(WorkScope, Bool, DiagnosticSymbol?)]>([])
+        let document = MarkdownDocument()
+        document.installTextForTesting("# Title\n\nBody.\n")
+        let session = EditorSession()
+        session.intentRecorder.setReporter { context, _, orphaned, reason in
+            reports.withLock { $0.append((context.scope, orphaned, reason)) }
+        }
+        session.attach(document: document)
+        defer { session.detach() }
+        session.scheduleParse()
+        for _ in 0..<400 where !reports.withLock({ $0.contains { $0.0 == .documentOpen } }) {
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        let open = reports.withLock { $0.first { $0.0 == .documentOpen } }
+        #expect(open != nil, "the opening intent never finished")
+        #expect(open.map { !$0.1 } == true, "the replaced opening parse was recorded as an orphan: \(String(describing: open))")
+    }
+
+    // Verifies: REQ-123 — binding a window re-parses only when the window's scale differs from
+    // the one the scheduled parse decoded images for. It compared with the previous window, and
+    // the first window has none, so every open parsed twice.
+    @Test func aWindowAtTheParsedScaleNeedsNoSecondParse() {
+        #expect(!EditorSession.needsRescaleParse(scheduled: 2, window: 2))
+        #expect(EditorSession.needsRescaleParse(scheduled: 2, window: 1))
+        #expect(!EditorSession.needsRescaleParse(scheduled: nil, window: 1))
+    }
+
     // Verifies: REQ-123 — a presentation adapter lease keeps downstream attributed work inside
     // the originating intent until the adapter releases it.
     @Test func presentationLeaseDefersTerminalLedger() {

@@ -134,7 +134,13 @@ final class EditorSession: ObservableObject {
     /// Binds image-scale identity to the window that owns this session. `NSScreen.main` is
     /// ambient and can describe a different document while windows move between displays.
     func bind(editorWindow: NSWindow) {
-        let scaleChanged = self.editorWindow?.backingScaleFactor != editorWindow.backingScaleFactor
+        // Compared with the scale the scheduled parse decodes images for, not with the previous
+        // window's: the first window bound has no previous one, and `nil != 2` re-parsed every
+        // document the moment its window appeared, cancelling the opening parse.
+        let scaleChanged = Self.needsRescaleParse(
+            scheduled: parseCoordinator.scheduledBackingScale,
+            window: editorWindow.backingScaleFactor
+        )
         if self.editorWindow !== editorWindow {
             if let backingPropertiesObserver {
                 NotificationCenter.default.removeObserver(backingPropertiesObserver)
@@ -146,7 +152,11 @@ final class EditorSession: ObservableObject {
                 queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    guard let self, self.document != nil else { return }
+                    guard let self, self.document != nil, let window = self.editorWindow,
+                          Self.needsRescaleParse(
+                            scheduled: self.parseCoordinator.scheduledBackingScale,
+                            window: window.backingScaleFactor
+                          ) else { return }
                     self.invalidateDerivedState()
                     self.scheduleParse()
                 }
@@ -156,6 +166,13 @@ final class EditorSession: ObservableObject {
             invalidateDerivedState()
             scheduleParse()
         }
+    }
+
+    /// Whether images must be decoded again for a window: only when its scale differs from the
+    /// one the scheduled parse used. Before any parse there is nothing to redo.
+    nonisolated static func needsRescaleParse(scheduled: CGFloat?, window: CGFloat) -> Bool {
+        guard let scheduled else { return false }
+        return scheduled != window
     }
 
     private func installPublicationObserver() {
@@ -215,13 +232,13 @@ final class EditorSession: ObservableObject {
         pendingDocumentChangeTask = nil
         parseCoordinator.cancel()
         if let pendingDocumentMutationIntent {
-            pendingDocumentMutationIntent.recorder.finish(pendingDocumentMutationIntent, orphaned: true)
+            pendingDocumentMutationIntent.recorder.finish(pendingDocumentMutationIntent, superseded: true)
             self.pendingDocumentMutationIntent = nil
         }
         let pendingIntents = presentationIntents.values
         presentationIntents.removeAll()
         for intent in pendingIntents {
-            intent.recorder.finish(intent, orphaned: true)
+            intent.recorder.finish(intent, superseded: true)
         }
         cancellables.removeAll()
         performanceSampler?.invalidate()
@@ -315,7 +332,7 @@ final class EditorSession: ObservableObject {
     @discardableResult
     func stageDocumentMutationIntent(_ intent: IntentContext) -> Bool {
         if let previous = pendingDocumentMutationIntent {
-            previous.recorder.finish(previous, orphaned: true)
+            previous.recorder.finish(previous, superseded: true)
         }
         guard intent.recorder.retain(intent) else { return false }
         pendingDocumentMutationIntent = intent
@@ -545,7 +562,7 @@ final class EditorSession: ObservableObject {
             let alreadyLeasedForPresentation = supersededIntents.contains(intent)
             presentationIntents.removeAll()
             for superseded in supersededIntents where superseded != intent {
-                superseded.recorder.finish(superseded, orphaned: true)
+                superseded.recorder.finish(superseded, superseded: true)
             }
             if !alreadyLeasedForPresentation {
                 intent.recorder.retain(intent)
