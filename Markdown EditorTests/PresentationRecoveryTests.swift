@@ -24,6 +24,26 @@ struct PresentationRecoveryTests {
         }
     }
 
+    /// Which of the fields `hasSameContent` compares differ between two snapshots, with both values
+    /// for the small ones — the evidence a failed recovery test needs to say what disagreed.
+    static func differences(_ a: PresentationSnapshot, _ b: PresentationSnapshot) -> [String] {
+        var out: [String] = []
+        func check<T: Equatable>(_ name: String, _ x: T, _ y: T) {
+            if x != y { out.append("\(name): \(String(describing: x).prefix(600)) ≠ \(String(describing: y).prefix(600))") }
+        }
+        check("sourceRevision", a.sourceRevision, b.sourceRevision)
+        check("locationGeneration", a.locationGeneration, b.locationGeneration)
+        check("sourceUTF16Count", a.sourceUTF16Count, b.sourceUTF16Count)
+        check("renderedString", a.renderedString, b.renderedString)
+        check("runs", a.runs, b.runs)
+        check("attachments", a.attachments, b.attachments)
+        check("tables", a.tables, b.tables)
+        check("blocks", a.blocks, b.blocks)
+        check("listMarkers", a.listMarkers, b.listMarkers)
+        check("atoms", a.atoms, b.atoms)
+        return out
+    }
+
     private func reconciliations(_ trace: InMemoryEditorTrace, revision: UInt64) -> Int {
         trace.eventsMatching {
             if case .reconciliationApplied(_, let applied, _, _) = $0 { return applied == revision }
@@ -82,10 +102,12 @@ struct PresentationRecoveryTests {
         harness.typeCharacter("!", at: NSRange(location: 11, length: 0))
         let typed = harness.document.sourceVersion
         try #require(typed != opened, "the keystroke did not commit")
+        let provisional = try #require(harness.session.presentation, "the keystroke installed no provisional snapshot")
         await awaitReconciliations(trace, revision: typed, count: 1)
 
         #expect(reconciliations(trace, revision: typed) >= 1, "the keystroke's parse never landed")
-        #expect(recoveries(trace).isEmpty, "an ordinary keystroke was recorded as a recovery: \(recoveries(trace))")
+        let differences = harness.session.presentation.map { Self.differences(provisional, $0) } ?? ["no presentation"]
+        #expect(recoveries(trace).isEmpty, "an ordinary keystroke was recorded as a recovery: \(recoveries(trace)); provisional vs authoritative: \(differences)")
         #expect(harness.document.text == "Hello world!.\n")
         #expect(harness.session.wysiwygModeState.selection != nil, "the reconciliation dropped the caret")
     }
