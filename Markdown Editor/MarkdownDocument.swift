@@ -175,15 +175,28 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         return copy
     }
 
+    // Entering the Versions browser runs AppKit's blocking animation inside this call, and a
+    // duplicate's "keep this new document?" dialog runs modally inside the close. The main thread
+    // is animating or waiting for the person, while the main actor's queued jobs wait: each was
+    // reported as a main-actor stall of 1–3 s (probe 45982413288's samples). They run as app-modal
+    // sessions, as alerts do (`AppModalSession`).
     override func browseVersions(_ sender: Any?) {
         Self.browsingVersionsOf = imageBaseURL
-        super.browseVersions(sender)
+        AppModalSession.shared.around { super.browseVersions(sender) }
     }
 
     override func revertToSaved(_ sender: Any?) {
         // With autosave in place this opens the Versions browser (DECISIONS, 2026-11-27).
         Self.browsingVersionsOf = imageBaseURL
-        super.revertToSaved(sender)
+        AppModalSession.shared.around { super.revertToSaved(sender) }
+    }
+
+    override func canClose(
+        withDelegate delegate: Any, shouldClose shouldCloseSelector: Selector?, contextInfo: UnsafeMutableRawPointer?
+    ) {
+        AppModalSession.shared.around {
+            super.canClose(withDelegate: delegate, shouldClose: shouldCloseSelector, contextInfo: contextInfo)
+        }
     }
 
     override func makeWindowControllers() {

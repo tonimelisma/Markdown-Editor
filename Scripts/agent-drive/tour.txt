@@ -291,17 +291,23 @@ wait 3
 shot o-restored
 expect-no-value "Markdown WYSIWYG" "Discarded."
 expect-value "Markdown WYSIWYG" "Unsaved words."
-# File › Duplicate: an untitled copy of the note, edited, then closed without keeping it.
+# File › Duplicate: an untitled copy of the note, whose name AppKit offers for editing in the
+# title bar; Escape keeps it. The copy is edited, then closed without keeping it.
 menu File Duplicate
 wait 2
 windows
 expect-window "notes copy"
+shot o-duplicate-naming
+key escape
+wait 1
 expect-value "Markdown WYSIWYG" "Unsaved words."
 type "Copy edit."
+wait 1
+expect-value "Markdown WYSIWYG" "Copy edit."
 key cmd+w
 wait 2
 shot-screen o-copy-close-asks
-press "Delete"
+press "Delete Copy"
 wait 1
 expect-no-window "notes copy"
 no-dialogs

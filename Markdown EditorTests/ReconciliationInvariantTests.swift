@@ -337,6 +337,23 @@ struct ReconciliationInvariantTests {
         #expect(values.isEmpty, "a modal session was reported as a stall: \(values)")
     }
 
+    // Verifies: REQ-096 — a close runs as an app-modal session: a duplicate's "keep this new
+    // document?" dialog runs modally inside it, and was reported as a 1.5 s main-actor stall
+    // while it waited for the person (probe 45982413288).
+    @Test func closingADocumentIsAnAppModalSession() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("Clean.\n")
+        let delegate = CloseDecisionRecorder()
+        document.canClose(
+            withDelegate: delegate,
+            shouldClose: #selector(CloseDecisionRecorder.document(_:shouldClose:contextInfo:)),
+            contextInfo: nil
+        )
+        #expect(delegate.decided, "a clean document did not decide at once")
+        #expect(delegate.wasModalWhileDeciding, "the close's decision ran outside an app-modal session")
+        #expect(!AppModalSession.shared.isActive)
+    }
+
     // Verifies: REQ-099 — "WYSIWYG went read-only and I don't know why" must have a log line,
     // but only the transition, not every mode-state mutation that leaves availability unchanged.
     @Test func availabilityChangedRecordsOnlyOnTransition() {
@@ -416,5 +433,17 @@ actor ReportBox {
             try? await Task.sleep(for: .milliseconds(10))
         }
         return values
+    }
+}
+
+/// Records a close decision and whether an app-modal session was open while it was made.
+@MainActor
+private final class CloseDecisionRecorder: NSObject {
+    private(set) var decided = false
+    private(set) var wasModalWhileDeciding = false
+
+    @objc func document(_ document: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        decided = true
+        wasModalWhileDeciding = AppModalSession.shared.isActive
     }
 }
