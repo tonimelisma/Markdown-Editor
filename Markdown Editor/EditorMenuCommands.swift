@@ -52,8 +52,7 @@ final class KeyWindowCommands: ObservableObject {
         let next = Self.controller(of: keyWindow)
         if next !== controller {
             controller = next
-            stateSubscription = nil // FALSIFY
-            _ = next?.session.map { session in
+            stateSubscription = next?.session.map { session in
                 session.objectWillChange.map { _ in () }
                     .merge(with: session.commandStateChanges)
                     .receive(on: RunLoop.main)

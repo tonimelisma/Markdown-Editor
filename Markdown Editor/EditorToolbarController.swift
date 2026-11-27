@@ -232,7 +232,7 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
     /// 45942394078), where pressing Source switched the editor and left WYSIWYG selected.
     private func observeModeChanges() {
         modeCancellable = commandController?.session?.$mode.sink { [weak self] mode in
-            self?.syncModeControl(to: self?.commandController?.session?.mode ?? .wysiwyg) // FALSIFY
+            self?.syncModeControl(to: mode)
         }
         syncModeControl(to: commandController?.session?.mode ?? .wysiwyg)
     }
