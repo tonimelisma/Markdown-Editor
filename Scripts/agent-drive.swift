@@ -304,9 +304,14 @@ while let raw = readLine() {
         // (agent-drive run 45943545906 found "WYSIWYG Mode" disabled in Source mode that way).
         activate()
         let bar: AXUIElement? = attribute(app, kAXMenuBarAttribute).map { $0 as! AXUIElement }
+        // Then closed again before the item is pressed: an item pressed inside a menu opened this
+        // way did nothing, and the menu went on tracking the keyboard, so the next shortcut was
+        // lost too (agent-drive run 45948482951). Its validated state outlives the closing.
         if let top = bar.map(children)?.first(where: { text($0, kAXTitleAttribute) == rest[0] }) {
             _ = AXUIElementPerformAction(top, kAXPressAction as CFString)
             usleep(400_000)
+            _ = key("escape")
+            usleep(200_000)
         }
         var current: AXUIElement? = bar
         for title in rest {
