@@ -151,7 +151,8 @@ enum SourcePlanningDomain {
                 intent: intent
             )
 
-        case .toggleTask, .replaceTableCell:
+        case .toggleTask, .replaceTableCell, .insertParagraphBreak, .joinBlockBackward:
+            // Source mode types line breaks as text; these are WYSIWYG's structural keys.
             return .refused(.unsupportedCommand)
         }
     }

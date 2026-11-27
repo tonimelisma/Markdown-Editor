@@ -116,6 +116,8 @@ nonisolated enum DiagnosticSymbol: String, Sendable, Equatable, CaseIterable {
     case toggleTask
     case replaceTableCell
     case insertImageMarkdown
+    case insertParagraphBreak
+    case joinBlockBackward
 
     // Image-placement phases
     case idle

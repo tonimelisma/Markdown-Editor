@@ -23,6 +23,12 @@ nonisolated enum SemanticCommand: Sendable, Equatable {
     case toggleTask(nodeID: MarkdownNodeID)
     case replaceTableCell(nodeID: MarkdownNodeID, text: String)
     case insertImageMarkdown(String)
+    /// Return in WYSIWYG: a new paragraph, the next list item, or a line in a code block, by the
+    /// block the caret is in. Planned from the source structure, never as a typed line break.
+    case insertParagraphBreak
+    /// Backspace at the start of a block: an empty paragraph goes, a heading or list item becomes
+    /// a paragraph, and a paragraph joins the one before it.
+    case joinBlockBackward
 }
 
 extension SemanticCommand {
@@ -36,7 +42,8 @@ extension SemanticCommand {
              .toggleTaskList, .toggleBlockQuote, .toggleCodeBlock:
             return true
         case .toggleBold, .toggleItalic, .toggleStrikethrough, .toggleInlineCode, .setLink,
-             .insertText, .deleteBackward, .toggleTask, .replaceTableCell, .insertImageMarkdown:
+             .insertText, .deleteBackward, .toggleTask, .replaceTableCell, .insertImageMarkdown,
+             .insertParagraphBreak, .joinBlockBackward:
             return false
         }
     }
@@ -491,7 +498,7 @@ nonisolated enum SemanticEditEngine {
 
     static func defaultGrouping(for command: SemanticCommand) -> MutationGrouping {
         switch command {
-        case .insertText, .deleteBackward:
+        case .insertText, .deleteBackward, .insertParagraphBreak, .joinBlockBackward:
             return .typing
         case .toggleBold, .toggleItalic, .toggleStrikethrough, .toggleInlineCode,
              .setParagraph, .setHeading, .toggleOrderedList, .toggleUnorderedList,
@@ -549,6 +556,7 @@ nonisolated enum SemanticEditEngine {
         action: String,
         grouping: MutationGrouping,
         selectionBefore: SourceSelection,
+        selectionAfter: SourceSelection? = nil,
         intent: IntentContext? = nil
     ) -> SemanticEditResult {
         guard let mutation = SourceMutation.exact(
@@ -556,6 +564,7 @@ nonisolated enum SemanticEditEngine {
             range: range,
             replacement: replacement,
             selectionBefore: selectionBefore,
+            selectionAfter: selectionAfter,
             actionName: action,
             grouping: grouping
         ) else {

@@ -162,6 +162,12 @@ enum WYSIWYGEditor {
                 appliedSnapshot = presentation
                 appliedImageIdentities = imageIdentities(for: presentation)
                 restoreSelection(for: presentation, in: textView, limit: built.attributed.length)
+                // A document opens with the caret at its start, as TextEdit's do. Replacing the
+                // storage left AppKit's caret at the end, and that is where the first keystroke
+                // of a newly opened document went (NewWindowReadinessTests).
+                if session.wysiwygModeState.selection == nil {
+                    textView.setSelectedRange(NSRange(location: 0, length: 0))
+                }
             }
         }
 
@@ -398,21 +404,26 @@ enum WYSIWYGEditor {
             // programmatic insertion need not match the owner's for the same caret, and comparing
             // it refused every keystroke after the first (agent-drive run 45944610103).
             let nativeRange = ProjectionRange(affectedCharRange, revision: presentation.projectionRevision)
-            guard let projectionSelection = session.wysiwygModeState.selection,
-                  projectionSelection.range == nativeRange else {
+            guard let ownerSelection = session.wysiwygModeState.selection,
+                  let resolved = Self.command(
+                      replacing: affectedCharRange,
+                      with: replacement,
+                      owner: ownerSelection,
+                      native: nativeRange,
+                      presentation: presentation
+                  ) else {
                 // The native selection callback is the owner-state capture point. A mutation
                 // callback cannot promote its affected range into current state after the fact.
                 document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.ambiguousSelection)))
                 applyProjectionIfNeeded(reason: .reapplyIfDrift)
                 return false
             }
-            let command: SemanticCommand
-            if replacement.isEmpty && affectedCharRange.length > 0 {
-                command = .insertText("")
-            } else if replacement.isEmpty {
-                command = .deleteBackward
-            } else {
-                command = .insertText(replacement)
+            let (command, projectionSelection) = resolved
+            if projectionSelection != ownerSelection {
+                // A deletion AppKit derived from the caret, such as Option-Delete or Forward
+                // Delete: the range it names becomes the owner's selection, as the caret it
+                // came from was.
+                session.captureSelection(.projection(projectionSelection))
             }
             let outcome = session.perform(
                 command,
@@ -430,6 +441,53 @@ enum WYSIWYGEditor {
             case .refused:
                 return false
             }
+        }
+
+        /// The semantic command a native replacement asks for, and the selection it acts on.
+        ///
+        /// The owner's selection decides. A replacement of exactly that selection is typing,
+        /// Return or a deletion of it. A deletion next to a collapsed caret is AppKit's own reading
+        /// of Delete, which names the character before the caret (or the word, or the character
+        /// after) rather than the caret: refused as a mismatch, Backspace did nothing in WYSIWYG.
+        /// Backspace over a block boundary is the block planner's.
+        nonisolated static func command(
+            replacing affected: NSRange,
+            with replacement: String,
+            owner: ProjectionSelection,
+            native: ProjectionRange,
+            presentation: PresentationSnapshot
+        ) -> (SemanticCommand, ProjectionSelection)? {
+            if owner.range == native {
+                if replacement.isEmpty, affected.length > 0 { return (.insertText(""), owner) }
+                if replacement.isEmpty {
+                    let caret = affected.location
+                    return (BlockBoundaryPlanner.deletesBlockBoundary(atCaret: caret, in: presentation) ? .joinBlockBackward : .deleteBackward, owner)
+                }
+                if isParagraphBreak(replacement) { return (.insertParagraphBreak, owner) }
+                return (.insertText(replacement), owner)
+            }
+            let caret = owner.range.utf16
+            guard replacement.isEmpty,
+                  caret.length == 0,
+                  affected.length > 0,
+                  owner.range.revision == native.revision,
+                  NSMaxRange(affected) == caret.location || affected.location == caret.location else {
+                return nil
+            }
+            let rendered = presentation.renderedString as NSString
+            if NSMaxRange(affected) == caret.location,
+               affected == rendered.rangeOfComposedCharacterSequence(at: caret.location - 1) {
+                let command: SemanticCommand = BlockBoundaryPlanner.deletesBlockBoundary(atCaret: caret.location, in: presentation)
+                    ? .joinBlockBackward
+                    : .deleteBackward
+                return (command, owner)
+            }
+            return (.insertText(""), ProjectionSelection(utf16: affected, revision: native.revision, affinity: owner.affinity))
+        }
+
+        /// Return and Enter, as AppKit spells them.
+        nonisolated static func isParagraphBreak(_ text: String) -> Bool {
+            text == "\n" || text == "\r" || text == "\r\n" || text == "\u{2029}"
         }
 
         func applyAcceptedEdit(

@@ -33,6 +33,26 @@ enum WYSIWYGPlanningDomain {
         )
 
         switch command {
+        case .insertParagraphBreak:
+            return BlockBoundaryPlanner.paragraphBreak(
+                selection: selection,
+                snapshot: snapshot,
+                presentation: presentation,
+                tree: tree,
+                grouping: grouping,
+                intent: intent
+            )
+
+        case .joinBlockBackward:
+            return BlockBoundaryPlanner.joinBackward(
+                selection: selection,
+                snapshot: snapshot,
+                presentation: presentation,
+                tree: tree,
+                grouping: grouping,
+                intent: intent
+            )
+
         case .toggleTask(let nodeID):
             guard case .taskMarker(let classifiedNodeID) = classification,
                   classifiedNodeID == nodeID else {

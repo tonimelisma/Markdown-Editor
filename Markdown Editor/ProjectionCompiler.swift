@@ -57,19 +57,27 @@ private nonisolated struct CompilerBuilder {
     mutating func emit(_ node: MarkdownNode, styleStack: [ProjectionStyleTag], listNesting: Int) {
         switch node.kind {
         case .document:
+            var previousEnd: Int?
             for child in node.children {
+                if let start = sourceUTF16(of: child)?.location {
+                    appendEmptyParagraphs(gap: previousEnd, nextStart: start, documentNode: node)
+                }
                 emit(child, styleStack: styleStack, listNesting: listNesting)
+                previousEnd = sourceUTF16(of: child).map(NSMaxRange) ?? previousEnd
             }
+            appendEmptyParagraphs(gap: previousEnd, nextStart: nil, documentNode: node)
 
         case .paragraph:
             let blockStart = utf16Length
             emitInlineChildren(node, styleStack: styleStack)
+            appendTrailingWhitespace(of: node, styles: styleStack)
             appendSyntheticBreak(after: node, kind: .paragraphBreak)
             appendBlock(node, start: blockStart, kind: .paragraph)
 
         case .heading(let level):
             let blockStart = utf16Length
             emitInlineChildren(node, styleStack: styleStack + [.heading(level)])
+            appendTrailingWhitespace(of: node, styles: styleStack + [.heading(level)])
             appendSyntheticBreak(after: node, kind: .paragraphBreak)
             appendBlock(node, start: blockStart, kind: .heading(level: level))
 
@@ -227,7 +235,9 @@ private nonisolated struct CompilerBuilder {
         }), let childStart = sourceUTF16(of: firstChild)?.location {
             afterMarker = childStart
         } else {
-            afterMarker = itemStart + (markerText as NSString).length
+            // An empty item ends at its line's end: `-` alone at the end of a file has no space
+            // after it to map past.
+            afterMarker = min(itemStart + (markerText as NSString).length, lineEnd(from: itemStart))
         }
         let markerStart = utf16Length
         pieces.append(markerText)
@@ -283,6 +293,19 @@ private nonisolated struct CompilerBuilder {
                 after: node,
                 refuseEdits: false
             )
+        }
+
+        // An item with no text of its own, as Return leaves one, still ends its line. Without a
+        // break the next block ran on after its marker, and the caret after the marker had no
+        // place of its own to map to.
+        if !node.children.contains(where: { if case .list = $0.kind { return false }; return true }) {
+            let projection = NSRange(location: utf16Length, length: 1)
+            pieces.append("\n")
+            utf16Length += 1
+            let location = lineEnd(from: itemStart)
+            segments.append(.synthetic(projection: projection, kind: .paragraphBreak, insertion: .atSourceLocation(location)))
+            runs.append(ProjectionRun(nodeID: node.id, utf16Range: projection, styles: Set(styleStack), linkDestination: nil, isLiteralFallback: false))
+            lastSourceEnd = location
         }
 
         for child in node.children {
@@ -473,6 +496,47 @@ private nonisolated struct CompilerBuilder {
         appendSourceBacked(string, node: node, styles: styles + [.literalFallback], link: nil, literalFallback: true)
     }
 
+    /// The spaces that end a paragraph's or heading's last line, shown as the source text they
+    /// are. cmark trims them, so a space typed at the end of a word had no presentation, could
+    /// not be proved, and was refused: in WYSIWYG every word typed at the end of a line ran into
+    /// the next (agent-drive tour 45957180019: "WeeklynotesToday…").
+    mutating func appendTrailingWhitespace(of node: MarkdownNode, styles: [ProjectionStyleTag]) {
+        guard let block = sourceUTF16(of: node) else { return }
+        let source = map.source as NSString
+        func isNewline(_ c: unichar) -> Bool { c == 0x0A || c == 0x0D }
+        func isBlank(_ c: unichar) -> Bool { c == 0x20 || c == 0x09 }
+        var lineEnd = min(NSMaxRange(block), source.length)
+        while lineEnd > block.location, isNewline(source.character(at: lineEnd - 1)) { lineEnd -= 1 }
+        while lineEnd < source.length, isBlank(source.character(at: lineEnd)) { lineEnd += 1 }
+        var start = lineEnd
+        let floor = max(block.location, lastSourceEnd)
+        while start > floor, isBlank(source.character(at: start - 1)) { start -= 1 }
+        guard start < lineEnd else { return }
+        let range = NSRange(location: start, length: lineEnd - start)
+        let text = source.substring(with: range)
+        let projection = NSRange(location: utf16Length, length: range.length)
+        pieces.append(text)
+        utf16Length += range.length
+        segments.append(.source(projection: projection, source: range, insertionBefore: range.location, insertionAfter: NSMaxRange(range)))
+        runs.append(ProjectionRun(nodeID: node.id, utf16Range: projection, styles: Set(styles), linkDestination: nil, isLiteralFallback: false))
+        lastSourceEnd = NSMaxRange(range)
+    }
+
+    /// Empty paragraphs between top-level blocks, and before the first and after the last, laid
+    /// out by `EmptyParagraphLayout`, which Backspace's planner reads too.
+    mutating func appendEmptyParagraphs(gap previousEnd: Int?, nextStart: Int?, documentNode: MarkdownNode) {
+        for slot in EmptyParagraphLayout.slots(in: map.source as NSString, previousEnd: previousEnd, nextStart: nextStart) {
+            let projection = NSRange(location: utf16Length, length: 1)
+            pieces.append("\n")
+            utf16Length += 1
+            let insertion: SyntheticInsertionPolicy = slot.before == slot.after
+                ? .atSourceLocation(slot.before)
+                : .atSourceBoundaries(before: slot.before, after: slot.after)
+            segments.append(.synthetic(projection: projection, kind: .paragraphBreak, insertion: insertion))
+            runs.append(ProjectionRun(nodeID: documentNode.id, utf16Range: projection, styles: [], linkDestination: nil, isLiteralFallback: false))
+        }
+    }
+
     mutating func appendSyntheticBreak(after node: MarkdownNode, kind: SyntheticKind) {
         appendSynthetic("\n", kind: kind, after: node, refuseEdits: false)
     }
@@ -571,6 +635,18 @@ private nonisolated struct CompilerBuilder {
             // Keep exact identity here; code blocks already handled above.
         }
         return nil
+    }
+
+    /// Where the source line holding `location` ends, before its line break.
+    func lineEnd(from location: Int) -> Int {
+        let source = map.source as NSString
+        var end = min(max(location, 0), source.length)
+        while end < source.length {
+            let c = source.character(at: end)
+            if c == 0x0A || c == 0x0D { break }
+            end += 1
+        }
+        return end
     }
 
     func sourceUTF16(of node: MarkdownNode) -> NSRange? {
