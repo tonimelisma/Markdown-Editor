@@ -39,9 +39,11 @@ Two more workflows serve CI without gating anything:
 - **`retry-unstarted.yml`**: when a CI or Release job ended without GitHub ever assigning it a
   runner (no runner, no steps), it re-runs that run's failed jobs. It runs at most twice, and only
   while the commit is still its branch's tip. A job that ran and failed is never retried.
-- **`repeat-smoke.yml`**: started by hand (`actions_run_trigger`, `run_workflow`, input `count`).
-  It runs the smoke test many times on one runner and uploads every run's diagnostics as
-  `repeat-smoke-<run id>`. Use it to chase a failure that comes and goes, instead of re-running CI.
+- **`repeat-smoke.yml`**: started by hand (`actions_run_trigger`, `run_workflow`). It runs the
+  smoke test `count` times on one runner and uploads every run's diagnostics as
+  `repeat-smoke-<run id>`. `configuration: Release` launches the hardened Release bundle,
+  `fresh` a new copy each time, `settle` waits after the build, and `sample` takes a `spindump` of
+  each launch. Use it to chase a failure that comes and goes, instead of re-running CI.
 
 Reading CI from a cloud session: the GitHub MCP tools.
 
@@ -68,9 +70,11 @@ the signing:
    start at all (`DECISIONS.md`, 2026-11-26).
 4. Check the built app: a valid signature, the entitlements the signing above implies, the derived
    `SUPublicEDKey`, and `SUFeedURL` naming the repository it is published to.
-5. **Launch it.** `SMOKE_APP=… Scripts/smoke-test.sh` runs the bundle about to be published on a
-   fixture and asserts on its diagnostic records (REQ-098). It installs no update: REQ-034 keeps a
-   smoke run from checking for one. Note what this step cannot do: GitHub's runners do not enforce
+5. **Launch it, twice.** `SMOKE_APP=… Scripts/smoke-test.sh` runs the bundle about to be published
+   on a fixture and asserts on its diagnostic records (REQ-098). It installs no update: REQ-034
+   keeps a smoke run from checking for one. The first launch is allowed a `mainActorStall`, and
+   nothing else: on a runner booted minutes earlier it pages AppKit in from a cold disk. The
+   second launch is held to every check (`DECISIONS.md`, 2026-11-27). Note what this step cannot do: GitHub's runners do not enforce
    library validation, so a build with build 202's defect would launch there and still die on every
    Mac. Step 4's entitlement check is what catches that one (`DECISIONS.md`, 2026-11-26).
 6. With a Developer ID identity and the notary secrets, notarize and staple the app and the disk

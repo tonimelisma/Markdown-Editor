@@ -74,14 +74,17 @@ Still open:
   `CI gate`. Once the screenshot step stopped rebuilding the app, CI 45858255326 took about 4m50s,
   3m33s of it in `check.sh`, with an empty compilation cache. Measure again after the first merge
   saves that cache.
-- An unexplained `mainActorStall` on CI. On CI 45856817544, the smoke run recorded two main-actor
-  stalls over one second, and launch to exit took 11 s. The runs before and after it, on the same
-  code, passed. The stall records were not kept then, so the cause is unknown. A failed smoke run
-  now uploads its records (`smoke-records/` in `check-logs-*`), and `repeat-smoke.yml` runs the
-  smoke test many times on one runner to reproduce it. It came back on 2026-11-27 and blocked
-  v1.0.1. Release run 45921027714 launched the signed Release app, recorded the same two stalls
-  (launch to exit 12 s), and published nothing. A rejected smoke run now prints its whole
-  timeline into the log, so the next one shows when each stall happened and what preceded it.
+- A slow first window on a cold machine. On a runner booted minutes earlier, the first launch's
+  `makeWindowControllers` took 2.9 s on the main thread (repeat-smoke 45924758118). It lays out
+  the window, builds both editors, and pays AppKit's first-use set-up, mostly paging from a cold
+  disk. That stall blocked v1.0.1 in Release runs 45921027714 and 45922511341. A release now
+  allows it on its first launch only and holds a second launch to every check (`DECISIONS.md`,
+  2026-11-27). CI 45856817544's one Debug stall was probably the same thing. Building the Source
+  editor only when Source is first shown would cut the work; nothing measures it on a real Mac yet.
+- `presentationRecovered` (`patchUnprovable`, COR-71) in a smoke run. Repeat-smoke 45925262536's
+  second launch recorded a provisional WYSIWYG presentation that disagreed with the authoritative
+  parse of the same revision. The smoke edits had landed while a slow parse was still running. It
+  was seen once in about 40 launches, and the cause is not yet known.
 - An installed copy seen updating itself. v1.0.0 (build 202) was published on 2026-11-26 by
   Release run 45866221874. Its feed, archive length and EdDSA signature were checked from
   GitHub against the `SPARKLE_SEED` public key, and its app carries that key — but the app itself

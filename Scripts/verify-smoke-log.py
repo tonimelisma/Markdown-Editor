@@ -83,7 +83,9 @@ def parse_args() -> argparse.Namespace:
             "smoke-screenshot.sh for mainActorStall: screencapture freezes the captured "
             "process while reading its window surface, so the watchdog correctly reports the "
             "measurement apparatus rather than the application. Never pass this to hide an "
-            "application fault — the same run without a capture must be clean."
+            "application fault — the same run without a capture must be clean. "
+            "Scripts/release.sh passes it for a bundle's first launch on a freshly booted "
+            "runner, whose stall is the cold disk's, and holds a second launch to every check."
         ),
     )
     parser.add_argument(

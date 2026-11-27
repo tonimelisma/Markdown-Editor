@@ -155,7 +155,18 @@ expected_feed="https://github.com/$publish_repo/releases/latest/download/appcast
 # This does not catch 202's own defect — GitHub's runners do not enforce library validation, so
 # that build would launch here and still die on every Mac; the entitlement check above is what
 # catches that one. This catches everything else that stops a release from running.
-say "launching the signed app (Scripts/smoke-test.sh)"
+#
+# It is launched twice. The runner was booted minutes ago and has just written a build, so the
+# first launch on it pages most of AppKit and SwiftUI in from a cold virtual disk while Spotlight
+# indexes that build: in repeat-smoke 45924758118 the main thread spent 2.9 s building the first
+# window, 1.9 s of it asleep in the kernel's throttle_lowpri_io, and that launch's mainActorStall
+# is a measurement of the runner. Every check but that one still holds on the first launch — it
+# must start, open the fixture, take both edits, and exit cleanly with no other fault — and the
+# second launch is held to all of them (docs/DECISIONS.md, 2026-11-27).
+say "launching the signed app, first launch on this runner (Scripts/smoke-test.sh)"
+SMOKE_APP="$app" SMOKE_VERIFIER_EXTRA_ARGS="--allow-fault mainActorStall" ./Scripts/smoke-test.sh \
+    || refuse "the signed app failed its first launch; nothing was published"
+say "launching the signed app again, held to every check"
 SMOKE_APP="$app" ./Scripts/smoke-test.sh || refuse "the signed app failed its smoke run; nothing was published"
 
 notary() { # <file>
