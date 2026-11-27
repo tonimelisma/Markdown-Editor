@@ -540,9 +540,13 @@ while let raw = readLine() {
         // Titles are compared with straight apostrophes: "Don’t Allow" is typeset.
         func plain(_ s: String) -> String { s.replacingOccurrences(of: "\u{2019}", with: "'") }
         let wanted = plain(rest[0])
+        // Only a button on screen: a prompt's process can also hold a hidden, zero-size copy,
+        // and pressing that answered nothing (tour 45996638231).
         func button(in element: AXUIElement, depth: Int = 0) -> AXUIElement? {
             guard depth <= 12 else { return nil }
-            if text(element, kAXRoleAttribute) == (kAXButtonRole as String), plain(text(element, kAXTitleAttribute)) == wanted {
+            if text(element, kAXRoleAttribute) == (kAXButtonRole as String),
+               plain(text(element, kAXTitleAttribute)) == wanted,
+               frame(element).width > 0, frame(element).height > 0 {
                 return element
             }
             for child in children(element) { if let found = button(in: child, depth: depth + 1) { return found } }
@@ -554,8 +558,11 @@ while let raw = readLine() {
             let windows = (attribute(root, kAXWindowsAttribute) as? [AXUIElement]) ?? []
             for window in windows {
                 if let found = button(in: window) {
-                    let result = AXUIElementPerformAction(found, kAXPressAction as CFString).rawValue
-                    log("  \(other.localizedName ?? "pid \(other.processIdentifier)"): \(describe(found)) → \(result)")
+                    // A real click, as a person answers it; system prompts honour mouse events
+                    // where an accessibility press may not reach them.
+                    let target = frame(found)
+                    click(CGPoint(x: target.midX, y: target.midY))
+                    log("  \(other.localizedName ?? "pid \(other.processIdentifier)"): clicked \(describe(found))")
                     answered = true
                     break
                 }
