@@ -316,8 +316,15 @@ nonisolated enum EditorTransactionKernel {
     ) -> EditorRefusal? {
         guard transaction.intentID == state.intentID else { return .invalidIdentity }
         switch (transaction.route, transaction.effect) {
-        case (.sourceReplacement, .edit(let edit)), (.imageReference, .edit(let edit)):
+        case (.sourceReplacement, .edit(let edit)):
             return validateSourceEdit(edit, state: state, requiresSourceSelection: true)
+        case (.imageReference, .edit(let edit)):
+            // An image reference lands at its tracked insertion point, which the placement
+            // carried through every edit made while its panel was open; reduction does not bind it
+            // to the selection either. Bound to the Source editor's selection here, it was
+            // refused whenever the WYSIWYG caret had moved since the last edit, and Add Image
+            // failed with "Could not write image files" (tour 45968755636).
+            return validateSourceEdit(edit, state: state, requiresSourceSelection: true, bindsSelectionBefore: false)
         case (.wysiwygReplacement, .edit(let edit)),
              (.semanticCommand, .edit(let edit)),
              (.markedText, .edit(let edit)):
@@ -371,7 +378,8 @@ nonisolated enum EditorTransactionKernel {
     private static func validateSourceEdit(
         _ edit: AcceptedEdit,
         state: EditorStateSnapshot,
-        requiresSourceSelection: Bool
+        requiresSourceSelection: Bool,
+        bindsSelectionBefore: Bool = true
     ) -> EditorRefusal? {
         let mutation = edit.sourceMutation
         let source = state.source.text as NSString
@@ -387,7 +395,7 @@ nonisolated enum EditorTransactionKernel {
               NSMaxRange(mutation.selectionAfter.range.utf16) <= nextLength else { return .invalidIdentity }
 
         if requiresSourceSelection || state.projectionSelection == nil {
-            guard mutation.selectionBefore == state.sourceSelection,
+            guard !bindsSelectionBefore || mutation.selectionBefore == state.sourceSelection,
                   edit.presentationTransition == nil,
                   edit.projectionSelectionAfter == nil else {
                 return .invalidIdentity

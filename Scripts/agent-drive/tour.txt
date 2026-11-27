@@ -31,7 +31,7 @@ select "Markdown WYSIWYG" "plain Markdown"
 key cmd+i
 select "Markdown WYSIWYG" fixed
 key cmd+shift+x
-select "Markdown WYSIWYG" note
+select "Markdown WYSIWYG" wrote
 key ctrl+cmd+c
 wait 1
 shot b-formatted
@@ -124,7 +124,7 @@ expect-file notes/notes.md "# Weekly notes"
 expect-file notes/notes.md "**printer**"
 expect-file notes/notes.md "*plain Markdown*"
 expect-file notes/notes.md "~~fixed~~"
-expect-file notes/notes.md "`note`"
+expect-file notes/notes.md "`wrote`"
 expect-file notes/notes.md "[project page](https://example.com/guide)"
 expect-file notes/notes.md "- Milk"
 expect-file notes/notes.md "- [ ] Call the plumber"

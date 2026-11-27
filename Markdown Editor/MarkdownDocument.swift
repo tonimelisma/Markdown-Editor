@@ -98,6 +98,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// AppKit records marked-text changes on the document undo manager. The document owns the
     /// short-lived group opened for that native transient route.
     private var markedTextGroupOpen = false
+    /// Whether the open typing group holds an edit. AppKit counts a change only when a group
+    /// closes, and nothing closes a typing group while typing goes on.
+    private var typingGroupHasChanges = false
     private var undoCheckpointObserver: NSObjectProtocol?
 
     /// Notification center seam for observer lifecycle tests.
@@ -236,6 +239,9 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         for saveOperation: NSDocument.SaveOperationType,
         completionHandler: @escaping (Error?) -> Void
     ) {
+        // A save is a boundary in the history: the typing before it is counted now, so the
+        // saved point is after it, and the group closing later cannot mark the document edited.
+        closeTypingGroupIfNeeded()
         let utf16Count = (text as NSString).length
         trace?.record(route: .documentSaveStarted, .documentSaveStarted(utf16Count: utf16Count))
         let start = DispatchTime.now().uptimeNanoseconds
@@ -300,6 +306,13 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     /// // product ranks preservation above convenience, and choosing a winner without being asked
     /// // discards someone's work.
     @Published private(set) var hasUnresolvedExternalChange = false
+
+    /// Edited also while a typing group holds edits AppKit has not counted yet. After a sentence
+    /// typed since the last save the document read as clean: an external write was adopted over
+    /// the sentence (tour 45968755636), and closing the window would not have asked to save.
+    override var isDocumentEdited: Bool {
+        super.isDocumentEdited || typingGroupHasChanges
+    }
 
     /// Applies an external file event. The single route; the `NSFilePresenter` callbacks below
     /// are one line each so the behaviour lives here, where it is directly testable.
@@ -889,6 +902,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
             undoManager.registerUndo(withTarget: self) { [patch] doc in
                 _ = doc.applyHistoryPatch(patch, direction: .undo)
             }
+            typingGroupHasChanges = true
             trace?.record(route: .undoRegistered, .undoRegistered(actionNameLength: patch.actionName.count, groupingTyping: true)
             )
         }
@@ -897,6 +911,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     private func closeTypingGroupIfNeeded() {
         guard typingGroupOpen else { return }
         typingGroupOpen = false
+        typingGroupHasChanges = false
         // Only end a group we actually opened — AppKit/checkpoint churn can leave
         // groupingLevel 0 while our flag was still set.
         guard let undoManager, undoManager.groupingLevel > 0 else { return }
