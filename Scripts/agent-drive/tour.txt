@@ -322,6 +322,7 @@ key return
 wait 1
 no-dialogs
 expect-no-window bad.md
+expect-no-faults documentLoadFailed
 
 # --- R. Quit and relaunch. With macOS's default "close windows when quitting", a plain launch opens
 # an untitled document, as TextEdit does; the note comes back through File › Open Recent.
