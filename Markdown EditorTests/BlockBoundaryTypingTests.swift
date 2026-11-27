@@ -233,6 +233,21 @@ struct BlockBoundaryTypingTests {
         await typist.expect("- Milk\n- Eggs\n- Bread\n\nCall the plumber")
     }
 
+    // Verifies: REQ-152 — in a loose list, Return starts the next item after a blank line, and
+    // Return in the empty item ends the list. Tour 45965585963 typed a task after a list and a
+    // blank line, which joined it to the list and made it loose; the second Return left the
+    // blank line behind, and the paragraph typed next went into the task.
+    @Test func returnContinuesAndEndsALooseList() async throws {
+        let typist = try await Typist("- Milk\n\n- [ ] Call the plumber")
+        try typist.click(after: "Call the plumber")
+        await typist.pressReturn()
+        await typist.type("Pay")
+        await typist.pressReturn()
+        await typist.pressReturn()
+        await typist.type("Simplicity.")
+        await typist.expect("- Milk\n\n- [ ] Call the plumber\n\n- [ ] Pay\n\nSimplicity.")
+    }
+
     // Verifies: REQ-152 — the next item of a numbered list is numbered one higher, and the next
     // item of a task list is an unchecked task.
     @Test func returnContinuesNumberedAndTaskLists() async throws {

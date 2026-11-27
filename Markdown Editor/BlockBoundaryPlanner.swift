@@ -80,9 +80,23 @@ nonisolated enum BlockBoundaryPlanner {
 
         if let item = context.listItem(around: range.location, chain: chain) {
             if item.isEmpty, range.length == 0 {
-                // Return in an empty item ends the list: the item's line becomes the blank line
-                // before a new empty paragraph.
-                return commit(NSRange(location: item.lineStart, length: item.lineEnd - item.lineStart), newline)
+                // Return in an empty item ends the list. The item goes, with the blank lines
+                // before it, and the two line breaks of a new paragraph take their place, so the
+                // caret is in an empty paragraph after the list whether the list was tight or
+                // loose. Replacing only the item's line left a loose list's blank line behind:
+                // an odd count of blank lines, with no empty paragraph where the caret was
+                // (tour 45965585963).
+                var start = item.lineStart
+                while start > 0, context.isBlankLine(before: start),
+                      let previous = context.lineBreaks(before: start, count: 1) {
+                    start = context.lineStart(of: previous.location)
+                }
+                guard let ending = context.lineBreaks(before: start, count: 1) else {
+                    return commit(NSRange(location: item.lineStart, length: item.lineEnd - item.lineStart), newline + newline, caret: item.lineStart + 2 * (newline as NSString).length)
+                }
+                let replaced = NSRange(location: ending.location, length: item.lineEnd - ending.location)
+                let inserted = newline + newline
+                return commit(replaced, inserted, caret: ending.location + (inserted as NSString).length)
             }
             let blankLine = item.isLoose ? item.prefix.trimmingTrailingBlanks + newline : ""
             let continuation = newline + blankLine + item.prefix + item.nextMarker
