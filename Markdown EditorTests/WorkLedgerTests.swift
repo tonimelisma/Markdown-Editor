@@ -216,7 +216,7 @@ struct MeasurementSubstrateProofTests {
     )
     probe.start()
     try await Task.sleep(for: .milliseconds(150))
-    Thread.sleep(forTimeInterval: 0.25)
+    occupyMainActor(seconds: 0.25)
     try await Task.sleep(for: .milliseconds(150))
     probe.stop()
     let summary = sampler.drainSummaries().first { $0.metric == .mainActorLatency }
