@@ -595,8 +595,11 @@ struct EditorStateOwnershipTests {
         for symbol in displaced {
             #expect(!haystack.contains(symbol), "displaced route still present: \(symbol)")
         }
-        // INC-06: no application-modal formatting dialog.
-        #expect(!haystack.contains("runModal("))
+        // INC-06: no application-modal dialog. Every runModal is the window-modal form, a sheet
+        // on a document's window, which is how Print runs its panel.
+        let modal = haystack.components(separatedBy: "runModal(").count - 1
+        let sheets = haystack.components(separatedBy: "runModal(for: ").count - 1
+        #expect(modal == sheets, "an application-modal runModal is present")
         // COR-20: the ordinary edit path may not reach a whole-document replacement.
         #expect(!haystack.contains("applyRecoveryPresentation(built, to: textView)\n                appliedSnapshotID"))
     }
