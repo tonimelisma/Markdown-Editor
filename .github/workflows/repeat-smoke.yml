@@ -1,7 +1,13 @@
 # Runs the smoke test many times on one macOS runner and keeps every run's diagnostics, to chase a
-# failure that comes and goes, such as the mainActorStall of CI 45856817544 (docs/ROADMAP.md). It is
-# a cloud session's way to reproduce, not a gate: nothing requires it, and it runs only when
+# failure that comes and goes, such as the mainActorStall that blocked v1.0.1 (docs/ROADMAP.md). It
+# is a cloud session's way to reproduce, not a gate: nothing requires it, and it runs only when
 # started (GitHub's tools: actions_run_trigger, method run_workflow, workflow repeat-smoke.yml).
+#
+#   configuration  Debug: the app check.sh launches. Release: built and hardened the way
+#                  Scripts/release.sh builds the bundle it publishes (ad hoc, no update key).
+#   sample         Each launch is also profiled with `sample` from 1 s to 5 s after it starts, so a
+#                  stall leaves the main thread's call tree. Sampling suspends the process briefly
+#                  many times, so a sampled run's own verdict is weaker evidence than an unsampled one.
 name: Repeat smoke
 
 on:
@@ -10,6 +16,12 @@ on:
       count:
         description: How many smoke runs
         default: "12"
+      configuration:
+        description: Debug or Release
+        default: Debug
+      sample:
+        description: Profile each launch's main thread with `sample` (true or false)
+        default: "false"
 
 permissions:
   contents: read
@@ -29,25 +41,76 @@ jobs:
           xcode="$(ls -d /Applications/Xcode_27*.app | sort -V | tail -n 1)"
           sudo xcode-select --switch "$xcode/Contents/Developer"
           xcodebuild -version
+      - name: Build the bundle to launch
+        id: bundle
+        env:
+          CONFIGURATION: ${{ inputs.configuration }}
+        run: |
+          set -euo pipefail
+          case "$CONFIGURATION" in
+            Debug)
+              # smoke-test.sh builds it on the first run and reuses the build folder after that.
+              echo "app=" >> "$GITHUB_OUTPUT" ;;
+            Release)
+              source Scripts/lib/build-settings.sh
+              xcodebuild -project "Markdown Editor.xcodeproj" -scheme "Markdown Editor" \
+                -configuration Release -destination 'generic/platform=macOS' \
+                -derivedDataPath .build/repeat-release "${verification_build_settings[@]}" \
+                OTHER_CODE_SIGN_FLAGS=--timestamp=none build > .build-release.log 2>&1 \
+                || { tail -n 60 .build-release.log; exit 1; }
+              app="$PWD/.build/repeat-release/Build/Products/Release/Markdown Editor.app"
+              Scripts/adhoc-harden.sh "$app" --timestamp=none "$RUNNER_TEMP/adhoc.entitlements"
+              codesign --display --entitlements - "$app"
+              echo "app=$app" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::configuration must be Debug or Release"; exit 1 ;;
+          esac
       - name: Smoke runs
         env:
           COUNT: ${{ inputs.count }}
+          SAMPLE: ${{ inputs.sample }}
+          APP: ${{ steps.bundle.outputs.app }}
         run: |
           set -uo pipefail
           [[ "$COUNT" =~ ^[1-9][0-9]?$ ]] || { echo "::error::count must be 1 to 99"; exit 1; }
-          mkdir -p .build/repeat-records
+          records=.build/repeat-records
+          mkdir -p "$records"
           failed=0
           for i in $(seq 1 "$COUNT"); do
-            # The first run builds; the rest reuse that build folder, so each is a launch, not a build.
-            if SMOKE_DERIVED_DATA=.build/repeat SMOKE_LOG_COPY_DIR=".build/repeat-records/run-$i" \
-                Scripts/smoke-test.sh > ".build/repeat-records/smoke-$i.log" 2>&1; then
-              echo "run $i: PASS $(grep -o 'launch→exit took [0-9]*s' ".build/repeat-records/smoke-$i.log")"
+            SMOKE_APP="$APP" SMOKE_DERIVED_DATA=.build/repeat SMOKE_LOG_COPY_DIR="$records/run-$i" \
+              Scripts/smoke-test.sh > "$records/smoke-$i.log" 2>&1 &
+            smoke=$!
+            if [[ "$SAMPLE" == "true" ]]; then
+              # The first Debug run builds before it launches, so wait for the process, not a clock.
+              pid=""
+              for _ in $(seq 1 3000); do
+                pid="$(pgrep -n -f 'Markdown Editor.app/Contents/MacOS/Markdown Editor' || true)"
+                [[ -n "$pid" ]] && break
+                kill -0 "$smoke" 2>/dev/null || break
+                sleep 0.1
+              done
+              if [[ -n "$pid" ]]; then
+                sleep 1
+                # A hardened app without get-task-allow can be sampled only by root.
+                sudo sample "$pid" 4 1 -mayDie -file "$records/sample-$i.txt" > /dev/null 2>&1 || true
+              fi
+            fi
+            if wait "$smoke"; then
+              echo "run $i: PASS $(grep -o 'launch→exit took [0-9]*s' "$records/smoke-$i.log")"
             else
               failed=$((failed + 1))
-              echo "run $i: FAIL $(grep -o 'launch→exit took [0-9]*s' ".build/repeat-records/smoke-$i.log") $(grep 'diagnostics FAIL' ".build/repeat-records/smoke-$i.log")"
+              echo "run $i: FAIL $(grep -o 'launch→exit took [0-9]*s' "$records/smoke-$i.log") $(grep 'diagnostics FAIL' "$records/smoke-$i.log")"
+              grep 'mainActorStall\|budgetExceeded' "$records/smoke-$i.log" | sed 's/^/    /'
             fi
           done
           echo "smoke runs: $COUNT, failed: $failed"
+          # The top of each call graph: sample lists the main thread first.
+          for f in "$records"/sample-*.txt; do
+            [[ -f "$f" ]] || continue
+            echo "== $f: main thread"
+            awk '/^Call graph:/ {on=1; next} on {print; if (++n >= 120) exit}' "$f"
+          done
+          sudo chown -R "$(id -u)" "$records" 2>/dev/null || true
       - uses: actions/upload-artifact@v7
         if: always()
         with:
