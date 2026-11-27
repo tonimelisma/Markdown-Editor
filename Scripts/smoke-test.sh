@@ -27,20 +27,29 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "smoke: building (Debug, derivedDataPath=$derived)…"
-build_start=$(date +%s)
-source "$repo_root/Scripts/lib/build-settings.sh"
-build_command=(xcodebuild -project "Markdown Editor.xcodeproj" -scheme "Markdown Editor"
-    -configuration Debug -derivedDataPath "$derived" "${verification_build_settings[@]}")
-if [[ -n "${FALSIFICATION_SOURCE_PACKAGES:-}" ]]; then
-    build_command+=(-clonedSourcePackagesDirPath "$FALSIFICATION_SOURCE_PACKAGES")
-fi
-"${build_command[@]}" build >/dev/null || {
-        echo "smoke: build failed" >&2; exit 1; }
-build_end=$(date +%s)
-echo "smoke: build took $((build_end - build_start))s"
+# SMOKE_APP names a bundle that already exists, to be launched as it stands instead of built.
+# Scripts/release.sh sets it to the signed Release app, so the launch is a launch of exactly the
+# bundle about to be published. Build 202 was published without that launch and could not start at
+# all (docs/DECISIONS.md, 2026-11-26, "An ad hoc app needs the library-validation exception").
+if [[ -n "${SMOKE_APP:-}" ]]; then
+    app="$SMOKE_APP"
+    echo "smoke: launching the given bundle, unbuilt: $app"
+else
+    echo "smoke: building (Debug, derivedDataPath=$derived)…"
+    build_start=$(date +%s)
+    source "$repo_root/Scripts/lib/build-settings.sh"
+    build_command=(xcodebuild -project "Markdown Editor.xcodeproj" -scheme "Markdown Editor"
+        -configuration Debug -derivedDataPath "$derived" "${verification_build_settings[@]}")
+    if [[ -n "${FALSIFICATION_SOURCE_PACKAGES:-}" ]]; then
+        build_command+=(-clonedSourcePackagesDirPath "$FALSIFICATION_SOURCE_PACKAGES")
+    fi
+    "${build_command[@]}" build >/dev/null || {
+            echo "smoke: build failed" >&2; exit 1; }
+    build_end=$(date +%s)
+    echo "smoke: build took $((build_end - build_start))s"
 
-app="$derived/Build/Products/Debug/Markdown Editor.app"
+    app="$derived/Build/Products/Debug/Markdown Editor.app"
+fi
 binary="$app/Contents/MacOS/Markdown Editor"
 fixture="$repo_root/Scripts/Fixtures/smoke-basic.md"
 

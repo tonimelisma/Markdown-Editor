@@ -3,8 +3,9 @@
 # "Cloud-first development"). `.github/workflows/release.yml` runs it on GitHub's macOS runner
 # once that commit's CI passed; it publishes to GitHub, so it is not run by hand.
 #
-# A release is made only when the app changed since the newest release (anything under
-# `Markdown Editor/` or `Markdown Editor.xcodeproj/`). It is v<x.y.z>, the next version of the
+# A release is made only when the published app changed since the newest release (anything under
+# `Markdown Editor/` or `Markdown Editor.xcodeproj/`, or in the scripts that sign it). It is
+# v<x.y.z>, the next version of the
 # project's MARKETING_VERSION series (Scripts/release-version.sh), with CFBundleVersion the commit
 # count, the number Sparkle compares. It holds the disk image a person installs from
 # (Markdown-Editor.dmg), the Sparkle archive, and the feed that names it (Scripts/appcast.sh). It is
@@ -37,7 +38,10 @@ signing_identity="${SIGNING_IDENTITY:--}"
 publish_repo="$GITHUB_REPOSITORY"
 keep=3
 project="Markdown Editor.xcodeproj"
-app_paths=("Markdown Editor" "Markdown Editor.xcodeproj")
+# What makes the published app different from the one in the newest release: its sources, its
+# project, and the scripts that sign it. Signing is in that list because build 202's defect was
+# entirely in the signing — a fix that only touched Scripts/ would never have been published.
+app_paths=("Markdown Editor" "Markdown Editor.xcodeproj" Scripts/release.sh Scripts/adhoc-harden.sh)
 
 say() { echo "release: $*"; }
 refuse() {
@@ -117,13 +121,42 @@ xcodebuild \
 
 app="$derived/Build/Products/Release/Markdown Editor.app"
 plist="$app/Contents/Info.plist"
+
+# Without a Developer ID the app is signed ad hoc, and an ad hoc build cannot load its own embedded
+# Sparkle.framework under library validation — build 202 was published and could not start at all.
+# Scripts/adhoc-harden.sh says why, and re-signs it with the exception and without get-task-allow.
+if [[ "$signing_identity" == "-" ]]; then
+    ./Scripts/adhoc-harden.sh "$app" "$timestamp_flag" "$out/adhoc.entitlements"
+fi
+
 /usr/bin/codesign --verify --deep --strict "$app"
+
+# What the app is actually signed with, read back off the bundle rather than assumed.
+signed_entitlements="$out/signed.entitlements"
+/usr/bin/codesign --display --entitlements "$signed_entitlements" --xml "$app"
+entitled() { /usr/libexec/PlistBuddy -c "Print :$1" "$signed_entitlements" 2>/dev/null || true; }
+if [[ "$signing_identity" == "-" ]]; then
+    [[ "$(entitled com.apple.security.cs.disable-library-validation)" == "true" ]] \
+        || refuse "the ad hoc app does not carry com.apple.security.cs.disable-library-validation, so it cannot load Sparkle.framework and will not start"
+else
+    [[ -z "$(entitled com.apple.security.cs.disable-library-validation)" ]] \
+        || refuse "a signed build must keep library validation; the exception is only for ad hoc builds"
+fi
+[[ -z "$(entitled com.apple.security.get-task-allow)" ]] || refuse "the app would be published debuggable (get-task-allow)"
 read_plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$plist" 2>/dev/null || true; }
 [[ "$(read_plist SUPublicEDKey)" == "$public_key" ]] || refuse "the build carries SUPublicEDKey $(read_plist SUPublicEDKey), expected $public_key"
 expected_feed="https://github.com/$publish_repo/releases/latest/download/appcast.xml"
 [[ "$(read_plist SUFeedURL)" == "$expected_feed" ]] || refuse "SUFeedURL is $(read_plist SUFeedURL), but releases go to $expected_feed"
 [[ "$(read_plist CFBundleShortVersionString)" == "$version" ]] || refuse "the build carries version $(read_plist CFBundleShortVersionString), expected $version"
 [[ "$(read_plist CFBundleVersion)" == "$build" ]] || refuse "the build carries build $(read_plist CFBundleVersion), expected $build"
+
+# The check build 202 did not have: this very bundle is launched and asserted on (REQ-098).
+# `codesign --verify --deep --strict` was content with 202, an app that could not start at all.
+# This does not catch 202's own defect — GitHub's runners do not enforce library validation, so
+# that build would launch here and still die on every Mac; the entitlement check above is what
+# catches that one. This catches everything else that stops a release from running.
+say "launching the signed app (Scripts/smoke-test.sh)"
+SMOKE_APP="$app" ./Scripts/smoke-test.sh || refuse "the signed app failed its smoke run; nothing was published"
 
 notary() { # <file>
     local key="$out/notary.p8"

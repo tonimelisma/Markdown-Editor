@@ -41,13 +41,27 @@ struct PrivacyBoundaryTests {
         #expect(!project.contains("Analytics"))
         #expect(!project.contains("AuthenticationServices"))
 
-        // The repository's own files, not build output: hidden folders (`.build`, `.git`) are
-        // skipped, because a package checkout under `.build` carries its own entitlements (Sparkle's
-        // does) and none of them is this app's. The walk proves it saw the project by finding its
-        // Info.plist, so an empty walk cannot pass for "no entitlements".
-        let repositoryFiles = FileManager.default.enumerator(
-            at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-        )?.compactMap { $0 as? URL } ?? []
+        // The repository's own files, not build output: a package checkout carries its own
+        // entitlements (Sparkle's does) and none of them is this app's. Hidden folders (`.build`,
+        // `.git`) are skipped, and so are the gitignored build directories that are not hidden —
+        // `build/`, where Scripts/release.sh and Scripts/benchmark.sh put their derived data, and
+        // `DerivedData/`. Hidden-only was not enough: a local release build left Sparkle's
+        // checkouts under `build/` and turned this red, which said nothing about the product.
+        // The walk proves it saw the project by finding its Info.plist, so an empty walk cannot
+        // pass for "no entitlements".
+        let buildOutputDirectories: Set<String> = ["build", "DerivedData"]
+        let walk = FileManager.default.enumerator(
+            at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+        )
+        var repositoryFiles: [URL] = []
+        while let url = walk?.nextObject() as? URL {
+            let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            if isDirectory, buildOutputDirectories.contains(url.lastPathComponent) {
+                walk?.skipDescendants()
+                continue
+            }
+            repositoryFiles.append(url)
+        }
         #expect(repositoryFiles.contains { $0.path.hasSuffix("Markdown Editor/Info.plist") }, "the walk did not reach the project")
         let entitlements = repositoryFiles.filter { $0.pathExtension == "entitlements" }
         #expect(entitlements.isEmpty, "entitlements files: \(entitlements.map(\.path))")
