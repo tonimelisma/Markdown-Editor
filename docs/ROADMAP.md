@@ -93,18 +93,19 @@ Still open:
   second launch recorded a provisional WYSIWYG presentation that disagreed with the authoritative
   parse of the same revision. The smoke edits had landed while a slow parse was still running. It
   was seen once in about 40 launches, and the cause is not yet known.
-- An installed copy seen updating itself. v1.0.0 (build 202) was published on 2026-11-26 by
-  Release run 45866221874. Its feed, archive length and EdDSA signature were checked from
-  GitHub against the `SPARKLE_SEED` public key, and its app carries that key — but the app itself
-  could not start: installed, it died in dyld on every launch, because an ad hoc build cannot load
-  its own `Sparkle.framework` under the hardened runtime (`DECISIONS.md`, 2026-11-26). Everything
-  checked about build 202 was checked statically; nothing had launched it. The release path now
-  re-signs the ad hoc build with the library-validation exception, asserts on the entitlements it
-  publishes, and refuses to publish a bundle that has not launched and passed REQ-098's assertions.
-  The entitlement assertion, not the launch, is what catches this defect: GitHub's runners enforce
-  no library validation, so build 202 would have launched there too. REQ-033 stays `Active` until a copy
-  installed from a disk image takes the next release by itself — which the broken v1.0.0 cannot do,
-  so the first install has to be by hand from the next release.
+- An installed copy seen updating itself. v1.0.0 (build 202) could not start: an ad hoc build
+  cannot load its own `Sparkle.framework` under the hardened runtime (`DECISIONS.md`,
+  2026-11-26), so no copy of it can update itself. v1.0.1 (build 208) was published on
+  2026-11-27 by Release run 45927961315. Both of its launches passed, and the first did not even
+  stall. These were checked from the public download URLs:
+  - The feed names version 1.0.1, build 208, and the archive length matches it.
+  - The archive's EdDSA signature verifies against the `SPARKLE_SEED` public key, and a copy with
+    one bit flipped is rejected.
+  - The app carries that key and the feed URL, checks every hour, and sends no system profile.
+  - Its entitlements include the library-validation exception, and `get-task-allow` is absent.
+
+  REQ-033 stays `Active` until a copy installed by hand from v1.0.1's disk image takes the next
+  release by itself.
 - Mac runners that never come. Twice on 2026-11-26 a `main` job waited 15 minutes for an
   `xcode-27` runner and was dropped (CI 45860219913, Release 45866221874 attempt 1), while
   pull-request jobs started within a minute. Both ended after exactly 15 minutes with no runner and

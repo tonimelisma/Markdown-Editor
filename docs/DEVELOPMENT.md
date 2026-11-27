@@ -26,7 +26,7 @@ a clean tree and a pushed branch. The Desktop app's **Open in** sends a local se
 
 | Job | Runner | What it does |
 | --- | --- | --- |
-| `Does it need macOS?` | Linux | A diff confined to `docs/`, top-level `*.md`, `.claude/`, `.gitignore` or the markdownlint config needs no Mac |
+| `Does it need macOS?` | Linux | A diff confined to `docs/`, top-level `*.md`, `.claude/`, `.gitignore` or the markdownlint config needs no Mac. A push to `main` also needs one whenever the app (`Scripts/lib/app-paths.sh`) differs from the newest release, because Release would publish it |
 | `Portable steps (Linux)` | Linux | `Scripts/check.sh`, expecting exit 3 |
 | `Build, test and smoke (Xcode 27)` | `xcode-27` | `Scripts/check.sh` in full, then one window screenshot uploaded as `screenshot-<run id>` (never gating) |
 | `CI gate` | Linux | the one check a ruleset requires: every job passed, or macOS was rightly skipped |

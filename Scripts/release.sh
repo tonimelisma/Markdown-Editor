@@ -38,10 +38,8 @@ signing_identity="${SIGNING_IDENTITY:--}"
 publish_repo="$GITHUB_REPOSITORY"
 keep=3
 project="Markdown Editor.xcodeproj"
-# What makes the published app different from the one in the newest release: its sources, its
-# project, and the scripts that sign it. Signing is in that list because build 202's defect was
-# entirely in the signing — a fix that only touched Scripts/ would never have been published.
-app_paths=("Markdown Editor" "Markdown Editor.xcodeproj" Scripts/release.sh Scripts/adhoc-harden.sh)
+# app_paths: what makes the published app differ from the newest release (Scripts/lib/app-paths.sh).
+source "$(dirname "$0")/lib/app-paths.sh"
 
 say() { echo "release: $*"; }
 refuse() {

@@ -36,19 +36,33 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          mac() { echo "mac=$1" >> "$GITHUB_OUTPUT"; echo "$2"; exit 0; }
           if [[ "$EVENT" == workflow_dispatch || -z "$BASE" || "$BASE" =~ ^0+$ ]] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            echo "mac=true" >> "$GITHUB_OUTPUT"; echo "full run ($EVENT)"; exit 0
+            mac true "full run ($EVENT)"
           fi
           # Everything outside this documentation set can change what builds, tests or ships.
           others="$(git diff --name-only "$(git merge-base "$BASE" "$HEAD")" "$HEAD" \
             | grep -vE '^(docs/.*|[^/]*\.md|\.claude/.*|\.markdownlint-cli2\.jsonc|\.gitignore)$' || true)"
-          if [[ -n "$others" ]]; then
-            echo "mac=true" >> "$GITHUB_OUTPUT"; printf 'needs macOS:\n%s\n' "$others"
-          else
-            echo "mac=false" >> "$GITHUB_OUTPUT"; echo "documentation only"
+          [[ -z "$others" ]] || mac true "$(printf 'needs macOS:\n%s' "$others")"
+          # A push to main is also asked what Release will do next: it publishes whenever the app
+          # differs from the newest release, so this run must have built that tree. Without this, a
+          # documentation push after a main commit whose macOS job failed skipped macOS, passed, and
+          # published the failed tree. v1.0.1 was published that way, from #91 after #90, whose main
+          # run had been cancelled and had passed only as a pull request.
+          if [[ "$EVENT" == push ]]; then
+            source Scripts/lib/app-paths.sh
+            released="$(gh release view --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null \
+              | sed -n 's/^source-commit: \([0-9a-f]\{40\}\)$/\1/p' | tail -n 1 || true)"
+            if [[ -z "$released" ]] || ! git cat-file -e "$released^{commit}" 2>/dev/null; then
+              mac true "no release to compare with, so Release may publish this tree"
+            fi
+            git diff --quiet "$released" "$HEAD" -- "${app_paths[@]}" \
+              || mac true "the app differs from the newest release ($released), so Release will publish this tree"
           fi
+          mac false "documentation only"
 
   portable:
     name: Portable steps (Linux)
