@@ -355,7 +355,7 @@ struct DiagnosticLogTests {
         session.attach(document: document)
         defer { session.detach() }
         // The parse runs off the main actor and then waits for it, held here.
-        Thread.sleep(forTimeInterval: 0.3)
+        occupyMainActor(seconds: 0.3)
         let revision = document.sourceVersion
         for _ in 0..<400 where trace.eventsMatching({
             if case .reconciliationApplied(_, let applied, _, _) = $0 { return applied == revision }
