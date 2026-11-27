@@ -209,7 +209,11 @@ struct MeasurementSubstrateProofTests {
     let clock = ControlledFrameClock()
     let observer = FrameObserver(sampler: sampler, clock: clock)
     observer.startControlled()
-    let base = DispatchTime.now().uptimeNanoseconds
+    // The ticks are stamped a minute ahead, so every acknowledgement lands before its callback
+    // and none counts as late: this measures cadence alone. Stamped "now", a parallel suite that
+    // kept the main actor away for seconds made the acknowledgements late, and the test reported
+    // an 83 ms/s hitch that was the suite's (CI 45974231640).
+    let base = DispatchTime.now().uptimeNanoseconds + 60_000_000_000
     clock.emit(callbackUptimeNanos: base, cadenceNanos: 1_000_000_000)
     clock.emit(callbackUptimeNanos: base + 1_000_000_000, cadenceNanos: 1_000_000_000)
     clock.emit(callbackUptimeNanos: base + 3_000_000_000, cadenceNanos: 2_000_000_000)

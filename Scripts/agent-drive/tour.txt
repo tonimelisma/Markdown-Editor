@@ -331,5 +331,4 @@ wait 3
 windows
 shot r-relaunched
 expect-window notes.md
-faults
 expect-no-faults
