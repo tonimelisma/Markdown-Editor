@@ -330,6 +330,26 @@ struct ReconciliationInvariantTests {
         #expect(values.isEmpty, "AppKit's wait was reported as a stall: \(values)")
     }
 
+    // Verifies: REQ-096 — AppKit's wait runs its loop in slices, between which the outer default
+    // mode shows. A look that falls between two slices does not make the wait a stall.
+    @Test func watchdogSeesAnAppKitWaitBetweenItsSlices() async {
+        let reported = ReportBox()
+        let looks = Mutex(0)
+        await Self.stallMainActor(seconds: 0.6) {
+            await MainActorWatchdog.probeOnce(
+                thresholdMillis: 100,
+                appKitWaitBoundMillis: 5_000,
+                isModalSessionActive: { false },
+                mainRunLoopMode: {
+                    let look = looks.withLock { $0 += 1; return $0 }
+                    return look.isMultiple(of: 2) ? "com.apple.HIServices.RunLoopSemaphore" : CFRunLoopMode.defaultMode.rawValue as String
+                }
+            ) { millis in reported.append(millis) }
+        }
+        let values = await reported.awaitingCount(1, timeoutSeconds: 0.5)
+        #expect(values.isEmpty, "a look between AppKit's slices was taken for a stall: \(values)")
+    }
+
     // Verifies: REQ-096 — a wait in AppKit's own loop that outlasts the bound is reported: the
     // close hang was a deadlock in such a loop, and it never ended.
     @Test func watchdogReportsAnAppKitWaitThatOutlastsItsBound() async {

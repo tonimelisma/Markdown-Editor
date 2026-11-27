@@ -172,10 +172,26 @@ final class MainActorWatchdog {
             await probe.value
             return
         }
+        // AppKit's waits run its loop in short slices, between which the outer mode shows; one
+        // look can fall between two. The main thread counts as waiting in AppKit's loop while a
+        // private mode has been seen in the last quarter second, looking every 20 ms.
         let bound = started &+ appKitWaitBoundMillis &* 1_000_000
-        while MainRunLoop.isAppKitWait(mainRunLoopMode()), DispatchTime.now().uptimeNanoseconds < bound {
-            try? await Task.sleep(for: .milliseconds(50))
+        let recent: UInt64 = 250_000_000
+        var lastSeenWaiting: UInt64?
+        func look() {
+            if MainRunLoop.isAppKitWait(mainRunLoopMode()) { lastSeenWaiting = DispatchTime.now().uptimeNanoseconds }
+        }
+        for _ in 0..<5 {
+            look()
+            try? await Task.sleep(for: .milliseconds(20))
             if await flag.isCompleted { return }
+        }
+        while let seen = lastSeenWaiting,
+              DispatchTime.now().uptimeNanoseconds &- seen < recent,
+              DispatchTime.now().uptimeNanoseconds < bound {
+            try? await Task.sleep(for: .milliseconds(20))
+            if await flag.isCompleted { return }
+            look()
         }
         // Still stalled: report now rather than only on recovery.
         report(thresholdMillis)
