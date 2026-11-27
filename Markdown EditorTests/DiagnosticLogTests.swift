@@ -343,6 +343,22 @@ struct DiagnosticLogTests {
         session.detach()
     }
 
+    // Verifies: REQ-123 — a document opened before its window exists parses once when the window
+    // opens on the main screen. The parse before the window guessed scale 2, so on a 1x display
+    // (CI's runner, an external monitor) binding the window parsed it again. On a 2x host this
+    // passes either way; CI's runner is 1x.
+    @Test func aWindowOpenedAfterAttachOnTheMainScreenNeedsNoSecondParse() {
+        let document = MarkdownDocument()
+        document.installTextForTesting("hello\n")
+        let session = EditorSession()
+        session.attach(document: document)
+        defer { session.detach() }
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled], backing: .buffered, defer: true)
+        let before = session.parseCoordinator.generation()
+        session.bind(editorWindow: window)
+        #expect(session.parseCoordinator.generation() == before, "binding a main-screen window parsed the document again")
+    }
+
     // Verifies: ARC-023 — a backing change from the session's own window that changes the scale
     // images were decoded for invalidates the current generation and schedules a fresh display
     // request; one that leaves the scale as it was (a colour-space change, say) parses nothing.
