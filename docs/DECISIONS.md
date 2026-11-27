@@ -3,6 +3,35 @@
 Decisions with consequences. Newest first. This is not an archive of everything ever decided —
 it is the short list of things someone will otherwise re-litigate or accidentally undo.
 
+## 2026-11-27 — Unsaved typing is edited before AppKit counts it; undo groups end outside AppKit's activities
+
+**Decision.** A document is edited when AppKit says so, or while a typing undo group holds edits.
+The typing group is ended at the entry of Save and Save As. Close and load drop it without ending
+it. ENGINEERING §10 states both rules.
+
+**Why.** The tour found two defects with one cause.
+
+- Typing stays in one open undo group, and AppKit counts a change only when a group closes.
+  After a sentence typed since the last save, the document read as clean, and another app's write
+  was adopted over the sentence.
+- Closing a window after typing ended that group inside NSDocument's close activity. The
+  resulting change-count update waited on the activity itself, and the app hung for good. A
+  sample of the hung process showed the cycle.
+
+**Criteria:** preservation of the person's work above all (VISION's first objective); behaving as
+a Mac document does (Edited, the close prompt, undo to the saved point); cost.
+
+| Option | Work preserved | Mac document behaviour | Cost |
+| --- | --- | --- | --- |
+| **Open typing group counts as edited; end it only outside activities (chosen)** | ✓ | ✓ undo to the saved point still clears Edited | small |
+| Mark edited by revision: any revision but the file's | ✓ | ✗ undo back to the saved text stays Edited | small |
+| Group typing by event, as AppKit does by default | ✓ | ✓ | the undo history's shape changes for every edit route |
+| Do nothing | ✗ data loss, a hang | — | none |
+
+**Where it is worse.** Autosave does not end the typing group, which a deadlock risk inside its
+activity rules out. After an autosave during typing, Edited can linger until the group closes.
+That costs nothing but a prompt.
+
 ## 2026-11-27 — Return and Backspace are structural commands, planned from the source
 
 **Decision.** In WYSIWYG, Return is `insertParagraphBreak` and Backspace over a block boundary is

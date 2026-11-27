@@ -581,6 +581,14 @@ by an automated proof** — the same class of documented gap as the Save-panel c
 - Undo and redo validate current content, apply exactly once, and publish one one-shot selection
   restoration.
 - Asset files are not part of text undo.
+- AppKit counts a change only when an undo group closes, and a typing group stays open while
+  typing goes on. A typing group holding edits therefore makes the document edited
+  (`isDocumentEdited`), for external writes and the close prompt alike.
+- An undo group is never ended inside one of NSDocument's activities (close, revert, the write of
+  a save). Ending one posts the did-close-group notification. NSDocument answers by updating its
+  change count with synchronous waiting, which, inside its own activity, waits forever: closing a
+  window after typing hung the app. Save and Save As end the typing group at their entry, before
+  the activity starts. Close and load drop it, since its history is dropped or cleared.
 
 ## 11. Image placement
 
