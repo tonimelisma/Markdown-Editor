@@ -399,7 +399,6 @@ enum WYSIWYGEditor {
                 // typing that vanished without a trace took an agent-drive run to see
                 // (45943545906).
                 let viewWasBehind = appliedSnapshotID != session.presentation?.id
-                document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.stalePresentation)))
                 applyProjectionIfNeeded(reason: .reapplyIfDrift)
                 // A key pressed just after a formatting command arrives before SwiftUI has put
                 // the command's snapshot on the page: Return after Heading 1 was lost this way
@@ -420,6 +419,7 @@ enum WYSIWYGEditor {
                     defer { replayingKeystroke = false }
                     return self.textView(textView, shouldChangeTextIn: target, replacementString: replacement)
                 }
+                document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.stalePresentation)))
                 return false
             }
             let appliedPresentation = presentation

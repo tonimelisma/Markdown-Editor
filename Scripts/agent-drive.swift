@@ -256,14 +256,13 @@ func require(_ label: String) -> AXUIElement? {
 /// Open and Save panels run in AppKit's own service process; activating the app behind one took
 /// the keyboard from the panel, and a file name typed into it went into the document instead
 /// (tour 45962151435).
+///
+/// Whether the app is in front is asked of accessibility, live: `NSWorkspace.frontmostApplication`
+/// is kept current by notifications a command-line process does not receive, so it still named
+/// Finder, the activation it then requested gave Finder the front, and a name typed into the
+/// Save panel went to Finder (probe 45965886341).
 func activate() {
-    guard let front = NSWorkspace.shared.frontmostApplication else {
-        _ = runningApp()?.activate()
-        usleep(150_000)
-        return
-    }
-    if front.processIdentifier == pid { return }
-    if let identifier = front.bundleIdentifier, identifier.hasPrefix("com.apple.appkit.xpc") { return }
+    if let app, (attribute(app, kAXFrontmostAttribute) as? Bool) == true { return }
     _ = runningApp()?.activate()
     usleep(150_000)
 }
@@ -611,6 +610,9 @@ while let raw = readLine() {
         }
     case ("select", 2), ("caret-after", 2):
         if let element = require(rest[0]) {
+            // Keys typed just before may still be on their way to the app, as when it is busy
+            // with its first window; a person would look before selecting.
+            _ = waitUntil(3) { text(element, kAXValueAttribute).contains(rest[1]) }
             let value = text(element, kAXValueAttribute) as NSString
             let found = value.range(of: rest[1])
             if found.location == NSNotFound {
@@ -716,6 +718,7 @@ while let raw = readLine() {
     case ("expect-value", 2), ("expect-no-value", 2):
         if let element = require(rest[0]) {
             let wanted = words[0] == "expect-value"
+            if wanted { _ = waitUntil(3) { text(element, kAXValueAttribute).contains(rest[1]) } }
             let found = text(element, kAXValueAttribute).contains(rest[1])
             found == wanted ? pass("value of \"\(rest[0])\" \(found ? "contains" : "lacks") \"\(rest[1])\"")
                 : fail("value of \"\(rest[0])\" \(found ? "contains" : "lacks") \"\(rest[1])\"")
