@@ -373,12 +373,12 @@ enum WYSIWYGEditor {
             }
             let appliedPresentation = presentation
 
-            let projectionSelection = ProjectionSelection(
-                utf16: affectedCharRange,
-                revision: presentation.projectionRevision,
-                affinity: textView.selectionAffinity == .upstream ? .upstream : .downstream
-            )
-            guard session.wysiwygModeState.selection == projectionSelection else {
+            // The owner's selection decides, affinity included: AppKit's affinity after a
+            // programmatic insertion need not match the owner's for the same caret, and comparing
+            // it refused every keystroke after the first (agent-drive run 45944610103).
+            let nativeRange = ProjectionRange(affectedCharRange, revision: presentation.projectionRevision)
+            guard let projectionSelection = session.wysiwygModeState.selection,
+                  projectionSelection.range == nativeRange else {
                 // The native selection callback is the owner-state capture point. A mutation
                 // callback cannot promote its affected range into current state after the fact.
                 document.trace?.record(route: .editRefused, .editRefused(category: .refusal(.ambiguousSelection)))

@@ -3,29 +3,92 @@
 //  Markdown Editor
 //
 
+import AppKit
 import SwiftUI
 
-struct EditorCommandControllerKey: FocusedValueKey {
-    typealias Value = EditorCommandController
-}
+/// The command controller of the key document window, for the menu bar.
+///
+/// Document windows are AppKit windows (`MarkdownDocument.makeWindowControllers`), not SwiftUI
+/// scenes, and a `@FocusedValue` published from their content never reached these commands: every
+/// View and Format item stayed disabled and every formatting shortcut did nothing (agent-drive
+/// run 45944610103: "WYSIWYG Mode" disabled with its menu open, cmd-I routed nothing). The window's
+/// controller is found the way the smoke scenes find it, through the toolbar delegate the window
+/// owns, and republished whenever the key window changes.
+@MainActor
+final class KeyWindowCommands: ObservableObject {
+    static let shared = KeyWindowCommands()
 
-extension FocusedValues {
-    var editorCommandController: EditorCommandController? {
-        get { self[EditorCommandControllerKey.self] }
-        set { self[EditorCommandControllerKey.self] = newValue }
+    @Published private(set) var controller: EditorCommandController?
+    private var observers: [NSObjectProtocol] = []
+
+    private init() {
+        let center = NotificationCenter.default
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refresh() }
+            })
+        }
+        observers.append(center.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] note in
+            let closing = (note.object as AnyObject?).map(ObjectIdentifier.init)
+            MainActor.assumeIsolated {
+                let key = NSApp.keyWindow
+                self?.refresh(keyWindow: key.map(ObjectIdentifier.init) == closing ? nil : key)
+            }
+        })
+    }
+
+    func refresh(keyWindow: NSWindow? = NSApp.keyWindow) {
+        let next = Self.controller(of: keyWindow)
+        if next !== controller { controller = next }
+    }
+
+    static func controller(of window: NSWindow?) -> EditorCommandController? {
+        (window?.toolbar?.delegate as? EditorToolbarController)?.commandController
     }
 }
 
 @MainActor
 struct EditorMenuCommands: Commands {
+    struct Item: Identifiable {
+        let title: String
+        let command: EditorCommand
+        var id: String { title }
+    }
+
+    /// Every item the menu bar presents, in order: the View menu's modes, then the Format menu's
+    /// sections. Built by one function (`menuButton`), so no item can be written without its
+    /// shortcut or its availability. Hand-written buttons had dropped them: of the nineteen
+    /// approved shortcuts, the menu carried three.
+    static let viewItems: [Item] = [
+        Item(title: "WYSIWYG Mode", command: .wysiwygMode),
+        Item(title: "Source Mode", command: .sourceMode),
+    ]
+    static let formatSections: [[Item]] = [
+        [
+            Item(title: "Bold", command: .bold),
+            Item(title: "Italic", command: .italic),
+            Item(title: "Strikethrough", command: .strikethrough),
+            Item(title: "Inline Code", command: .inlineCode),
+            Item(title: "Edit Link…", command: .editLink),
+            Item(title: "Remove Link", command: .removeLink),
+        ],
+        [Item(title: "Paragraph", command: .paragraph)]
+            + (1...6).map { Item(title: "Heading \($0)", command: .heading($0)) },
+        [
+            Item(title: "Bulleted List", command: .unorderedList),
+            Item(title: "Numbered List", command: .orderedList),
+            Item(title: "Task List", command: .taskList),
+            Item(title: "Block Quote", command: .blockQuote),
+            Item(title: "Code Block", command: .codeBlock),
+            Item(title: "Add Image…", command: .addImage),
+        ],
+    ]
+
     /// Every command the menu bar presents. Mode lives in View, formatting in Format, but both
     /// are presentations of the one command model — so this list must cover the toolbar's.
-    static let commandOrder: [EditorCommand] = [
-        .wysiwygMode, .sourceMode,
-        .bold, .italic, .strikethrough, .inlineCode, .editLink, .removeLink, .paragraph,
-        .heading(1), .heading(2), .heading(3), .heading(4), .heading(5), .heading(6),
-        .unorderedList, .orderedList, .taskList, .blockQuote, .codeBlock, .addImage
-    ]
+    static var commandOrder: [EditorCommand] {
+        (viewItems + formatSections.flatMap { $0 }).map(\.command)
+    }
 
     /// The approved shortcuts. Declared once so menu construction and the conformance test read
     /// the same table, and so an added shortcut cannot silently shadow a standard AppKit key.
@@ -51,62 +114,34 @@ struct EditorMenuCommands: Commands {
         .codeBlock: KeyboardShortcut("c", modifiers: [.command, .control, .shift])
     ]
 
-    @FocusedValue(\.editorCommandController) private var controller
+    @ObservedObject private var keyWindow = KeyWindowCommands.shared
 
     var body: some Commands {
         CommandGroup(after: .toolbar) {
-            Button("WYSIWYG Mode") { _ = controller?.perform(.wysiwygMode) }
-                .disabled(!isEnabled(.wysiwygMode))
-            Button("Source Mode") { _ = controller?.perform(.sourceMode) }
-                .disabled(!isEnabled(.sourceMode))
+            ForEach(Self.viewItems) { menuButton($0) }
             Divider()
         }
         CommandMenu("Format") {
-            menuButton("Bold", command: .bold)
-            menuButton("Italic", command: .italic)
-            Button("Strikethrough") { _ = controller?.perform(.strikethrough) }
-                .disabled(!isEnabled(.strikethrough))
-            Button("Inline Code") { _ = controller?.perform(.inlineCode) }
-                .disabled(!isEnabled(.inlineCode))
-            menuButton("Edit Link…", command: .editLink)
-            Button("Remove Link") { _ = controller?.perform(.removeLink) }
-                .disabled(!isEnabled(.removeLink))
-            Divider()
-            Button("Paragraph") { _ = controller?.perform(.paragraph) }
-                .disabled(!isEnabled(.paragraph))
-            ForEach(1...6, id: \.self) { level in
-                Button("Heading \(level)") { _ = controller?.perform(.heading(level)) }
-                    .disabled(!isEnabled(.heading(level)))
+            ForEach(Self.formatSections.indices, id: \.self) { index in
+                if index > 0 { Divider() }
+                ForEach(Self.formatSections[index]) { menuButton($0) }
             }
-            Divider()
-            Button("Bulleted List") { _ = controller?.perform(.unorderedList) }
-                .disabled(!isEnabled(.unorderedList))
-            Button("Numbered List") { _ = controller?.perform(.orderedList) }
-                .disabled(!isEnabled(.orderedList))
-            Button("Task List") { _ = controller?.perform(.taskList) }
-                .disabled(!isEnabled(.taskList))
-            Button("Block Quote") { _ = controller?.perform(.blockQuote) }
-                .disabled(!isEnabled(.blockQuote))
-            Button("Code Block") { _ = controller?.perform(.codeBlock) }
-                .disabled(!isEnabled(.codeBlock))
-            Button("Add Image…") { _ = controller?.perform(.addImage) }
-                .disabled(!isEnabled(.addImage))
         }
     }
 
     private func isEnabled(_ command: EditorCommand) -> Bool {
-        controller?.availability(for: command).isEnabled ?? false
+        keyWindow.controller?.availability(for: command).isEnabled ?? false
     }
 
     @ViewBuilder
-    private func menuButton(_ title: String, command: EditorCommand) -> some View {
-        let button = Button(title) { _ = controller?.perform(command) }
-        if let shortcut = Self.shortcuts[command] {
-            button
-                .keyboardShortcut(shortcut)
-                .disabled(!isEnabled(command))
+    private func menuButton(_ item: Item) -> some View {
+        let controller = keyWindow.controller
+        let button = Button(item.title) { _ = controller?.perform(item.command) }
+            .disabled(!isEnabled(item.command))
+        if let shortcut = Self.shortcuts[item.command] {
+            button.keyboardShortcut(shortcut)
         } else {
-            button.disabled(true)
+            button
         }
     }
 }

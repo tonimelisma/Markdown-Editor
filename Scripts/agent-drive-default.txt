@@ -47,6 +47,9 @@ menu View "WYSIWYG Mode"
 wait 1
 shot wysiwyg-from-menu
 expect-value WYSIWYG 1
+# From WYSIWYG whatever the menu did, so the shortcut's check cannot pass by standing still.
+press WYSIWYG
+wait 1
 key ctrl+cmd+2
 wait 1
 shot source-from-keyboard

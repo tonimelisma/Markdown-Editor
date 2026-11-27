@@ -722,11 +722,13 @@ final class EditorSession: ObservableObject {
             return .identityText(sourceRange: sourceRange)
         }()
         if isOrdinaryNativeReplacement,
-           case .projection(_) = selection,
+           case .projection(let projected) = selection,
            isTypingCommand,
            let presentation = state.presentation,
            let classification = localClassification,
-           LocalTransitionDomain.classify(classification) != .taskMarker {
+           LocalTransitionDomain.classify(classification) != .taskMarker,
+           inputRoute == .markedText
+            || LocalTransitionDomain.touchesNoBoundary(projected.range.utf16, in: presentation) {
             // COR-71: this route is deliberately synchronous but parser-free. The closed local
             // domain either produces a complete identity transition or refuses before owner
             // mutation; authoritative reconciliation is scheduled only after an accepted edit.

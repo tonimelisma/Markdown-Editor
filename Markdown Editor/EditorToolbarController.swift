@@ -10,7 +10,10 @@ import Combine
 @MainActor
 final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObject {
     weak var commandController: EditorCommandController? {
-        didSet { observeModeChanges() }
+        didSet {
+            observeModeChanges()
+            KeyWindowCommands.shared.refresh()
+        }
     }
     private weak var installedToolbar: NSToolbar?
     private var modeCancellable: AnyCancellable?
@@ -39,6 +42,9 @@ final class EditorToolbarController: NSObject, NSToolbarDelegate, ObservableObje
         window.toolbar = toolbar
         installedToolbar = toolbar
         observeModeChanges()
+        // The menu bar finds a window's commands through its toolbar delegate; the window can
+        // become key before this runs.
+        KeyWindowCommands.shared.refresh()
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {

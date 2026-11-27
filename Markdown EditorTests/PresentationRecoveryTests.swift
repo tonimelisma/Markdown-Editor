@@ -273,6 +273,7 @@ struct PresentationRecoveryTests {
         let source = "# Title\n\nSome **bold** text.\n\n- item\n\n> quote\n"
         let rendered = try PerformanceBoundaryTests.EditorHarness(source: source).session.presentation?.renderedString ?? ""
         var recovered: [String] = []
+        var refused: [String] = []
         var typedAt = 0
         for offset in 0...(rendered as NSString).length {
             let trace = InMemoryEditorTrace()
@@ -282,7 +283,13 @@ struct PresentationRecoveryTests {
             let before = harness.document.sourceVersion
             harness.typeCharacter("x", at: NSRange(location: offset, length: 0))
             guard harness.document.sourceVersion != before, let provisional = harness.session.presentation else {
-                continue // refused here, as on an attachment: no provisional snapshot to check
+                // Refused here, as on an attachment: no provisional snapshot to check.
+                let reasons = trace.eventsMatching {
+                    if case .editRefused = $0 { return true }
+                    return false
+                }
+                refused.append("\(offset): \(reasons)")
+                continue
             }
             typedAt += 1
             await awaitReconciliations(trace, revision: harness.document.sourceVersion, count: 1)
@@ -291,7 +298,7 @@ struct PresentationRecoveryTests {
                 recovered.append("offset \(offset): \(differences.first ?? "?")")
             }
         }
-        #expect(typedAt > 20, "only \(typedAt) offsets accepted a keystroke")
+        #expect(typedAt > 20, "only \(typedAt) offsets accepted a keystroke; refused at \(refused.prefix(6))")
         #expect(recovered.isEmpty, "\(recovered.count) offsets recovered:\n\(recovered.joined(separator: "\n"))")
     }
 
