@@ -152,6 +152,8 @@ host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-8}"
 # SMOKE_VERIFIER_EXTRA_ARGS lets a wrapper admit a fault it provably causes, without this script
 # growing knowledge of every wrapper. Scripts/leak-smoke.sh passes `--allow-fault mainActorStall`,
 # because `leaks` suspends the target task to walk its memory — observed turning a 6 s run into 95 s.
+# Scripts/release.sh passes it for the first of its two launches, on a runner booted minutes before,
+# and holds the second launch to every check.
 # Deliberately not a general escape hatch: every value has to be a flag verify-smoke-log.py already
 # defines, and each one names the fault it admits rather than disabling the check.
 # shellcheck disable=SC2086
