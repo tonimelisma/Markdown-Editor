@@ -313,6 +313,71 @@ struct ReconciliationInvariantTests {
         #expect((values.last ?? 0) >= 100)
     }
 
+    // Verifies: REQ-096 — a main thread waiting in AppKit's own loop, as the title bar's rename
+    // after Duplicate waits on its view service, is not a stall: tour 45986962172 reported one
+    // that the sample of the same step (45982413288) showed inside NSRemoteViewSemaphore.
+    @Test func watchdogReportsNoStallWhileAppKitWaitsInItsOwnLoop() async {
+        let reported = ReportBox()
+        await Self.stallMainActor(seconds: 0.6) {
+            await MainActorWatchdog.probeOnce(
+                thresholdMillis: 100,
+                appKitWaitBoundMillis: 5_000,
+                isModalSessionActive: { false },
+                mainRunLoopMode: { "com.apple.HIServices.RunLoopSemaphore" }
+            ) { millis in reported.append(millis) }
+        }
+        let values = await reported.awaitingCount(1, timeoutSeconds: 0.5)
+        #expect(values.isEmpty, "AppKit's wait was reported as a stall: \(values)")
+    }
+
+    // Verifies: REQ-096 — a wait in AppKit's own loop that outlasts the bound is reported: the
+    // close hang was a deadlock in such a loop, and it never ended.
+    @Test func watchdogReportsAnAppKitWaitThatOutlastsItsBound() async {
+        let reported = ReportBox()
+        await Self.stallMainActor(seconds: 0.8) {
+            await MainActorWatchdog.probeOnce(
+                thresholdMillis: 100,
+                appKitWaitBoundMillis: 300,
+                isModalSessionActive: { false },
+                mainRunLoopMode: { "com.apple.HIServices.RunLoopSemaphore" }
+            ) { millis in reported.append(millis) }
+        }
+        let values = await reported.awaitingCount(1, timeoutSeconds: 2)
+        #expect(!values.isEmpty, "a wait past the bound went unreported")
+    }
+
+    // Verifies: REQ-096 — a stall in a mode that serves the main queue is reported at once.
+    @Test func watchdogReportsAStallInTheDefaultMode() async {
+        let reported = ReportBox()
+        await Self.stallMainActor(seconds: 0.6) {
+            await MainActorWatchdog.probeOnce(
+                thresholdMillis: 100,
+                appKitWaitBoundMillis: 5_000,
+                isModalSessionActive: { false },
+                mainRunLoopMode: { CFRunLoopMode.defaultMode.rawValue as String }
+            ) { millis in reported.append(millis) }
+        }
+        let values = await reported.awaitingCount(1, timeoutSeconds: 2)
+        #expect(!values.isEmpty, "a default-mode stall went unreported")
+    }
+
+    /// Holds the main actor for `seconds` while `probe` runs from a background task.
+    private static func stallMainActor(seconds: TimeInterval, probe: @escaping @Sendable () async -> Void) async {
+        let scenario = Task.detached {
+            let occupied = Mutex(false)
+            let blocker = Task { @MainActor in
+                occupied.withLock { $0 = true }
+                occupyMainActor(seconds: seconds)
+            }
+            while !occupied.withLock({ $0 }) {
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+            await probe()
+            await blocker.value
+        }
+        await scenario.value
+    }
+
     // Verifies: REQ-096 — while an app-modal alert waits for the person, the main actor's jobs
     // wait too, and that is not a stall. The bad-file alert in tour 45974231615 was recorded as
     // two. The blocker stands in for the modal session; the session is declared to the probe.

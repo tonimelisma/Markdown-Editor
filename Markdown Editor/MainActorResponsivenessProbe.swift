@@ -2,15 +2,20 @@ import Foundation
 import Synchronization
 
 private nonisolated enum MainActorProbeRelay {
-    private typealias Entry = (callback: @MainActor @Sendable (UInt64, UInt64) -> Void, sessions: AppModalSession)
+    private typealias Entry = (
+        callback: @MainActor @Sendable (UInt64, UInt64) -> Void,
+        sessions: AppModalSession,
+        mainRunLoopMode: @Sendable () -> String?
+    )
     private static let callbacks = Mutex<[UUID: Entry]>([:])
 
     static func install(
         _ callback: @escaping @MainActor @Sendable (UInt64, UInt64) -> Void,
-        sessions: AppModalSession
+        sessions: AppModalSession,
+        mainRunLoopMode: @escaping @Sendable () -> String?
     ) -> UUID {
         let token = UUID()
-        callbacks.withLock { $0[token] = (callback, sessions) }
+        callbacks.withLock { $0[token] = (callback, sessions, mainRunLoopMode) }
         return token
     }
 
@@ -18,6 +23,9 @@ private nonisolated enum MainActorProbeRelay {
         let entry = callbacks.withLock { $0[token] }
         guard let entry else { return }
         let callback = entry.callback
+        // Seen every 100 ms, so a wait in AppKit's own loop that lasts longer is seen, and every
+        // sample pending across it is dropped.
+        if MainRunLoop.isAppKitWait(entry.mainRunLoopMode()) { entry.sessions.noteAppKitWait() }
         let epoch = entry.sessions.epoch
         let start = DispatchTime.now().uptimeNanoseconds
         Task { @MainActor in callback(start, epoch) }
@@ -36,7 +44,9 @@ private nonisolated enum MainActorProbeRelay {
 ///
 /// A hop that waited out an app-modal alert is not counted, as the watchdog does not report one:
 /// the main thread was running the alert, and the hop measured how long the person took to read
-/// it. Tour 45974231615's bad-file alert alone put this metric's p95 at 896 ms.
+/// it. Tour 45974231615's bad-file alert alone put this metric's p95 at 896 ms. Nor is a hop that
+/// waited while the main thread ran one of AppKit's own loops (`MainRunLoop`), as it does for the
+/// title-bar rename after Duplicate.
 ///
 /// // REQ-124.
 @MainActor
@@ -46,17 +56,23 @@ final class MainActorResponsivenessProbe {
     private var relayToken: UUID?
     private var pendingSamples: [(start: UInt64, epoch: UInt64)] = []
     private let modalSessions: AppModalSession
+    private let mainRunLoopMode: @Sendable () -> String?
 
-    init(sampler: PerformanceSampler, modalSessions: AppModalSession = .shared) {
+    init(
+        sampler: PerformanceSampler,
+        modalSessions: AppModalSession = .shared,
+        mainRunLoopMode: @escaping @Sendable () -> String? = { MainRunLoop.currentMode() }
+    ) {
         self.sampler = sampler
         self.modalSessions = modalSessions
+        self.mainRunLoopMode = mainRunLoopMode
     }
 
     func start() {
         guard timer == nil else { return }
         let token = MainActorProbeRelay.install({ [weak self] start, epoch in
             self?.completeSample(start: start, epoch: epoch)
-        }, sessions: modalSessions)
+        }, sessions: modalSessions, mainRunLoopMode: mainRunLoopMode)
         relayToken = token
         let t = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
         t.schedule(deadline: .now() + .milliseconds(100), repeating: .milliseconds(100))

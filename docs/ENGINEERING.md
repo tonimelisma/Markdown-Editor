@@ -694,6 +694,12 @@ ordinary files the user owns and can read, delete, or ignore.
   (`AppModalSession`): an alert, a close's dialogs, or the Versions browser from opening to closed.
   There AppKit runs its own event loop or a blocking animation, the main thread serves the person,
   and only the main actor's queued jobs wait.
+- Nor do they count a main thread inside one of AppKit's own loops, told by the main run loop's
+  mode (`MainRunLoop`). The main queue is served in the common modes: default, event tracking and
+  modal panel. A main actor that does not run in one of them is held by a callout, and that is a
+  stall. In any other mode AppKit is waiting in a loop that serves no queue, as the title bar's
+  rename after Duplicate waits on its view service. The watchdog reports such a wait only past ten
+  seconds, so a deadlock inside one, as the close hang was, is still reported.
 - Reconciliation instrumentation records any session publication during view reconciliation, and
   the host-update meter reports a sustained update rate — the signature of a self-feeding loop,
   which presents as high CPU rather than as a hang.

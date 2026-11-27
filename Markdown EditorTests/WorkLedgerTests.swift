@@ -203,6 +203,27 @@ struct MeasurementSubstrateProofTests {
     #expect(summary?.max ?? 0 >= 150_000_000)
 }
 
+// Verifies: REQ-124 — a hop that waited while the main thread ran one of AppKit's own loops is
+// not a latency sample. Here every timer tick sees AppKit's loop, so a 200 ms block, which
+// `aTwoHundredMillisecondMainActorBlockAppearsInTheLatencyDistribution` shows is counted in the
+// default mode, leaves no sample of that size.
+@Test @MainActor func aHopThatWaitedOnAppKitsOwnLoopIsNotALatencySample() async throws {
+    let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
+    let probe = MainActorResponsivenessProbe(
+        sampler: sampler,
+        modalSessions: AppModalSession(),
+        mainRunLoopMode: { "com.apple.HIServices.RunLoopSemaphore" }
+    )
+    probe.start()
+    try await Task.sleep(for: .milliseconds(150))
+    Thread.sleep(forTimeInterval: 0.25)
+    try await Task.sleep(for: .milliseconds(150))
+    probe.stop()
+    let summary = sampler.drainSummaries().first { $0.metric == .mainActorLatency }
+    sampler.invalidate()
+    #expect((summary?.max ?? 0) < 150_000_000, "AppKit's wait was counted: \(String(describing: summary))")
+}
+
 // Verifies: REQ-124 — a hop that waited out an app-modal alert is not a latency sample. The
 // main thread ran the alert, and the wait was the person reading it: tour 45974231615's
 // bad-file alert alone put the p95 at 896 ms. The 200 ms block above, outside a session, is
