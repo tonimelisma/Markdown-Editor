@@ -326,7 +326,11 @@ struct PresentationRecoveryTests {
             )
         }
 
-        #expect(harness.document.text.hasPrefix("# Ag"), "the second keystroke was lost: \(harness.document.text.prefix(24).debugDescription)")
+        let refusals = trace.eventsMatching {
+            if case .editRefused = $0 { return true }
+            return false
+        }
+        #expect(harness.document.text.hasPrefix("# Ag"), "the second keystroke was lost: \(harness.document.text.prefix(24).debugDescription); refusals: \(refusals); session selection \(String(describing: harness.session.wysiwygModeState.selection)), presentation \(String(describing: harness.session.presentation?.id))")
         #expect(recoveries(trace).isEmpty, "a keystroke at the start of a heading was recovered: \(recoveries(trace)); provisional vs authoritative: \(differences)")
     }
 }
