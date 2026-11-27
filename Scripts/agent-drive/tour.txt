@@ -388,3 +388,9 @@ expect-window notes.md
 expect-value "Markdown WYSIWYG" "Unsaved words."
 shot r-reopened
 expect-no-faults
+
+# --- S. Quit once more. The relaunch was a warm launch, and quitting writes its last performance
+# summaries, so every tour also measures a launch that a cold runner disk does not distort.
+quit
+expect-not-running
+expect-no-faults
