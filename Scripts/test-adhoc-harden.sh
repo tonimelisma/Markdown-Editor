@@ -1,8 +1,7 @@
 #!/bin/bash
 # Proves Scripts/adhoc-harden.sh on the smallest bundle that can show the defect it repairs: an ad
 # hoc app, signed with the hardened runtime, that loads a dylib from its own Contents/Frameworks.
-# That is the shape v1.0.0 (build 202) shipped in and could not start (docs/DECISIONS.md,
-# 2026-11-26). Built with clang here rather than taken from a build, so it runs in seconds and
+# That is the shape v1.0.0 (build 202) shipped in and could not start (ADR 0012). Built with clang here rather than taken from a build, so it runs in seconds and
 # needs neither Xcode's products nor Sparkle.
 #
 # The control is the point: before hardening, this bundle must FAIL to launch. A hardening that
@@ -11,7 +10,7 @@
 # Not every host enforces library validation. GitHub's macOS runners do not — the control launches
 # there, which is also why a release-time launch of the app could never have caught build 202's
 # defect, and why Scripts/release.sh asserts on the entitlements rather than trusting its launch
-# (docs/DECISIONS.md, 2026-11-26). Where the control launches, this says so loudly and keeps the
+# (ADR 0012). Where the control launches, this says so loudly and keeps the
 # assertions that do not depend on enforcement; it never reports a proof it did not make.
 #
 # macOS only (codesign, dyld). Scripts/check.sh runs it in the macOS section.

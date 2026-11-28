@@ -13,13 +13,13 @@ import UniformTypeIdentifiers
 @MainActor
 struct MarkdownDocumentTests {
 
-    // Verifies: REQ-013 / REQ-015
+    // Validates: REQ-013 / REQ-015
     @Test func readableWritableTypesAreMarkdown() {
         #expect(MarkdownDocument.readableTypes.contains(MarkdownContentType.identifier))
         #expect(MarkdownDocument.writableTypes.contains(MarkdownContentType.identifier))
     }
 
-    // Verifies: REQ-015
+    // Validates: REQ-015
     @Test func readAndDataRoundTripByteFixtures() throws {
         let fixtures: [Data] = [
             Data(),
@@ -36,7 +36,7 @@ struct MarkdownDocumentTests {
         }
     }
 
-    // Verifies: REQ-015
+    // Validates: REQ-015
     @Test func readRejectsInvalidUTF8() {
         let doc = MarkdownDocument()
         #expect(throws: CocoaError.self) {
@@ -44,19 +44,19 @@ struct MarkdownDocumentTests {
         }
     }
 
-    // Verifies: REQ-014 — autosave in place is enabled for production.
+    // Validates: REQ-014 — autosave in place is enabled for production.
     @Test func autosavesInPlace() {
         #expect(MarkdownDocument.autosavesInPlaceForProduction == true)
     }
 
-    // Verifies: REQ-013 — document owns undo manager used by transactions.
+    // Validates: REQ-013 — document owns undo manager used by transactions.
     @Test func documentOwnsUndoManager() {
         let doc = MarkdownDocument()
         #expect(doc.documentUndoManager != nil)
         #expect(doc.documentUndoManager === doc.undoManager)
     }
 
-    // Verifies: REQ-017 — injected Save success / cancel / failure.
+    // Validates: REQ-017 — injected Save success / cancel / failure.
     @Test func injectedSaveSuccessCancelFailure() async {
         let doc = MarkdownDocument()
 
@@ -73,7 +73,7 @@ struct MarkdownDocumentTests {
         #expect(await doc.saveDocument() == .cancelled)
     }
 
-    // Verifies: REQ-019 — URL change advances location generation; untitled-save path does not.
+    // Validates: REQ-019 — URL change advances location generation; untitled-save path does not.
     @Test func locationGenerationAdvancesOnURLChangeButNotUntitledSave() async {
         let doc = MarkdownDocument()
         #expect(doc.locationGeneration == 0)
@@ -108,7 +108,7 @@ struct MarkdownDocumentTests {
         #expect(doc.locationGeneration == 1)
     }
 
-    // Verifies: REQ-018 — data(ofType:) snapshots canonical main-actor text under serialized I/O.
+    // Validates: REQ-018 — data(ofType:) snapshots canonical main-actor text under serialized I/O.
     @Test func dataOfTypeSnapshotsCanonicalMainActorText() throws {
         let doc = MarkdownDocument()
         doc.installTextForTesting("snapshot-me")
@@ -116,7 +116,7 @@ struct MarkdownDocumentTests {
         #expect(data == Data("snapshot-me".utf8))
     }
 
-    // Verifies: REQ-096 — derived asset references notify image placement without invalidating
+    // Validates: REQ-096 — derived asset references notify image placement without invalidating
     // the document view. Republishing through `objectWillChange` would reschedule parsing
     // through EditorSession and create an idle reconciliation loop.
     @Test func canonicalAssetReferencesDoNotRepublishTheDocument() {
@@ -138,7 +138,7 @@ struct MarkdownDocumentTests {
         #expect(assetReferenceUpdates == 1)
     }
 
-    // Verifies: REQ-014 — standard document File selectors remain wired for First Responder.
+    // Validates: REQ-014 — standard document File selectors remain wired for First Responder.
     @Test func requiredDocumentFileSelectorsAreDeclared() {
         for name in MarkdownAppDelegate.requiredDocumentSelectors {
             #expect(name.hasSuffix(":"))
@@ -161,7 +161,7 @@ struct MarkdownDocumentTests {
 @MainActor
 struct DocumentActionInterfaceTests {
 
-    // Verifies: REQ-017 — Save does not require view hierarchy discovery.
+    // Validates: REQ-017 — Save does not require view hierarchy discovery.
     @Test func saveGoesThroughInterfaceNotViewLookup() async {
         let doc = MarkdownDocument()
         final class FakeSave: DocumentSaving {
@@ -172,7 +172,7 @@ struct DocumentActionInterfaceTests {
         #expect(await actions.saveDocument() == .succeeded)
     }
 
-    // Verifies: REQ-019 — placement tracking lives on the interface.
+    // Validates: REQ-019 — placement tracking lives on the interface.
     @Test func placementTrackingIsEditorNeutral() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hello")

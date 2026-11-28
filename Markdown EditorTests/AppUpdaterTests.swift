@@ -17,7 +17,7 @@ struct AppUpdaterTests {
     private static let key = "cNfGpuDnEMlBbZwHydswCggLeu07YkLG/aL4QSfS/Yk="
     private static let feed = "https://github.com/owner/name/releases/latest/download/appcast.xml"
 
-    // Verifies: REQ-033/034 — the one combination that updates, and each guard on its own.
+    // Validates: REQ-033, REQ-034 — the one combination that updates, and each guard on its own.
     @Test func onlyAKeyedBuildOutsideVerificationUpdatesItself() {
         #expect(AppUpdater.updatesItself(publicKey: Self.key, feedURL: Self.feed, isTestHost: false, isVerificationRun: false))
 
@@ -34,7 +34,7 @@ struct AppUpdaterTests {
         #expect(!AppUpdater.updatesItself(publicKey: Self.key, feedURL: Self.feed, isTestHost: false, isVerificationRun: true))
     }
 
-    // Verifies: REQ-033/034 — the Debug bundle hosting these tests carries the feed but no key, and
+    // Validates: REQ-033, REQ-034 — the Debug bundle hosting these tests carries the feed but no key, and
     // asks Sparkle for no system profile.
     @Test func theDebugBundleNeverUpdatesItselfAndSendsNoProfile() throws {
         let info = try #require(Bundle.main.infoDictionary)
@@ -47,7 +47,7 @@ struct AppUpdaterTests {
         #expect((info["SUEnableSystemProfiling"] as? Bool) == false)
     }
 
-    // Verifies: REQ-034 — this test host did not start an updater.
+    // Validates: REQ-034 — this test host did not start an updater.
     @MainActor
     @Test func theTestHostDoesNotUpdateItself() {
         #expect(!AppUpdater.isEnabledForThisProcess)

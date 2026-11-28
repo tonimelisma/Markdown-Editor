@@ -7,7 +7,7 @@ import XCTest
 @testable import Markdown_Editor
 
 final class MarkdownSourceIndexTests: XCTestCase {
-    // Verifies: REQ-055
+    // Validates: REQ-055
     func testASCIIAndEmojiMappings() throws {
         let source = "# Hi 🇺🇸 café\n**bold**"
         let index = MarkdownSourceIndex(source: source, sourceVersion: 1)
@@ -21,7 +21,7 @@ final class MarkdownSourceIndexTests: XCTestCase {
         XCTAssertEqual((source as NSString).substring(with: utf16), slice)
     }
 
-    // Verifies: REQ-055/087
+    // Validates: REQ-055, REQ-087
     func testOutOfBoundsProducesTypedFailure() {
         let index = MarkdownSourceIndex(source: "abc", sourceVersion: 0)
         let result = index.utf8Offset(line: 99, column: 1)
@@ -30,7 +30,7 @@ final class MarkdownSourceIndexTests: XCTestCase {
         }
     }
 
-    // Verifies: REQ-055
+    // Validates: REQ-055
     func testCRLFAndBOM() throws {
         let source = "\u{FEFF}line1\r\nline2"
         let index = MarkdownSourceIndex(source: source, sourceVersion: 0)
@@ -39,7 +39,7 @@ final class MarkdownSourceIndexTests: XCTestCase {
         XCTAssertGreaterThan(off, 0)
     }
 
-    // Verifies: REQ-055/078; ARC-007 — cmark reports a node whose content ends at a line boundary
+    // Validates: REQ-055, REQ-078; ARC-007 — cmark reports a node whose content ends at a line boundary
     // as (next line, column 0). That maps to the previous line's content end and **not one byte
     // further**: the mapped span must stop after the item's own terminator, not absorb the blank
     // line that follows it.

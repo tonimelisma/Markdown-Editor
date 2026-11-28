@@ -12,7 +12,7 @@ struct EncodedImageResourceTests {
 
 /// The accepted-extension set has one owner, derived from the representation enum.
 ///
-/// // Verifies: REQ-061/063 — VISION names exactly PNG, JPEG, GIF, HEIC and HEIF, and before
+/// // Validates: REQ-061, REQ-063 — vision.md names exactly PNG, JPEG, GIF, HEIC and HEIF, and before
 /// COR-92 that list appeared verbatim as an array or `Set` in six places across five files, none
 /// derived from `ImageRepresentation`. This is the closed-set guard: a new representation reddens
 /// the table below until someone states its extension.

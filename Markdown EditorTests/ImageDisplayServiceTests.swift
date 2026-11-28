@@ -26,7 +26,7 @@ struct ImageDisplayServiceTests {
         #expect(await service.cachedByteCount() > 0)
     }
 
-    // Verifies: REQ-081 — every supported file representation decodes without rewriting bytes.
+    // Validates: REQ-081 — every supported file representation decodes without rewriting bytes.
     @Test func supportedRepresentationsDecodeWithoutChangingOriginalBytes() async throws {
         let fixture = try Fixture()
         let service = ImageDisplayService()
@@ -110,7 +110,7 @@ struct ImageDisplayServiceTests {
         #expect(spy.reads == 0)
     }
 
-    // Verifies: REQ-081/ARC-023 — encoded-size refusal happens before bulk read.
+    // Validates: REQ-081/ARC-023 — encoded-size refusal happens before bulk read.
     @Test func oversizedEncodedFileIsRejectedBeforeRead() async throws {
         let fixture = try Fixture()
         let oversized = fixture.assetsURL.appendingPathComponent("large.png")
@@ -130,7 +130,7 @@ struct ImageDisplayServiceTests {
         #expect(spy.reads == 0)
     }
 
-    // Verifies: REQ-081 — corrupt content is refused without installing a display result.
+    // Validates: REQ-081 — corrupt content is refused without installing a display result.
     @Test func corruptContentIsRejected() async throws {
         let fixture = try Fixture()
         let corrupt = fixture.assetsURL.appendingPathComponent("corrupt.png")
@@ -145,7 +145,7 @@ struct ImageDisplayServiceTests {
         #expect(failure == .corrupt || failure == .unsupportedType)
     }
 
-    // Verifies: REQ-090 — the service-owned decoded cache remains bounded.
+    // Validates: REQ-090 — the service-owned decoded cache remains bounded.
     @Test func decodedCacheHasTheApprovedBound() async throws {
         let fixture = try Fixture()
         let service = ImageDisplayService()
@@ -153,7 +153,7 @@ struct ImageDisplayServiceTests {
         #expect(await service.cachedByteCount() <= ImageDisplayCache.maxBytes)
     }
 
-    // Verifies: REQ-085/REQ-090 — the production cache evicts the least-recently-used entry
+    // Validates: REQ-085/REQ-090 — the production cache evicts the least-recently-used entry
     // deterministically when the decoded-byte bound is exceeded.
     @Test func decodedCacheEvictsOldestEntryAtBound() async throws {
         let fixture = try Fixture()
@@ -198,7 +198,7 @@ struct ImageDisplayServiceTests {
         #expect(spy.reads == 1)
     }
 
-    // Verifies: REQ-085 — cancellation crossing the off-main decode boundary returns a typed
+    // Validates: REQ-085 — cancellation crossing the off-main decode boundary returns a typed
     // stale result and never reports a successful display application.
     @Test func cancelledDecodeReturnsTypedStaleResult() async throws {
         let fixture = try Fixture()

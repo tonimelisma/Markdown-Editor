@@ -13,7 +13,7 @@ token containment and grapheme alignment, and incremental/full lexer agreement.
 
 They are **not** used as an HTML conformance oracle. This app is an editor, not a renderer; it does
 not emit the spec's HTML and does not claim spec-conformant output. Storing the expected HTML and
-never asserting on it would be exactly the kind of decorative evidence `docs/DECISIONS.md` warns
+never asserting on it would be exactly the kind of decorative evidence ADR 0002 warns
 about, so the HTML half of each example is deliberately discarded here.
 
 Usage:

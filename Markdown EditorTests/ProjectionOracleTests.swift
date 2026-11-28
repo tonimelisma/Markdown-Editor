@@ -9,7 +9,7 @@ import Testing
 
 /// The projection oracle's rejection behaviour, on hand-built segment sets.
 ///
-/// // Verifies: REQ-054/055/056/091 — the oracle refuses a projection that does not exactly
+/// // Validates: REQ-054, REQ-055, REQ-056, REQ-091 — the oracle refuses a projection that does not exactly
 /// partition its rendered text.
 ///
 /// Deliberately hand-built rather than corpus-driven: a corpus proves the oracle *accepts* real
@@ -150,7 +150,7 @@ struct ProjectionOracleTests {
 
     /// The oracle's cost must not scale with document length.
     ///
-    /// // Verifies: REQ-143's mechanism — a *shape* assertion, not a wall-clock threshold, so it
+    /// // Validates: REQ-143's mechanism — a *shape* assertion, not a wall-clock threshold, so it
     /// encodes no machine's speed and cannot go flaky. Two projections with identical segment
     /// counts and a 1000x difference in character count must cost about the same. The pre-COR-88
     /// coverage array allocated and walked one slot per character, so it failed this by roughly

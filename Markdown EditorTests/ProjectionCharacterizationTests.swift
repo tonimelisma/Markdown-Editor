@@ -11,7 +11,7 @@ import Foundation
 
 struct ProjectionCharacterizationTests {
 
-    // Verifies: REQ-054/079 — link children preserve the same soft/hard break contract as
+    // Validates: REQ-054, REQ-079 — link children preserve the same soft/hard break contract as
     // ordinary inline children.
     @Test func linksPreserveSoftAndHardBreakSemantics() throws {
         let softSource = "[one\ntwo](https://example.com)\n"
@@ -24,7 +24,7 @@ struct ProjectionCharacterizationTests {
         #expect(hard.segments.contains { if case .synthetic(_, .hardLineBreak, _) = $0 { return true }; return false })
     }
 
-    // Verifies: REQ-109 — a line break inserts where its line ends. cmark gives soft and hard
+    // Validates: REQ-109 — a line break inserts where its line ends. cmark gives soft and hard
     // break nodes no source position, and their insertion location fell back to 0, the start of
     // the document: a provisional snapshot shifted that 0 with each keystroke typed before the
     // break, the parse put it back, and every such keystroke was recovered as a COR-71 fault.
@@ -42,7 +42,7 @@ struct ProjectionCharacterizationTests {
         #expect(hard.count == 1 && !hard.contains(.atSourceLocation(0)), "hard break inserts at \(hard)")
     }
 
-    // Verifies: REQ-080/105 — every semantic table cell is a distinct paragraph rather than a
+    // Validates: REQ-080, REQ-105 — every semantic table cell is a distinct paragraph rather than a
     // tab-delimited span, allowing TextKit's paragraph-level table blocks to form columns.
     @Test func tableCellsUseParagraphSeparators() throws {
         let source = "| left | right |\n| - | - |\n| one | two |\n"
@@ -51,7 +51,7 @@ struct ProjectionCharacterizationTests {
         #expect(model.tables.first?.cells.count == 4)
     }
 
-    // Verifies: REQ-087; ARC-009 — uneditable/refuse boundaries never invent source offset zero.
+    // Validates: REQ-087; ARC-009 — uneditable/refuse boundaries never invent source offset zero.
     @Test func uneditableBoundariesRefuseInsteadOfMappingToZero() {
         let uneditable = ProjectionCoordinateMap(
             segments: [
@@ -100,7 +100,7 @@ struct ProjectionCharacterizationTests {
         }
     }
 
-    // Verifies: REQ-054 — one-character cmark node maps to one source character.
+    // Validates: REQ-054 — one-character cmark node maps to one source character.
     @Test func oneCharacterNodeMapsToOneSourceCharacter() throws {
         let source = "a\n"
         let tree = try parse(source)
@@ -118,7 +118,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: REQ-087 — invalid rich selections are refused, not clamped.
+    // Validates: REQ-087 — invalid rich selections are refused, not clamped.
     @Test func invalidRichSelectionIsRefusedNotClamped() throws {
         let source = "**bold**\n"
         let tree = try parse(source)
@@ -141,7 +141,7 @@ struct ProjectionCharacterizationTests {
         }
     }
 
-    // Verifies: REQ-056 — emphasis visible text maps to exact source slice.
+    // Validates: REQ-056 — emphasis visible text maps to exact source slice.
     @Test func emphasisMapsVisibleTextToExactSourceSlice() throws {
         let source = "x **hi** y\n"
         let tree = try parse(source)
@@ -162,7 +162,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: REQ-054 — ordered/unordered markers are visible.
+    // Validates: REQ-054 — ordered/unordered markers are visible.
     @Test func listsRetainVisibleMarkersAndNesting() throws {
         let source = "- one\n- two\n1. a\n"
         let tree = try parse(source)
@@ -173,7 +173,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: REQ-057 — nested quote is preserved when toggling list on inner line.
+    // Validates: REQ-057 — nested quote is preserved when toggling list on inner line.
     @Test func nestedBlockTransformDoesNotStripUnrelatedQuotePrefix() {
         let snapshot = SourceSnapshot(
             text: "> hello\n",
@@ -200,7 +200,7 @@ struct ProjectionCharacterizationTests {
         #expect(mutation.replacement == "> - hello\n")
     }
 
-    // Verifies: REQ-057 — underscore bold alternate spelling.
+    // Validates: REQ-057 — underscore bold alternate spelling.
     @Test func boldToggleAcceptsUnderscoreAlternateSpelling() {
         let snapshot = SourceSnapshot(text: "__hello__", sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let selection = TestSelection(mode: .source, utf16Range: NSRange(location: 0, length: 9), sourceVersion: 1)
@@ -218,7 +218,7 @@ struct ProjectionCharacterizationTests {
         #expect(mutation.replacement == "hello")
     }
 
-    // Verifies: REQ-080 — table cell replace changes only that cell's source span intent.
+    // Validates: REQ-080 — table cell replace changes only that cell's source span intent.
     @Test func tableCellEditChangesOnlyIntendedCellContent() throws {
         let source = "| a | b |\n| - | - |\n| c | d |\n"
         let tree = try parse(source)
@@ -244,7 +244,7 @@ struct ProjectionCharacterizationTests {
         #expect(before.contains("a") || before.contains("|"))
     }
 
-    // Verifies: REQ-080
+    // Validates: REQ-080
     @Test func tableCellClearEmptyTextIsAccepted() {
         let source = "| a | b |\n| - | - |\n| c | d |\n"
         guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: 1) else {
@@ -271,7 +271,7 @@ struct ProjectionCharacterizationTests {
         #expect(mutation.replacement.isEmpty)
     }
 
-    // Verifies: REQ-080/087
+    // Validates: REQ-080, REQ-087
     @Test func tableCellEditRefusesStructuralBreakers() {
         let source = "| a | b |\n| - | - |\n| c | d |\n"
         guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: 1) else {
@@ -298,7 +298,7 @@ struct ProjectionCharacterizationTests {
         }
     }
 
-    // Verifies: REQ-080
+    // Validates: REQ-080
     @Test func tableCellAllowsEscapedPipe() {
         let source = "| a | b |\n| - | - |\n| c | d |\n"
         guard case .success(let tree) = MarkdownParser.parse(source, sourceVersion: 1) else {
@@ -325,7 +325,7 @@ struct ProjectionCharacterizationTests {
         }
     }
 
-    // Verifies: REQ-057
+    // Validates: REQ-057
     @Test func inlineWrapPostconditionRequiresNodeAtEditedSpan() {
         let snapshot = SourceSnapshot(
             text: "**already** plain\n",
@@ -349,7 +349,7 @@ struct ProjectionCharacterizationTests {
         }
     }
 
-    // Verifies: REQ-084
+    // Validates: REQ-084
     @Test func orderedMarkersIncrementAndTrailingCaretMapsAfterMarker() throws {
         let source = "1. a\n2. b\n"
         let tree = try parse(source)
@@ -373,7 +373,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: REQ-084
+    // Validates: REQ-084
     @Test func inlineCodeContentSourceExcludesBackticks() throws {
         let source = "a `xy` b\n"
         let tree = try parse(source)
@@ -390,7 +390,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: REQ-084
+    // Validates: REQ-084
     @Test func selectionAcrossParagraphBreakMapsContiguousSource() throws {
         let source = "one\n\ntwo\n"
         let tree = try parse(source)
@@ -407,7 +407,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: REQ-084 — selection from list marker through item text maps to source.
+    // Validates: REQ-084 — selection from list marker through item text maps to source.
     @Test func selectionStartingOnListMarkerMapsToSource() throws {
         let source = "1. a\n"
         let tree = try parse(source)
@@ -433,7 +433,7 @@ struct ProjectionCharacterizationTests {
         try expectOracle(model, source: source)
     }
 
-    // Verifies: REQ-090 — parse+index+projection p95 < 100ms at 100k UTF-16 off-main.
+    // Validates: REQ-090 — parse+index+projection p95 < 100ms at 100k UTF-16 off-main.
     // The performance requirement applies to optimized builds; Debug is skipped.
     @Test func parseIndexProjectionP95Under100msAt100k() async throws {
         #if DEBUG

@@ -15,7 +15,7 @@ import Testing
 /// These drive the same **structural** properties the generated corpus drives. They are not an HTML
 /// conformance oracle — the expected HTML is deliberately not imported, because this app is an
 /// editor rather than a renderer and storing an expectation nobody asserts on is the decorative
-/// evidence `docs/DECISIONS.md` warns about.
+/// evidence ADR 0002 warns about.
 ///
 /// What they add over the generator: real syntax nobody would think to generate. Reference
 /// definitions, entity edge cases, tab expansion, deeply nested containers, HTML blocks of all
@@ -51,7 +51,7 @@ struct SpecCorpusTests {
         return try JSONDecoder().decode(Manifest.self, from: try Data(contentsOf: url))
     }
 
-    // Verifies: REQ-132 — the imported corpus carries its provenance. A corpus without version,
+    // Validates: REQ-132 — the imported corpus carries its provenance. A corpus without version,
     // licence and digest is untraceable: nobody can tell what it is a corpus *of*, or whether it
     // still matches upstream.
     @Test func corpusCarriesCompleteProvenance() throws {
@@ -78,7 +78,7 @@ struct SpecCorpusTests {
         #expect(Set(manifest.examples.map(\.id)).count == manifest.examples.count, "duplicate ids")
     }
 
-    // Verifies: REQ-132/047 — every spec example parses without error and compiles to a projection
+    // Validates: REQ-132, REQ-047 — every spec example parses without error and compiles to a projection
     // the independent `ProjectionOracle` accepts. This is the structural invariant that must hold
     // for *any* input: real Markdown from the specifications is the strongest available test of it.
     @Test func everySpecExampleParsesAndSatisfiesTheProjectionOracle() throws {
@@ -111,7 +111,7 @@ struct SpecCorpusTests {
     /// evidence for that, covering reference definitions, tab expansion, nested containers and
     /// all seven HTML block kinds that no generator here produces.
     ///
-    /// // Verifies: REQ-132/054 — segments are emitted in ascending projection order.
+    /// // Validates: REQ-132, REQ-054 — segments are emitted in ascending projection order.
     @Test func everySpecExampleEmitsSegmentsInAscendingProjectionOrder() throws {
         let manifest = try Self.loadManifest()
         var failures: [String] = []
@@ -143,7 +143,7 @@ struct SpecCorpusTests {
         #expect(failures.isEmpty, "\(failures.count) example(s) out of order:\n\(failures.prefix(10).joined(separator: "\n"))")
     }
 
-    // Verifies: REQ-132/051 — every token the source highlighter produces over the spec corpus lies
+    // Validates: REQ-132, REQ-051 — every token the source highlighter produces over the spec corpus lies
     // inside its document and never splits a composed character sequence. The oracle is `NSString`'s
     // own grapheme segmentation, which the highlighter does not use.
     @Test func everySpecExampleProducesContainedGraphemeAlignedTokens() async throws {
@@ -170,7 +170,7 @@ struct SpecCorpusTests {
         #expect(failures.isEmpty, "\(failures.count) failure(s):\n\(failures.prefix(10).joined(separator: "\n"))")
     }
 
-    // Verifies: REQ-041/045/132 — incremental lexing agrees with a fresh full relex over every spec
+    // Validates: REQ-041, REQ-045, REQ-132 — incremental lexing agrees with a fresh full relex over every spec
     // example, for a representative edit at the document start, middle and end. COR-84 repaired the
     // two divergences the generated corpus found; this asks the same question of real spec syntax,
     // which contains constructs no generator here produces.

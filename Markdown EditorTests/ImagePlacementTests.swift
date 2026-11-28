@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
 
 struct ImageAssetPolicyTests {
 
-    // Verifies: REQ-066
+    // Validates: REQ-066
     @Test(arguments: [
         ("Photo 1", "photo-1"),
         ("Hello_世界", "hello"),
@@ -23,18 +23,18 @@ struct ImageAssetPolicyTests {
         ("nul", "image-nul"),
         (String(repeating: "a", count: 100), String(repeating: "a", count: 64)),
     ])
-    // Verifies: REQ-066 — filenames are portable and bounded.
+    // Validates: REQ-066 — filenames are portable and bounded.
     func generatesPortableAssetNames(input: String, expectedStem: String) {
         #expect(ImageAssetPolicy.slug(from: input) == expectedStem)
     }
 
-    // Verifies: REQ-068
+    // Validates: REQ-068
     @Test func generatesPortableCommonMarkImageReferences() {
         #expect(ImageAssetPolicy.markdownReference(filename: "photo.heic") == "![](assets/photo.heic)")
         #expect(ImageAssetPolicy.markdownReferences(["a.png", "b.jpg"]) == "![](assets/a.png)\n![](assets/b.jpg)")
     }
 
-    // Verifies: REQ-061/063
+    // Validates: REQ-061, REQ-063
     @Test func detectsTypeFromContent() throws {
         let png = try makePNGData()
         #expect(ImageAssetPolicy.detectRepresentation(from: png) == .png)
@@ -46,7 +46,7 @@ struct ImageAssetPolicyTests {
         }
     }
 
-    // Verifies: REQ-067
+    // Validates: REQ-067
     @Test func hashSuffixesDifferentCollision() {
         let digest = ImageAssetPolicy.sha256Hex(Data("different".utf8))
         let name = ImageAssetPolicy.chooseFilename(
@@ -62,7 +62,7 @@ struct ImageAssetPolicyTests {
         #expect(name.contains(String(digest.prefix(12))))
     }
 
-    // Verifies: REQ-067
+    // Validates: REQ-067
     @Test func reusesIdenticalAsset() {
         let digest = ImageAssetPolicy.sha256Hex(Data("same".utf8))
         let name = ImageAssetPolicy.chooseFilename(
@@ -77,7 +77,7 @@ struct ImageAssetPolicyTests {
 }
 
 struct ImagePlacementStateMachineTests {
-    // Verifies: REQ-060/069
+    // Validates: REQ-060, REQ-069
     @Test func rejectsSimultaneousBegin() {
         let id1 = ImageActionID()
         var state = ImagePlacementState()
@@ -87,7 +87,7 @@ struct ImagePlacementStateMachineTests {
         #expect(ImagePlacementReducer.reduce(state: state, event: .begin(id2), actionID: nil) == nil)
     }
 
-    // Verifies: REQ-060
+    // Validates: REQ-060
     @Test func ignoresLateResultFromOldUUID() {
         let id1 = ImageActionID()
         var state = ImagePlacementState()
@@ -100,7 +100,7 @@ struct ImagePlacementStateMachineTests {
         #expect(state.activeID == nil)
     }
 
-    // Verifies: REQ-060
+    // Validates: REQ-060
     @Test func reachesCommittedTerminal() {
         let id = ImageActionID()
         var state = ImagePlacementState()
@@ -115,7 +115,7 @@ struct ImagePlacementStateMachineTests {
 
 struct InsertionRangeTrackerTests {
 
-    // Verifies: REQ-072
+    // Validates: REQ-072
     @Test(arguments: [
         // (trackLoc, trackLen, editLoc, editLen, delta, expectCancelled, expectLoc)
         (10, 0, 10, 0, 1, true, 10),   // insert at zero caret
@@ -127,7 +127,7 @@ struct InsertionRangeTrackerTests {
         (10, 5, 12, 1, 0, true, 10),   // replace interior
         (10, 5, 0, 2, 1, false, 11),   // before shift
     ])
-    // Verifies: REQ-072 — tracked insertion ranges cancel when a later edit overlaps them.
+    // Validates: REQ-072 — tracked insertion ranges cancel when a later edit overlaps them.
     func boundaryTable(
         trackLoc: Int, trackLen: Int,
         editLoc: Int, editLen: Int, delta: Int,
@@ -143,7 +143,7 @@ struct InsertionRangeTrackerTests {
 }
 
 struct FilePromiseCollectorTests {
-    // Verifies: REQ-060/063
+    // Validates: REQ-060, REQ-063
     @Test func collectsExactCountAndResumesOnce() async throws {
         let collector = FilePromiseCallbackCollector(expectedCount: 2)
         Task {
@@ -155,7 +155,7 @@ struct FilePromiseCollectorTests {
         #expect(urls.count == 2)
     }
 
-    // Verifies: REQ-060 — callbacks may finish before wait() registers.
+    // Validates: REQ-060 — callbacks may finish before wait() registers.
     @Test func returnsStoredResultWhenCompletedBeforeWait() async throws {
         let collector = FilePromiseCallbackCollector(expectedCount: 1)
         collector.note(url: URL(fileURLWithPath: "/tmp/a.png"), error: nil)
@@ -163,7 +163,7 @@ struct FilePromiseCollectorTests {
         #expect(urls.count == 1)
     }
 
-    // Verifies: REQ-063
+    // Validates: REQ-063
     @Test func rejectsProviderError() async {
         let collector = FilePromiseCallbackCollector(expectedCount: 1)
         Task {
@@ -176,7 +176,7 @@ struct FilePromiseCollectorTests {
 }
 
 struct ImageIOExecutorTests {
-    // Verifies: REQ-077
+    // Validates: REQ-077
     @Test func workRunsOffMainQueue() async {
         let executor = ImageIOExecutor(name: "test.imageio")
         let onMain = await executor.run {
@@ -188,7 +188,7 @@ struct ImageIOExecutorTests {
 }
 
 struct AssetDirectoryStoreTests {
-    // Verifies: REQ-061/065/068/070
+    // Validates: REQ-061, REQ-065, REQ-068, REQ-070
     @Test func copiesSupportedFileRepresentationsByteForByte() async throws {
         let png = try makePNGData()
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -214,7 +214,7 @@ struct AssetDirectoryStoreTests {
         #expect(try Data(contentsOf: result.published[0].destinationURL) == png)
     }
 
-    // Verifies: REQ-061 — JPEG/GIF exact copy
+    // Validates: REQ-061 — JPEG/GIF exact copy
     @Test func copiesJPEGAndGIFByteForByte() async throws {
         let jpeg = try makeImageData(type: .jpeg)
         let gif = try makeImageData(type: .gif)
@@ -244,7 +244,7 @@ struct AssetDirectoryStoreTests {
         }
     }
 
-    // Verifies: REQ-067
+    // Validates: REQ-067
     @Test func reusesIdenticalAssetOnDisk() async throws {
         let png = try makePNGData()
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -273,7 +273,7 @@ struct AssetDirectoryStoreTests {
         #expect(second.published[0].wasReused)
     }
 
-    // Verifies: REQ-065/077
+    // Validates: REQ-065, REQ-077
     @Test func rejectsSymlinkedAssetsDirectory() async throws {
         let png = try makePNGData()
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -303,7 +303,7 @@ struct AssetDirectoryStoreTests {
         }
     }
 
-    // Verifies: REQ-065 — `assets/` is created only when an image is actually placed. The
+    // Validates: REQ-065 — `assets/` is created only when an image is actually placed. The
     // requirement's refusal half (a symlinked `assets/`) was proved; its liveness and laziness
     // halves were not, so nothing discriminated an implementation that created the directory
     // eagerly beside every document.
@@ -352,7 +352,7 @@ struct AssetDirectoryStoreTests {
         #expect(result.createdAssetsDirectory != nil, "this transaction created it")
     }
 
-    // Verifies: REQ-070 — no source reference exists until every destination file is in place at
+    // Validates: REQ-070 — no source reference exists until every destination file is in place at
     // its final contained path. This requirement had no proof at all: the ordering it promises is
     // the whole point of the transaction, and nothing discriminated an implementation that
     // inserted Markdown for a file that was never written.
@@ -397,7 +397,7 @@ struct AssetDirectoryStoreTests {
         }
     }
 
-    // Verifies: REQ-067 — collision detection is case-insensitive, so on a case-insensitive
+    // Validates: REQ-067 — collision detection is case-insensitive, so on a case-insensitive
     // filesystem a differently-cased existing asset is never overwritten. The existing proofs
     // covered byte-identical reuse and hash suffixing, but nothing exercised a case-only clash —
     // the case that silently destroys a user's file on the default macOS filesystem.
@@ -441,7 +441,7 @@ struct AssetDirectoryStoreTests {
         #expect(try Data(contentsOf: published.destinationURL) == incoming)
     }
 
-    // Verifies: REQ-063 — one corrupt item rejects the entire user action. Nothing may be published
+    // Validates: REQ-063 — one corrupt item rejects the entire user action. Nothing may be published
     // for the items that were fine, because the requirement promises an all-or-nothing action
     // rather than a partial insertion the user has to notice and undo.
     @Test func oneCorruptItemRejectsTheWholeBatch() async throws {
@@ -464,7 +464,7 @@ struct AssetDirectoryStoreTests {
         #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("assets").path))
     }
 
-    // Verifies: REQ-071 — later item failure rolls back earlier exclusive creates.
+    // Validates: REQ-071 — later item failure rolls back earlier exclusive creates.
     @Test func rollsBackEarlierPublishesWhenLaterItemFails() async throws {
         let png = try makePNGData()
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -512,7 +512,7 @@ struct AssetDirectoryStoreTests {
         }
     }
 
-    // Verifies: REQ-071
+    // Validates: REQ-071
     @Test func rollbackRemovesOnlyPinnedCreatedFiles() async throws {
         let png = try makePNGData()
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -549,7 +549,7 @@ struct AssetDirectoryStoreTests {
 }
 
 struct ImageBatchPreflightTests {
-    // Verifies: REQ-061/063/077
+    // Validates: REQ-061, REQ-063, REQ-077
     @Test func stagesRegularPNGAndRejectsCorrupt() async throws {
         let png = try makePNGData()
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -573,7 +573,7 @@ struct ImageBatchPreflightTests {
         }
     }
 
-    // Verifies: REQ-077
+    // Validates: REQ-077
     @Test func rejectsSymlinkSource() async throws {
         let png = try makePNGData()
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -590,7 +590,7 @@ struct ImageBatchPreflightTests {
         }
     }
 
-    // Verifies: REQ-062 — a pasteboard item carrying only bitmap data, with no supported file and
+    // Validates: REQ-062 — a pasteboard item carrying only bitmap data, with no supported file and
     // no promise, is encoded as PNG. Liveness for the fallback: this route had no proof at all,
     // so nothing discriminated an `encodeBitmapPNG` that silently staged the original bytes.
     @Test func bitmapOnlyClaimIsEncodedAsPNG() async throws {
@@ -615,7 +615,7 @@ struct ImageBatchPreflightTests {
         #expect(artifact.byteCount == staged.count)
     }
 
-    // Verifies: REQ-061/062 — bitmap data that is already PNG is staged byte-for-byte rather than
+    // Validates: REQ-061, REQ-062 — bitmap data that is already PNG is staged byte-for-byte rather than
     // re-encoded, so the exact-copy guarantee is not quietly lost through the bitmap route.
     @Test func bitmapClaimAlreadyPNGIsCopiedUnchanged() async throws {
         let png = try makePNGData(seed: 7)
@@ -631,7 +631,7 @@ struct ImageBatchPreflightTests {
         #expect(artifact.sha256Hex == ImageAssetPolicy.sha256Hex(png))
     }
 
-    // Verifies: REQ-077 — a directory, and therefore a package (a directory with the bundle bit),
+    // Validates: REQ-077 — a directory, and therefore a package (a directory with the bundle bit),
     // is refused as a non-regular source. REQ-077 claims symlinks, aliases, packages, and
     // non-regular sources; only the symlink case was proved.
     @Test func rejectsDirectoryAndPackageSource() async throws {
@@ -658,7 +658,7 @@ struct ImageBatchPreflightTests {
         }
     }
 
-    // Verifies: REQ-077 — a macOS alias file is a regular file whose bytes are bookmark data, not
+    // Validates: REQ-077 — a macOS alias file is a regular file whose bytes are bookmark data, not
     // image data. It must be refused rather than silently resolved to its target, which would copy
     // bytes the user never pointed at.
     @Test func rejectsAliasSource() async throws {
@@ -680,7 +680,7 @@ struct ImageBatchPreflightTests {
         }
     }
 
-    // Verifies: REQ-062/063 — bitmap data that decodes to no image is rejected rather than staged
+    // Validates: REQ-062, REQ-063 — bitmap data that decodes to no image is rejected rather than staged
     // as a zero-byte or partial asset.
     @Test func corruptBitmapClaimIsRejected() async throws {
         await #expect(throws: ImagePlacementError.unsupportedOrCorrupt) {
@@ -692,7 +692,7 @@ struct ImageBatchPreflightTests {
 }
 
 struct CanonicalAssetReferenceTests {
-    // Verifies: REQ-076
+    // Validates: REQ-076
     @Test func findsCanonicalReferencesAndExcludesCode() {
         // Blank lines are load-bearing: an indented code block cannot interrupt a paragraph, so
         // without the separation the last line would be a lazy paragraph continuation holding a
@@ -717,7 +717,7 @@ struct CanonicalAssetReferenceTests {
 
     /// Fence length, indentation, escapes, nested parentheses, titles, angle destinations, CRLF,
     /// and Unicode all resolve through the pinned parser rather than a private grammar.
-    // Verifies: REQ-112 — canonical asset references follow the pinned parser.
+    // Validates: REQ-112 — canonical asset references follow the pinned parser.
     @Test func destinationSpellingsAgreeWithThePinnedParser() {
         #expect(canonicalReferences("![](<assets/photo.png>)").values.map(\.filename) == ["photo.png"])
         #expect(canonicalReferences("![](assets/photo.png \"A title\")").values.map(\.filename) == ["photo.png"])
@@ -734,7 +734,7 @@ struct CanonicalAssetReferenceTests {
 
     /// Structural gate: no consumer may reintroduce a line- or regex-oriented Markdown scanner
     /// for asset references. The canonical value is derived once, during authoritative parsing.
-    // Verifies: REQ-112 — no secondary Markdown scanner route exists.
+    // Validates: REQ-112 — no secondary Markdown scanner route exists.
     @Test func noSecondaryMarkdownScannerRouteExists() throws {
         #expect(try !productionSourceText().contains("CanonicalAssetReferenceScanner"))
         // Pattern matching over Markdown is confined to Source-mode lexical highlighting, which
@@ -760,7 +760,7 @@ struct CanonicalAssetReferenceTests {
         )
     }
 
-    // Verifies: REQ-076
+    // Validates: REQ-076
     @Test func detectsBrokenAfterParentChangeIncludingManual() throws {
         let dirOld = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let dirNew = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -780,7 +780,7 @@ struct CanonicalAssetReferenceTests {
 }
 
 struct ImagePasteboardClassifierTests {
-    // Verifies: REQ-064
+    // Validates: REQ-064
     @Test @MainActor func mixedTextAndImageFallsThroughToTextPaste() throws {
         let png = try makePNGData()
         let pb = NSPasteboard.withUniqueName()
@@ -798,7 +798,7 @@ struct ImagePasteboardClassifierTests {
 }
 
 struct ImageMarkdownCommitTests {
-    // Verifies: REQ-069/073
+    // Validates: REQ-069, REQ-073
     @Test @MainActor func commitsOrderedBatchAsOneUndoableReplacement() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("Hello|")
@@ -822,7 +822,7 @@ struct ImageMarkdownCommitTests {
         }.count - before == 1)
     }
 
-    // Verifies: REQ-073
+    // Validates: REQ-073
     @Test @MainActor func selectsEmptyDescriptionForSingleImage() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("")
@@ -837,7 +837,7 @@ struct ImageMarkdownCommitTests {
         #expect(restorations.last?.range.utf16 == NSRange(location: 2, length: 0))
     }
 
-    // Verifies: REQ-074
+    // Validates: REQ-074
     @Test @MainActor func sourceUndoRetainsPlacedAssets() async throws {
         let png = try makePNGData()
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -870,7 +870,7 @@ struct ImageMarkdownCommitTests {
 }
 
 struct ImagePlacementControllerLifecycleTests {
-    // Verifies: REQ-075
+    // Validates: REQ-075
     @Test @MainActor func untitledCancelLeavesIdle() {
         let controller = ImagePlacementController()
         controller.prepareUntitledPlacementForTesting(claims: [
@@ -879,7 +879,7 @@ struct ImagePlacementControllerLifecycleTests {
         #expect(controller.phaseForTesting == .awaitingSave)
     }
 
-    // Verifies: REQ-101 — Codex PR #24 finding: an action rejected before acceptance (the
+    // Validates: REQ-101 — Codex PR #24 finding: an action rejected before acceptance (the
     // controller is already busy with a different placement) must still record the attempted
     // claim count and a typed .busy failure, not just present an alert, and must leave the
     // already-active placement's phase untouched.
@@ -920,7 +920,7 @@ struct ImagePlacementControllerLifecycleTests {
         #expect(failed == [.imagePlacementFailed(reason: .busy, phase: .awaitingSave)])
     }
 
-    // Verifies: REQ-101 — Codex PR #24 finding: an unsuccessful operation-scoped Save is a
+    // Validates: REQ-101 — Codex PR #24 finding: an unsuccessful operation-scoped Save is a
     // failure, not a cancellation. The placement log therefore records the .saveFailed reason
     // before its terminal reset, and the user receives the failure-specific route.
     @Test @MainActor func untitledSaveFailureIsRecordedAsPlacementFailure() async {
@@ -952,7 +952,7 @@ struct ImagePlacementControllerLifecycleTests {
         #expect(controller.alert == .error(ImagePlacementError.saveFailed.userMessage))
     }
 
-    // Verifies: REQ-019/075 — first URL after untitled Save must not bump document location generation.
+    // Validates: REQ-019, REQ-075 — first URL after untitled Save must not bump document location generation.
     @Test @MainActor func untitledSaveURLDoesNotBumpGenerationForActiveTransaction() async {
         let doc = MarkdownDocument()
         let controller = ImagePlacementController()
@@ -1015,7 +1015,7 @@ struct ImagePlacementControllerLifecycleTests {
         )
     }
 
-    // Verifies: REQ-101/102 — a real placement failure (driven through the full
+    // Validates: REQ-101, REQ-102 — a real placement failure (driven through the full
     // handleImageAction pipeline with a genuinely corrupt file, the same seam
     // ImageBatchPreflightTests uses) records the typed reason and the phase it failed in.
     @Test @MainActor func imagePlacementFailureIsRecorded() async throws {
@@ -1052,7 +1052,7 @@ struct ImagePlacementControllerLifecycleTests {
         #expect(failed == [.imagePlacementFailed(reason: .unsupportedOrCorrupt, phase: .staging)])
     }
 
-    // Verifies: REQ-101 — Codex PR #24 finding: a terminal reset (`resetToIdle()`) must itself go
+    // Validates: REQ-101 — Codex PR #24 finding: a terminal reset (`resetToIdle()`) must itself go
     // through the instrumented transition route, not a raw `state = ImagePlacementState()`, so
     // the run log always shows the phase actually returning to idle, not just the failure that
     // preceded it. Reuses imagePlacementFailureIsRecorded's real corrupt-file pipeline.
@@ -1107,7 +1107,7 @@ struct ImagePlacementControllerLifecycleTests {
         #expect(failedIdx < idleIdx)
     }
 
-    // Verifies: REQ-101; ARC-016 — the highest-value privacy test in this increment: a
+    // Validates: REQ-101; ARC-016 — the highest-value privacy test in this increment: a
     // revealing filename must never reach any emitted trace line across a real, successful
     // end-to-end placement.
     @Test @MainActor func imagePlacementTraceOmitsFilenames() async throws {
@@ -1148,7 +1148,7 @@ struct ImagePlacementControllerLifecycleTests {
         #expect(!text.contains("secret"))
     }
 
-    // Verifies: REQ-101 — the filesystem adversarial rollback path records the removed count,
+    // Validates: REQ-101 — the filesystem adversarial rollback path records the removed count,
     // using the same real AssetDirectoryStore.publish/rollback fixtures as
     // rollbackRemovesOnlyPinnedCreatedFiles above.
     @Test @MainActor func rollbackIsRecorded() async throws {
@@ -1185,7 +1185,7 @@ struct ImagePlacementControllerLifecycleTests {
 
     // Verifies: ARC-017 — the only way to raise a user-visible alert is
     // ImagePlacementController.presentAlert; no other production file may assign `alert` directly.
-    // Verifies: REQ-102 — every alert route records a matching diagnostic.
+    // Validates: REQ-102 — every alert route records a matching diagnostic.
     @Test func everyAlertSiteRecordsDiagnostic() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

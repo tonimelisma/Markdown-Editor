@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 
 @MainActor
 struct MeasurementSubstrateProofTests {
-    // Verifies: REQ-123
+    // Validates: REQ-123
     @Test func workLedgerMutationProof() {
         let recorder = IntentRecorder()
         let context = recorder.begin(.acceptedEdit)
@@ -18,8 +18,8 @@ struct MeasurementSubstrateProofTests {
         #expect(ledger?.documentParses == 1)
     }
 
-    // Verifies: REQ-124
-    // Verifies: REQ-123 — work arriving after terminal ownership is a typed late-work orphan.
+    // Validates: REQ-124
+    // Validates: REQ-123 — work arriving after terminal ownership is a typed late-work orphan.
     @Test func lateWorkAfterFinishIsTypedOrphan() {
         let recorder = IntentRecorder()
         let reasons = Mutex<[DiagnosticSymbol]>([])
@@ -32,7 +32,7 @@ struct MeasurementSubstrateProofTests {
         #expect(reasons.withLock { $0 } == [.lateWork])
     }
 
-    // Verifies: REQ-123 — work replaced by newer demand is superseded, recorded without a fault;
+    // Validates: REQ-123 — work replaced by newer demand is superseded, recorded without a fault;
     // work that ends incomplete for any other reason is still an orphan. Both were faults, so
     // every document open and every burst of fast typing logged one.
     @Test func supersededWorkIsNotAnOrphan() {
@@ -49,7 +49,7 @@ struct MeasurementSubstrateProofTests {
         #expect(seen.last.map { $0.0 && $0.1 == .cancelled } == true, "abandoned work was reported as \(String(describing: seen.last))")
     }
 
-    // Verifies: REQ-123 — a parse cancelled because a newer one was scheduled is superseded. The
+    // Validates: REQ-123 — a parse cancelled because a newer one was scheduled is superseded. The
     // opening parse was cancelled this way on every open, and recorded a fault each time.
     @Test func anOpeningParseReplacedByANewerOneIsSuperseded() async {
         let reports = Mutex<[(WorkScope, Bool, DiagnosticSymbol?)]>([])
@@ -71,7 +71,7 @@ struct MeasurementSubstrateProofTests {
         #expect(open.map { !$0.1 } == true, "the replaced opening parse was recorded as an orphan: \(String(describing: open))")
     }
 
-    // Verifies: REQ-123 — binding a window re-parses only when the window's scale differs from
+    // Validates: REQ-123 — binding a window re-parses only when the window's scale differs from
     // the one the scheduled parse decoded images for. It compared with the previous window, and
     // the first window has none, so every open parsed twice.
     @Test func aWindowAtTheParsedScaleNeedsNoSecondParse() {
@@ -80,7 +80,7 @@ struct MeasurementSubstrateProofTests {
         #expect(!EditorSession.needsRescaleParse(scheduled: nil, window: 1))
     }
 
-    // Verifies: REQ-123 — a presentation adapter lease keeps downstream attributed work inside
+    // Validates: REQ-123 — a presentation adapter lease keeps downstream attributed work inside
     // the originating intent until the adapter releases it.
     @Test func presentationLeaseDefersTerminalLedger() {
         let recorder = IntentRecorder()
@@ -93,7 +93,7 @@ struct MeasurementSubstrateProofTests {
         #expect(recorder.snapshot(context) == nil)
     }
 
-    // Verifies: REQ-124
+    // Validates: REQ-124
     @Test func responsivenessMutationProof() async throws {
         let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
         let probe = MainActorResponsivenessProbe(sampler: sampler, modalSessions: AppModalSession())
@@ -104,7 +104,7 @@ struct MeasurementSubstrateProofTests {
         sampler.invalidate()
     }
 
-    // Verifies: REQ-125 — the real frame observer callback reaches the sampler's production
+    // Validates: REQ-125 — the real frame observer callback reaches the sampler's production
     // frameStatistics route, not only the pure hitch-rate calculation.
     @Test func frameObserverProductionRouteRecordsStatistics() async {
         let log = DiagnosticLog(directory: FileManager.default.temporaryDirectory
@@ -131,7 +131,7 @@ struct MeasurementSubstrateProofTests {
         await log.drain()
     }
 
-    // Verifies: REQ-126
+    // Validates: REQ-126
     @Test func memoryPeakMutationProof() {
         var info = task_vm_info_data_t()
         info.phys_footprint = 10
@@ -140,7 +140,7 @@ struct MeasurementSubstrateProofTests {
     }
 }
 
-// Verifies: REQ-123
+// Validates: REQ-123
 @Test func acceptedEditRecordsItsWorkLedger() {
     let recorder = IntentRecorder()
     let context = recorder.begin(.acceptedEdit)
@@ -150,7 +150,7 @@ struct MeasurementSubstrateProofTests {
     #expect(ledger?.documentParses == 1)
 }
 
-// Verifies: REQ-123
+// Validates: REQ-123
 @Test func asyncAndGCDWorkRetainTheExplicitIntentLegacy() async {
     let recorder = IntentRecorder()
     let context = recorder.begin(.acceptedEdit)
@@ -165,7 +165,7 @@ struct MeasurementSubstrateProofTests {
     #expect(!recorder.finish(context))
 }
 
-// Verifies: REQ-123
+// Validates: REQ-123
 @Test func collapsedWorkLedgerRecordsRetainSumAndMax() {
     var l1 = WorkLedger()
     l1.documentParses = 3
@@ -175,7 +175,7 @@ struct MeasurementSubstrateProofTests {
     #expect(sum.documentParses == 8)
 }
 
-// Verifies: REQ-124
+// Validates: REQ-124
 @Test @MainActor func responsivenessProbeRecordsLatencyDistribution() async throws {
     let trace = InMemoryEditorTrace()
     let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
@@ -188,7 +188,7 @@ struct MeasurementSubstrateProofTests {
     #expect(summary?.count ?? 0 > 0)
 }
 
-// Verifies: REQ-124
+// Validates: REQ-124
 @Test @MainActor func aTwoHundredMillisecondMainActorBlockAppearsInTheLatencyDistribution() {
     let trace = InMemoryEditorTrace()
     let sampler = PerformanceSampler(trace: trace, coordinator: DiagnosticRunCoordinator())
@@ -203,7 +203,7 @@ struct MeasurementSubstrateProofTests {
     #expect(summary?.max ?? 0 >= 150_000_000)
 }
 
-// Verifies: REQ-124 — a hop that waited while the main thread ran one of AppKit's own loops is
+// Validates: REQ-124 — a hop that waited while the main thread ran one of AppKit's own loops is
 // not a latency sample. Here every timer tick sees AppKit's loop, so a 200 ms block, which
 // `aTwoHundredMillisecondMainActorBlockAppearsInTheLatencyDistribution` shows is counted in the
 // default mode, leaves no sample of that size.
@@ -224,7 +224,7 @@ struct MeasurementSubstrateProofTests {
     #expect((summary?.max ?? 0) < 150_000_000, "AppKit's wait was counted: \(String(describing: summary))")
 }
 
-// Verifies: REQ-124 — a hop that waited while AppKit worked for the app (`aroundAppKitWork`, the
+// Validates: REQ-124 — a hop that waited while AppKit worked for the app (`aroundAppKitWork`, the
 // print panel's load) is not a latency sample: the 200 ms block that
 // `aTwoHundredMillisecondMainActorBlockAppearsInTheLatencyDistribution` counts leaves none here.
 @Test @MainActor func aHopThatWaitedOnAppKitsWorkIsNotALatencySample() {
@@ -244,7 +244,7 @@ struct MeasurementSubstrateProofTests {
     #expect(summary?.max ?? .max < 150_000_000, "AppKit's work was counted: \(String(describing: summary))")
 }
 
-// Verifies: REQ-124 — a hop that waited out an app-modal alert is not a latency sample. The
+// Validates: REQ-124 — a hop that waited out an app-modal alert is not a latency sample. The
 // main thread ran the alert, and the wait was the person reading it: tour 45974231615's
 // bad-file alert alone put the p95 at 896 ms. The 200 ms block above, outside a session, is
 // still counted.
@@ -267,7 +267,7 @@ struct MeasurementSubstrateProofTests {
     #expect(summary?.max ?? .max < 150_000_000, "the alert's wait was counted: \(String(describing: summary))")
 }
 
-// Verifies: REQ-125
+// Validates: REQ-125
 @Test @MainActor func frameBudgetFollowsTheDisplayLinkCadenceRatherThanAConstant() async {
     let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
     let clock = ControlledFrameClock()
@@ -291,7 +291,7 @@ struct MeasurementSubstrateProofTests {
     sampler.invalidate()
 }
 
-    // Verifies: REQ-125 — a queued acknowledgement exposes a main-actor stall even when the
+    // Validates: REQ-125 — a queued acknowledgement exposes a main-actor stall even when the
     // display-link callback cadence itself remained regular.
     @Test @MainActor func queuedAcknowledgementCountsAsAFrameHitchLegacy() {
         let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
@@ -319,7 +319,7 @@ struct MeasurementSubstrateProofTests {
         sampler.invalidate()
     }
 
-    // Verifies: REQ-125 — stop/restart does not retain the previous clock stream.
+    // Validates: REQ-125 — stop/restart does not retain the previous clock stream.
     @Test @MainActor func controlledClockCanStopAndRestart() {
         let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
         let clock = ControlledFrameClock()
@@ -335,7 +335,7 @@ struct MeasurementSubstrateProofTests {
         sampler.invalidate()
     }
 
-// Verifies: REQ-126
+// Validates: REQ-126
 @Test func memoryFootprintRecordIsNumericOnly() {
     let sample = MemoryFootprint.sample()
     #expect(sample.bytes > 0)
@@ -345,7 +345,7 @@ struct MeasurementSubstrateProofTests {
     #expect(MemoryFootprint.sample(from: info) == .init(bytes: 10, peakBytes: 20))
 }
 
-// Verifies: REQ-126
+// Validates: REQ-126
 @Test func memoryFootprintUsesKernelPeakField() {
     var info = task_vm_info_data_t()
     info.phys_footprint = 10
@@ -354,7 +354,7 @@ struct MeasurementSubstrateProofTests {
     #expect(sample == .init(bytes: 10, peakBytes: 20))
 }
 
-// Verifies: REQ-123
+// Validates: REQ-123
 @Test func everyWorkScopeIsOpenedByProduction() {
     let recorder = IntentRecorder()
     let observed = WorkScope.allCases.map { scope in
@@ -366,7 +366,7 @@ struct MeasurementSubstrateProofTests {
     #expect(observed.allSatisfy { $0 })
 }
 
-// Verifies: REQ-123
+// Validates: REQ-123
 @Test func recorderOverheadUsesAnIdenticalNoRecorderControlLegacy() {
     let iterations = 10_000
     var control = 0
@@ -392,7 +392,7 @@ struct MeasurementSubstrateProofTests {
 /// mutation. Aggregate Swift Testing execution alone is insufficient evidence for a mutation.
 @MainActor
 struct COR69IntentMeasurementTests {
-    // Verifies: REQ-111 — cancelling the real parse owner emits the typed production cancellation
+    // Validates: REQ-111 — cancelling the real parse owner emits the typed production cancellation
     // route, keeping the fast coverage gate independent of the excluded performance suite.
     @Test func parseCancellationRecordsProductionRoute() async {
         let document = MarkdownDocument()
@@ -439,7 +439,7 @@ struct COR69IntentMeasurementTests {
         }
     }
 
-    // Verifies: REQ-109 — the real WYSIWYG adapter records recovery when its applied TextKit
+    // Validates: REQ-109 — the real WYSIWYG adapter records recovery when its applied TextKit
     // storage has drifted, without relying on the excluded performance-boundary suite.
     @Test func presentationDriftRecordsRecoveryProductionRoute() throws {
         let source = "Hello world.\n\nSecond paragraph.\n"
@@ -480,7 +480,7 @@ struct COR69IntentMeasurementTests {
         session.detach()
     }
 
-    // Verifies: REQ-084 — the real WYSIWYG marked-text route emits composition start and its
+    // Validates: REQ-084 — the real WYSIWYG marked-text route emits composition start and its
     // terminal cancellation record through the production trace owner.
     @Test func compositionRoutesRecordProductionEvents() throws {
         let document = MarkdownDocument()
@@ -532,7 +532,7 @@ struct COR69IntentMeasurementTests {
         session.detach()
     }
 
-    // Verifies: REQ-123 — the native AppKit source route stages the same accepted-edit intent
+    // Validates: REQ-123 — the native AppKit source route stages the same accepted-edit intent
     // before the document publishes, so its parser work is not attributed to a new owner.
     @Test func nativeSourceRouteRetainsIntentThroughParse() async {
         let document = MarkdownDocument()
@@ -586,7 +586,7 @@ struct COR69IntentMeasurementTests {
         session.detach()
     }
 
-    // Verifies: REQ-123 — the production image-placement route publishes through the same
+    // Validates: REQ-123 — the production image-placement route publishes through the same
     // staged accepted-edit identity that the parser consumes, rather than opening a second
     // reconciliation owner at the document observer boundary.
     @Test func imagePlacementRouteRetainsIntentThroughParse() async throws {
@@ -649,7 +649,7 @@ struct COR69IntentMeasurementTests {
         session.detach()
     }
 
-    // Verifies: REQ-123 — the real editor route carries one accepted edit's context through
+    // Validates: REQ-123 — the real editor route carries one accepted edit's context through
     // parsing and projection instead of only proving IntentRecorder in isolation.
     @Test func editorSessionRouteRetainsIntentThroughParse() async {
         let document = MarkdownDocument()
@@ -694,7 +694,7 @@ struct COR69IntentMeasurementTests {
         session.detach()
     }
 
-    // Verifies: REQ-125 — the real sampler route preserves acknowledgement delay in the
+    // Validates: REQ-125 — the real sampler route preserves acknowledgement delay in the
     // emitted frameStatistics record, rather than merely returning a pure helper value.
     @Test func frameObserverProductionRouteRetainsAcknowledgementDelay() async {
         let log = DiagnosticLog(directory: FileManager.default.temporaryDirectory
@@ -716,7 +716,7 @@ struct COR69IntentMeasurementTests {
         await log.drain()
     }
 
-    // Verifies: REQ-123
+    // Validates: REQ-123
     @Test func asyncAndGCDWorkRetainTheExplicitIntent() async {
         let recorder = IntentRecorder()
         let context = recorder.begin(.acceptedEdit)
@@ -731,7 +731,7 @@ struct COR69IntentMeasurementTests {
         #expect(!recorder.finish(context))
     }
 
-    // Verifies: REQ-123
+    // Validates: REQ-123
     @Test func recorderOverheadUsesAnIdenticalNoRecorderControl() {
         let iterations = 10_000
         var control = 0
@@ -750,7 +750,7 @@ struct COR69IntentMeasurementTests {
         #expect(measuredNanos <= max(1_000_000, controlNanos * 100 + 50_000_000))
     }
 
-    // Verifies: REQ-125
+    // Validates: REQ-125
     @Test func queuedAcknowledgementCountsAsAFrameHitch() {
         let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
         let clock = ControlledFrameClock()
@@ -765,7 +765,7 @@ struct COR69IntentMeasurementTests {
         sampler.invalidate()
     }
 
-    // Verifies: REQ-125 — callbacks queued before stop cannot enter a restarted observer stream.
+    // Validates: REQ-125 — callbacks queued before stop cannot enter a restarted observer stream.
     @Test @MainActor func queuedAcknowledgementsAfterStopAreIgnored() async {
         let sampler = PerformanceSampler(trace: InMemoryEditorTrace(), coordinator: DiagnosticRunCoordinator())
         let clock = ControlledFrameClock()

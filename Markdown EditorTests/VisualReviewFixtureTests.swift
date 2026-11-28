@@ -10,12 +10,12 @@ import Testing
 
 /// The REQ-104 visual-review fixture must be able to *discriminate*.
 ///
-/// // Verifies: REQ-104/107; ARC-Q13 — the one screenshot taken at every increment close is
+/// // Validates: REQ-104, REQ-107; ARC-Q13 — the one screenshot taken at every increment close is
 /// // mandatory human evidence, and it is only evidence if a reviewer can tell a correct render
 /// // from a failure.
 ///
 /// At `88b7bd3` the fixture's `assets/sample.png` was a 64x64 picture of a blank document page —
-/// visually identical to the "unrelated generic file icon" ENGINEERING §7 forbids as a missing-
+/// visually identical to the "unrelated generic file icon" architecture.md §7 forbids as a missing-
 /// image treatment. A reviewer could not tell whether image resolution had worked, and during the
 /// August review it was initially misread as a defect. The fixture also carried a single-line
 /// fenced block, which hid the COR-27 code-block spacing defect from the same gate.
@@ -32,7 +32,7 @@ struct VisualReviewFixtureTests {
     }
 
     // The fenced block must span enough lines for interior spacing to be visible (COR-27).
-    // Verifies: REQ-104 — the rich fixture makes fenced-block geometry reviewable.
+    // Validates: REQ-104 — the rich fixture makes fenced-block geometry reviewable.
     @Test func richFixtureFencedBlockSpansMultipleLines() throws {
         let text = try Self.richFixture()
         let fences = text.components(separatedBy: "```")
@@ -48,7 +48,7 @@ struct VisualReviewFixtureTests {
 
     // One resolvable and one deliberately unresolvable reference, so the capture shows a correct
     // render and the labeled placeholder side by side.
-    // Verifies: REQ-104 — the rich fixture exercises both image resolution outcomes.
+    // Validates: REQ-104 — the rich fixture exercises both image resolution outcomes.
     @Test func richFixtureCarriesResolvableAndUnresolvableImages() throws {
         let text = try Self.richFixture()
         #expect(text.contains("](assets/sample.png)"), "no resolvable image reference")
@@ -64,7 +64,7 @@ struct VisualReviewFixtureTests {
 
     // The resolvable image must not itself look like the failure mode. A document-page icon is
     // mostly one flat colour with thin dark edges; this asserts real chromatic variety instead.
-    // Verifies: REQ-104 — the fixture image discriminates real content from a placeholder.
+    // Validates: REQ-104 — the fixture image discriminates real content from a placeholder.
     @Test func fixtureImageIsVisuallyDistinctFromAPlaceholder() throws {
         let url = Self.fixtureURL("assets/sample.png")
         let image = try #require(NSImage(contentsOf: url), "fixture image did not decode")

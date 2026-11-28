@@ -8,7 +8,7 @@ import Testing
 @testable import Markdown_Editor
 
 struct IncrementalSourceHighlighterTests {
-    // Verifies: REQ-040/041/043 — the line lexer carries a fence state and does not style code
+    // Validates: REQ-040, REQ-041, REQ-043 — the line lexer carries a fence state and does not style code
     // content as inline Markdown until the matching closer is observed.
     @Test func fenceStatePropagatesAndClosesOnMatchingFence() async throws {
         let source = "before *style*\n```swift\ninside **literal**\n```\nafter `code`\n"
@@ -27,7 +27,7 @@ struct IncrementalSourceHighlighterTests {
         #expect(!patch.tokens.contains { $0.style == .bold && NSIntersectionRange($0.range, inside).length > 0 })
     }
 
-    // Verifies: REQ-045 — a local paragraph edit stops after the incoming/outgoing lexical state
+    // Validates: REQ-045 — a local paragraph edit stops after the incoming/outgoing lexical state
     // is unchanged and emits one exact changed-line range.
     @Test func ordinaryEditStopsAtStableTail() async throws {
         let source = (0..<120).map { "line \($0)" }.joined(separator: "\n") + "\n"
@@ -49,7 +49,7 @@ struct IncrementalSourceHighlighterTests {
         #expect(patch.intentID == IntentID(rawValue: 9))
     }
 
-    // Verifies: REQ-040/045 — CRLF and Unicode remain UTF-16 bounded across line patches.
+    // Validates: REQ-040, REQ-045 — CRLF and Unicode remain UTF-16 bounded across line patches.
     @Test func lineRangesRemainUTF16ExactForCRLFAndUnicode() async throws {
         let source = "🐙 **one**\r\nsecond\r\n"
         let highlighter = IncrementalSourceHighlighter()
@@ -60,7 +60,7 @@ struct IncrementalSourceHighlighterTests {
         #expect(SourceLineIndex(source: source).lines.map(\.length) == [12, 8])
     }
 
-    // Verifies: REQ-040/045 — an edit that grows a terminal newline uses the topology fallback
+    // Validates: REQ-040, REQ-045 — an edit that grows a terminal newline uses the topology fallback
     // instead of treating the old final line as the complete new source.
     @Test func terminalNewlineGrowthRebuildsLineTopology() {
         let previous = SourceLineIndex(source: "one\n")
@@ -73,7 +73,7 @@ struct IncrementalSourceHighlighterTests {
         #expect(updated.lines == [NSRange(location: 0, length: 4), NSRange(location: 4, length: 4)])
     }
 
-    // Verifies: REQ-040/045 — deleting the final line cannot leave a phantom zero-length line
+    // Validates: REQ-040, REQ-045 — deleting the final line cannot leave a phantom zero-length line
     // in the cached UTF-16 topology.
     @Test func terminalLineDeletionRebuildsLineTopology() {
         let previous = SourceLineIndex(source: "one\ntwo\n")
@@ -86,7 +86,7 @@ struct IncrementalSourceHighlighterTests {
         #expect(updated.lines == [NSRange(location: 0, length: 4)])
     }
 
-    // Verifies: REQ-041/043 — multiline GFM strikethrough state crosses a soft line break and
+    // Validates: REQ-041, REQ-043 — multiline GFM strikethrough state crosses a soft line break and
     // terminates on the matching delimiter without requiring a whole-source lexer.
     @Test func multilineStrikethroughStatePropagatesAcrossLines() async throws {
         let source = "before ~~first line\nsecond line~~ after\n"
@@ -99,7 +99,7 @@ struct IncrementalSourceHighlighterTests {
         #expect(patch.tokens.contains { $0.style == .strikethrough && NSIntersectionRange($0.range, second).length == second.length })
     }
 
-    // Verifies: REQ-041/045 — after the cache is seeded, an ordinary edit still carries the
+    // Validates: REQ-041, REQ-045 — after the cache is seeded, an ordinary edit still carries the
     // unmatched GFM delimiter state into the following line.
     @Test func ordinaryEditCarriesMultilineStrikethroughState() async throws {
         let source = "before ~~first line\nsecond line~~ after\n"
@@ -119,7 +119,7 @@ struct IncrementalSourceHighlighterTests {
         #expect(patch.tokens.contains { $0.style == .strikethrough && NSIntersectionRange($0.range, second).length == second.length })
     }
 
-    // Verifies: REQ-041 — escaped and unmatched tilde runs remain literal, while a later
+    // Validates: REQ-041 — escaped and unmatched tilde runs remain literal, while a later
     // multiline span remains discoverable after an earlier completed span.
     @Test func strikethroughMatchesFormalGFMDelimiterRuns() async throws {
         let source = "~~not\\~~\n~~open~\n\n~~one~~ and ~~two\nthree~~\n"
@@ -143,7 +143,7 @@ struct IncrementalSourceHighlighterTests {
         #expect(laterCoverage == later.length)
     }
 
-    // Verifies: REQ-041/045 — a sequence of edits has the same token result as a fresh full
+    // Validates: REQ-041, REQ-045 — a sequence of edits has the same token result as a fresh full
     // lexer, including a multiline delimiter closure and a fence opening/closure.
     @Test func editSequenceMatchesFreshFullLexer() async throws {
         let highlighter = IncrementalSourceHighlighter()
@@ -183,7 +183,7 @@ struct IncrementalSourceHighlighterTests {
         }
     }
 
-    // Verifies: REQ-041/045 — deterministic generated edit sequences preserve the fresh-lexer
+    // Validates: REQ-041, REQ-045 — deterministic generated edit sequences preserve the fresh-lexer
     // result across varied delimiter, fence, Unicode, and newline edits.
     @Test func generatedEditSequencesMatchFreshFullLexer() async throws {
         let fixtures = [
@@ -242,7 +242,7 @@ struct IncrementalSourceHighlighterTests {
         }
     }
 
-    // Verifies: REQ-041 — same-line strikethrough tokens are emitted once even when the
+    // Validates: REQ-041 — same-line strikethrough tokens are emitted once even when the
     // cross-line state handler observes the same delimiter.
     @Test func sameLineStrikethroughDoesNotDuplicateTokens() async throws {
         let source = "~~closed~~\n"
@@ -270,7 +270,7 @@ struct IncrementalSourceHighlighterTests {
     }
 
 
-    // Verifies: REQ-041/045 — COR-84 regression 1: an unclosed `[` must not pair with a `](` on a
+    // Validates: REQ-041, REQ-045 — COR-84 regression 1: an unclosed `[` must not pair with a `](` on a
     // later line. The full lexer's link-text class admitted a newline while every other inline rule
     // excluded it, so it emitted a token spanning a newline that a line-local incremental lexer
     // structurally cannot reproduce. Minimized by `Shrinker` from a 233-character generated
@@ -288,7 +288,7 @@ struct IncrementalSourceHighlighterTests {
         }
     }
 
-    // Verifies: REQ-041/045 — COR-84 regression 2: a cross-line strikethrough overlapping inline
+    // Validates: REQ-041, REQ-045 — COR-84 regression 2: a cross-line strikethrough overlapping inline
     // code must be suppressed, because the whole-text lexer skips any strikethrough overlapping an
     // exclusive range. The incremental cross-line path bypassed that precedence and emitted a token
     // the full relex does not.

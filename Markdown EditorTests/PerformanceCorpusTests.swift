@@ -4,7 +4,7 @@ import Testing
 @testable import Markdown_Editor
 
 struct PerformanceCorpusProofTests {
-    // Verifies: REQ-127
+    // Validates: REQ-127
     @Test func corpusMutationProof() {
         for corpus in PerformanceCorpus.allCases {
             let source = corpus.source(utf16Target: 100_000)
@@ -19,7 +19,7 @@ struct PerformanceCorpusProofTests {
         }
     }
 
-    // Verifies: REQ-128
+    // Validates: REQ-128
     @Test func benchmarkConfigurationMutationProof() {
         let config = BenchmarkDriver.configuration(arguments: [
             "Markdown Editor", "--benchmark", "typeInTable", "--corpus", "tableDense",
@@ -32,7 +32,7 @@ struct PerformanceCorpusProofTests {
         #expect(config?.interval == .milliseconds(80))
     }
 
-    // Verifies: REQ-128 — the manifest expands to every closed corpus/scenario combination.
+    // Validates: REQ-128 — the manifest expands to every closed corpus/scenario combination.
     @Test func benchmarkManifestEnumeratesTheClosedMatrix() {
         let manifest = BenchmarkDriver.Manifest(
             durationSeconds: 1,
@@ -46,7 +46,7 @@ struct PerformanceCorpusProofTests {
     }
 }
 
-// Verifies: REQ-127
+// Validates: REQ-127
 @Test(arguments: PerformanceCorpus.allCases)
 func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
     let source = corpus.source(utf16Target: 100_000)
@@ -62,7 +62,7 @@ func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
     }
 }
 
-// Verifies: REQ-127
+// Validates: REQ-127
 @Test func corpusTruncationPreservesUnitBoundaries() {
     for corpus in PerformanceCorpus.allCases {
         let source = corpus.source(utf16Target: 100_000)
@@ -71,7 +71,7 @@ func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
     }
 }
 
-// Verifies: REQ-127
+// Validates: REQ-127
 @Test func everyCorpusShapeHasADeclaredBlockFloor() {
     for corpus in PerformanceCorpus.allCases {
         let source = corpus.source(utf16Target: 100_000)
@@ -85,7 +85,7 @@ func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
     }
 }
 
-// Verifies: REQ-128 — the benchmark driver reads structured records and never inspects the UI.
+// Validates: REQ-128 — the benchmark driver reads structured records and never inspects the UI.
 //
 // // An *absence* proof, which `CLAUDE.md` §3 permits source inspection for — and unlike the
 // // version this replaces, its detector proves itself below rather than trusting that the
@@ -102,7 +102,7 @@ func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
     #expect(!source.contains("synthetic"))
 }
 
-// Verifies: REQ-128 — the manifest carries matrix *parameters* only, so the shell harness cannot
+// Validates: REQ-128 — the manifest carries matrix *parameters* only, so the shell harness cannot
 // own corpus text or the action matrix even if it tried.
 //
 // // COR-90 replaced a set of `contains` assertions on the text of `Scripts/benchmark.sh`. Those
@@ -132,7 +132,7 @@ func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
     #expect(!BenchmarkDriver.Scenario.allCases.isEmpty)
 }
 
-// Verifies: REQ-128 — malformed benchmark outcomes cannot be admitted as evidence.
+// Validates: REQ-128 — malformed benchmark outcomes cannot be admitted as evidence.
 @Test func benchmarkRejectsNoProgressAndUnknownActionsLegacy() {
     #expect(BenchmarkDriver.accepts(BenchmarkCaseOutcome(
         progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 0, duplicateSampleCount: 0
@@ -148,7 +148,7 @@ func corpusShapesProduceTheStructureTheyClaim(_ corpus: PerformanceCorpus) {
 /// Named for direct mutation selection by the falsification gate.
 @MainActor
 struct COR69BenchmarkProofTests {
-    // Verifies: REQ-128 — the benchmark's real scroll action reaches a constructed AppKit
+    // Validates: REQ-128 — the benchmark's real scroll action reaches a constructed AppKit
     // document view and reports progress, so a positive aggregate cannot hide actions = 0.
     @Test func benchmarkScrollRouteReportsProgress() {
         let document = MarkdownDocument()
@@ -188,7 +188,7 @@ struct COR69BenchmarkProofTests {
         session.detach()
     }
 
-    // Verifies: REQ-128
+    // Validates: REQ-128
     @Test func benchmarkRejectsNoProgressAndUnknownActions() {
         #expect(BenchmarkDriver.accepts(BenchmarkCaseOutcome(
             progress: 1, errors: 0, timeoutCount: 0, unknownActionCount: 0, duplicateSampleCount: 0
@@ -205,7 +205,7 @@ struct COR69BenchmarkProofTests {
         )))
     }
 
-    // Verifies: REQ-128 — the closed command matrix records and validates every expected
+    // Validates: REQ-128 — the closed command matrix records and validates every expected
     // outcome, rather than proving only aggregate progress.
     @Test func benchmarkCommandRouteRecordsEveryActionContract() {
         let document = MarkdownDocument()
@@ -242,7 +242,7 @@ struct COR69BenchmarkProofTests {
     }
 }
 
-// Verifies: REQ-128
+// Validates: REQ-128
 @Test func benchmarkConfigurationPreservesEveryRequestedDimension() {
     let config = BenchmarkDriver.configuration(arguments: [
         "Markdown Editor", "--benchmark", "typeInTable", "--corpus", "tableDense",

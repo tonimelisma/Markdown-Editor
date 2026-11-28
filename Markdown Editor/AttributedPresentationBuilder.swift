@@ -492,7 +492,7 @@ final class MissingImageAttachmentCell: NSTextAttachmentCell {
 
     init(text: String) {
         self.text = text
-        // REQ-107; COR-28: ENGINEERING §7 requires "an intentional labeled placeholder rather
+        // REQ-107; COR-28: architecture.md §7 requires "an intentional labeled placeholder rather
         // than an unrelated generic file icon". Showing only the image description rendered as a
         // bare grey chip of ordinary-looking text, which reads as content rather than as a
         // failure, so the label always says what it is.

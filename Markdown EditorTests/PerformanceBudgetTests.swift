@@ -7,8 +7,8 @@ import Foundation
 import Testing
 @testable import Markdown_Editor
 
-/// // Verifies: REQ-090/103/116; ARC-Q05/ARC-020 — every metric is budgeted, and the budgets in
-/// code are the ones REQUIREMENTS states.
+/// // Validates: REQ-090, REQ-103, REQ-116; ARC-Q05/ARC-020 — every metric is budgeted, and the budgets in
+/// code are the ones requirements.md states.
 ///
 /// The thresholds previously existed twice: as prose in REQ-090 and as literals inside
 /// `PerformanceSampler.flush()`, with nothing tying them together, so they could drift in either
@@ -32,7 +32,7 @@ struct PerformanceBudgetTests {
         #expect(PerformanceSampler.budgetNanos[.nativeInputCallback] == 8_000_000)
         #expect(PerformanceSampler.budgetNanos[.modeTransition] == 16_000_000)
         #expect(PerformanceSampler.budgetNanos[.parseProjection] == 100_000_000)
-        // Off-main work in the parse task, budgeted as parsing is (DECISIONS, 2026-11-27).
+        // Off-main work in the parse task, budgeted as parsing is (ADR 0021).
         #expect(PerformanceSampler.budgetNanos[.imageResolution] == 100_000_000)
         #expect(PerformanceSampler.budgetNanos[.authoritativeApplication] == 100_000_000)
         // REQ-116: layout runs on the main actor and the user sees it, so it gets a frame-shaped
@@ -73,7 +73,7 @@ struct PerformanceBudgetTests {
     }
 }
 
-/// // Verifies: REQ-090/116; ARC-020 — the measured input-callback boundary contains no forced
+/// // Validates: REQ-090, REQ-116; ARC-020 — the measured input-callback boundary contains no forced
 /// layout, so the metric cannot corrupt the budget it sits inside.
 ///
 /// An earlier COR-29 implementation called `ensureLayout` from `applyProjectionIfNeeded`, which

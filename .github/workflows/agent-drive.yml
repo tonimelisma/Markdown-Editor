@@ -1,4 +1,4 @@
-# An agent's hands and eyes on the real app (CLAUDE.md §4, docs/DECISIONS.md 2026-11-27). A cloud
+# An agent's hands and eyes on the real app (CLAUDE.md §4, ADR 0017). A cloud
 # session cannot see a Mac; this builds the app on a GitHub Mac runner and runs a scenario
 # (Scripts/agent-drive.swift) that launches it, as the Dock and Finder do, and uses it: clicks, keys,
 # menu choices, panels, the clipboard, other apps changing its files, quitting and relaunching. It
@@ -6,7 +6,7 @@
 # values, files and the app's own diagnostic log. The agent downloads the artifact and looks.
 #
 # Never a gate and never a requirement's proof: nothing requires this workflow, and what it finds is
-# fixed with a unit or component test that fails for it.
+# fixed with a unit or component test that fails for it. It also runs the whole tour weekly.
 #
 # Start it with GitHub's tools: actions_run_trigger, method run_workflow, workflow agent-drive.yml,
 # ref = the branch to build, inputs.scenario = the steps (newline-separated). Read the result with
@@ -26,6 +26,10 @@ on:
       configuration:
         description: Release (the bundle release.sh publishes, ad hoc, no update key) or Debug (profilable)
         default: Release
+  schedule:
+    # Weekly, off the hour: the whole tour on main, Release, so a regression no unit test sees
+    # still shows up. A failed expectation fails this run (it only warns when started by hand).
+    - cron: "37 4 * * 3"
   pull_request:
     paths:
       - .github/workflows/agent-drive.yml
@@ -41,7 +45,7 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Select the newest Xcode 27
@@ -53,7 +57,7 @@ jobs:
           echo "build=$(xcodebuild -version | awk '/Build version/ { print $3 }')" >> "$GITHUB_OUTPUT"
       # main's compilation cache, read only, as ci.yml restores it.
       - name: Restore the build caches
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData/CompilationCache.noindex
@@ -61,7 +65,7 @@ jobs:
           key: build-${{ runner.os }}-${{ steps.xcode.outputs.build }}-${{ github.sha }}
           restore-keys: build-${{ runner.os }}-${{ steps.xcode.outputs.build }}-
       # Release by default: the tour's timings and budget records then describe the build people
-      # run, not an unoptimised one (docs/DECISIONS.md, 2026-11-27). Hardened as repeat-smoke.yml
+      # run, not an unoptimised one (ADR 0025). Hardened as repeat-smoke.yml
       # hardens its Release bundle. Debug is for `sample`, which cannot attach to a hardened app.
       - name: Build the app and the driver
         id: bundle
@@ -111,10 +115,13 @@ jobs:
           cp -R "$work" out/work 2>/dev/null || true
           case "$verdict" in
             0) echo "agent-drive: every expectation held" ;;
-            1) echo "::warning::agent-drive: an expectation failed (transcript.txt)" ;;
+            1) if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
+                 echo "::error::agent-drive: an expectation failed (transcript.txt)"; exit 1
+               fi
+               echo "::warning::agent-drive: an expectation failed (transcript.txt)" ;;
             *) echo "::error::agent-drive could not run the scenario"; exit 1 ;;
           esac
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: agent-drive-${{ github.run_id }}

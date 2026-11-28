@@ -50,7 +50,7 @@ struct AccessibilitySemanticTests {
         }
     }
 
-    // Verifies: REQ-129 — every semantic block kind has a declared accessibility role and role
+    // Validates: REQ-129 — every semantic block kind has a declared accessibility role and role
     // description. The matrix is closed: `caseTag` is an exhaustive switch, so a new block kind
     // breaks the build until it appears in `everyKind` and gets a descriptor.
     @Test func everyBlockKindHasADeclaredAccessibilityRole() {
@@ -71,7 +71,7 @@ struct AccessibilitySemanticTests {
         }
     }
 
-    // Verifies: REQ-129 — a heading exposes its level, so a screen reader can navigate document
+    // Validates: REQ-129 — a heading exposes its level, so a screen reader can navigate document
     // structure rather than hearing six identically-described headings. Font size alone does not
     // carry this: the deletion gate for this plan is that no semantic construct relies only on
     // font, colour, or indentation.
@@ -84,7 +84,7 @@ struct AccessibilitySemanticTests {
         }
     }
 
-    // Verifies: REQ-129/032 — a task item is operable, so it is a checkbox carrying its state,
+    // Validates: REQ-129, REQ-032 — a task item is operable, so it is a checkbox carrying its state,
     // not static text that happens to be drawn with a tick. Both states are exposed.
     @Test func taskItemsExposeCheckboxRoleAndState() {
         let kind = PresentationBlockKind.listItem(kind: .bullet, nesting: 0, task: true)
@@ -98,7 +98,7 @@ struct AccessibilitySemanticTests {
         #expect(MarkdownAccessibilityModel.descriptor(for: plain, isChecked: true).checked == nil)
     }
 
-    // Verifies: REQ-129 — list nesting and quote depth are exposed as levels, so structure is
+    // Validates: REQ-129 — list nesting and quote depth are exposed as levels, so structure is
     // available without relying on indentation, which assistive technology cannot see.
     @Test func nestingAndQuoteDepthAreExposedAsLevels() {
         for nesting in 0...3 {
@@ -114,7 +114,7 @@ struct AccessibilitySemanticTests {
         }
     }
 
-    // Verifies: REQ-129 — descriptors carry no document content. The role description says what a
+    // Validates: REQ-129 — descriptors carry no document content. The role description says what a
     // construct *is*; the text itself reaches assistive technology through the text element, so a
     // descriptor that embedded content would leak it into a second, unaudited channel.
     @Test func descriptorsCarryNoDocumentContent() {
@@ -138,7 +138,7 @@ struct AccessibilitySemanticTests {
 @MainActor
 struct KeyboardCommandMatrixTests {
 
-    // Verifies: REQ-032 — every editor command is reachable without a mouse. Each command either
+    // Validates: REQ-032 — every editor command is reachable without a mouse. Each command either
     // carries a keyboard shortcut or is explicitly declared menu-reachable-only; the matrix is over
     // `EditorCommand.allCases`, so a new command fails here until its keyboard story is declared.
     //
@@ -168,7 +168,7 @@ struct KeyboardCommandMatrixTests {
         )
     }
 
-    // Verifies: REQ-084 — the Edit menu offers Find, on ⌘F. A SwiftUI app's Edit menu has no
+    // Validates: REQ-084 — the Edit menu offers Find, on ⌘F. A SwiftUI app's Edit menu has no
     // Find items unless its commands ask for them, and this app's did not: ⌘F did nothing.
     @Test func theEditMenuOffersFind() throws {
         let menu = try #require(NSApp.mainMenu, "the test host has no menu bar")
@@ -187,7 +187,7 @@ struct KeyboardCommandMatrixTests {
         #expect(takes("w") != nil, "no menu item takes ⌘W; the menus offer \(all.map(\.title))")
     }
 
-    // Verifies: REQ-021 — the real File menu offers Open Recent. The app added it through
+    // Validates: REQ-021 — the real File menu offers Open Recent. The app added it through
     // AppKit, SwiftUI rebuilt the File menu from the commands, and it was gone.
     @Test func theFileMenuOffersOpenRecent() throws {
         let menu = try #require(NSApp.mainMenu, "the test host has no menu bar")
@@ -197,7 +197,7 @@ struct KeyboardCommandMatrixTests {
         #expect(recent?.submenu?.items.contains { $0.title == "Clear Menu" } == true)
     }
 
-    // Verifies: REQ-014 — the File menu is that of a document that autosaves in place, as
+    // Validates: REQ-014 — the File menu is that of a document that autosaves in place, as
     // TextEdit's is: Duplicate, Rename, Move To and Revert Document beside Save. The app replaced
     // the standard group with Save, Save As and Revert to Saved alone, so Duplicate, Rename and
     // Move To were unreachable (tour 45978087015's File menu).
@@ -221,7 +221,7 @@ struct KeyboardCommandMatrixTests {
                 "Duplicate's shortcut is \(key.debugDescription) with \(mask.rawValue)")
     }
 
-    // Verifies: REQ-032 — no command's shortcut is one macOS or every Mac app already owns. Block
+    // Validates: REQ-032 — no command's shortcut is one macOS or every Mac app already owns. Block
     // Quote was control-command-Q, which is the system's Lock Screen: an agent-drive tour
     // (45955987611) pressed it and locked the runner's screen, as it would have locked a user's.
     @Test func noShortcutTakesASystemOrStandardKey() {
@@ -257,7 +257,7 @@ struct KeyboardCommandMatrixTests {
         }
     }
 
-    // Verifies: REQ-032 — no two commands share a shortcut, which would make one of them
+    // Validates: REQ-032 — no two commands share a shortcut, which would make one of them
     // unreachable by keyboard however it is declared.
     @Test func noTwoCommandsShareAShortcut() {
         var seen: [String: EditorCommand] = [:]

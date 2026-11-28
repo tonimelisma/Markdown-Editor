@@ -10,7 +10,7 @@ import Testing
 
 /// Switching modes shows the part of the document the session says it is showing.
 ///
-/// // Verifies: REQ-086; ARC-Q08 — a mode change restores that mode's own scroll state.
+/// // Validates: REQ-086; ARC-Q08 — a mode change restores that mode's own scroll state.
 ///
 /// COR-93: the first switch into Source opened halfway down the file. Session state and the clip
 /// view both said the offset was zero, and both were telling the truth: AppKit had parked the
@@ -96,7 +96,7 @@ struct SourceModeScrollTests {
     // restoring the session's zero offset as a raw clip-bounds origin scrolls 1044 points past
     // the first line. `visibleRect` is AppKit's own answer to "what is on screen", so this asserts
     // what a reader sees rather than restating the implementation.
-    // Verifies: REQ-086 — a zero Source offset shows the top of the document.
+    // Validates: REQ-086 — a zero Source offset shows the top of the document.
     @Test func switchingIntoSourceShowsTheTopEvenWhenAppKitParksTheDocumentView() throws {
         let h = Self.makeHost()
         Self.hostUpdate(h)
@@ -119,7 +119,7 @@ struct SourceModeScrollTests {
 
     // The same contract in the other direction: what the session records for a real scroll
     // position is what a later switch back into Source puts on screen.
-    // Verifies: REQ-086 — a recorded Source scroll position survives a round trip.
+    // Validates: REQ-086 — a recorded Source scroll position survives a round trip.
     @Test func aRecordedSourceScrollPositionSurvivesARoundTrip() throws {
         let h = Self.makeHost()
         Self.hostUpdate(h)

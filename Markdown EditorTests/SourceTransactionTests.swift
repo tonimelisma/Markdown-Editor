@@ -48,7 +48,7 @@ struct SourceTransactionTests {
         return commitSourceMutationForTest(doc, forced)
     }
 
-    // Verifies: REQ-016
+    // Validates: REQ-016
     @Test func exactUTF16ReplaceAdvancesVersion() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("Hello World")
@@ -68,7 +68,7 @@ struct SourceTransactionTests {
         #expect(selection.range.utf16 == NSRange(location: 11, length: 0))
     }
 
-    // Verifies: REQ-016 — Unicode scalar boundaries (emoji is 2 UTF-16 units).
+    // Validates: REQ-016 — Unicode scalar boundaries (emoji is 2 UTF-16 units).
     @Test func unicodeScalarBoundaryReplace() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("a😀b")
@@ -87,7 +87,7 @@ struct SourceTransactionTests {
         #expect(doc.sourceVersion == 1)
     }
 
-    // Verifies: REQ-016
+    // Validates: REQ-016
     @Test func staleVersionRefusesWithoutMutation() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("abc")
@@ -106,7 +106,7 @@ struct SourceTransactionTests {
         #expect(doc.sourceVersion == version)
     }
 
-    // Verifies: REQ-016
+    // Validates: REQ-016
     @Test func invalidRangeRefusesWithoutMutation() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi")
@@ -122,7 +122,7 @@ struct SourceTransactionTests {
         #expect(doc.sourceVersion == 0)
     }
 
-    // Verifies: REQ-016 / REQ-013 — one undo group, redo restores.
+    // Validates: REQ-016 / REQ-013 — one undo group, redo restores.
     @Test func undoRedoRestoresTextAndAdvancesVersion() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("abc")
@@ -139,7 +139,7 @@ struct SourceTransactionTests {
         #expect(doc.sourceVersion == 3)
     }
 
-    // Verifies: REQ-018 — snapshots are Sendable values, not live references.
+    // Validates: REQ-018 — snapshots are Sendable values, not live references.
     @Test func snapshotIsImmutableCopy() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("one")

@@ -1,0 +1,18 @@
+# Weekly update proposals for the pinned GitHub Actions, one grouped pull request. Security updates
+# open right away regardless. Actions are pinned by commit SHA with a `# vX.Y.Z` comment, which
+# Dependabot keeps up to date. The Swift packages (Sparkle, cmark-gfm) are pinned in the Xcode
+# project's Package.resolved, which Dependabot's swift ecosystem cannot read (it needs a
+# Package.swift); Scripts/sparkle-advisories.sh refuses a release while the pinned Sparkle has an
+# advisory.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+    groups:
+      actions:
+        patterns: ["*"]

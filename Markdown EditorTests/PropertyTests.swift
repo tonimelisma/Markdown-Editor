@@ -22,7 +22,7 @@ import Testing
 ///    a permanent fixture without re-running the generator.
 struct PropertyTests {
 
-    // Verifies: REQ-132 — the generated corpus visits every member of every declared dimension.
+    // Validates: REQ-132 — the generated corpus visits every member of every declared dimension.
     // Adding a `BlockKind`, `InlineKind`, `TextFlavor`, or `EditOperation` fails here until the
     // generator can produce it, which is what makes this coverage rather than variety.
     @Test func dimensionCoverageIsComplete() {
@@ -61,7 +61,7 @@ struct PropertyTests {
         }
     }
 
-    // Verifies: REQ-132 — the source index round-trips every generated document. Oracle: the exact
+    // Validates: REQ-132 — the source index round-trips every generated document. Oracle: the exact
     // inverse map, not a second call into the same helper. A UTF-8 offset converted to UTF-16 and
     // back must land where it started, for every line start in the document.
     @Test func sourceIndexRoundTripsOnEveryGeneratedDocument() throws {
@@ -83,7 +83,7 @@ struct PropertyTests {
         }
     }
 
-    // Verifies: REQ-132 — every generated document compiles to a projection the independent
+    // Validates: REQ-132 — every generated document compiles to a projection the independent
     // `ProjectionOracle` accepts. The oracle is a separate validator, not the compiler's own
     // bookkeeping, so this discriminates a projection that is internally consistent but wrong
     // about the source it claims to describe.
@@ -105,7 +105,7 @@ struct PropertyTests {
         }
     }
 
-    // Verifies: REQ-041/045/132 — incremental lexing agrees with a *fresh full* relex over the
+    // Validates: REQ-041, REQ-045, REQ-132 — incremental lexing agrees with a *fresh full* relex over the
     // whole declared corpus, everywhere. The oracle is a brand-new `MarkdownHighlighter`, which
     // shares no state with the incremental one.
     //
@@ -169,7 +169,7 @@ struct PropertyTests {
         )
     }
 
-    // Verifies: REQ-132 — the shrinker actually reduces, terminates, and preserves the property it
+    // Validates: REQ-132 — the shrinker actually reduces, terminates, and preserves the property it
     // was given. A shrinker that returned its input unchanged would satisfy "minimized fixture" in
     // name only, and one that lost the failing property would produce a fixture that proves nothing.
     @Test func shrinkerReducesWhilePreservingTheFailingProperty() {
@@ -187,7 +187,7 @@ struct PropertyTests {
         #expect(!minimized.contains("quick brown fox"))
     }
 
-    // Verifies: REQ-132 — shrinking is deterministic: the same failure minimizes to the same
+    // Validates: REQ-132 — shrinking is deterministic: the same failure minimizes to the same
     // fixture every time, so a committed regression fixture is reproducible rather than whatever
     // that run happened to find.
     @Test func shrinkingIsDeterministic() {
@@ -198,7 +198,7 @@ struct PropertyTests {
         #expect(first == second)
     }
 
-    // Verifies: REQ-132 — a shrinker cannot run unboundedly. A property that always reports failure
+    // Validates: REQ-132 — a shrinker cannot run unboundedly. A property that always reports failure
     // would otherwise let the ladder evaluate forever and hang the suite instead of failing it.
     @Test func shrinkingRespectsItsEvaluationBudget() {
         let original = (1...200).map { "line \($0)" }.joined(separator: "\n")
@@ -209,7 +209,7 @@ struct PropertyTests {
         #expect(minimized.components(separatedBy: "\n").count > 1)
     }
 
-    // Verifies: REQ-132 — every generated token range lies inside the document and never splits a
+    // Validates: REQ-132 — every generated token range lies inside the document and never splits a
     // composed character sequence. Oracle: `NSString`'s own grapheme segmentation, which the
     // highlighter does not use.
     @Test func tokenRangesAreContainedAndGraphemeAligned() async throws {
@@ -235,7 +235,7 @@ struct PropertyTests {
         }
     }
 
-    // Verifies: REQ-132 — generated filenames stay portable for every text flavor. Oracle: an
+    // Validates: REQ-132 — generated filenames stay portable for every text flavor. Oracle: an
     // explicit portability predicate, not `ImageAssetPolicy`'s own notion of a safe name.
     @Test func generatedAssetNamesStayPortableForEveryFlavor() {
         var rng = DeterministicRNG(seed: 0xA55E7)

@@ -1,7 +1,7 @@
 # Semantic command main-actor cost
 
 - **Authority:** evidence only. Not a product decision and not a repair plan. The repairs it
-  motivates are `docs/plans/COR-86…COR-90`.
+  motivated were the COR-86 to COR-90 plans, deleted when each merged.
 - **First researched:** 2026-08-22
 - **Last verified:** 2026-08-22
 - **Environment:** macOS 27.0 (build 26A5416b), Darwin 27.0.0, arm64. Xcode 27.0 (27A5228h).
@@ -176,7 +176,7 @@ structured corpora improved 0–25 %; `imageHeavy` moved within noise.
    the Debug sub-phase table (0.3–4.3 ms), which Finding 1's correction shows overstates Swift-heavy
    phases. In Release both are well under a millisecond against a 109 ms total, and removing the
    round-trip means adding a second parameter and a fallback path to `make` — apparatus bought
-   with a stale measurement. Recorded rather than done, per `docs/plans/README.md`: a plan that
+   with a stale measurement. Recorded rather than done, per the plan rules (then `docs/plans/README.md`, now `docs/development.md`): a plan that
    does not survive contact with the code is a finding.
 
 ### Finding 7 — COR-89's premise is falsified: the rebuild is a minority of the command
@@ -354,7 +354,7 @@ configuration**. Every test uses `@testable import Markdown_Editor`, so
 error: Unable to resolve Swift module dependency to a compatible module: 'Markdown_Editor'
 ```
 
-Two live claims depended on that working: ROADMAP COR-18 (*"Debug and Release tests compile and
+Two live claims depended on that working: roadmap.md COR-18 (*"Debug and Release tests compile and
 execute under complete concurrency checking"*) and REQ-090, which cites a focused Release run with
 six concrete p95 figures.
 

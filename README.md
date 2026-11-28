@@ -35,9 +35,9 @@ confirm. After that it opens like any app and updates itself from
 The app is pure Swift: SwiftUI with narrow AppKit adapters, and TextKit for both editors.
 
 - How to work in this repository: [CLAUDE.md](CLAUDE.md).
-- Environments, CI and releases: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
-- Product direction: [docs/VISION.md](docs/VISION.md).
-- Architecture: [docs/ENGINEERING.md](docs/ENGINEERING.md).
+- Environments, CI and releases: [docs/development.md](docs/development.md).
+- Product direction: [docs/vision.md](docs/vision.md).
+- Architecture: [docs/architecture.md](docs/architecture.md).
 
 The one check is `Scripts/check.sh`. Every pull request is built and tested on GitHub's macOS
 runners, and every merge that changes the app is published as a release.

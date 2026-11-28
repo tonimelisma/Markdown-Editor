@@ -9,7 +9,7 @@ import Foundation
 import AppKit
 @testable import Markdown_Editor
 
-/// // Verifies: REQ-015, REQ-057, REQ-058, REQ-060, REQ-069, REQ-078, REQ-080,
+/// // Validates: REQ-015, REQ-057, REQ-058, REQ-060, REQ-069, REQ-078, REQ-080,
 /// // REQ-083, REQ-084, REQ-087, REQ-089
 @MainActor
 struct EditorIntegrationTests {
@@ -23,7 +23,7 @@ struct EditorIntegrationTests {
 
     // MARK: - D1 Select All / synthetic endpoints
 
-    // Verifies: REQ-084/087 — Select All over paragraphs and lists maps exactly.
+    // Validates: REQ-084, REQ-087 — Select All over paragraphs and lists maps exactly.
     @Test func selectAllOverParagraphAndListMapsExactSource() throws {
         let fixtures = [
             "hello\n",
@@ -47,7 +47,7 @@ struct EditorIntegrationTests {
 
     // MARK: - D3 exact task marker
 
-    // Verifies: REQ-078 — literal `[x]` in label and nested tasks stay untouched.
+    // Validates: REQ-078 — literal `[x]` in label and nested tasks stay untouched.
     @Test func taskTogglePatchesOnlyExactMarker() throws {
         let source = "- [x] keep [x] literal\n"
         let (tree, model) = try parseBuild(source)
@@ -86,7 +86,7 @@ struct EditorIntegrationTests {
 
     // MARK: - D4 structural fenced code
 
-    // Verifies: REQ-057/087 — fenced body mapping ignores repeated info/body text.
+    // Validates: REQ-057, REQ-087 — fenced body mapping ignores repeated info/body text.
     @Test func fencedCodeBodyIsStructuralWhenInfoMatchesBody() throws {
         let source = "```swift\nswift\n```\n"
         let (_, model) = try parseBuild(source)
@@ -104,7 +104,7 @@ struct EditorIntegrationTests {
 
     // MARK: - D5 table typing routes to planner
 
-    // Verifies: REQ-080 — native insertText in a table cell reaches TableCellEditPlanner.
+    // Validates: REQ-080 — native insertText in a table cell reaches TableCellEditPlanner.
     @Test func nativeTableTypingRoutesThroughTablePlanner() throws {
         let source = "| a | b |\n| - | - |\n| c | d |\n"
         let (tree, model) = try parseBuild(source)
@@ -146,7 +146,7 @@ struct EditorIntegrationTests {
 
     // MARK: - D6 WYSIWYG typing coalesces through EditorSession
 
-    // Verifies: REQ-083 — EditorSession.perform typing uses .typing grouping.
+    // Validates: REQ-083 — EditorSession.perform typing uses .typing grouping.
     @Test func wysiwygTypingCoalescesThroughSession() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
@@ -190,7 +190,7 @@ struct EditorIntegrationTests {
 
     // MARK: - D7 toolbar offset zero
 
-    // Verifies: REQ-058 — real source caret at zero is not treated as missing.
+    // Validates: REQ-058 — real source caret at zero is not treated as missing.
     @Test func toolbarUsesModeLocalOffsetZero() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hello")
@@ -221,7 +221,7 @@ struct EditorIntegrationTests {
 
     // MARK: - D8 image accessibility
 
-    // Verifies: REQ-084 — resolved images expose authored description.
+    // Validates: REQ-084 — resolved images expose authored description.
     @Test func resolvedImageExposesAuthoredAccessibilityDescription() throws {
         let source = "![alt text](assets/x.png)\n"
         let tree = try #require(MarkdownParser.parse(source, sourceVersion: 1).get())
@@ -248,7 +248,7 @@ struct EditorIntegrationTests {
 
     // MARK: - Serialized I/O
 
-    // Verifies: REQ-015 — serialized main-thread read installs canonical text without a mirror/gate.
+    // Validates: REQ-015 — serialized main-thread read installs canonical text without a mirror/gate.
     @Test func serializedReadInstallsCanonicalTextOnMain() throws {
         let doc = MarkdownDocument()
         doc.installTextForTesting("original")
@@ -258,7 +258,7 @@ struct EditorIntegrationTests {
         #expect(doc.sourceVersion == 1)
     }
 
-    // Verifies: REQ-018/091/093; ARC-003/004 — load identities are monotonic
+    // Validates: REQ-018, REQ-091, REQ-093; ARC-003/004 — load identities are monotonic
     // and synchronously make any prior presentation unavailable.
     @Test func repeatedLoadsNeverReuseRevisionOrOldPresentation() throws {
         let doc = MarkdownDocument()
@@ -298,7 +298,7 @@ struct EditorIntegrationTests {
 
     // MARK: - D10 observer teardown
 
-    // Verifies: REQ-100 — loading over a document with typing in an open undo group (a revert)
+    // Validates: REQ-100 — loading over a document with typing in an open undo group (a revert)
     // ends no undo group, as closing must not, and leaves none open behind it.
     @Test func reloadingAfterTypingEndsNoUndoGroupAndLeavesNoneOpen() throws {
         let doc = MarkdownDocument()
@@ -329,7 +329,7 @@ struct EditorIntegrationTests {
         #expect(doc.text == "from disk\n")
     }
 
-    // Verifies: REQ-005/REQ-015 — closing a document with typing in an open undo group ends no
+    // Validates: REQ-005/REQ-015 — closing a document with typing in an open undo group ends no
     // undo group. Ending it at close made NSDocument update its change count with synchronous
     // waiting inside its own close activity, and the app hung for good (probe 45972423807).
     @Test func closingADocumentAfterTypingEndsNoUndoGroup() {
@@ -359,7 +359,7 @@ struct EditorIntegrationTests {
         #expect(closed == 0, "closing ended \(closed) undo group(s)")
     }
 
-    // Verifies: REQ-015 — undo checkpoint observer is removed deterministically.
+    // Validates: REQ-015 — undo checkpoint observer is removed deterministically.
     @Test func undoCheckpointObserverRemovedOnDetach() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("x")
@@ -402,7 +402,7 @@ struct EditorIntegrationTests {
 
     // MARK: - D2 image intent resolves before placement
 
-    // Verifies: REQ-060 — projection selection maps to source before placement tracking.
+    // Validates: REQ-060 — projection selection maps to source before placement tracking.
     @Test func imageIntentResolvesProjectionBeforePlacement() throws {
         let source = "**bold** here\n"
         let (_, model) = try parseBuild(source)
@@ -426,7 +426,7 @@ struct EditorIntegrationTests {
 
     // MARK: - PR #14 review triage regressions
 
-    // Verifies: REQ-057 — normalized inline code (`` ` foo ` ``) is uneditable, not shifted.
+    // Validates: REQ-057 — normalized inline code (`` ` foo ` ``) is uneditable, not shifted.
     @Test func normalizedInlineCodeIsUneditable() throws {
         let source = "x ` foo ` y\n"
         let (_, model) = try parseBuild(source)
@@ -447,7 +447,7 @@ struct EditorIntegrationTests {
         #expect(hasUneditable)
     }
 
-    // Verifies: REQ-057 — COR-33 stage 2: CRLF fenced body that normalises is atomic with proven decoder, not uneditable.
+    // Validates: REQ-057 — COR-33 stage 2: CRLF fenced body that normalises is atomic with proven decoder, not uneditable.
     @Test func crlfFencedCodeBodyIsUneditableWhenNormalized() throws {
         let source = "```\r\nline\r\n```\n"
         let (_, model) = try parseBuild(source)
@@ -461,7 +461,7 @@ struct EditorIntegrationTests {
         #expect(!hasUneditable, "CRLF fenced code must not be uneditable after stage 2")
     }
 
-    // Verifies: REQ-080 — caret at start of column 2 owns cell 2, not cell 1's trailing tab.
+    // Validates: REQ-080 — caret at start of column 2 owns cell 2, not cell 1's trailing tab.
     @Test func tableCellHalfOpenBoundaryPrefersLaterColumn() throws {
         let source = "| a | b |\n| - | - |\n| c | d |\n"
         let (_, model) = try parseBuild(source)
@@ -487,7 +487,7 @@ struct EditorIntegrationTests {
         #expect(id == second.nodeID)
     }
 
-    // Verifies: REQ-080/087; ARC-009 — cell ownership requires complete
+    // Validates: REQ-080, REQ-087; ARC-009 — cell ownership requires complete
     // containment; a selection extending into prose is mixed and uneditable.
     @Test func tableSelectionExtendingIntoParagraphIsMixed() throws {
         let source = "| a |\n| --- |\n| b |\n\nafter\n"
@@ -513,7 +513,7 @@ struct EditorIntegrationTests {
         #expect(classification == .mixed)
     }
 
-    // Verifies: REQ-080 — typing in a cell with `\|` edits source escapes, not rendered rebuild.
+    // Validates: REQ-080 — typing in a cell with `\|` edits source escapes, not rendered rebuild.
     @Test func tableTypingPreservesEscapedPipeInSource() throws {
         let source = "| a\\|b |\n| --- |\n| c |\n"
         let (tree, model) = try parseBuild(source)
@@ -540,7 +540,7 @@ struct EditorIntegrationTests {
         #expect(mutation.replacement != "ax|b ")
     }
 
-    // Verifies: REQ-016 — WYSIWYG paste override uses discrete grouping.
+    // Validates: REQ-016 — WYSIWYG paste override uses discrete grouping.
     @Test func wysiwygPasteUsesDiscreteGroupingOverride() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
@@ -567,7 +567,7 @@ struct EditorIntegrationTests {
         #expect(discrete)
     }
 
-    // Verifies: REQ-014/017 — a File command ends the typing group before AppKit starts its
+    // Validates: REQ-014, REQ-017 — a File command ends the typing group before AppKit starts its
     // activity, so the typing is counted then, not by the checkpoint observer at whatever
     // moment the main queue next runs. Ended inside the print panel, the untitled document's
     // first-change autosave began and never finished, and every later save waited for it
@@ -594,7 +594,7 @@ struct EditorIntegrationTests {
         #expect(doc.undoManager?.canUndo == true)
     }
 
-    // Verifies: REQ-014/017 — a close ends the typing group, then starts AppKit's review a turn
+    // Validates: REQ-014, REQ-017 — a close ends the typing group, then starts AppKit's review a turn
     // later, so the change AppKit counts on the main queue is counted first. Quit's review
     // reached `canClose` with the group open and hung the app (tour 46011070302).
     @Test func aCloseCountsTheTypingBeforeAppKitReviewsIt() async {
@@ -630,7 +630,7 @@ struct EditorIntegrationTests {
         #expect(reviews == [0, 0])
     }
 
-    // Verifies: REQ-016 — closeTypingUndoGroup ends an open typing group.
+    // Validates: REQ-016 — closeTypingUndoGroup ends an open typing group.
     @Test func closeTypingUndoGroupEndsOpenTypingGroup() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
@@ -663,7 +663,7 @@ struct EditorIntegrationTests {
         #expect(doc.text.contains("!"))
     }
 
-    // Verifies: REQ-058 — heading planner preserves selectionBefore through transformLine.
+    // Validates: REQ-058 — heading planner preserves selectionBefore through transformLine.
     @Test func headingPlannerForwardsSelectionBefore() throws {
         let source = "hello\n"
         let snapshot = SourceSnapshot(text: source, sourceVersion: 1, locationGeneration: 0, fileURL: nil)
@@ -682,7 +682,7 @@ struct EditorIntegrationTests {
         #expect(mutation.selectionBefore.range.utf16 == caret.range.utf16)
     }
 
-    // Verifies: REQ-078 — task toggle history selection is the source marker, not projection.
+    // Validates: REQ-078 — task toggle history selection is the source marker, not projection.
     @Test func taskToggleSelectionBeforeIsSourceMarker() throws {
         let source = "- [ ] task\n"
         let (tree, model) = try parseBuild(source)
@@ -707,7 +707,7 @@ struct EditorIntegrationTests {
         #expect((source as NSString).substring(with: mutation.selectionBefore.range.utf16) == "[ ]")
     }
 
-    // Verifies: REQ-015 — data(ofType:) snapshots canonical main-actor text.
+    // Validates: REQ-015 — data(ofType:) snapshots canonical main-actor text.
     @Test func dataOfTypeSnapshotsCanonicalText() throws {
         let doc = MarkdownDocument()
         doc.installTextForTesting("canonical")

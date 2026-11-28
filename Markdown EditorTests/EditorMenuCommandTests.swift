@@ -10,7 +10,7 @@ import SwiftUI
 
 @MainActor
 struct EditorMenuCommandTests {
-    // Verifies: REQ-058/108; ARC-024 — menu and toolbar are two presentations of one command set.
+    // Validates: REQ-058, REQ-108; ARC-024 — menu and toolbar are two presentations of one command set.
     @Test func menuAndToolbarExposeTheSameSemanticCommandSet() {
         let toolbar = Set(EditorToolbarController.defaultCommands)
         let menu = Set(EditorMenuCommands.commandOrder)
@@ -21,7 +21,7 @@ struct EditorMenuCommandTests {
         #expect(EditorMenuCommands.commandOrder.count == EditorCommand.allCases.count)
     }
 
-    // Verifies: REQ-058 — approved shortcuts only, and no collision with standard document keys.
+    // Validates: REQ-058 — approved shortcuts only, and no collision with standard document keys.
     @Test func approvedShortcutsCoverTheClosedCommandSurface() {
         #expect(EditorMenuCommands.shortcuts[.bold]?.key == KeyEquivalent("b"))
         #expect(EditorMenuCommands.shortcuts[.italic]?.key == KeyEquivalent("i"))
@@ -32,7 +32,7 @@ struct EditorMenuCommandTests {
         #expect(EditorMenuCommands.shortcuts[.codeBlock]?.modifiers.contains(.control) == true)
     }
 
-    // Verifies: REQ-058/108; ARC-024 — the menu bar reaches the commands of the key document
+    // Validates: REQ-058, REQ-108; ARC-024 — the menu bar reaches the commands of the key document
     // window. Document windows are AppKit windows, and the `@FocusedValue` the menu read never
     // reached it from them: agent-drive run 45944610103 found "WYSIWYG Mode" disabled with the View
     // menu open, and cmd-I did nothing. The menu now reads the key window's controller through
@@ -64,7 +64,7 @@ struct EditorMenuCommandTests {
         #expect(registry.enabled.isEmpty)
     }
 
-    // Verifies: REQ-058/108 — the menu's availability follows the key window's state after the
+    // Validates: REQ-058, REQ-108 — the menu's availability follows the key window's state after the
     // menu was built. Formatting is unavailable in WYSIWYG before the first parse lands, and the
     // menu decided `.disabled` once, at the window's set-up: cmd-I was refused for good
     // (agent-drive run 45945859891). Leaving WYSIWYG for Source makes formatting available.

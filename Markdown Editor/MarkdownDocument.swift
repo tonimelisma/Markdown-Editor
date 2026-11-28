@@ -191,7 +191,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     }
 
     override func revertToSaved(_ sender: Any?) {
-        // With autosave in place this opens the Versions browser (DECISIONS, 2026-11-27).
+        // With autosave in place this opens the Versions browser (ADR 0022).
         Self.browsingVersionsOf = imageBaseURL
         AppModalSession.shared.around { super.revertToSaved(sender) }
     }
@@ -269,7 +269,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
         controller.shouldCascadeWindows = true
         if !MarkdownAppDelegate.isSmokeRun {
             let name = Self.frameAutosaveName
-            // Restore what AppKit saved, but not a size no reader chose: the owner's copy opened
+            // Restore what AppKit saved, but not a size no reader chose: an installed copy opened
             // stamp-sized, from a frame a unit test had shrunk to the minimum and AppKit saved
             // into the app's own defaults. Saving the corrected frame back means the controller,
             // which applies the saved frame again, cannot put the small one back.
@@ -312,7 +312,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
 
     /// The name AppKit saves the window frame under, in the app's defaults. Unit tests run inside
     /// the app and share those defaults, so they save under their own name: a test that shrank a
-    /// window to its minimum size left the real app opening stamp-sized (owner, 2026-11-27).
+    /// window to its minimum size left the real app opening stamp-sized.
     nonisolated static var frameAutosaveName: String {
         MarkdownAppDelegate.isRunningUnitTests ? "MarkdownDocumentWindow.tests" : "MarkdownDocumentWindow"
     }
@@ -631,7 +631,7 @@ final class MarkdownDocument: NSDocument, ObservableObject, DocumentActionInterf
     }
 
     // REQ-015/018; ARC-011: a save writes on a background thread, from bytes taken on the main
-    // actor as it began; the document's state stays the main actor's (DECISIONS, 2026-11-27).
+    // actor as it began; the document's state stays the main actor's (ADR 0023).
     nonisolated override func canAsynchronouslyWrite(
         to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType
     ) -> Bool {

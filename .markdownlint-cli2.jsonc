@@ -10,5 +10,9 @@
     "CLAUDE.md",
     "README.md",
     "docs/**/*.md"
+  ],
+  // The ADR template's <placeholders> are inline HTML to markdownlint.
+  "ignores": [
+    "docs/adr/0000-template.md"
   ]
 }

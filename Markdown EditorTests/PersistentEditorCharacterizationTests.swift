@@ -15,7 +15,7 @@ import UniformTypeIdentifiers
 @MainActor
 struct PersistentEditorCharacterizationTests {
 
-    // Verifies: REQ-052 — both TextKit views retain identity across mode toggles.
+    // Validates: REQ-052 — both TextKit views retain identity across mode toggles.
     @Test func bothEditorsRetainIdentityAcrossModeToggles() {
         let document = MarkdownDocument()
         document.installTextForTesting("# Hello\n")
@@ -52,7 +52,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(document.text == "# Hello\n")
     }
 
-    // Verifies: REQ-086 — each mode restores its own selection/scroll chrome.
+    // Validates: REQ-086 — each mode restores its own selection/scroll chrome.
     @Test func eachModeRestoresOwnSelectionAndScroll() {
         let document = MarkdownDocument()
         document.installTextForTesting("abcdefghij\n")
@@ -115,7 +115,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(host.wysiwygScroll?.contentView.bounds.origin.y == 24)
     }
 
-    // Verifies: REQ-087 — projection mapping refuses without a current presentation.
+    // Validates: REQ-087 — projection mapping refuses without a current presentation.
     @Test func projectionMappingRefusesWithoutPresentation() {
         let snapshot = SourceSnapshot(
             text: "hello",
@@ -148,7 +148,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(textView.isEditable == false)
     }
 
-    // Verifies: REQ-084 — composition completes once; stale refuses.
+    // Validates: REQ-084 — composition completes once; stale refuses.
     @Test func compositionCommitsOnceAndStaleRefuses() {
         var state = CompositionState()
         state.begin(sourceVersion: 3, sourceRange: NSRange(location: 1, length: 0), marked: NSRange(location: 1, length: 2))
@@ -169,7 +169,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(!input.composition.isComposing)
     }
 
-    // Verifies: REQ-084 — marked-text path allows transient updates without second commit.
+    // Validates: REQ-084 — marked-text path allows transient updates without second commit.
     @Test func markedTextPathAllowsTransientWithoutSourceMutation() {
         let document = MarkdownDocument()
         document.installTextForTesting("abc")
@@ -207,7 +207,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(document.text == before)
     }
 
-    // Verifies: REQ-084 — a native marked-text callback remains transient and is not routed
+    // Validates: REQ-084 — a native marked-text callback remains transient and is not routed
     // through the ordinary source/presentation transaction while composition is active.
     @Test func nativeMarkedTextCallbackStaysTransient() {
         let document = MarkdownDocument()
@@ -236,7 +236,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(document.text == before)
     }
 
-    // Verifies: REQ-084 — composition success applies final text synchronously without a second source commit.
+    // Validates: REQ-084 — composition success applies final text synchronously without a second source commit.
     @Test func compositionInsertAppliesFinalTextSynchronously() {
         let document = MarkdownDocument()
         document.installTextForTesting("ab")
@@ -289,7 +289,7 @@ struct PersistentEditorCharacterizationTests {
         #expect((textView.string as NSString).contains("日"))
     }
 
-    // Verifies: REQ-084/091; ARC-004/005 — an IME range captured from one
+    // Validates: REQ-084, REQ-091; ARC-004/005 — an IME range captured from one
     // presentation is never relabeled with a different snapshot identity.
     @Test func compositionRefusesWhenCapturedSnapshotWasReplaced() {
         let document = MarkdownDocument()
@@ -355,7 +355,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(trace.events.contains(.compositionRefusedStale))
     }
 
-    // Verifies: COR-70/REQ-084 — a real native marked-text commit that becomes stale cancels
+    // Validates: COR-70/REQ-084 — a real native marked-text commit that becomes stale cancels
     // atomically, leaves no native marked range, and never publishes a composition commit.
     @Test func nativeMarkedTextStaleCommitCancelsNativeStateAndUndoGroup() throws {
         let document = MarkdownDocument()
@@ -431,7 +431,7 @@ struct PersistentEditorCharacterizationTests {
         session.detach()
     }
 
-    // Verifies: REQ-086 — a one-shot session restoration is applied by the persistent host.
+    // Validates: REQ-086 — a one-shot session restoration is applied by the persistent host.
     @Test func sessionSelectionRestorationAppliedByPersistentHost() {
         let document = MarkdownDocument()
         document.installTextForTesting("abcdefghij\n")
@@ -457,7 +457,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(session.pendingSelectionRestoration == nil)
     }
 
-    // Verifies: REQ-084/086
+    // Validates: REQ-084, REQ-086
     @Test func pendingSelectionWaitsForMatchingProjection() {
         let document = MarkdownDocument()
         document.installTextForTesting("abcdefghij\n")
@@ -495,7 +495,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(session.pendingSelectionRestoration == nil)
     }
 
-    // Verifies: REQ-086/091/093; ARC-004/005 — native coordinates are
+    // Validates: REQ-086, REQ-091, REQ-093; ARC-004/005 — native coordinates are
     // published only under the snapshot actually installed in TextKit storage.
     @Test func hostDoesNotRelabelOldNativeSelectionWithNewSnapshot() throws {
         let document = MarkdownDocument()
@@ -556,7 +556,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(session.wysiwygModeState.selection == remapped)
     }
 
-    // Verifies: REQ-060/082 — captured WYSIWYG intent is source-domain and immutable.
+    // Validates: REQ-060, REQ-082 — captured WYSIWYG intent is source-domain and immutable.
     @Test func addImageResolvesCapturedIntentToSourceRange() {
         let document = MarkdownDocument()
         document.installTextForTesting("**Hi**\n")
@@ -602,7 +602,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(router.pendingImageTarget == nil)
     }
 
-    // Verifies: REQ-101 — Codex PR #24 finding: claims returned by Add Image after the captured
+    // Validates: REQ-101 — Codex PR #24 finding: claims returned by Add Image after the captured
     // source-domain intent goes stale must be recorded as a typed rejection, not silently
     // dropped before ImagePlacementController sees them.
     @Test func staleAddImageClaimsAreRecordedWithoutStartingPlacement() {
@@ -642,7 +642,7 @@ struct PersistentEditorCharacterizationTests {
         } == [.imagePlacementFailed(reason: .parentChanged, phase: .idle)])
     }
 
-    // Verifies: REQ-082 — Add Image is window-scoped via router, not a global notification.
+    // Validates: REQ-082 — Add Image is window-scoped via router, not a global notification.
     @Test func addImageUsesWindowScopedRouterNotGlobalNotification() async {
         let document = MarkdownDocument()
         document.installTextForTesting("")
@@ -663,7 +663,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(router.pendingImageTarget == nil)
     }
 
-    // Verifies: REQ-082 — one window's router cannot serve another document.
+    // Validates: REQ-082 — one window's router cannot serve another document.
     @Test func addImageDoesNotCrossDocumentWindows() async {
         let docA = MarkdownDocument()
         docA.installTextForTesting("")
@@ -690,7 +690,7 @@ struct PersistentEditorCharacterizationTests {
         #expect(routerB.pendingImageTarget == nil)
     }
 
-    // Verifies: REQ-078/032 — task toggle helper is shared for mouse/keyboard/a11y paths.
+    // Validates: REQ-078, REQ-032 — task toggle helper is shared for mouse/keyboard/a11y paths.
     @Test func taskToggleSharedAcrossInteractionPaths() async throws {
         let document = MarkdownDocument()
         document.installTextForTesting("- [ ] Task\n")
@@ -749,7 +749,7 @@ struct PersistentEditorCharacterizationTests {
         }
     }
 
-    // Verifies: REQ-081 — HEIC and HEIF decode; originals unchanged; hashes match manifest.
+    // Validates: REQ-081 — HEIC and HEIF decode; originals unchanged; hashes match manifest.
     @Test func heicAndHeifDecodeWithoutTouchingOriginals() async throws {
         let fixtures = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -799,7 +799,7 @@ struct PersistentEditorCharacterizationTests {
         }
     }
 
-    /// Verifies: REQ-090 — p95 of the *complete* native input callback < 8 ms (Release only).
+    /// Validates: REQ-090 — p95 of the *complete* native input callback < 8 ms (Release only).
     ///
     /// The measured span is the delegate callback itself, so it contains semantic planning,
     /// source commit, the attributed patch, the attachment update, and selection restoration.
@@ -861,7 +861,7 @@ struct PersistentEditorCharacterizationTests {
             if let p95 = evidence.p95 {
                 // REQ-090's 8 ms interactive budget binds on shapes that represent documents
                 // people write. The two stress shapes carry recorded bounds instead, the same
-                // scoping REQ-143 uses and for the same reason — see `docs/DECISIONS.md`.
+                // scoping REQ-143 uses and for the same reason — see ADR 0006.
                 // Their cost is TextKit layout over 18,520 and 24,400 `NSTextBlock`s, which no
                 // change short of the approved block strategy can bring under 8 ms.
                 #if DEBUG
@@ -886,7 +886,7 @@ struct PersistentEditorCharacterizationTests {
     /// (`EditorSession.perform`, which derives a complete next presentation snapshot) and the
     /// TextKit application that follows it. Reported so a budget miss names its own cause
     /// instead of inviting a guess. No threshold is asserted here.
-    // Verifies: REQ-090 — Release characterization of where the native-input-callback budget goes.
+    // Validates: REQ-090 — Release characterization of where the native-input-callback budget goes.
     @Test func nativeInputCallbackCostSplitCharacterization() throws {
 #if !DEBUG
         let planningHarness = try PerformanceBoundaryTests.EditorHarness(
@@ -927,7 +927,7 @@ struct PersistentEditorCharacterizationTests {
 
     /// Non-gating 1M UTF-16 characterization required by COR-20. Reported, never asserted: no
     /// threshold has been approved at this size.
-    // Verifies: REQ-090 — native-input-callback behaviour beyond the approved corpus size.
+    // Validates: REQ-090 — native-input-callback behaviour beyond the approved corpus size.
     @Test func nativeInputCallbackOneMillionCharacterization() throws {
 #if !DEBUG
         let harness = try PerformanceBoundaryTests.EditorHarness(
@@ -949,7 +949,7 @@ struct PersistentEditorCharacterizationTests {
 #endif
     }
 
-    // Verifies: REQ-090 — mode toggle p95 < 16 ms (Release only).
+    // Validates: REQ-090 — mode toggle p95 < 16 ms (Release only).
     @Test func modeToggleP95Under16ms() {
         let document = MarkdownDocument()
         document.installTextForTesting("# Title\n\nHello world\n")

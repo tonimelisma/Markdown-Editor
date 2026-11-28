@@ -9,7 +9,7 @@ import Testing
 
 @MainActor
 struct LatestParseSchedulerTests {
-    // Verifies: REQ-111 — a cancelled waiter stops before source-copy or cmark work.
+    // Validates: REQ-111 — a cancelled waiter stops before source-copy or cmark work.
     @Test func cancelledParserWaiterStopsBeforeSourceCopy() {
         let result = MarkdownParser.parse(
             String(repeating: "x", count: 100_000),
@@ -40,7 +40,7 @@ struct LatestParseSchedulerTests {
         #expect(!scheduler.finish(source(1)))
     }
 
-    // Verifies: REQ-111 — only the running and newest pending revision are retained.
+    // Validates: REQ-111 — only the running and newest pending revision are retained.
     @Test func oneHundredRevisionsDiscardEveryOlderPendingRequest() {
         let scheduler = LatestParseScheduler()
         for version in 1...100 {
@@ -69,7 +69,7 @@ struct LatestParseSchedulerTests {
         #expect(!scheduler.finish(request))
     }
 
-    // Verifies: REQ-111; ARC-Q18 — a cancelled prior lifetime cannot clear an attached
+    // Validates: REQ-111; ARC-Q18 — a cancelled prior lifetime cannot clear an attached
     // lifetime's active parse bookkeeping when its completion arrives late.
     @Test func staleCompletionCannotFinishReplacementRequest() {
         let scheduler = LatestParseScheduler()

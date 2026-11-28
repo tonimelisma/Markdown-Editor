@@ -8,8 +8,15 @@ name: CI
 
 on:
   pull_request:
+    # `edited`: a description fixed after the push re-runs the checks that read it. Every job runs
+    # on it, so the newest `CI gate` on a commit always reflects all the checks.
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
+  schedule:
+    # Weekly full run on main, off the hour, so rot from a new runner image or Xcode shows up.
+    # Release ignores it: it publishes only after a push.
+    - cron: "23 6 * * 2"
   workflow_dispatch:
 
 permissions:
@@ -27,7 +34,7 @@ jobs:
     outputs:
       mac: ${{ steps.classify.outputs.mac }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -40,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           mac() { echo "mac=$1" >> "$GITHUB_OUTPUT"; echo "$2"; exit 0; }
-          if [[ "$EVENT" == workflow_dispatch || -z "$BASE" || "$BASE" =~ ^0+$ ]] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+          if [[ "$EVENT" == workflow_dispatch || "$EVENT" == schedule || -z "$BASE" || "$BASE" =~ ^0+$ ]] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             mac true "full run ($EVENT)"
           fi
           # Everything outside this documentation set can change what builds, tests or ships.
@@ -69,7 +76,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Exit 3 is check.sh's INCOMPLETE: every portable step passed and the build is the macOS job's.
@@ -78,6 +85,21 @@ jobs:
           Scripts/check.sh || status=$?
           [[ "$status" == 3 ]]
 
+  process:
+    name: Process
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # pr-check diffs the pull request's base and head
+          persist-credentials: false
+      - name: process-check
+        run: script/process-check
+      - name: pr-check
+        if: github.event_name == 'pull_request'
+        run: script/pr-check
+
   macos:
     name: Build, test and smoke (Xcode 27)
     needs: changes
@@ -85,7 +107,7 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Select the newest Xcode 27
@@ -101,7 +123,7 @@ jobs:
       # copy and no branch's entries reach another. The key names the Xcode build: another
       # Xcode's entries could never be hits.
       - name: Restore the build caches
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData/CompilationCache.noindex
@@ -112,7 +134,7 @@ jobs:
         run: Scripts/check.sh
       - name: Save the build caches
         if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData/CompilationCache.noindex
@@ -131,7 +153,7 @@ jobs:
         run: |
           mkdir -p "$(dirname "$SMOKE_SCREENSHOT_OUT")"
           Scripts/smoke-screenshot.sh
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success()
         continue-on-error: true
         with:
@@ -139,7 +161,7 @@ jobs:
           path: ${{ runner.temp }}/screenshot/
           if-no-files-found: ignore
           retention-days: 14
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: check-logs-${{ github.run_id }}-${{ github.run_attempt }}
@@ -152,7 +174,7 @@ jobs:
 
   gate:
     name: CI gate
-    needs: [changes, portable, macos]
+    needs: [changes, portable, process, macos]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -160,10 +182,11 @@ jobs:
       - env:
           CHANGES: ${{ needs.changes.result }}
           PORTABLE: ${{ needs.portable.result }}
+          PROCESS: ${{ needs.process.result }}
           MACOS: ${{ needs.macos.result }}
           NEEDS_MAC: ${{ needs.changes.outputs.mac }}
         run: |
           set -euo pipefail
-          echo "changes=$CHANGES portable=$PORTABLE macos=$MACOS needsMac=$NEEDS_MAC"
-          [[ "$CHANGES" == success && "$PORTABLE" == success ]]
+          echo "changes=$CHANGES portable=$PORTABLE process=$PROCESS macos=$MACOS needsMac=$NEEDS_MAC"
+          [[ "$CHANGES" == success && "$PORTABLE" == success && "$PROCESS" == success ]]
           if [[ "$NEEDS_MAC" == true ]]; then [[ "$MACOS" == success ]]; else [[ "$MACOS" == skipped ]]; fi

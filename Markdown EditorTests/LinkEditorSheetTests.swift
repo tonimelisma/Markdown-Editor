@@ -12,7 +12,7 @@ import Testing
 struct LinkEditorSheetTests {
     /// The sheet is a pure presentation of controller state: it owns no destination of its own,
     /// so a dismissal can never leave a half-applied edit behind.
-    // Verifies: REQ-108
+    // Validates: REQ-108
     @Test func sheetEditsControllerStateAndCommitsThroughTheCommandRoute() {
         let fixture = SheetFixture()
         #expect(fixture.controller.perform(.editLink) == .started)
@@ -43,7 +43,7 @@ struct LinkEditorSheetTests {
         fixture.session.detach()
     }
 
-    // Verifies: REQ-108 — cancel is inert; it must not reach the document at all.
+    // Validates: REQ-108 — cancel is inert; it must not reach the document at all.
     @Test func cancelLeavesSourceAndRevisionUnchanged() {
         let fixture = SheetFixture()
         #expect(fixture.controller.perform(.editLink) == .started)

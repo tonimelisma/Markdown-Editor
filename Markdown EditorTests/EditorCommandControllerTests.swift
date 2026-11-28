@@ -10,7 +10,7 @@ import Testing
 
 @MainActor
 struct EditorCommandControllerTests {
-    // Verifies: REQ-108; ARC-024 — one closed identifier per semantic command.
+    // Validates: REQ-108; ARC-024 — one closed identifier per semantic command.
     @Test func everySemanticCommandHasOneClosedIdentifier() {
         #expect(Set(EditorCommand.allCases).count == EditorCommand.allCases.count)
         #expect(EditorCommand.allCases.contains(.addImage))
@@ -23,7 +23,7 @@ struct EditorCommandControllerTests {
         #expect(controller.perform(.bold) == .disabled(.noDocument))
     }
 
-    // Verifies: REQ-058/108 — a formatting command routes through the bound window's own
+    // Validates: REQ-058, REQ-108 — a formatting command routes through the bound window's own
     // document and session, and never reaches another window's document.
     @Test func controllerRoutesFormattingThroughBoundWindowSession() {
         let first = Fixture(text: "hello\n")
@@ -43,7 +43,7 @@ struct EditorCommandControllerTests {
         second.tearDown()
     }
 
-    // Verifies: REQ-058 — WYSIWYG without a current presentation refuses rather than guessing.
+    // Validates: REQ-058 — WYSIWYG without a current presentation refuses rather than guessing.
     @Test func formattingIsDisabledWhileWYSIWYGHasNoCurrentPresentation() {
         let fixture = Fixture(text: "hello\n")
         fixture.session.setMode(.wysiwyg)
@@ -56,7 +56,7 @@ struct EditorCommandControllerTests {
         fixture.tearDown()
     }
 
-    // Verifies: REQ-082/108 — Add Image is not advertised while WYSIWYG lacks the exact
+    // Validates: REQ-082, REQ-108 — Add Image is not advertised while WYSIWYG lacks the exact
     // source-domain insertion target that `EditorSession.addImages()` requires.
     @Test func addImageIsDisabledWhileWYSIWYGHasNoCurrentPresentation() {
         let fixture = Fixture(text: "hello\n")
@@ -68,7 +68,7 @@ struct EditorCommandControllerTests {
         fixture.tearDown()
     }
 
-    // Verifies: REQ-058 — link editing needs a real selection to describe.
+    // Validates: REQ-058 — link editing needs a real selection to describe.
     @Test func linkEditingIsDisabledWithoutASelection() {
         let fixture = Fixture(text: "hello\n")
         fixture.selectSource(NSRange(location: 0, length: 0))
@@ -77,7 +77,7 @@ struct EditorCommandControllerTests {
         fixture.tearDown()
     }
 
-    // Verifies: REQ-108 — sheet commit, removal, and cancel are exact and window-scoped.
+    // Validates: REQ-108 — sheet commit, removal, and cancel are exact and window-scoped.
     @Test func linkSheetCommitRemoveAndCancelAreWindowScoped() {
         let fixture = Fixture(text: "hello\n")
         fixture.selectSource(NSRange(location: 0, length: 5))
@@ -111,7 +111,7 @@ struct EditorCommandControllerTests {
         other.tearDown()
     }
 
-    // Verifies: REQ-108 — a detached session disables every command and dismisses its sheet.
+    // Validates: REQ-108 — a detached session disables every command and dismisses its sheet.
     @Test func detachDisablesEveryCommandAndClosesTheSheet() {
         let fixture = Fixture(text: "hello\n")
         fixture.selectSource(NSRange(location: 0, length: 5))
@@ -154,7 +154,7 @@ struct EditorCommandControllerTests {
 
 @MainActor
 struct WYSIWYGListCommandRegressionTests {
-    // Verifies: REQ-058/057/087/113; ARC-005/007/009 — a current WYSIWYG paragraph selection
+    // Validates: REQ-058, REQ-057, REQ-087, REQ-113; ARC-005/007/009 — a current WYSIWYG paragraph selection
     // reaches the list planner through the same window command controller without a guessed map.
     //
     // COR-30: converted from XCTest to Swift Testing. It was the only XCTest class inside a file

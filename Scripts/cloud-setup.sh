@@ -22,7 +22,7 @@ Environment: Claude Code cloud session (Linux, no Xcode). Scripts/check.sh runs 
 NOTE
 elif [[ "$(uname -s)" == Darwin ]]; then
     cat <<'NOTE'
-Environment: the owner's Mac. Scripts/check.sh runs the full gate locally (build, tests, smoke); CI repeats it on push. Work in a branch, never in the main checkout's working tree. CLAUDE.md "Environments".
+Environment: a local Mac. Scripts/check.sh runs the full gate locally (build, tests, smoke); CI repeats it on push. Work in a branch, never in the main checkout's working tree. CLAUDE.md "Environments".
 NOTE
 fi
 exit 0

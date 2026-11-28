@@ -14,7 +14,7 @@ import Combine
 @MainActor
 struct SourceIntegrityCharacterizationTests {
 
-    // Verifies: REQ-011 / REQ-016 — three independent edits, three undos, three redos.
+    // Validates: REQ-011 / REQ-016 — three independent edits, three undos, three redos.
     @Test func threeEditsThreeUndosThreeRedosRestoreEveryIntermediateSource() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("_____") // 5 underscores
@@ -76,7 +76,7 @@ struct SourceIntegrityCharacterizationTests {
         #expect(doc.text == after3)
     }
 
-    // Verifies: REQ-016 — revision increments once per successful history operation.
+    // Validates: REQ-016 — revision increments once per successful history operation.
     @Test func undoRedoIncrementsSourceRevisionOncePerSuccessfulHistoryOperation() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("xy")
@@ -101,7 +101,7 @@ struct SourceIntegrityCharacterizationTests {
         #expect(doc.sourceVersion == 3)
     }
 
-    // Verifies: REQ-016 — content-validated history refuses divergent patch without mutation.
+    // Validates: REQ-016 — content-validated history refuses divergent patch without mutation.
     @Test func undoValidatesExpectedContentAndRefusesDivergentPatchWithoutMutation() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("abcdef")
@@ -121,7 +121,7 @@ struct SourceIntegrityCharacterizationTests {
         #expect(doc.sourceVersion == beforeVersion)
     }
 
-    // Verifies: REQ-016 — typing coalesces; discrete actions stay separate.
+    // Validates: REQ-016 — typing coalesces; discrete actions stay separate.
     @Test func typingGroupsCoalesceWhileDiscreteActionsRemainSeparate() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("")
@@ -191,7 +191,7 @@ struct SourceIntegrityCharacterizationTests {
         #expect(doc.text == "")
     }
 
-    // Verifies: REQ-083 — undo/redo restores source selections across mode changes.
+    // Validates: REQ-083 — undo/redo restores source selections across mode changes.
     @Test func undoRedoRestoresSourceSelectionsAcrossModeChanges() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hello")
@@ -223,7 +223,7 @@ struct SourceIntegrityCharacterizationTests {
         #expect(restorations.last?.range.utf16 == after.range.utf16)
     }
 
-    // Verifies: REQ-011 — dirty clears at saved history point; dirty again on redo.
+    // Validates: REQ-011 — dirty clears at saved history point; dirty again on redo.
     @Test func dirtyStateTracksSavedHistoryPoint() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("base")
@@ -250,7 +250,7 @@ struct SourceIntegrityCharacterizationTests {
         #expect(doc.isDocumentEdited == true)
     }
 
-    // Verifies: REQ-018 — serialized data(ofType:) reads the current canonical text.
+    // Validates: REQ-018 — serialized data(ofType:) reads the current canonical text.
     @Test func serializedDataReadsCanonicalText() throws {
         let doc = MarkdownDocument()
         let payload = String(repeating: "snapshot-", count: 200)
@@ -262,7 +262,7 @@ struct SourceIntegrityCharacterizationTests {
         #expect(again == expected)
     }
 
-    // Verifies: REQ-089 — traces never carry document content or paths.
+    // Validates: REQ-089 — traces never carry document content or paths.
     @Test func editorTraceOmitsSourceSelectionAndPathStrings() {
         let trace = InMemoryEditorTrace()
         let doc = MarkdownDocument()

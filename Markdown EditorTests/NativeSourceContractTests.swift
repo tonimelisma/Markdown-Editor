@@ -10,7 +10,7 @@ import Testing
 
 @MainActor
 struct NativeSourceContractTests {
-    // Verifies: REQ-010/011 — native NSTextView replacement uses the production coordinator,
+    // Validates: REQ-010, REQ-011 — native NSTextView replacement uses the production coordinator,
     // advances the document once, preserves Unicode UTF-16 ranges, and registers document-owned
     // undo/redo for source and selection.
     @Test func nativeReplacementPreservesUnicodeAndDocumentUndoRoute() throws {
@@ -44,7 +44,7 @@ struct NativeSourceContractTests {
         #expect(fixture.session.sourceModeState.selection.range.utf16 == afterRange)
     }
 
-    // Verifies: REQ-010 — native paste chooses plain text and routes the discrete edit through the
+    // Validates: REQ-010 — native paste chooses plain text and routes the discrete edit through the
     // same coordinator/document owner as typing.
     @Test func nativePasteUsesPlainTextAndDiscreteUndo() throws {
         let fixture = try makeFixture(source: "prefix")
@@ -72,7 +72,7 @@ struct NativeSourceContractTests {
         #expect(fixture.document.text == "prefix")
     }
 
-    // Verifies: REQ-012/046 — production source configuration opts into AppKit spell checking
+    // Validates: REQ-012, REQ-046 — production source configuration opts into AppKit spell checking
     // and standard find-bar/incremental-search routing without an app-owned substitute.
     @Test func productionSourceEditorUsesNativeSpellAndFindServices() throws {
         let document = MarkdownDocument()
@@ -146,7 +146,7 @@ struct NativeSourceContractTests {
         #expect(source.string == "found needle")
     }
 
-    // Verifies: REQ-022 — semantic typography resolves under both system appearances and never
+    // Validates: REQ-022 — semantic typography resolves under both system appearances and never
     // enters canonical source or document undo state.
     @Test func semanticAppearanceDoesNotMutateSource() throws {
         let document = MarkdownDocument()
@@ -172,7 +172,7 @@ struct NativeSourceContractTests {
         #expect(document.undoManager?.canUndo == beforeUndo)
     }
 
-    // Verifies: REQ-044 — the production count owner computes Unicode word/character results off
+    // Validates: REQ-044 — the production count owner computes Unicode word/character results off
     // the main actor and ContentView applies only the current source revision's result.
     @Test func liveCountOwnerEnumeratesUnicodeAndRevisionRoute() async throws {
         let computer = TextStatsComputer()
@@ -195,7 +195,7 @@ struct NativeSourceContractTests {
         #expect(delayedOwner.displayLabel == "1 words · 3 characters")
     }
 
-    // Verifies: REQ-010/011/022 — programmatic display styling is attribute-only and creates no
+    // Validates: REQ-010, REQ-011, REQ-022 — programmatic display styling is attribute-only and creates no
     // source edit, revision, or document undo item.
     @Test func programmaticSourceStylingCannotCreateAnEdit() async throws {
         let fixture = try makeFixture(source: "# Heading\nplain\n")
@@ -212,7 +212,7 @@ struct NativeSourceContractTests {
         #expect(fixture.storage.attributes(at: 0, effectiveRange: nil)[.font] as? NSFont != nil)
     }
 
-    // Verifies: REQ-044/045 — cancelled derived count work produces no result.
+    // Validates: REQ-044, REQ-045 — cancelled derived count work produces no result.
     @Test func staleCountWorkReturnsNothing() async {
         let cancelled = TextStats.counts(String(repeating: "word ", count: 10_000)) { true }
         #expect(cancelled == nil)
@@ -240,7 +240,7 @@ struct NativeSourceContractTests {
         func scrollRangeToVisible(_ range: NSRange) {}
     }
 
-    // Verifies: REQ-093 — while no valid WYSIWYG presentation exists, Source stays *available*.
+    // Validates: REQ-093 — while no valid WYSIWYG presentation exists, Source stays *available*.
     //
     // REQ-093 promises three things: WYSIWYG becomes unavailable, no stale rich content is exposed,
     // and Source keeps working. The first two were proved

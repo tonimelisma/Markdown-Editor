@@ -10,7 +10,7 @@ import Testing
 /// The application's launch surface is declared, complete, and cannot mutate a document by
 /// accident.
 ///
-/// // Verifies: REQ-144.
+/// // Validates: REQ-144.
 ///
 /// The shipping binary honours `--benchmark-manifest`, `--diagnostic-smoke-exit` and seven
 /// `MARKDOWN_EDITOR_*` variables, one of which makes the app type into the open document. That is

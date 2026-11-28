@@ -25,7 +25,7 @@ nonisolated protocol FrameClock: AnyObject, Sendable {
 /// // "the callback is never required to run on the main actor."
 /// //
 /// // Revisit if AppKit provides an off-main display-cadence source. Until then the deprecation
-/// // warnings this type emits are expected; see `ENGINEERING.md` §16.
+/// // warnings this type emits are expected; see `architecture.md` §16.
 nonisolated final class DisplayLinkFrameClock: FrameClock, @unchecked Sendable {
     private final class CallbackBox: @unchecked Sendable {
         let callback: @Sendable (FrameClockTick) -> Void

@@ -1090,7 +1090,7 @@ struct EditorTransactionKernelTests {
         session.detach()
     }
 
-    // Verifies: REQ-060 — an image reference lands at its insertion point wherever the caret has
+    // Validates: REQ-060 — an image reference lands at its insertion point wherever the caret has
     // gone since. The owner boundary bound it to the Source editor's selection, which WYSIWYG
     // caret movement does not change, and Add Image after moving the caret was refused.
     @Test func anImageReferenceIsNotBoundToTheCurrentSelection() {

@@ -5,7 +5,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 derived="${BENCHMARK_DERIVED_DATA:-$repo_root/.benchmark-build}"
-output="${BENCHMARK_OUTPUT:-$repo_root/docs/research/performance-baseline.md}"
+output="${BENCHMARK_OUTPUT:-$repo_root/docs/research/2026-08-21-performance-baseline.md}"
 duration="${BENCHMARK_DURATION_SECONDS:-2}"
 interval_ms="${BENCHMARK_INTERVAL_MS:-120}"
 sizes="${BENCHMARK_SIZES:-10000 100000}"
@@ -167,7 +167,7 @@ implementation_digest = hashlib.sha256(implementation_input).hexdigest()
 now = dt.date.today().isoformat()
 text = ["# Performance baseline\n\n", "- **Authority:** Evidence only\n", f"- **First researched:** {now}\n",
         f"- **Last verified:** {now}\n", "- **Refresh when:** app, OS, architecture, corpus, scenario, or benchmark-driver changes.\n",
-        f"Host: {platform.node()}\n", f"OS: macOS {command('sw_vers', '-productVersion')}\n",
+        f"Machine: {command('sysctl', '-n', 'hw.model')}\n", f"OS: macOS {command('sw_vers', '-productVersion')}\n",
         f"OS build: {command('sw_vers', '-buildVersion')}\n", f"Architecture: {platform.machine()}\n",
         "Configuration: Release\n", f"Xcode: {command('xcodebuild', '-version').replace(chr(10), '; ')}\n",
         f"Corpus digest: {digest}\n", "Corpus/action authority: PerformanceCorpus.swift and BenchmarkDriver.swift\n",

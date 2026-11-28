@@ -1,6 +1,5 @@
 #!/bin/bash
-# Builds, signs and publishes the checked-out main commit as an update (docs/DECISIONS.md,
-# "Cloud-first development"). `.github/workflows/release.yml` runs it on GitHub's macOS runner
+# Builds, signs and publishes the checked-out main commit as an update (ADR 0010). `.github/workflows/release.yml` runs it on GitHub's macOS runner
 # once that commit's CI passed; it publishes to GitHub, so it is not run by hand.
 #
 # A release is made only when the published app changed since the newest release (anything under
@@ -13,7 +12,7 @@
 # marked latest, so releases/latest/download/appcast.xml always names the newest build. Only the
 # newest three releases are kept.
 #
-# Nothing here needs the owner's Mac (docs/DECISIONS.md, 2026-11-26, "No Mac, not even once").
+# Nothing here needs a Mac of anyone's (ADR 0011).
 #
 # The environment the workflow gives it:
 #   SPARKLE_SEED         the secret the update key is derived from (Scripts/sparkle-key.sh); its
@@ -21,8 +20,8 @@
 #   OPENSSL              an OpenSSL 3 binary for Scripts/sparkle-key.sh
 #   GH_TOKEN, GITHUB_REPOSITORY
 #
-# The app is signed ad hoc and is not notarized: the owner has no Apple Developer account and will
-# not get one (docs/DECISIONS.md, 2026-11-27). Sparkle checks the update's EdDSA signature, not its
+# The app is signed ad hoc and is not notarized: there is no Apple Developer account and there will
+# not be one (ADR 0015). Sparkle checks the update's EdDSA signature, not its
 # signing identity, so updates do not need one.
 set -euo pipefail
 
@@ -133,7 +132,7 @@ expected_feed="https://github.com/$publish_repo/releases/latest/download/appcast
 # window, 1.9 s of it asleep in the kernel's throttle_lowpri_io, and that launch's mainActorStall
 # is a measurement of the runner. Every check but that one still holds on the first launch — it
 # must start, open the fixture, take both edits, and exit cleanly with no other fault — and the
-# second launch is held to all of them (docs/DECISIONS.md, 2026-11-27).
+# second launch is held to all of them (ADR 0014).
 say "launching the signed app, first launch on this runner (Scripts/smoke-test.sh)"
 SMOKE_APP="$app" SMOKE_VERIFIER_EXTRA_ARGS="--allow-fault mainActorStall" ./Scripts/smoke-test.sh \
     || refuse "the signed app failed its first launch; nothing was published"

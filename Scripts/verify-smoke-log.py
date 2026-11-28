@@ -13,9 +13,9 @@ from pathlib import Path
 #
 # Deliberately a hand-maintained second statement of a closed set, and deliberately kept: it is an
 # *independent* oracle that fails loudly the moment production drifts from it, which is what
-# separates it from the falsification manifests that rotted silently (see docs/DECISIONS.md).
+# separates it from the falsification manifests that rotted silently (see ADR 0001).
 # Adding a metric in Swift without adding it here fails the smoke run, by design. The Swift side's
-# own agreement with REQUIREMENTS is asserted by PerformanceBudgetTests.
+# own agreement with requirements.md is asserted by PerformanceBudgetTests.
 #
 # One table, not two: KNOWN_METRICS and BUDGET_NANOS used to be separate structures that could
 # disagree with each other, and a metric present in the first but missing from the second was

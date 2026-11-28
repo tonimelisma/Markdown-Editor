@@ -267,7 +267,7 @@ nonisolated struct ProjectionCoordinateMap: Sendable, Equatable {
         }
     }
 
-    /// // REQ-087; ARC-007; COR-30: affinity is honoured here, as ENGINEERING §4 states for
+    /// // REQ-087; ARC-007; COR-30: affinity is honoured here, as architecture.md §4 states for
     /// // conversion in both directions. This previously ended in `_ = affinity` and returned the
     /// // first segment that happened to match in array order, so a caret sitting exactly between
     /// // two segments was resolved by iteration order rather than by the user's affinity.

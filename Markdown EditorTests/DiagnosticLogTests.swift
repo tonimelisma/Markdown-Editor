@@ -20,7 +20,7 @@ struct DiagnosticLogTests {
         #expect(sampler.drainSummaries() == [.init(metric: .nativeInputCallback, count: 100, p50: 50, p95: 95, max: 100)])
     }
 
-    // Verifies: REQ-103 — a summary describes every sample of its window. The latency probe takes
+    // Validates: REQ-103 — a summary describes every sample of its window. The latency probe takes
     // 600 a minute; a ring of the newest 512 lost the first nine seconds of each minute, and a
     // print panel's first load there was absent from the count, the max and the p95.
     @Test func aSummaryCountsEverySampleOfItsWindowAndKeepsTheLargest() {
@@ -33,7 +33,7 @@ struct DiagnosticLogTests {
         #expect(summary?.max == 1_500_000_000)
     }
 
-    // Verifies: REQ-103 — the percentiles weigh the whole window, not its newest part: a slow
+    // Validates: REQ-103 — the percentiles weigh the whole window, not its newest part: a slow
     // first sixth of the minute still sets the p95.
     @Test func thePercentilesWeighTheWholeWindow() {
         let sampler = PerformanceSampler(trace: nil, coordinator: DiagnosticRunCoordinator())
@@ -46,7 +46,7 @@ struct DiagnosticLogTests {
         #expect(summary?.p50 == 1_000_000, "summary: \(String(describing: summary))")
     }
 
-    // Verifies: REQ-090 — the evidence type refuses a run with no executed samples, so a
+    // Validates: REQ-090 — the evidence type refuses a run with no executed samples, so a
     // latency gate cannot be reported as satisfied by having measured nothing.
     @Test func performanceEvidenceRejectsZeroSamples() {
         let evidence = PerformanceEvidence(warmups: 5, samples: [])
@@ -56,7 +56,7 @@ struct DiagnosticLogTests {
         #expect(evidence.failures == ["no performance samples"])
     }
 
-    // Verifies: REQ-103 — the bounded periodic summary records a budget breach.
+    // Validates: REQ-103 — the bounded periodic summary records a budget breach.
     @Test func budgetExceededIsRecordedWhenP95OverBudget() {
         let trace = InMemoryEditorTrace()
         let sampler = PerformanceSampler(trace: trace)
@@ -65,7 +65,7 @@ struct DiagnosticLogTests {
         #expect(trace.events.contains(.budgetExceeded(metric: .modeTransition, p95Nanos: 20_000_000, budgetNanos: 16_000_000)))
     }
 
-    // Verifies: REQ-103 — a p95 is judged only from enough samples to be one. With fewer, the
+    // Validates: REQ-103 — a p95 is judged only from enough samples to be one. With fewer, the
     // nearest-rank p95 is the largest sample: five edits of a just-opened document were judged
     // by its first layout (tours 46012382716, 46013947916). They carry into the next window.
     @Test func aFewSamplesCarryIntoTheNextWindowBeforeTheirP95IsJudged() {
@@ -91,7 +91,7 @@ struct DiagnosticLogTests {
         sampler.invalidate()
     }
 
-    // Verifies: REQ-103 — the last flush writes what remains, its largest included, and judges
+    // Validates: REQ-103 — the last flush writes what remains, its largest included, and judges
     // no p95 it has too few samples for.
     @Test func theLastFlushWritesAFewSamplesWithoutJudgingThem() {
         let trace = InMemoryEditorTrace()
@@ -103,7 +103,7 @@ struct DiagnosticLogTests {
         #expect(!trace.events.contains(.budgetExceeded(metric: .layoutApplication, p95Nanos: budget * 2, budgetNanos: budget)), "five samples were judged as a p95")
     }
 
-    // Verifies: REQ-103 — summaries are emitted on flush and never per keystroke. The flush
+    // Validates: REQ-103 — summaries are emitted on flush and never per keystroke. The flush
     // also emits the process memory sample used by the diagnostics contract.
     @Test func performanceSummaryOmitsPerEventTimings() {
         let trace = InMemoryEditorTrace()
@@ -142,7 +142,7 @@ struct DiagnosticLogTests {
         return text.split(separator: "\n").map(String.init)
     }
 
-    // Verifies: REQ-089; ARC-016 — the payload value type has no string case, so document
+    // Validates: REQ-089; ARC-016 — the payload value type has no string case, so document
     // content, URLs, filenames, and paths are unrepresentable rather than merely omitted.
     @Test func diagnosticPayloadHasNoStringCase() {
         // Exhaustive over `DiagnosticValue`: adding a `.string` case fails to compile here.
@@ -160,7 +160,7 @@ struct DiagnosticLogTests {
         #expect(DiagnosticValue.symbol(.setLink).jsonFragment == "\"setLink\"")
     }
 
-    // Verifies: REQ-089; ARC-016 — every event name in the vocabulary is reachable from a
+    // Validates: REQ-089; ARC-016 — every event name in the vocabulary is reachable from a
     // mapping whose payload fields are numbers, booleans, or closed symbols, and every
     // emitted line survives JSON parsing.
     @Test func everyTraceEventMapsToSymbolicPayload() async {
@@ -287,7 +287,7 @@ struct DiagnosticLogTests {
 
         // Produced outside the EditorTraceEvent mapping: the log's own lifecycle events, plus
         // mainActorStall, which the app delegate's watchdog records directly through
-        // DiagnosticLog (COR-12; documented in ENGINEERING.md §11) since it observes a
+        // DiagnosticLog (COR-12; documented in architecture.md §11) since it observes a
         // process-level condition with no document or EditorTraceSink in scope.
         let logOwned: Set<DiagnosticEventName> = [
             .runStart, .runEnd, .repeated, .sizeLimitReached, .mainActorStall
@@ -296,7 +296,7 @@ struct DiagnosticLogTests {
         #expect(unreachable.isEmpty, "unmapped event names: \(unreachable.map(\.rawValue).sorted())")
     }
 
-    // Verifies: REQ-099/135 — a production sink emits an explicit production-route origin. The
+    // Validates: REQ-099 — a production sink emits an explicit production-route origin. The
     // closed encoder test above uses `encodingProbe` and cannot satisfy this assertion.
     @Test func productionRouteRecordsCarryExplicitProductionOrigin() async {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
@@ -309,7 +309,7 @@ struct DiagnosticLogTests {
         #expect(event?["origin"] as? String == DiagnosticEvidenceOrigin.productionRoute.rawValue)
     }
 
-    // Verifies: REQ-099 — an encoding probe's records stay visibly non-production even when it
+    // Validates: REQ-099 — an encoding probe's records stay visibly non-production even when it
     // emits a complete symbolic vocabulary, so the vocabulary check cannot be satisfied by a probe
     // rather than by a route a real run actually takes.
     @Test func encodingProbeRecordsCannotMasqueradeAsProductionRoute() async {
@@ -323,7 +323,7 @@ struct DiagnosticLogTests {
         #expect(event?["origin"] as? String != DiagnosticEvidenceOrigin.productionRoute.rawValue)
     }
 
-    // Verifies: REQ-089/111 — the real parse owner reports image resolution failure through its
+    // Validates: REQ-089, REQ-111, REQ-114 — the real parse owner reports image resolution failure through its
     // document trace when a local attachment cannot be resolved.
     @Test func parseOwnerRecordsImageResolutionFailureOnTheProductionRoute() async {
         let document = MarkdownDocument()
@@ -347,7 +347,7 @@ struct DiagnosticLogTests {
         session.detach()
     }
 
-    // Verifies: REQ-089/085 — the real parse owner emits cache telemetry for the dedicated service.
+    // Validates: REQ-089, REQ-085 — the real parse owner emits cache telemetry for the dedicated service.
     @Test func parseOwnerRecordsImageDisplayCacheTelemetryOnTheProductionRoute() async throws {
         let directory = makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -381,7 +381,7 @@ struct DiagnosticLogTests {
         session.detach()
     }
 
-    // Verifies: REQ-103 — `parseProjection` times the parse and the projection, not the parse
+    // Validates: REQ-103 — `parseProjection` times the parse and the projection, not the parse
     // task's wait for the main actor between them. A showcase parse of a few milliseconds was
     // recorded at 875 ms while the main thread opened its window (tour 46011070302).
     @Test func parseProjectionLeavesOutTheWaitForTheMainActor() async {
@@ -413,7 +413,7 @@ struct DiagnosticLogTests {
         }
     }
 
-    // Verifies: REQ-123 — a document opened before its window exists parses once when the window
+    // Validates: REQ-123 — a document opened before its window exists parses once when the window
     // opens on the main screen. The parse before the window guessed scale 2, so on a 1x display
     // (CI's runner, an external monitor) binding the window parsed it again. On a 2x host this
     // passes either way; CI's runner is 1x.
@@ -451,7 +451,7 @@ struct DiagnosticLogTests {
         session.detach()
     }
 
-    // Verifies: REQ-111 — a parse that finishes after a newer source snapshot is discarded by the
+    // Validates: REQ-111 — a parse that finishes after a newer source snapshot is discarded by the
     // real coordinator and leaves a typed reconciliation record.
     @Test func parseOwnerRecordsStaleReconciliation() async {
         let document = MarkdownDocument()
@@ -480,7 +480,7 @@ struct DiagnosticLogTests {
         session.detach()
     }
 
-    // Verifies: REQ-085 — cancellation through the owning ParseCoordinator invalidates its
+    // Validates: REQ-085 — cancellation through the owning ParseCoordinator invalidates its
     // operation identity synchronously, so a pending parse cannot remain current.
     @Test func parseOwnerCancellationInvalidatesGeneration() {
         let document = MarkdownDocument()
@@ -496,7 +496,7 @@ struct DiagnosticLogTests {
         session.detach()
     }
 
-    // Verifies: REQ-115 — the smoke exercise uses the ordinary window command route for an
+    // Validates: REQ-115 — the smoke exercise uses the ordinary window command route for an
     // accepted insertion and a semantic command, independent of process/window timing.
     @Test func smokeEditExerciseUsesRealRoutes() {
         let document = MarkdownDocument()
@@ -528,7 +528,7 @@ struct DiagnosticLogTests {
         session.detach()
     }
 
-    // Verifies: REQ-095 — the run header survives a hostile runtime version string, which is
+    // Validates: REQ-095 — the run header survives a hostile runtime version string, which is
     // the only non-literal text anywhere in the format.
     @Test func runHeaderEscapesHostileVersionStrings() {
         let header = DiagnosticRunHeader(
@@ -546,7 +546,7 @@ struct DiagnosticLogTests {
         #expect(run?["os"] as? String == "Version 27.0 \"X\"")
     }
 
-    // Verifies: REQ-095 — the first record identifies the run, including whether it is
+    // Validates: REQ-095 — the first record identifies the run, including whether it is
     // production usage or a hosted test run.
     @Test func runHeaderIdentifiesHostKindAndBuild() async {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
@@ -562,7 +562,7 @@ struct DiagnosticLogTests {
         #expect(header?["v"] as? Int == DiagnosticRunHeader.schemaVersion)
     }
 
-    // Verifies: REQ-095 — every record is one parsable JSON object on its own line with a
+    // Validates: REQ-095 — every record is one parsable JSON object on its own line with a
     // strictly increasing sequence number, so a truncated run still reads cleanly.
     @Test func everyRecordIsOneParsableJSONLine() async {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
@@ -588,7 +588,7 @@ struct DiagnosticLogTests {
         #expect(recorded.count == 11)
     }
 
-    // Verifies: REQ-095 — the terminating record distinguishes a clean exit from a crash.
+    // Validates: REQ-095 — the terminating record distinguishes a clean exit from a crash.
     @Test func finishWritesTerminatingRecord() async {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
         log.record(.documentOpened, level: .info, category: .document)
@@ -602,7 +602,7 @@ struct DiagnosticLogTests {
         #expect(afterFinish.count == recorded.count)
     }
 
-    // Verifies: REQ-095; ARC-Q17 — sequence allocation and writer reservation are one atomic
+    // Validates: REQ-095; ARC-Q17 — sequence allocation and writer reservation are one atomic
     // operation even while the watchdog reports from a detached task, and no late fault can
     // append after the terminal record.
     @Test func watchdogRecordsRemainOrderedAndCannotAppendAfterFinish() async {
@@ -625,7 +625,7 @@ struct DiagnosticLogTests {
         #expect(after.last?.contains("\"ev\":\"runEnd\"") == true)
     }
 
-    // Verifies: REQ-096 — a defect firing every run-loop pass produces bounded evidence.
+    // Validates: REQ-096 — a defect firing every run-loop pass produces bounded evidence.
     @Test func repeatedEventsCollapseWithCount() async {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
         let burst = DiagnosticLog.repeatCollapseThreshold * 5
@@ -645,7 +645,7 @@ struct DiagnosticLogTests {
         #expect(summaries.first?.contains("\"count\":\(suppressed)") == true)
     }
 
-    // Verifies: REQ-095 — per-file size is bounded, and reaching the cap is recorded as a
+    // Validates: REQ-095 — per-file size is bounded, and reaching the cap is recorded as a
     // well-formed record rather than a hand-written fragment that would break the schema.
     @Test func fileSizeCapIsBoundedAndRecorded() async {
         let directory = makeTemporaryDirectory()
@@ -679,7 +679,7 @@ struct DiagnosticLogTests {
         }
     }
 
-    // Verifies: REQ-095 — retention keeps the newest runs and removes the oldest.
+    // Validates: REQ-095 — retention keeps the newest runs and removes the oldest.
     @Test func retentionRemovesOldestRuns() throws {
         let directory = makeTemporaryDirectory()
         let manager = FileManager.default
@@ -701,7 +701,7 @@ struct DiagnosticLogTests {
         #expect(!remaining.contains("run-20260720T000000Z-0.jsonl"))
     }
 
-    // Verifies: REQ-095 — a document wires the production sink and records its own lifecycle.
+    // Validates: REQ-095 — a document wires the production sink and records its own lifecycle.
     @Test func documentRecordsLifecycleThroughSink() async {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
         let document = MarkdownDocument()
@@ -717,7 +717,7 @@ struct DiagnosticLogTests {
         #expect(opened.first?.contains("\"doc\":1") == true)
     }
 
-    // Verifies: REQ-100 — a load failure (the only throw site: invalid UTF-8) is recorded
+    // Validates: REQ-100 — a load failure (the only throw site: invalid UTF-8) is recorded
     // before NSDocument's own error is rethrown.
     @Test func documentLoadFailureIsRecorded() async {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
@@ -735,7 +735,7 @@ struct DiagnosticLogTests {
         #expect(failed.first?.contains("\"reason\":\"invalidUTF8\"") == true)
     }
 
-    // Verifies: REQ-100 — a failure reading the URL itself (never reaching the Data-based
+    // Validates: REQ-100 — a failure reading the URL itself (never reaching the Data-based
     // override at all) is still recorded, distinctly from an invalid-UTF-8 content failure.
     @Test func documentLoadFailureForUnreadableURLIsRecorded() async {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
@@ -754,7 +754,7 @@ struct DiagnosticLogTests {
         #expect(failed.first?.contains("\"reason\":\"fileUnreadable\"") == true)
     }
 
-    // Verifies: REQ-100 — a real, valid file still reaches the Data-based override normally
+    // Validates: REQ-100 — a real, valid file still reaches the Data-based override normally
     // through the URL-based override (no failure recorded on the healthy path).
     @Test func documentLoadThroughURLRecordsNoFailure() async throws {
         let log = DiagnosticLog(directory: makeTemporaryDirectory(), hostKind: .unitTest)
@@ -770,7 +770,7 @@ struct DiagnosticLogTests {
         #expect(recorded.filter { $0.contains("\"ev\":\"documentLoaded\"") }.count == 1)
     }
 
-    // Verifies: REQ-100 — a document saved for the first time while still untouched (revision
+    // Validates: REQ-100 — a document saved for the first time while still untouched (revision
     // 0, never yet read from any file) and then reverted is classified as a revert, not a load.
     // sourceVersion alone cannot distinguish this case (Save never advances it), which is
     // exactly why isRevertingViaAppKit exists rather than relying on sourceVersion == 0.
@@ -790,7 +790,7 @@ struct DiagnosticLogTests {
         #expect(recorded.filter { $0.contains("\"ev\":\"documentLoaded\"") }.isEmpty)
     }
 
-    // Verifies: REQ-100 — a save whose destination was never determined (the Save-panel-cancel
+    // Validates: REQ-100 — a save whose destination was never determined (the Save-panel-cancel
     // case: DocumentSaveBridge reports failure without save(to:ofType:for:completionHandler:)
     // ever firing) is still recorded, not silently dropped because it took a different path
     // than a write that was actually attempted.
@@ -812,7 +812,7 @@ struct DiagnosticLogTests {
         #expect(failed.count == 1)
     }
 
-    // Verifies: REQ-100 — a save failure reaching save(to:ofType:for:completionHandler:) is
+    // Validates: REQ-100 — a save failure reaching save(to:ofType:for:completionHandler:) is
     // recorded at error level. Tests recordSaveOutcome directly with a synthetic error rather
     // than provoking a genuine AppKit save failure: two earlier attempts (a nonexistent parent
     // directory, then a permission-denied directory) each took 30+ seconds or hung outright in
@@ -840,7 +840,7 @@ struct DiagnosticLogTests {
         #expect(recorded.filter { $0.contains("\"ev\":\"documentSaveSucceeded\"") }.isEmpty)
     }
 
-    // Verifies: REQ-100; ARC-016 — the highest-value privacy test in this increment: a
+    // Validates: REQ-100; ARC-016 — the highest-value privacy test in this increment: a
     // revealing file URL must never reach any emitted trace line across a real load and a real
     // (successful) save.
     @Test func documentIOTraceOmitsPaths() async throws {
@@ -862,10 +862,10 @@ struct DiagnosticLogTests {
         }
     }
 
-    // Verifies: REQ-097 — an explicit override directory takes priority over both the
+    // Validates: REQ-097 — an explicit override directory takes priority over both the
     // production and unit-test defaults, so verification runs cannot touch the user's own log
     // directory.
-    // Verifies: REQ-097 — the override is not merely honoured for the write path; a run under it
+    // Validates: REQ-097 — the override is not merely honoured for the write path; a run under it
     // must not prune the user's production directory. Pruning is the destructive half of this
     // requirement ("cannot read, prune, or pollute"), and the resolution proof below cannot see
     // it: resolution could be correct while `pruneRuns` was handed the production directory.

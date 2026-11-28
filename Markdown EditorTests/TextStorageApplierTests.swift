@@ -153,7 +153,7 @@ struct PatchFixture {
 
 @MainActor
 struct TextStorageApplierTests {
-    // Verifies: REQ-090/091; ARC-019 — a locally proven identity edit keeps the storage mutation
+    // Validates: REQ-090, REQ-091; ARC-019 — a locally proven identity edit keeps the storage mutation
     // at the exact changed span even when its containing paragraph is very large.
     @Test func locallyProvenIdentityPatchDoesNotExpandToContainingParagraph() throws {
         let source = String(repeating: "word ", count: 20_000) + "\n"
@@ -171,7 +171,7 @@ struct TextStorageApplierTests {
         #expect(patch.expansion == nil)
     }
 
-    // Verifies: REQ-090/091; ARC-018 — a local transition retains the complete block metadata
+    // Validates: REQ-090, REQ-091; ARC-018 — a local transition retains the complete block metadata
     // needed by the immediate attributed patch instead of waiting for reconciliation to restore
     // heading/list/quote/code styling.
     @Test func locallyProvenTransitionPreservesBlockMetadata() throws {
@@ -192,7 +192,7 @@ struct TextStorageApplierTests {
         )
     }
 
-    // Verifies: REQ-109; ARC-Q16 — one bounded range edit, zero full replacements.
+    // Validates: REQ-109; ARC-Q16 — one bounded range edit, zero full replacements.
     @Test func ordinaryInsertionUsesOneBoundedRangePatch() throws {
         let fixture = try PatchFixture(
             source: "First paragraph.\n\nSecond paragraph stays untouched.\n",
@@ -216,7 +216,7 @@ struct TextStorageApplierTests {
         #expect(textView.selectedRange() == patch.selectionAfter?.range.utf16)
     }
 
-    // Verifies: REQ-109 — the patch scope covers whole semantic blocks and no more.
+    // Validates: REQ-109 — the patch scope covers whole semantic blocks and no more.
     @Test func patchScopeCoversTheTouchedBlockAndNoMore() throws {
         let fixture = try PatchFixture(
             source: "First paragraph.\n\nSecond paragraph stays untouched.\n",
@@ -235,7 +235,7 @@ struct TextStorageApplierTests {
         #expect(patch.replacement.length == patch.nextRange.length)
     }
 
-    // Verifies: REQ-109 — a patch against storage that is not its own snapshot changes nothing.
+    // Validates: REQ-109 — a patch against storage that is not its own snapshot changes nothing.
     @Test func patchRefusesWhenAppliedStorageIsStale() throws {
         let fixture = try PatchFixture(source: "hello\n", insert: "!", at: 5)
         let patch = try #require(fixture.makePatch())
@@ -249,7 +249,7 @@ struct TextStorageApplierTests {
         #expect(textView.string == "stale\n")
     }
 
-    // Verifies: REQ-109 — attachment identity survives a patch without a document-wide rebuild.
+    // Validates: REQ-109 — attachment identity survives a patch without a document-wide rebuild.
     @Test func attachmentLookupIsSplicedRatherThanRebuilt() throws {
         let source = "- [ ] task one\n\nTrailing paragraph.\n"
         let fixture = try PatchFixture(

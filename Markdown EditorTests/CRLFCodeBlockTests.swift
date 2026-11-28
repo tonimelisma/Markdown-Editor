@@ -7,10 +7,10 @@ import Foundation
 import Testing
 @testable import Markdown_Editor
 
-// Verifies: REQ-007/113; COR-33 stage 2 — CRLF code content is an atomic with proven decoder.
+// Validates: REQ-007, REQ-113; COR-33 stage 2 — CRLF code content is an atomic with proven decoder.
 @MainActor
 struct CRLFCodeBlockTests {
-    // Verifies: REQ-113 — decoder round-trip over \r\n, \n, lone \r, CRLF file whose final line has no terminator, and blank line in fenced block.
+    // Validates: REQ-113 — decoder round-trip over \r\n, \n, lone \r, CRLF file whose final line has no terminator, and blank line in fenced block.
     @Test func decoderRoundTrips() throws {
         let cases: [(source: String, visible: String)] = [
             ("a\r\nb\r\n", "a\nb\n"),
@@ -35,7 +35,7 @@ struct CRLFCodeBlockTests {
         _ = noFinal
     }
 
-    // Verifies: REQ-007 — editing one line of a fenced block in CRLF leaves every other line's terminator byte-identical (REQ-007).
+    // Validates: REQ-007 — editing one line of a fenced block in CRLF leaves every other line's terminator byte-identical (REQ-007).
     @Test func editingOneLinePreservesOtherTerminators() throws {
         let crlf = "```\r\nlet a = 1\r\nlet b = 2\r\n```\r\n"
         let document = MarkdownDocument()
@@ -73,7 +73,7 @@ struct CRLFCodeBlockTests {
         #expect(after.contains("```\r\n") || after.contains("```\n"), "fence terminator preserved")
     }
 
-    // Verifies: REQ-007 — mixed LF/CRLF line endings preserve per-line terminators via per-line atomic.
+    // Validates: REQ-007 — mixed LF/CRLF line endings preserve per-line terminators via per-line atomic.
     @Test func mixedLineEndingsPreserveUntouchedTerminators() throws {
         let mixed = "```\nline LF\nline CRLF\r\n```\n"
         // Simulate editing first line while preserving second line's CRLF
@@ -94,7 +94,7 @@ struct CRLFCodeBlockTests {
         #expect(lfEncoded == lfSrc)
     }
 
-    // Verifies: REQ-007 — LF documents produce byte-identical output to today (provably scoped to CRLF).
+    // Validates: REQ-007 — LF documents produce byte-identical output to today (provably scoped to CRLF).
     @Test func lfDocumentUnchanged() throws {
         let lf = "```\nlet a = 1\nlet b = 2\n```\n"
         let document = MarkdownDocument()

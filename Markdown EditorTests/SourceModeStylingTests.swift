@@ -36,7 +36,7 @@ struct SourceModeStylingTests {
         }
     }
 
-    // Verifies: REQ-040 — a body line keeps body type in Source mode after the document changed
+    // Validates: REQ-040 — a body line keeps body type in Source mode after the document changed
     // under it, as an edit in WYSIWYG changes it.
     @Test func everyLineIsRestyledAfterTheTextChangedElsewhere() async throws {
         let document = MarkdownDocument()

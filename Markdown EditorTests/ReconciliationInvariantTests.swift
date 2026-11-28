@@ -69,7 +69,7 @@ struct ReconciliationInvariantTests {
         host.noteHostUpdate(durationNanos: DispatchTime.now().uptimeNanoseconds &- started)
     }
 
-    // Verifies: REQ-094; ARC-015 — reconciling an unchanged mode mutates no session state.
+    // Validates: REQ-094; ARC-015 — reconciling an unchanged mode mutates no session state.
     // Fails before COR-10: `applyMode` captured selection and scroll on every pass, so the
     // mutation count advanced once per reconciliation and never settled.
     @Test func unchangedModeReconciliationMutatesNoSessionState() {
@@ -90,7 +90,7 @@ struct ReconciliationInvariantTests {
         #expect(session.reconciliationViolationCount == 0)
     }
 
-    // Verifies: REQ-094; ARC-015 — reconciliation publishes nothing, so it cannot re-dirty the
+    // Validates: REQ-094; ARC-015 — reconciliation publishes nothing, so it cannot re-dirty the
     // view being reconciled. Fails before COR-10: every pass published mode state.
     @Test func hostReconciliationPublishesNothing() {
         let (_, session, host, _) = makeHost()
@@ -107,7 +107,7 @@ struct ReconciliationInvariantTests {
         #expect(publications == 0)
     }
 
-    // Verifies: REQ-094; ARC-Q11 — an idle document settles. Driving reconciliation from its
+    // Validates: REQ-094; ARC-Q11 — an idle document settles. Driving reconciliation from its
     // own publications terminates instead of running forever.
     // Fails before COR-10: each pass produced another publication, without limit.
     @Test func idleDocumentSettlesAfterBoundedHostUpdates() {
@@ -129,7 +129,7 @@ struct ReconciliationInvariantTests {
         #expect(passes <= 3)
     }
 
-    // Verifies: REQ-094; ARC-013/015 — a programmatic selection set does not write back into
+    // Validates: REQ-094; ARC-013/015 — a programmatic selection set does not write back into
     // session state. Fails before COR-10: `textViewDidChangeSelection` wrote unconditionally,
     // so mode restoration fed itself.
     @Test func programmaticSelectionDoesNotWriteSessionState() {
@@ -145,7 +145,7 @@ struct ReconciliationInvariantTests {
         #expect(session.modeStateMutationCount == mutationsBefore)
     }
 
-    // Verifies: REQ-094 — native selection changes still reach the session. The origin guard
+    // Validates: REQ-094 — native selection changes still reach the session. The origin guard
     // must silence programmatic restoration only, never real user input.
     @Test func nativeSelectionStillUpdatesSessionState() {
         let (_, session, host, _) = makeHost()
@@ -158,7 +158,7 @@ struct ReconciliationInvariantTests {
         #expect(session.wysiwygModeState.selection?.range.utf16 == NSRange(location: 2, length: 3))
     }
 
-    // Verifies: REQ-096 — capturing live AppKit state during reconciliation is a fault.
+    // Validates: REQ-096 — capturing live AppKit state during reconciliation is a fault.
     @Test func liveStateCaptureDuringReconciliationRecordsFault() {
         let document = MarkdownDocument()
         let trace = InMemoryEditorTrace()
@@ -181,7 +181,7 @@ struct ReconciliationInvariantTests {
         #expect(violations == [.viewReconciliationViolation(kind: .liveStateCapture)])
     }
 
-    // Verifies: REQ-096 — a sustained host-update rate crosses the storm threshold exactly once
+    // Validates: REQ-096 — a sustained host-update rate crosses the storm threshold exactly once
     // per window, so the pre-COR-10 loop would have reported itself.
     @Test func hostUpdateStormCrossesThresholdOnce() {
         let meter = HostUpdateMeter()
@@ -195,7 +195,7 @@ struct ReconciliationInvariantTests {
         #expect(meter.updatesInWindow > HostUpdateMeter.stormThreshold)
     }
 
-    // Verifies: REQ-086 — mode restoration still restores each mode's own selection and scroll.
+    // Validates: REQ-086 — mode restoration still restores each mode's own selection and scroll.
     // The capture path moved to AppKit events; the restore behavior is unchanged.
     @Test func modeChangeStillRestoresPerModeChrome() {
         let (_, session, host, _) = makeHost(text: "abcdefghij\n")
@@ -212,7 +212,7 @@ struct ReconciliationInvariantTests {
         #expect(host.sourceText?.selectedRange() == NSRange(location: 3, length: 2))
     }
 
-    // Verifies: REQ-096 — publishing observed state during reconciliation is a fault. This
+    // Validates: REQ-096 — publishing observed state during reconciliation is a fault. This
     // covers the `objectWillChange` observer, which the live-capture test does not reach now
     // that mode state is unpublished.
     @Test func reentrantPublicationRecordsFault() {
@@ -237,7 +237,7 @@ struct ReconciliationInvariantTests {
         #expect(!violations.isEmpty)
     }
 
-    // Verifies: REQ-096 — a sustained host-update rate reaches the trace as a fault through
+    // Validates: REQ-096 — a sustained host-update rate reaches the trace as a fault through
     // the production coordinator, not merely through the meter in isolation.
     @Test func hostUpdateStormRecordsFault() {
         let (document, session, host, _) = makeHost()
@@ -256,7 +256,7 @@ struct ReconciliationInvariantTests {
         #expect(session.reconciliationViolationCount == 0)
     }
 
-    // Verifies: REQ-094 — replacing source storage keeps the visible caret and the session
+    // Validates: REQ-094 — replacing source storage keeps the visible caret and the session
     // selection that toolbar commands act on in agreement.
     // Fails without the restore in `refreshVisibleEditor`: reverting collapses the caret to
     // the end of the new storage while the session still reports the old range.
@@ -275,7 +275,7 @@ struct ReconciliationInvariantTests {
         #expect(host.sourceText?.selectedRange() == session.sourceModeState.selection.range.utf16)
     }
 
-    // Verifies: REQ-096 — a blocked main actor is reported while it is still blocked, not
+    // Validates: REQ-096 — a blocked main actor is reported while it is still blocked, not
     // only once it recovers. Without the threshold race in `probeOnce` only one report
     // arrives, and only after recovery.
     /// The whole scenario runs inside `Task.detached`, off the main actor.
@@ -313,7 +313,7 @@ struct ReconciliationInvariantTests {
         #expect((values.last ?? 0) >= 100)
     }
 
-    // Verifies: REQ-096 — a main thread waiting in AppKit's own loop, as the title bar's rename
+    // Validates: REQ-096 — a main thread waiting in AppKit's own loop, as the title bar's rename
     // after Duplicate waits on its view service, is not a stall: tour 45986962172 reported one
     // that the sample of the same step (45982413288) showed inside NSRemoteViewSemaphore.
     @Test func watchdogReportsNoStallWhileAppKitWaitsInItsOwnLoop() async {
@@ -332,7 +332,7 @@ struct ReconciliationInvariantTests {
         #expect(values.isEmpty, "AppKit's wait was reported as a stall: \(values)")
     }
 
-    // Verifies: REQ-096 — a stopped watchdog reports nothing. Stopping it, on the main actor,
+    // Validates: REQ-096 — a stopped watchdog reports nothing. Stopping it, on the main actor,
     // cancels a probe in flight, whose sleep then returns at once and finds its hop not yet run:
     // every quit that caught one recorded a one-second stall (tour 46015012930).
     @Test func aCancelledProbeReportsNoStall() async {
@@ -354,7 +354,7 @@ struct ReconciliationInvariantTests {
         #expect(values.isEmpty, "a cancelled probe reported a stall: \(values)")
     }
 
-    // Verifies: REQ-096 — AppKit's own synchronous work for the app, such as loading the print
+    // Validates: REQ-096 — AppKit's own synchronous work for the app, such as loading the print
     // panel, is a wait in AppKit's loop, not a stall: the main thread is in the default mode, so
     // only `aroundAppKitWork` tells it apart. Probe 46007142113 reported it as a 1.2 s stall.
     @Test func watchdogReportsNoStallWhileAppKitWorksForTheApp() async {
@@ -372,7 +372,7 @@ struct ReconciliationInvariantTests {
         #expect(values.isEmpty, "AppKit's work was reported as a stall: \(values)")
     }
 
-    // Verifies: REQ-096 — AppKit's work that outlasts the bound is reported: a print that never
+    // Validates: REQ-096 — AppKit's work that outlasts the bound is reported: a print that never
     // returns is a hang, as the print activity's wedge was.
     @Test func watchdogReportsAppKitWorkThatOutlastsItsBound() async {
         let reported = ReportBox()
@@ -389,7 +389,7 @@ struct ReconciliationInvariantTests {
         #expect(!values.isEmpty, "AppKit's work past its bound went unreported")
     }
 
-    // Verifies: REQ-096 — AppKit's wait runs its loop in slices, between which the outer default
+    // Validates: REQ-096 — AppKit's wait runs its loop in slices, between which the outer default
     // mode shows. A look that falls between two slices does not make the wait a stall.
     @Test func watchdogSeesAnAppKitWaitBetweenItsSlices() async {
         let reported = ReportBox()
@@ -409,7 +409,7 @@ struct ReconciliationInvariantTests {
         #expect(values.isEmpty, "a look between AppKit's slices was taken for a stall: \(values)")
     }
 
-    // Verifies: REQ-096 — a wait in AppKit's own loop that outlasts the bound is reported: the
+    // Validates: REQ-096 — a wait in AppKit's own loop that outlasts the bound is reported: the
     // close hang was a deadlock in such a loop, and it never ended.
     @Test func watchdogReportsAnAppKitWaitThatOutlastsItsBound() async {
         let reported = ReportBox()
@@ -425,7 +425,7 @@ struct ReconciliationInvariantTests {
         #expect(!values.isEmpty, "a wait past the bound went unreported")
     }
 
-    // Verifies: REQ-096 — a stall in a mode that serves the main queue is reported at once.
+    // Validates: REQ-096 — a stall in a mode that serves the main queue is reported at once.
     @Test func watchdogReportsAStallInTheDefaultMode() async {
         let reported = ReportBox()
         await Self.stallMainActor(seconds: 0.6) {
@@ -457,7 +457,7 @@ struct ReconciliationInvariantTests {
         await scenario.value
     }
 
-    // Verifies: REQ-096 — while an app-modal alert waits for the person, the main actor's jobs
+    // Validates: REQ-096 — while an app-modal alert waits for the person, the main actor's jobs
     // wait too, and that is not a stall. The bad-file alert in tour 45974231615 was recorded as
     // two. The blocker stands in for the modal session; the session is declared to the probe.
     @Test func watchdogReportsNoStallDuringAnAppModalSession() async {
@@ -481,7 +481,7 @@ struct ReconciliationInvariantTests {
         #expect(values.isEmpty, "a modal session was reported as a stall: \(values)")
     }
 
-    // Verifies: REQ-124 — the Versions browser is an app-modal session from the moment it opens
+    // Validates: REQ-124 — the Versions browser is an app-modal session from the moment it opens
     // until it has closed, so its closing animation, run after Restore, is not counted as
     // main-actor latency (tours 45985053390 and 45985821997: a 361–391 ms p95 per visit).
     @Test func theVersionsBrowserIsAnAppModalSessionWhileItIsOpen() {
@@ -502,7 +502,7 @@ struct ReconciliationInvariantTests {
         withExtendedLifetime(observer) {}
     }
 
-    // Verifies: REQ-096 — a close runs as an app-modal session: a duplicate's "keep this new
+    // Validates: REQ-096 — a close runs as an app-modal session: a duplicate's "keep this new
     // document?" dialog runs modally inside it, and was reported as a 1.5 s main-actor stall
     // while it waited for the person (probe 45982413288).
     @Test func closingADocumentIsAnAppModalSession() {
@@ -519,7 +519,7 @@ struct ReconciliationInvariantTests {
         #expect(!AppModalSession.shared.isActive)
     }
 
-    // Verifies: REQ-099 — "WYSIWYG went read-only and I don't know why" must have a log line,
+    // Validates: REQ-099 — "WYSIWYG went read-only and I don't know why" must have a log line,
     // but only the transition, not every mode-state mutation that leaves availability unchanged.
     @Test func availabilityChangedRecordsOnlyOnTransition() {
         let document = MarkdownDocument()
@@ -545,7 +545,7 @@ struct ReconciliationInvariantTests {
         #expect(transitions == [.availabilityChanged(editable: true, sourceRevision: document.sourceVersion)])
     }
 
-    // Verifies: REQ-099 — advancing the waiting revision while still unavailable is not a
+    // Validates: REQ-099 — advancing the waiting revision while still unavailable is not a
     // transition either; a full-enum comparison would misclassify this too (false to false).
     @Test func availabilityChangedIgnoresRevisionAdvanceWhileWaiting() {
         let document = MarkdownDocument()

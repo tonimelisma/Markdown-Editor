@@ -10,7 +10,7 @@ import Testing
 
 /// How many whole-document rebuilds one semantic command performs.
 ///
-/// // Verifies: REQ-143; ARC-Q06 — a command reconciles the document once, not once per validator.
+/// // Validates: REQ-143; ARC-Q06 — a command reconciles the document once, not once per validator.
 ///
 /// COR-89 found three per command: the planner's, plus `validateAcceptedEdit` reached twice —
 /// from `EditorTransactionKernel.reduce` and again from
@@ -95,7 +95,7 @@ struct AuthoritativeRebuildCountTests {
         )
     }
 
-    /// // Verifies: REQ-143 — the same new text is parsed once, not once per validator.
+    /// // Validates: REQ-143 — the same new text is parsed once, not once per validator.
     ///
     /// `SemanticEditPlanners.replaceValidated` parses the candidate text to check a postcondition,
     /// and `AuthoritativePresentationBuilder.build` parses the same text again to produce the
@@ -200,7 +200,7 @@ struct AuthoritativeRebuildCountTests {
         #expect(versions.performedParseCount == 2)
     }
 
-    /// // Verifies: REQ-090 — closing a document releases what the memos retain.
+    /// // Validates: REQ-090 — closing a document releases what the memos retain.
     ///
     /// A one-entry memo is not a leak, but it holds one whole source, tree and snapshot, and a
     /// closed document leaving megabytes resident is the quiet retention the leak smoke run
@@ -244,7 +244,7 @@ struct AuthoritativeRebuildCountTests {
 
     /// A memo hit must not swallow cancellation.
     ///
-    /// // Verifies: REQ-085 — `parse` promises `.failure(.cancelled)` to a cancelled caller. When
+    /// // Validates: REQ-085 — `parse` promises `.failure(.cancelled)` to a cancelled caller. When
     /// the memo was consulted first, a cancelled caller whose answer happened to be stored got
     /// `.success` instead. Harmless in the one production caller, which re-checks
     /// `Task.isCancelled` immediately afterwards, but a memo that changes an observable contract

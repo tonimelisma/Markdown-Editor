@@ -147,7 +147,7 @@ struct BlockBoundaryTypingTests {
 
     // MARK: - Spaces and Return
 
-    // Verifies: REQ-152 — a space typed at the end of a line is kept, where the next word follows it.
+    // Validates: REQ-152 — a space typed at the end of a line is kept, where the next word follows it.
     @Test(arguments: [false, true])
     func aSpaceAtTheEndOfALineIsKept(waitingForEachParse: Bool) async throws {
         let typist = try await Typist("Hello", waitsForEachParse: waitingForEachParse)
@@ -156,7 +156,7 @@ struct BlockBoundaryTypingTests {
         await typist.expect("Hello brave new world")
     }
 
-    // Verifies: REQ-152 — Return in a new document starts a new paragraph, and the text typed
+    // Validates: REQ-152 — Return in a new document starts a new paragraph, and the text typed
     // after it is that paragraph's.
     @Test(arguments: [false, true])
     func returnStartsANewParagraphInANewDocument(waitingForEachParse: Bool) async throws {
@@ -168,7 +168,7 @@ struct BlockBoundaryTypingTests {
         await typist.expect("Weekly notes\n\nToday I fixed the printer.")
     }
 
-    // Verifies: REQ-152 — Return twice leaves an empty paragraph, which shows as an empty line
+    // Validates: REQ-152 — Return twice leaves an empty paragraph, which shows as an empty line
     // and takes the text typed into it.
     @Test func returnTwiceLeavesAnEmptyParagraphThatTakesText() async throws {
         let typist = try await Typist("One")
@@ -182,7 +182,7 @@ struct BlockBoundaryTypingTests {
         #expect(typist.rendered.hasPrefix("One\n\nThree"), "the page reads \(typist.rendered.debugDescription)")
     }
 
-    // Verifies: REQ-152 — Return after a heading starts a paragraph below it, not a second heading line.
+    // Validates: REQ-152 — Return after a heading starts a paragraph below it, not a second heading line.
     @Test func returnAfterAHeadingStartsAParagraph() async throws {
         let typist = try await Typist("# Weekly notes")
         try typist.click(after: "Weekly notes")
@@ -191,7 +191,7 @@ struct BlockBoundaryTypingTests {
         await typist.expect("# Weekly notes\n\nBody")
     }
 
-    // Verifies: REQ-152 — a key pressed right after a formatting command, before the page shows
+    // Validates: REQ-152 — a key pressed right after a formatting command, before the page shows
     // the command's result, is typed, not lost. The tour typed "Weekly notes", ⌘1 and Return, and
     // Return was refused as stale because SwiftUI had not yet applied Heading 1 to the page.
     @Test func aKeyPressedRightAfterACommandIsTyped() async throws {
@@ -206,7 +206,7 @@ struct BlockBoundaryTypingTests {
         await typist.expect("# Weekly notes\n\nBody")
     }
 
-    // Verifies: REQ-152 — Return before a paragraph's text opens an empty paragraph above it,
+    // Validates: REQ-152 — Return before a paragraph's text opens an empty paragraph above it,
     // and the caret stays with the paragraph, as in TextEdit.
     @Test func returnBeforeAParagraphOpensOneAboveIt() async throws {
         let typist = try await Typist("# Title\n\nBody")
@@ -217,7 +217,7 @@ struct BlockBoundaryTypingTests {
         #expect(typist.rendered.hasPrefix("Title\n\nThe Body"), "the page reads \(typist.rendered.debugDescription)")
     }
 
-    // Verifies: REQ-152 — Return in a list starts the next item; Return in the empty item ends
+    // Validates: REQ-152 — Return in a list starts the next item; Return in the empty item ends
     // the list, as in Notes and TextEdit.
     @Test(arguments: [false, true])
     func returnContinuesAListAndAnEmptyItemEndsIt(waitingForEachParse: Bool) async throws {
@@ -233,7 +233,7 @@ struct BlockBoundaryTypingTests {
         await typist.expect("- Milk\n- Eggs\n- Bread\n\nCall the plumber")
     }
 
-    // Verifies: REQ-152 — in a loose list, Return starts the next item after a blank line, and
+    // Validates: REQ-152 — in a loose list, Return starts the next item after a blank line, and
     // Return in the empty item ends the list. Tour 45965585963 typed a task after a list and a
     // blank line, which joined it to the list and made it loose; the second Return left the
     // blank line behind, and the paragraph typed next went into the task.
@@ -248,7 +248,7 @@ struct BlockBoundaryTypingTests {
         await typist.expect("- Milk\n\n- [ ] Call the plumber\n\n- [ ] Pay\n\nSimplicity.")
     }
 
-    // Verifies: REQ-152 — the next item of a numbered list is numbered one higher, and the next
+    // Validates: REQ-152 — the next item of a numbered list is numbered one higher, and the next
     // item of a task list is an unchecked task.
     @Test func returnContinuesNumberedAndTaskLists() async throws {
         let numbered = try await Typist("1. One")
@@ -264,7 +264,7 @@ struct BlockBoundaryTypingTests {
         await tasks.expect("- [x] Done\n- [ ] Next")
     }
 
-    // Verifies: REQ-152 — Return in a quote ends it: the new paragraph follows the quote.
+    // Validates: REQ-152 — Return in a quote ends it: the new paragraph follows the quote.
     @Test func returnInAQuoteEndsIt() async throws {
         let typist = try await Typist("> Simplicity is prerequisite for reliability.")
         try typist.click(after: "reliability.")
@@ -273,7 +273,7 @@ struct BlockBoundaryTypingTests {
         await typist.expect("> Simplicity is prerequisite for reliability.\n\nAfter")
     }
 
-    // Verifies: REQ-152 — Return in a code block is a line of code.
+    // Validates: REQ-152 — Return in a code block is a line of code.
     @Test func returnInACodeBlockIsALineOfCode() async throws {
         let typist = try await Typist("```\nlet a = 1\n```\n")
         try typist.click(after: "let a = 1")
@@ -282,7 +282,7 @@ struct BlockBoundaryTypingTests {
         await typist.expect("```\nlet a = 1\nb\n```\n")
     }
 
-    // Verifies: REQ-084 — keys meant for a sheet never edit the document behind it. Return in
+    // Validates: REQ-084 — keys meant for a sheet never edit the document behind it. Return in
     // the link sheet reached the page and replaced the selected text with a line break.
     @Test func aWindowWithASheetTakesNoTyping() async throws {
         let typist = try await Typist("Read the guide.")
@@ -298,7 +298,7 @@ struct BlockBoundaryTypingTests {
         #expect(typist.text == "Read the guide.", "the document behind the sheet reads \(typist.text.debugDescription)")
     }
 
-    // Verifies: REQ-086 — back from Source mode, the caret is where the person was writing there
+    // Validates: REQ-086 — back from Source mode, the caret is where the person was writing there
     // when the text changed in Source mode. It went to the start of the document, and the next
     // word was typed into the first heading.
     @Test func backFromSourceTheCaretIsWhereTheTypingWas() async throws {
@@ -319,7 +319,7 @@ struct BlockBoundaryTypingTests {
 
     // MARK: - Backspace
 
-    // Verifies: REQ-153 — Delete inside a word deletes the character before the caret. AppKit
+    // Validates: REQ-153 — Delete inside a word deletes the character before the caret. AppKit
     // names that character, not the caret, and the mismatch refused every Backspace.
     @Test func deleteRemovesTheCharacterBeforeTheCaret() async throws {
         let typist = try await Typist("Hello world.")
@@ -329,7 +329,7 @@ struct BlockBoundaryTypingTests {
         await typist.expect("Hel world.")
     }
 
-    // Verifies: REQ-153 — Delete undoes Return: the empty paragraph goes, then the paragraph
+    // Validates: REQ-153 — Delete undoes Return: the empty paragraph goes, then the paragraph
     // joins the one before it.
     @Test(arguments: [false, true])
     func deleteUndoesReturn(waitingForEachParse: Bool) async throws {
@@ -344,7 +344,7 @@ struct BlockBoundaryTypingTests {
         await typist.expect("Hello again")
     }
 
-    // Verifies: REQ-153 — Delete at the start of a paragraph joins it to the one before.
+    // Validates: REQ-153 — Delete at the start of a paragraph joins it to the one before.
     @Test func deleteAtAParagraphsStartJoinsItToThePreviousOne() async throws {
         let typist = try await Typist("# Title\n\nFirst.\n\nSecond.\n")
         try typist.click(before: "Second.")
@@ -352,7 +352,7 @@ struct BlockBoundaryTypingTests {
         await typist.expect("# Title\n\nFirst.Second.\n")
     }
 
-    // Verifies: REQ-153 — Delete at the start of a heading's text makes it a paragraph.
+    // Validates: REQ-153 — Delete at the start of a heading's text makes it a paragraph.
     @Test func deleteAtAHeadingsStartMakesItAParagraph() async throws {
         let typist = try await Typist("Intro\n\n## Title\n")
         try typist.click(before: "Title")
@@ -360,7 +360,7 @@ struct BlockBoundaryTypingTests {
         await typist.expect("Intro\n\nTitle\n")
     }
 
-    // Verifies: REQ-153 — Delete at the start of a list item's text takes its marker away, and
+    // Validates: REQ-153 — Delete at the start of a list item's text takes its marker away, and
     // the text becomes a paragraph after the list.
     @Test func deleteAtAListItemsStartTakesItsMarkerAway() async throws {
         let typist = try await Typist("- Milk\n- Eggs\n")
@@ -369,7 +369,7 @@ struct BlockBoundaryTypingTests {
         await typist.expect("- Milk\n\nEggs\n")
     }
 
-    // Verifies: REQ-152 — the whole tour passage, as one person types it: a heading, a
+    // Validates: REQ-152 — the whole tour passage, as one person types it: a heading, a
     // paragraph, a list that ends, and a corrected typo.
     @Test(arguments: [false, true])
     func theTourNoteTypesAsWritten(waitingForEachParse: Bool) async throws {
@@ -394,7 +394,7 @@ struct BlockBoundaryTypingTests {
 
     // MARK: - Layout
 
-    // Verifies: REQ-152 — the empty paragraphs the page shows are the ones the source holds:
+    // Validates: REQ-152 — the empty paragraphs the page shows are the ones the source holds:
     // none for one blank line, one for each further pair, before, between and after blocks.
     @Test func emptyParagraphsAreCountedFromTheSourcesBlankLines() {
         func count(_ source: String) -> Int {

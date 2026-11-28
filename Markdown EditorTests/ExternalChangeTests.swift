@@ -10,9 +10,9 @@ import Testing
 
 /// What happens when the file changes underneath an open document.
 ///
-/// // Verifies: REQ-145/146/147/148/149; ARC-027.
+/// // Validates: REQ-145, REQ-146, REQ-147, REQ-148, REQ-149; ARC-027.
 ///
-/// VISION ranks *trustworthy files* first, and before COR-87 no requirement covered this at all:
+/// vision.md ranks *trustworthy files* first, and before COR-87 no requirement covered this at all:
 /// `MarkdownDocument` overrode thirteen `NSDocument` members and none of them was a file-presenter
 /// callback. The behaviour was whatever AppKit inherited, and nobody had observed it.
 ///
@@ -41,7 +41,7 @@ struct ExternalChangeTests {
 
     // MARK: - The closed matrix
 
-    /// // Verifies: REQ-149 — every event × local-state cell has declared behaviour. A new
+    /// // Validates: REQ-149 — every event × local-state cell has declared behaviour. A new
     /// `ExternalFileEvent` case fails the build in `ExternalChangeDomain.outcome`, and fails this
     /// table until someone states what it does.
     @Test func everyExternalChangeClassHasDeclaredBehavior() {
@@ -77,7 +77,7 @@ struct ExternalChangeTests {
 
     // MARK: - Contents changed
 
-    /// // Verifies: REQ-145 — a clean document adopts the file and keeps the reader's place.
+    /// // Validates: REQ-145 — a clean document adopts the file and keeps the reader's place.
     @Test func externalWriteToCleanDocumentReloadsAndKeepsSelection() throws {
         let (document, url, dir) = try documentOnDisk("alpha\nbravo\ncharlie\n")
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -93,7 +93,7 @@ struct ExternalChangeTests {
         #expect(hint == NSRange(location: 8, length: 0), "the caret was not carried across the reload")
     }
 
-    /// // Verifies: REQ-146 — a dirty document keeps its edits and records the disagreement, and
+    /// // Validates: REQ-146 — a dirty document keeps its edits and records the disagreement, and
     /// the file is not overwritten as a side effect of noticing.
     @Test func externalWriteToDirtyDocumentKeepsLocalEditsAndMarksConflict() throws {
         let (document, url, dir) = try documentOnDisk("original\n")
@@ -111,7 +111,7 @@ struct ExternalChangeTests {
         #expect(onDisk == "their work\n", "the external write was overwritten without being asked")
     }
 
-    /// // Verifies: REQ-146/149 — words typed since the last save are unsaved work, though their
+    /// // Validates: REQ-146, REQ-149 — words typed since the last save are unsaved work, though their
     /// undo group is still open and AppKit has not counted a change. Tour 45968755636 typed a
     /// sentence, another app wrote the file, and the reload discarded the sentence.
     @Test func wordsTypedSinceTheLastSaveAreKeptWhenAnotherAppWrites() throws {
@@ -140,7 +140,7 @@ struct ExternalChangeTests {
         #expect(document.text == "original\nMine.", "the typed words were discarded: \(document.text.debugDescription)")
     }
 
-    /// // Verifies: REQ-146 — a save stopped for the conflict alert is the app asking, recorded as
+    /// // Validates: REQ-146 — a save stopped for the conflict alert is the app asking, recorded as
     /// such: as an error, every run that saved through a conflict looked like a faulty one.
     @Test func aSaveStoppedForTheConflictAlertIsNotAnError() throws {
         let (document, url, dir) = try documentOnDisk("original\n")
@@ -181,7 +181,7 @@ struct ExternalChangeTests {
 
     // MARK: - Deletion
 
-    /// // Verifies: REQ-147 — losing the buffer because another process unlinked the file is the
+    /// // Validates: REQ-147 — losing the buffer because another process unlinked the file is the
     /// worst outcome available, and is structurally impossible.
     @Test func externalDeleteRetainsContentAndCannotLoseTheBuffer() throws {
         let (document, url, dir) = try documentOnDisk("precious\n")
@@ -213,9 +213,9 @@ struct ExternalChangeTests {
 
     // MARK: - Movement
 
-    /// // Verifies: REQ-148 — a moved document resolves `assets/…` against its new parent.
+    /// // Validates: REQ-148 — a moved document resolves `assets/…` against its new parent.
     ///
-    /// This is the case that is specific to this product: VISION promises relative-path semantics
+    /// This is the case that is specific to this product: vision.md promises relative-path semantics
     /// survive a move, and specifies it for *in-app* moves only. Nothing had ever moved a document
     /// externally and re-resolved a live reference.
     @Test func externalMoveReResolvesRelativeAssetReferences() throws {
@@ -249,7 +249,7 @@ struct ExternalChangeTests {
 
     // MARK: - Self-inflicted notifications
 
-    /// // Verifies: REQ-145 — the application does not treat its own writes as external changes.
+    /// // Validates: REQ-145 — the application does not treat its own writes as external changes.
     ///
     /// AppKit delivers `presentedItemDidChange()` for autosave, save, and open as well as for
     /// foreign writes. Before this check the smoke run caught the app reverting its own document
@@ -289,7 +289,7 @@ struct ExternalChangeTests {
 
     // MARK: - Privacy
 
-    /// // Verifies: REQ-031 — an external change is reported without naming the file.
+    /// // Validates: REQ-031 — an external change is reported without naming the file.
     @Test func externalChangeDiagnosticsCarryNoPath() throws {
         let trace = InMemoryEditorTrace()
         let (document, url, dir) = try documentOnDisk("x\n")

@@ -47,7 +47,7 @@ struct DisplayPreferencePolicyTests {
         return hits
     }
 
-    // Verifies: REQ-141 — production expresses colour only through `EditorColorCatalog`. A literal
+    // Validates: REQ-141 — production expresses colour only through `EditorColorCatalog`. A literal
     // or a bare system colour anywhere else escapes the appearance-and-contrast-aware catalog, and
     // with it every measurement in `ContrastConformanceTests` — which can only enumerate roles it
     // knows about.
@@ -58,9 +58,9 @@ struct DisplayPreferencePolicyTests {
         }
     }
 
-    // Verifies: REQ-141 — the detector above actually detects. An absence proof whose pattern never
+    // Validates: REQ-141 — the detector above actually detects. An absence proof whose pattern never
     // matches anything is indistinguishable from a codebase that is clean, which is how
-    // `check-instrumentation-coverage.sh` was defeated twice (see `docs/DECISIONS.md`).
+    // `check-instrumentation-coverage.sh` was defeated twice (see ADR 0001).
     @Test func theColorLiteralDetectorCatchesEveryFormItClaimsTo() {
         let shouldMatch = [
             "let c = NSColor(red: 1, green: 0, blue: 0, alpha: 1)",
@@ -82,7 +82,7 @@ struct DisplayPreferencePolicyTests {
         }
     }
 
-    // Verifies: REQ-141 — no motion or translucency is introduced without a paired Reduce Motion /
+    // Validates: REQ-141 — no motion or translucency is introduced without a paired Reduce Motion /
     // Reduce Transparency accommodation. Today the editor animates and blurs nothing, so this is an
     // absence proof; the point is that adding one fails here until the accommodation exists beside
     // it, rather than being noticed by whoever has the preference turned on.
@@ -121,7 +121,7 @@ struct DisplayPreferencePolicyTests {
         }
     }
 
-    // Verifies: REQ-140 — the deferred text-scaling boundary is honest: production adopts no
+    // Validates: REQ-140 — the deferred text-scaling boundary is honest: production adopts no
     // text-scaling API, so no claim is made that the platform preference is honoured.
     @Test func noTextScalingAPIIsAdopted() throws {
         for (name, text) in try productionSources() {

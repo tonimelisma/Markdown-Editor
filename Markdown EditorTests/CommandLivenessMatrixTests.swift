@@ -10,7 +10,7 @@ import Testing
 
 /// Command × mode conformance matrix.
 ///
-/// // Verifies: REQ-113/058/108; ARC-024 — a command that reports `enabled` performs.
+/// // Validates: REQ-113, REQ-058, REQ-108; ARC-024 — a command that reports `enabled` performs.
 ///
 /// This is a closed-set structural gate, the same shape
 /// the closed-set rule applies to `EditorTraceEvent`: every
@@ -68,7 +68,7 @@ struct CommandLivenessMatrixTests {
         )
     }
 
-    /// // Verifies: REQ-113 — enabled implies performable, in Source mode.
+    /// // Validates: REQ-113 — enabled implies performable, in Source mode.
     @Test func everyEnabledCommandPerformsInSourceMode() throws {
         for command in EditorCommand.allCases {
             let expectation = try #require(Self.expectations[command], "\(command) undeclared")
@@ -78,7 +78,7 @@ struct CommandLivenessMatrixTests {
         }
     }
 
-    /// // Verifies: REQ-113 — enabled implies performable, in WYSIWYG, the default mode.
+    /// // Validates: REQ-113 — enabled implies performable, in WYSIWYG, the default mode.
     ///
     /// This is the cell that was empty. `paragraph`, `heading`, `blockQuote`, and `codeBlock`
     /// each reported `enabled` and refused with `mappingFailure` before COR-26.
@@ -91,7 +91,7 @@ struct CommandLivenessMatrixTests {
         }
     }
 
-    /// // Verifies: REQ-113/087; ARC-009 — restoring liveness must not weaken refusal. A
+    /// // Validates: REQ-113, REQ-087; ARC-009 — restoring liveness must not weaken refusal. A
     /// selection spanning two blocks stays atomically refused for every block command.
     @Test func crossBlockSelectionStillRefusesEveryBlockCommand() throws {
         let blockCommands: [EditorCommand] = [
@@ -115,7 +115,7 @@ struct CommandLivenessMatrixTests {
         }
     }
 
-    /// // Verifies: REQ-113/087; COR-40 — synthetic-break caret is now total via block identification.
+    /// // Validates: REQ-113, REQ-087; COR-40 — synthetic-break caret is now total via block identification.
     /// Before COR-40, a caret on a synthetic paragraph break classified as .syntheticInsertion
     /// and the `guard case .identityText` gate refused. COR-40 makes block identification total
     /// for `reshapesWholeLine` via `enclosingBlock(at:)`, so the same caret now succeeds by
@@ -152,7 +152,7 @@ struct CommandLivenessMatrixTests {
         }
     }
 
-    /// // Verifies: REQ-007/015/113; PR #32 review — a CRLF document gets a caret before the
+    /// // Validates: REQ-007, REQ-015, REQ-113; PR #32 review — a CRLF document gets a caret before the
     /// **whole** terminator, not between `\r` and `\n`.
     ///
     /// This must run through WYSIWYG: the defect is in `planAuthoritativeTransition`'s
@@ -203,7 +203,7 @@ struct CommandLivenessMatrixTests {
         }
     }
 
-    // Verifies: REQ-113 — COR-33 stage 2: CRLF code content is now editable via atomic \r\n↔\n decoder.
+    // Validates: REQ-113 — COR-33 stage 2: CRLF code content is now editable via atomic \r\n↔\n decoder.
     // Stage 1 disabled .codeBlock in CRLF; stage 2 makes it enabled by fixing the planner's CRLF stripping and by representing fenced/indented code line breaks as .normalizedCodeBlock atoms.
     @Test func codeBlockIsEditableInCRLFWYSIWYG() throws {
         let crlf = "First paragraph.\r\n\r\nSecond paragraph.\r\n"
@@ -243,7 +243,7 @@ struct CommandLivenessMatrixTests {
         }
     }
 
-    // Verifies: REQ-113 — `.codeBlock` stays enabled in an LF document that *does* contain an `.uneditable` elsewhere (raw HTML).
+    // Validates: REQ-113 — `.codeBlock` stays enabled in an LF document that *does* contain an `.uneditable` elsewhere (raw HTML).
     // The withdrawn stage-1 attempt disabled document-wide whenever any uneditable existed. Correct predicate is target-covering: a paragraph selection in an LF doc with HTML must remain enabled.
     @Test func codeBlockStaysEnabledForLFWithUneditableHTML() throws {
         let lfWithHTML = "First paragraph.\n\n<div>raw html</div>\n"

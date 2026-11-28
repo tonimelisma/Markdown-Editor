@@ -26,7 +26,7 @@ struct FormalGFMContractTests {
         var unsupported: Bool { `class`.hasPrefix("unsupported.") || `class` == "malformed.image" }
     }
 
-    // Verifies: REQ-047/054 — one pinned declaration and one manifest own the dialect contract.
+    // Validates: REQ-047, REQ-054 — one pinned declaration and one manifest own the dialect contract.
     @Test func manifestMatchesClosedProductionDialect() throws {
         let manifest = try loadManifest()
         #expect(manifest.schemaVersion == 1)
@@ -38,7 +38,7 @@ struct FormalGFMContractTests {
         #expect(manifest.fixtures.count >= 15)
     }
 
-    // Verifies: REQ-054 — spec-only rendering cannot enable an extension outside the declared
+    // Validates: REQ-054 — spec-only rendering cannot enable an extension outside the declared
     // formal dialect, even though the conformance harness supplies per-example subsets.
     @Test func rendererRejectsExtensionsOutsideFormalDialect() {
         guard case .failure(.unsupportedExtension("footnotes")) = MarkdownParser.renderHTML(
@@ -50,7 +50,7 @@ struct FormalGFMContractTests {
         }
     }
 
-    // Verifies: REQ-047/048/049/050/053/054/055/056 — every declared fixture succeeds through
+    // Validates: REQ-047, REQ-048, REQ-049, REQ-050, REQ-053, REQ-054, REQ-055, REQ-056 — every declared fixture succeeds through
     // parse, source index, projection oracle, and source highlighter routes.
     @Test func everyFormalFixtureUsesAllProductionBoundaries() async throws {
         let manifest = try loadManifest()
@@ -82,7 +82,7 @@ struct FormalGFMContractTests {
         }
     }
 
-    // Verifies: REQ-048/049 — formal double-tilde is semantic while single-tilde and writing
+    // Validates: REQ-048, REQ-049 — formal double-tilde is semantic while single-tilde and writing
     // extension spellings remain literal source.
     @Test func unsupportedWritingExtensionsRemainLiteral() throws {
         let manifest = try loadManifest()
@@ -94,7 +94,7 @@ struct FormalGFMContractTests {
         #expect(contains(strike.root) { if case .strikethrough = $0.kind { return true }; return false })
     }
 
-    // Verifies: REQ-050/055/056 — source-backed image ranges and delimiter-free visible text agree
+    // Validates: REQ-050, REQ-055, REQ-056 — source-backed image ranges and delimiter-free visible text agree
     // with the original UTF-8 and UTF-16 coordinates.
     @Test func imageAndDelimiterRoundTripsAreExact() throws {
         let source = "![x](<a b>) and **bold** &amp; café 🐙\r\n"

@@ -16,7 +16,7 @@ short="${3:?$usage}"
 url="${4:?$usage}"
 length="${5:?$usage}"
 signature="${6:?$usage}"
-minimum_system="27.0" # MACOSX_DEPLOYMENT_TARGET (docs/DECISIONS.md, 2026-08-22)
+minimum_system="27.0" # MACOSX_DEPLOYMENT_TARGET (ADR 0005)
 
 refuse() {
     echo "appcast: $*" >&2

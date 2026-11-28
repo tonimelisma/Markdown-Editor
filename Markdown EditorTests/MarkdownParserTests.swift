@@ -7,7 +7,7 @@ import XCTest
 @testable import Markdown_Editor
 
 final class MarkdownParserTests: XCTestCase {
-    // Verifies: REQ-054
+    // Validates: REQ-054
     func testPinnedRevisionAndExactExtensions() {
         XCTAssertEqual(MarkdownParser.pinnedRevision, "5d9bdaa4228b381639fff09403e39a04926e2dbe")
         XCTAssertEqual(
@@ -20,7 +20,7 @@ final class MarkdownParserTests: XCTestCase {
         XCTAssertEqual(MarkdownParser.parserOptions & Int32(1 << 20), 0) // TABLE_SPANS
     }
 
-    // Verifies: REQ-054
+    // Validates: REQ-054
     func testParsesCoreConstructsIntoValueAST() throws {
         let source = """
         # Hello
@@ -47,13 +47,13 @@ final class MarkdownParserTests: XCTestCase {
         XCTAssertTrue(contains(tree.root) { if case .htmlBlock = $0.kind { return true }; return false })
     }
 
-    // Verifies: REQ-054 — single tilde is not strikethrough under formal GFM.
+    // Validates: REQ-054 — single tilde is not strikethrough under formal GFM.
     func testSingleTildeIsNotStrikethrough() throws {
         let tree = try XCTUnwrap(MarkdownParser.parse("a ~b~ c", sourceVersion: 0).get())
         XCTAssertFalse(contains(tree.root) { if case .strikethrough = $0.kind { return true }; return false })
     }
 
-    // Verifies: REQ-054
+    // Validates: REQ-054
     func testFormalGFMSpecSuiteHTMLConformance() throws {
         let url = try XCTUnwrap(Bundle(for: MarkdownParserTests.self).url(forResource: "gfm-spec", withExtension: "txt", subdirectory: "Fixtures")
             ?? fixtureURL("gfm-spec.txt"))
@@ -80,7 +80,7 @@ final class MarkdownParserTests: XCTestCase {
         }
     }
 
-    // Verifies: REQ-054
+    // Validates: REQ-054
     func testFormalGFMExtensionSuiteHTMLConformance() throws {
         let url = try XCTUnwrap(
             Bundle(for: MarkdownParserTests.self).url(forResource: "gfm-extensions", withExtension: "txt", subdirectory: "Fixtures")
@@ -110,7 +110,7 @@ final class MarkdownParserTests: XCTestCase {
         XCTAssertTrue(failures.isEmpty, "\(failures.count)/\(relevant.count) formal extension examples failed: \(failures.prefix(8))")
     }
 
-    // Verifies: REQ-054
+    // Validates: REQ-054
     func testPathologicalInputsDoNotCrash() throws {
         let url = try XCTUnwrap(
             Bundle(for: MarkdownParserTests.self).url(forResource: "pathological-scaled", withExtension: "json", subdirectory: "Fixtures")
@@ -126,7 +126,7 @@ final class MarkdownParserTests: XCTestCase {
         }
     }
 
-    // Verifies: REQ-054 — license attribution present.
+    // Validates: REQ-054 — license attribution present.
     func testCmarkLicenseAttributionFileExists() {
         let repoLicense = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

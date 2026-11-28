@@ -48,7 +48,7 @@ nonisolated enum ProjectionStyleTag: Hashable, Sendable {
     /// // The block already carries an `NSTextBlock` container background and padding; when
     /// // fenced content also carried `.code`, the inline run background was drawn *inside* that
     /// // container, producing the darker band visible in the REQ-104 capture at 88b7bd3.
-    /// // ENGINEERING §7 states these are distinct treatments — "Code blocks use block geometry
+    /// // architecture.md §7 states these are distinct treatments — "Code blocks use block geometry
     /// // and padding. Inline code remains inline" — so the distinction lives in the type rather
     /// // than in a positional test inside the builder.
     case codeBlock

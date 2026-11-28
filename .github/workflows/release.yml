@@ -1,18 +1,18 @@
 # Publishes every main commit whose CI passed and that changed the app as an update
-# (docs/DECISIONS.md, 2026-11-26): Scripts/release.sh builds Release on GitHub's macOS runner, signs
+# (ADR 0010): Scripts/release.sh builds Release on GitHub's macOS runner, signs
 # the Sparkle archive with the app's EdDSA update key, and publishes v<x.y.z> with a disk image and
-# Sparkle's feed. Installed copies find it within the hour. Nothing here needs the owner's Mac.
+# Sparkle's feed. Installed copies find it within the hour. Nothing here needs a Mac of anyone's.
 #
 # It runs only after CI passed on a push to main, so no pull request ever reaches its one secret,
 # SPARKLE_SEED: a random password of 32+ characters the update key is derived from
-# (Scripts/sparkle-key.sh). Its master copy is the secret markdown-editor-sparkle-seed in Azure Key
-# Vault kv-melisma-release, managed from the private repository tonimelisma/secrets. The first step
-# fetches it keylessly: GitHub's OIDC token for the environment "release" is exchanged for an Entra
-# token of the app gh-markdown-editor-release, which trusts only this repository's environment
-# "release". The environment holds only the variables AZURE_CLIENT_ID, AZURE_TENANT_ID and
+# (Scripts/sparkle-key.sh). Its master copy is the secret markdown-editor-sparkle-seed in the Azure Key
+# Vault the environment's AZURE_KEY_VAULT names, managed outside this repository. The first step
+# fetches it keylessly: GitHub's OIDC token for the environment "release" is exchanged for a token
+# of an Entra app that trusts only this repository's environment "release". The environment
+# deploys only from main and holds only the variables AZURE_CLIENT_ID, AZURE_TENANT_ID and
 # AZURE_KEY_VAULT, none of them secret. Changing the seed breaks updates for every installed copy,
 # so it is set once and kept. The app is signed ad hoc and is not notarized: there is no Apple
-# Developer account (docs/DECISIONS.md, 2026-11-27).
+# Developer account (ADR 0015).
 name: Release
 
 on:
@@ -68,7 +68,7 @@ jobs:
             printf '%s<<%s\n%s\n%s\n' "$name" "$d" "$v" "$d" >> "$GITHUB_ENV"
           done <<< "$SECRET_MAP"
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0 # the build number is the commit count

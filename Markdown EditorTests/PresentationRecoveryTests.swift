@@ -73,7 +73,7 @@ struct PresentationRecoveryTests {
         }
     }
 
-    // Verifies: REQ-109 — a second authoritative parse of an unchanged revision is not a fault.
+    // Validates: REQ-109 — a second authoritative parse of an unchanged revision is not a fault.
     // In the smoke run of repeat-smoke 45925262536 an edit's own parse installed revision 3, and
     // then the deferred document-change parse installed it again; the check compared snapshot IDs,
     // which always differ, and recorded `patchUnprovable` against an authoritative snapshot.
@@ -98,7 +98,7 @@ struct PresentationRecoveryTests {
         #expect(session.presentation?.sourceRevision.value == revision)
     }
 
-    // Verifies: REQ-109 — an ordinary WYSIWYG keystroke is reconciled without a recovery. Its
+    // Validates: REQ-109 — an ordinary WYSIWYG keystroke is reconciled without a recovery. Its
     // provisional snapshot and the authoritative one describe the same text, so the authority
     // replaces it silently and the selection survives.
     @Test func aWYSIWYGKeystrokeIsReconciledWithoutRecovery() async throws {
@@ -120,7 +120,7 @@ struct PresentationRecoveryTests {
         #expect(harness.session.wysiwygModeState.selection != nil, "the reconciliation dropped the caret")
     }
 
-    // Verifies: REQ-085 — a semantic edit's revision is parsed once. `perform` schedules the parse
+    // Validates: REQ-085 — a semantic edit's revision is parsed once. `perform` schedules the parse
     // itself; the same commit's `objectWillChange` also queued a deferred document-change parse,
     // so every source-planned edit was parsed twice (the release timeline of Release 45922511341
     // shows `parseStarted` for revision 3 twice), and the second could land after the first had
@@ -159,7 +159,7 @@ struct PresentationRecoveryTests {
         #expect(parses == 1, "revision \(edited) was parsed \(parses) times")
     }
 
-    // Verifies: REQ-109 — identity text split into pieces is the same content as the same text in
+    // Validates: REQ-109 — identity text split into pieces is the same content as the same text in
     // one piece, and a different mapping is not. An ordinary keystroke's local transition splits
     // identity atoms at the edit where the parser emits one (CI 45939800494).
     @Test func identitySegmentationIsNotADisagreement() {
@@ -187,7 +187,7 @@ struct PresentationRecoveryTests {
         #expect(ProjectionAtom.coalescingIdentity(shifted).count == 2)
     }
 
-    // Verifies: REQ-109 — the check still catches what it exists for. A provisional snapshot whose
+    // Validates: REQ-109 — the check still catches what it exists for. A provisional snapshot whose
     // content disagrees with the authoritative parse of its revision is recorded, exactly once,
     // and replaced. Without this, a fix to the two tests above could pass by making the check
     // vacuous.
@@ -233,7 +233,7 @@ struct PresentationRecoveryTests {
         #expect(session.presentation?.runs.isEmpty == false, "the wrong provisional snapshot was kept")
     }
 
-    // Verifies: REQ-109 — a recovery keeps the caret. The recovery cleared the provisional snapshot
+    // Validates: REQ-109 — a recovery keeps the caret. The recovery cleared the provisional snapshot
     // before installing the authority, and the selection was carried only through the snapshot
     // being replaced, so it was dropped. The caret stayed on screen and every keystroke after it
     // was refused without a trace: agent-drive run 45943545906 typed "Agent " and the document
@@ -278,7 +278,7 @@ struct PresentationRecoveryTests {
         #expect(selection.range.revision == installed.projectionRevision, "the caret belongs to a snapshot that is gone")
     }
 
-    // Verifies: REQ-109 — a keystroke anywhere is reconciled without a recovery. Every caret
+    // Validates: REQ-109 — a keystroke anywhere is reconciled without a recovery. Every caret
     // offset of a document with a heading, a paragraph with a bold run, a list and a quote: a
     // shifted provisional snapshot was wrong exactly where a keystroke meets the start of a run or
     // block, which a test of one interior offset could not see.
@@ -320,7 +320,7 @@ struct PresentationRecoveryTests {
         #expect(recovered.isEmpty, "\(recovered.count) offsets recovered:\n\(recovered.joined(separator: "\n"))")
     }
 
-    // Verifies: REQ-109 — typing a word into a real document is reconciled without a recovery,
+    // Validates: REQ-109 — typing a word into a real document is reconciled without a recovery,
     // whether each keystroke's parse lands before the next or the keystrokes outrun them.
     // Agent-drive run 45945859891 typed "Agent " at the start of smoke-rich.md's heading and
     // three of the keystrokes inside the word were recovered, which a plain heading did not show.
@@ -356,7 +356,7 @@ struct PresentationRecoveryTests {
         #expect(recoveries(trace).isEmpty, "\(recoveries(trace).count) keystrokes recovered: \(disagreements)")
     }
 
-    // Verifies: REQ-109 — typing at the start of a heading goes on being accepted, keystroke after
+    // Validates: REQ-109 — typing at the start of a heading goes on being accepted, keystroke after
     // keystroke, as the authoritative parse of each lands between them. Agent-drive run
     // 45943545906 clicked into the app on a runner, typed "Agent " before "Typography proof",
     // and the first keystroke was recovered as a COR-71 disagreement; the rest were lost.
