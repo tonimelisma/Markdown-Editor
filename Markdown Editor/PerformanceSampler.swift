@@ -35,13 +35,13 @@ final class PerformanceSampler {
     /// p95 budget per metric, in nanoseconds.
     ///
     /// // REQ-090/116; ARC-Q05: one exported table, so a test can assert it agrees with the
-    /// // numbers REQUIREMENTS states. These values previously existed twice — as prose in
+    /// // numbers requirements.md states. These values previously existed twice — as prose in
     /// // REQ-090 and as literals inside `flush()` — with nothing tying them together.
     static let budgetNanos: [Metric: UInt64] = [
         .nativeInputCallback: 8_000_000,
         .modeTransition: 16_000_000,
         .parseProjection: 100_000_000,
-        // Off-main, in the parse task, like parsing: no frame waits on it (DECISIONS, 2026-11-27).
+        // Off-main, in the parse task, like parsing: no frame waits on it (ADR 0021).
         .imageResolution: 100_000_000,
         .authoritativeApplication: 100_000_000,
         // A frame-shaped budget rather than the off-main 100 ms allowance: this runs on the

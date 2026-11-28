@@ -1,0 +1,9 @@
+#!/bin/sh
+# Everything CI checks, in one command: the traceability and doc-link check, then the gate
+# (Scripts/check.sh). On a Mac with Xcode the gate builds, tests and smokes and exits 0 or 1;
+# elsewhere it runs its portable steps and exits 3 (INCOMPLETE), which is not a pass: the build
+# and tests are then CI's macOS job. pr-check needs a pull request and runs only in CI.
+set -eu
+cd "$(dirname "$0")/.."
+script/process-check
+exec Scripts/check.sh "$@"

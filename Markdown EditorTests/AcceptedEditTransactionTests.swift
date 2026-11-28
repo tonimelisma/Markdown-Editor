@@ -11,7 +11,7 @@ import Foundation
 @MainActor
 struct AcceptedEditTransactionTests {
 
-    // Verifies: REQ-091; ARC-005 — consecutive WYSIWYG inserts without waiting for parse.
+    // Validates: REQ-091; ARC-005 — consecutive WYSIWYG inserts without waiting for parse.
     @Test func twoImmediateKeystrokesAdvanceSourceAndPresentation() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
@@ -68,7 +68,7 @@ struct AcceptedEditTransactionTests {
         }
     }
 
-    // Verifies: REQ-091; ARC-Q01 — 100 immediate accepted inserts.
+    // Validates: REQ-091; ARC-Q01 — 100 immediate accepted inserts.
     @Test func oneHundredImmediateKeystrokes() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("z\n")
@@ -107,7 +107,7 @@ struct AcceptedEditTransactionTests {
         #expect(session.presentation?.renderedString == doc.text)
     }
 
-    // Verifies: REQ-084/091 — non-ASCII input at a paragraph boundary is one exact transition.
+    // Validates: REQ-084, REQ-091 — non-ASCII input at a paragraph boundary is one exact transition.
     @Test func unicodeInsertionAtParagraphEnd() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("ab")
@@ -142,7 +142,7 @@ struct AcceptedEditTransactionTests {
         #expect(session.presentation?.renderedString == "ab日\n")
     }
 
-    // Verifies: REQ-091/092; ARC-005/008 — source and projection deltas remain distinct.
+    // Validates: REQ-091, REQ-092; ARC-005/008 — source and projection deltas remain distinct.
     @Test func consecutiveLiteralPunctuationKeepsExactSourceAndVisibleText() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
@@ -180,7 +180,7 @@ struct AcceptedEditTransactionTests {
         #expect(doc.text == "\\*&amp;entity;&lt;hi\n")
     }
 
-    // Verifies: REQ-084/091/092; ARC-005/008 — literal encoding reads complete
+    // Validates: REQ-084, REQ-091, REQ-092; ARC-005/008 — literal encoding reads complete
     // neighboring graphemes and never interprets a UTF-16 surrogate as a scalar.
     @Test func literalInsertionBesideNonBMPCharactersIsExact() {
         let doc = MarkdownDocument()
@@ -219,7 +219,7 @@ struct AcceptedEditTransactionTests {
         #expect(session.presentation?.renderedString == "*😀*x\n")
     }
 
-    // Verifies: REQ-092; ARC-008 — syntax assembled by consecutive literal
+    // Validates: REQ-092; ARC-008 — syntax assembled by consecutive literal
     // keystrokes is protected after reparsing the completed source context.
     @Test func sequentialLiteralTypingCannotCreateListOrEntitySyntax() {
         let doc = MarkdownDocument()
@@ -296,7 +296,7 @@ struct AcceptedEditTransactionTests {
         #expect(entitySession.presentation?.renderedString == "&amp;x\n")
     }
 
-    // Verifies: REQ-080/091/092; ARC-005/008 — table typing encodes only the
+    // Validates: REQ-080, REQ-091, REQ-092; ARC-005/008 — table typing encodes only the
     // inserted fragment while the atomic transaction preserves the complete cell.
     @Test func tableLiteralInsertionPreservesCellAndAdvancesPresentation() throws {
         let doc = MarkdownDocument()
@@ -336,7 +336,7 @@ struct AcceptedEditTransactionTests {
         #expect(session.presentation?.sourceRevision.value == doc.sourceVersion)
     }
 
-    // Verifies: REQ-080/091 — deleting in a table is a real backward deletion,
+    // Validates: REQ-080, REQ-091 — deleting in a table is a real backward deletion,
     // not an empty insertion, and keeps source/presentation synchronized.
     @Test func tableDeleteBackwardRemovesPreviousVisibleCharacter() throws {
         let doc = MarkdownDocument()
@@ -373,7 +373,7 @@ struct AcceptedEditTransactionTests {
         #expect(session.presentation?.renderedString.contains("ac") == true)
     }
 
-    // Verifies: REQ-084/091; ARC-005 — the real TextKit delegate applies once before return.
+    // Validates: REQ-084, REQ-091; ARC-005 — the real TextKit delegate applies once before return.
     @Test func adapterStorageMatchesCommittedPresentationBeforeCallbackReturns() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
@@ -421,7 +421,7 @@ struct AcceptedEditTransactionTests {
         }.count - beforeCommitCount == 1)
     }
 
-    // Verifies: REQ-016/059/091; ARC-005 — paste advances source, session, and
+    // Validates: REQ-016, REQ-059, REQ-091; ARC-005 — paste advances source, session, and
     // TextKit storage in one discrete transaction before the adapter returns.
     @Test func plainTextPasteAppliesAcceptedTransitionSynchronously() {
         let doc = MarkdownDocument()
@@ -468,7 +468,7 @@ struct AcceptedEditTransactionTests {
         }.count - beforeCommitCount == 1)
     }
 
-    // Verifies: REQ-091; ARC-005 — refused edit changes neither source nor presentation.
+    // Validates: REQ-091; ARC-005 — refused edit changes neither source nor presentation.
     @Test func refusedEditChangesNeither() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
@@ -508,7 +508,7 @@ struct AcceptedEditTransactionTests {
 @MainActor
 struct EditorStateOwnershipTests {
 
-    // Verifies: REQ-052/086; ARC-002 — session owns one typed state per mode.
+    // Validates: REQ-052, REQ-086; ARC-002 — session owns one typed state per mode.
     @Test func sessionOwnsTypedModeState() {
         let session = EditorSession()
         session.updateSourceModeState {
@@ -528,7 +528,7 @@ struct EditorStateOwnershipTests {
         #expect(!sources.contains("wysiwygViewState"))
     }
 
-    // Verifies: REQ-052 — session state owns mode state without exposing AppKit presentation.
+    // Validates: REQ-052 — session state owns mode state without exposing AppKit presentation.
     @Test func sessionExposesNoAppKitPresentation() throws {
         let source = try String(contentsOfFile: #filePath.replacingOccurrences(of: "Markdown EditorTests/AcceptedEditTransactionTests.swift", with: "Markdown Editor/EditorSession.swift"), encoding: .utf8)
         #expect(!source.contains("NSOpenPanel"))
@@ -536,7 +536,7 @@ struct EditorStateOwnershipTests {
         #expect(!source.contains("runModal"))
     }
 
-    // Verifies: REQ-057 — displaced architecture routes remain absent from production.
+    // Validates: REQ-057 — displaced architecture routes remain absent from production.
     // Verifies: ARC-002/003/013 — displaced architecture routes are absent from production.
     @Test func displacedArchitectureRoutesAbsent() throws {
         let root = URL(fileURLWithPath: #filePath)
@@ -579,7 +579,7 @@ struct EditorStateOwnershipTests {
 
     /// COR-22 deletion gate for the editor foundation rewrite. Each symbol was displaced by an
     /// approved plan; the architecture forbids keeping either one as a compatibility route.
-    // Verifies: REQ-057 — rewrite routes remain single-owner and displaced paths stay deleted.
+    // Validates: REQ-057 — rewrite routes remain single-owner and displaced paths stay deleted.
     @Test func rewriteDisplacedRoutesAreAbsent() throws {
         let haystack = try productionSourceText()
         let displaced = [
@@ -640,7 +640,7 @@ struct EditorStateOwnershipTests {
 @MainActor
 struct PresentationSnapshotTests {
 
-    // Verifies: REQ-091; ARC-003 — equal source revision with different snapshot IDs is distinguishable.
+    // Validates: REQ-091; ARC-003 — equal source revision with different snapshot IDs is distinguishable.
     @Test func snapshotIdentityDistinctFromSourceRevision() {
         let model = MarkdownProjectionModel.build(
             tree: MarkdownParser.parse("hi\n", sourceVersion: 1).get()!,
@@ -667,7 +667,7 @@ struct PresentationSnapshotTests {
 @MainActor
 struct MarkdownLiteralEncoderTests {
 
-    // Verifies: REQ-092; ARC-008 — punctuation encodes safely while remaining literal intent.
+    // Validates: REQ-092; ARC-008 — punctuation encodes safely while remaining literal intent.
     @Test func encodesEmphasisAndEntities() {
         let ctx = LiteralEncodeContext(
             intendedVisibleText: "* & <",
@@ -686,7 +686,7 @@ struct MarkdownLiteralEncoderTests {
         #expect(spelling.contains("&lt;"))
     }
 
-    // Verifies: REQ-080 — table-cell edits preserve escaped pipe content.
+    // Validates: REQ-080 — table-cell edits preserve escaped pipe content.
     @Test func tableCellEscapesPipe() {
         let ctx = LiteralEncodeContext(
             intendedVisibleText: "a|b",
@@ -707,7 +707,7 @@ struct MarkdownLiteralEncoderTests {
 @MainActor
 struct ProjectionSelectionClassifierTests {
 
-    // Verifies: REQ-080/087; ARC-009 — cross-cell selection refuses.
+    // Validates: REQ-080, REQ-087; ARC-009 — cross-cell selection refuses.
     @Test func refusesCrossCellSelection() throws {
         let source = "| a | b |\n| - | - |\n| 1 | 2 |\n"
         let tree = try #require(MarkdownParser.parse(source, sourceVersion: 1).get())
@@ -746,7 +746,7 @@ struct ProjectionSelectionClassifierTests {
 @MainActor
 struct NativeUpdateOriginTests {
 
-    // Verifies: REQ-083/084; ARC-013 — programmatic selection does not close typing.
+    // Validates: REQ-083, REQ-084; ARC-013 — programmatic selection does not close typing.
     @Test func programmaticOriginDoesNotCloseTyping() {
         let doc = MarkdownDocument()
         doc.installTextForTesting("hi\n")
@@ -790,7 +790,7 @@ struct NativeUpdateOriginTests {
 @MainActor
 struct DocumentSerializedIOTests {
 
-    // Verifies: REQ-015; ARC-001/011 — reads stay serialized on the main thread; every kind of
+    // Validates: REQ-015; ARC-001/011 — reads stay serialized on the main thread; every kind of
     // save writes asynchronously, so an autosave no longer holds the main thread for the write
     // (133–413 ms per autosave on a runner, probes 45979646302 and 45980923448).
     @Test func readsAreSerializedAndSavesWriteAsynchronously() {
@@ -802,7 +802,7 @@ struct DocumentSerializedIOTests {
         }
     }
 
-    // Verifies: REQ-015/018; ARC-011 — the background write reads only the bytes taken on the
+    // Validates: REQ-015, REQ-018; ARC-011 — the background write reads only the bytes taken on the
     // main actor when the save began: typing that lands after that point is not in them, and the
     // background thread never reads the document's text.
     @Test func aBackgroundWriteWritesTheTextAsTheSaveBegan() async throws {
@@ -816,7 +816,7 @@ struct DocumentSerializedIOTests {
         #expect(String(decoding: written, as: UTF8.self) == "Saved words.\n")
     }
 
-    // Verifies: REQ-015/018 — the bytes a save took outlive its completion. AppKit completes a
+    // Validates: REQ-015, REQ-018 — the bytes a save took outlive its completion. AppKit completes a
     // save stopped for the conflict alert, then writes on Save Anyway without a second
     // `save(to:…)`; the snapshot was cleared at the completion, so that write found none and
     // the person was told the file could not be saved (tour 45982296007).
@@ -857,7 +857,7 @@ struct DocumentSerializedIOTests {
         #expect(String(decoding: written, as: UTF8.self) == "Saved. On disk.\n")
     }
 
-    // Verifies: REQ-015; ARC-011 — a background write with no snapshot refuses rather than read
+    // Validates: REQ-015; ARC-011 — a background write with no snapshot refuses rather than read
     // main-actor state from another thread.
     @Test func aBackgroundWriteWithoutASnapshotRefuses() async {
         let doc = MarkdownDocument()
@@ -868,7 +868,7 @@ struct DocumentSerializedIOTests {
         }
     }
 
-    // Verifies: REQ-015; ARC-001/011 — actual NSDocumentController open/save uses canonical I/O.
+    // Validates: REQ-015; ARC-001/011 — actual NSDocumentController open/save uses canonical I/O.
     @Test func documentControllerOpenAndSaveRoundTrip() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -932,7 +932,7 @@ struct DocumentSerializedIOTests {
 @MainActor
 struct ArchitectureConformanceTests {
 
-    // Verifies: REQ-085; ARC-Q06 — semantic parser/index work cannot execute on main.
+    // Validates: REQ-085; ARC-Q06 — semantic parser/index work cannot execute on main.
     @Test func semanticWorkerRunsOffMainThread() {
         let ranOnMain = EditorSemanticWorker.sync { Thread.isMainThread }
         #expect(ranOnMain == false)

@@ -28,7 +28,7 @@ struct PrintingContractTests {
         return (document, textView)
     }
 
-    // Verifies: REQ-130 — printing uses the native workflow. The app returns an
+    // Validates: REQ-130 — printing uses the native workflow. The app returns an
     // `NSPrintOperation` over the live editor view from `NSDocument.printOperation(withSettings:)`,
     // which is the override AppKit's Print menu item routes through; there is no custom print
     // window, no separate render path, and no second copy of the document to drift.
@@ -45,7 +45,7 @@ struct PrintingContractTests {
         #expect(operation.printInfo.rightMargin == 36)
     }
 
-    // Verifies: REQ-096 — the print panel's load is AppKit's work, not the app's stall. Print
+    // Validates: REQ-096 — the print panel's load is AppKit's work, not the app's stall. Print
     // begins the sheet inside `AppModalSession.aroundAppKitWork`, so the first load (1.4 s in
     // probe 46007142113, 2 s in Release tour 46007567920) is bounded as a wait in AppKit's loop.
     @Test func printBeginsItsPanelWhileAppKitWorksForTheApp() {
@@ -67,7 +67,7 @@ struct PrintingContractTests {
         #expect(!AppModalSession.shared.isAppKitWorking)
     }
 
-    // Verifies: REQ-130 — printing changes neither source nor history. A print is a read, and the
+    // Validates: REQ-130 — printing changes neither source nor history. A print is a read, and the
     // failure this guards against is a print path that re-lays-out through the document and marks
     // it edited, so the user is asked to save a file they only looked at.
     @Test func printingMutatesNeitherSourceNorHistory() throws {
@@ -87,7 +87,7 @@ struct PrintingContractTests {
         #expect(document.isDocumentEdited == editedBefore)
     }
 
-    // Verifies: REQ-130 — the presentation actually paginates. Forced layout, not attribute
+    // Validates: REQ-130 — the presentation actually paginates. Forced layout, not attribute
     // inspection: the plan requires visible geometry where geometry is the contract, and a
     // document taller than one page must produce more than one page of laid-out content.
     @Test func longDocumentPaginatesAcrossMultiplePages() throws {
@@ -113,7 +113,7 @@ struct PrintingContractTests {
         )
     }
 
-    // Verifies: REQ-130 — printing with no visible editor is refused with a typed error rather
+    // Validates: REQ-130 — printing with no visible editor is refused with a typed error rather
     // than crashing or silently printing an empty page.
     @Test func printingWithoutAnEditorIsRefused() {
         let document = MarkdownDocument()
@@ -129,7 +129,7 @@ struct PrintingContractTests {
 @MainActor
 struct WindowCitizenshipTests {
 
-    // Verifies: REQ-131 — window restoration, cascading and tabbing are AppKit's, not
+    // Validates: REQ-131 — window restoration, cascading and tabbing are AppKit's, not
     // reimplemented. The app sets only the standard metadata; there is no custom frame store or
     // tab manager, which `lifecycleOwnerHasNoDuplicateDocumentSubsystem` also guards.
     @Test func windowsUseStandardRestorationCascadingAndTabbing() throws {
@@ -151,10 +151,10 @@ struct WindowCitizenshipTests {
         #expect(window.isRestorable, "window opts out of state restoration")
     }
 
-    // Verifies: REQ-131 — a document window is laid out at its final size only. Creating it at
+    // Validates: REQ-131 — a document window is laid out at its final size only. Creating it at
     // another size, or restyling and resizing it afterwards, laid out the whole window again —
     // SwiftUI's first render, both editors and the toolbar — which on a CI runner was a third of
-    // what the first window cost (DECISIONS.md, 2026-11-27). `makeWindowControllers` runs
+    // what the first window cost (ADR 0016). `makeWindowControllers` runs
     // synchronously on the main actor, so every resize it causes is posted inside this call and
     // nothing else's can be.
     @Test func theDocumentWindowIsCreatedAtItsFinalSize() throws {
@@ -187,7 +187,7 @@ struct WindowCitizenshipTests {
         #expect(sizes.allSatisfy { $0 == final }, "the window passed through other sizes, each laid out: \(sizes)")
     }
 
-    // Verifies: REQ-131 — a new window is big enough to read a document and to show the whole
+    // Validates: REQ-131 — a new window is big enough to read a document and to show the whole
     // toolbar. It opened at 720×560, at which the toolbar already overflowed, and the owner saw
     // windows "stamp-sized".
     @Test func aNewWindowIsBigEnoughToRead() {
@@ -198,7 +198,7 @@ struct WindowCitizenshipTests {
         #expect(small.width >= MarkdownDocument.minimumContentSize.width)
     }
 
-    // Verifies: REQ-131 — a saved frame too small to read in is not restored. Unit tests run
+    // Validates: REQ-131 — a saved frame too small to read in is not restored. Unit tests run
     // inside the app and shared its defaults, and one of them shrank a window to its minimum:
     // the owner's copy then opened stamp-sized. A frame like that is replaced by the default.
     @Test func aStampSizedSavedFrameIsNotRestored() throws {
@@ -218,7 +218,7 @@ struct WindowCitizenshipTests {
         )
     }
 
-    // Verifies: REQ-002 — a plain launch shows an untitled document, as TextEdit does, and only a
+    // Validates: REQ-002 — a plain launch shows an untitled document, as TextEdit does, and only a
     // plain launch: not one that opens a file or restores windows, and not a verification run.
     @Test func onlyAPlainLaunchWithNoDocumentOpensAnUntitledOne() {
         func decide(_ isDefault: Bool, _ documents: Int, tests: Bool = false, smoke: Bool = false, bench: Bool = false) -> Bool {
@@ -233,7 +233,7 @@ struct WindowCitizenshipTests {
         #expect(!decide(true, 0, tests: true) && !decide(true, 0, smoke: true) && !decide(true, 0, bench: true))
     }
 
-    // Verifies: REQ-131 — the command surface stays usable at the minimum window size. A toolbar
+    // Validates: REQ-131 — the command surface stays usable at the minimum window size. A toolbar
     // that cannot compress clips its items, and a clipped command is unreachable by mouse however
     // well it validates.
     @Test func toolbarRemainsUsableAtTheMinimumWindowSize() throws {
@@ -253,7 +253,7 @@ struct WindowCitizenshipTests {
         #expect(toolbar.displayMode != .labelOnly, "label-only mode clips first at narrow widths")
     }
 
-    // Verifies: REQ-131 — command validation is window-scoped. Two documents, two controllers:
+    // Validates: REQ-131 — command validation is window-scoped. Two documents, two controllers:
     // performing a command through one must not reach the other, which is the failure a global
     // command controller or a broadcast notification produces.
     @Test func commandValidationStaysWindowScoped() throws {

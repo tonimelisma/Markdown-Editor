@@ -10,7 +10,7 @@ import Testing
 
 /// Laid-out geometry proofs for semantic block spacing.
 ///
-/// // Verifies: REQ-106/107; ARC-Q14/ARC-Q15 — a hard break is a line break, not a paragraph
+/// // Validates: REQ-106, REQ-107; ARC-Q14/ARC-Q15 — a hard break is a line break, not a paragraph
 /// // boundary, and a fenced code block does not space its own lines apart.
 ///
 /// Every existing typography proof asserts **attribute values** (`textBlocks`,
@@ -56,7 +56,7 @@ struct ParagraphGeometryTests {
 
     private enum GeometryError: Error { case noLayoutManager }
 
-    // Verifies: REQ-081 — an image takes the height it is drawn at: the block after it starts
+    // Validates: REQ-081 — an image takes the height it is drawn at: the block after it starts
     // below the image, not over it. In the showcase the heading after the image was drawn over
     // its bottom edge (tour 45976057730).
     @Test func theBlockAfterAnImageStartsBelowIt() throws {
@@ -137,7 +137,7 @@ struct ParagraphGeometryTests {
         return lines
     }
 
-    /// // Verifies: REQ-107 — a block nested inside a list item keeps the list's content indent
+    /// // Validates: REQ-107 — a block nested inside a list item keeps the list's content indent
     /// instead of resetting to the reading margin.
     ///
     /// COR-36. The nested-block path built a fresh paragraph style and copied only `textBlocks`
@@ -190,7 +190,7 @@ struct ParagraphGeometryTests {
         }
     }
 
-    /// // Verifies: REQ-107 — the same inheritance holds for a decorated nested block: a quote
+    /// // Validates: REQ-107 — the same inheritance holds for a decorated nested block: a quote
     /// inside a list item keeps both the quote's rule and the list's indent.
     @Test func quoteNestedInAListItemKeepsRuleAndIndent() throws {
         let itemText = String(repeating: "item ", count: 60)
@@ -213,7 +213,7 @@ struct ParagraphGeometryTests {
         )
     }
 
-    /// // Verifies: REQ-106 — the gap across a formal hard break is one ordinary line advance and
+    /// // Validates: REQ-106 — the gap across a formal hard break is one ordinary line advance and
     /// is strictly smaller than the gap across a paragraph boundary in the same document.
     ///
     /// The pre-COR-27 build measured these as equal (≈69 pt vs ≈70 pt in the REQ-104 capture),
@@ -240,7 +240,7 @@ struct ParagraphGeometryTests {
         )
     }
 
-    /// // Verifies: REQ-107 — a fenced code block is one semantic block, so its own lines advance
+    /// // Validates: REQ-107 — a fenced code block is one semantic block, so its own lines advance
     /// by one plain line, not by a line plus block spacing.
     ///
     /// The reference is measured, not assumed: a long paragraph that *wraps* produces two visual
@@ -272,7 +272,7 @@ struct ParagraphGeometryTests {
 
     /// // Verifies: ARC-018 — this is a layout-only correction. The rendered string and every
     /// projection coordinate are byte-identical to what the same source produced before.
-    // Verifies: REQ-105 — geometry is derived presentation only; it changes neither the rendered
+    // Validates: REQ-105 — geometry is derived presentation only; it changes neither the rendered
     // string nor any coordinate (ARC-018).
     @Test func paragraphGeometryChangesNoRenderedTextOrCoordinates() throws {
         for source in [
@@ -293,7 +293,7 @@ struct ParagraphGeometryTests {
         }
     }
 
-    /// // Verifies: REQ-107 — a multi-line blockquote keeps one composed rule across every one of
+    /// // Validates: REQ-107 — a multi-line blockquote keeps one composed rule across every one of
     /// its TextKit paragraphs, so splitting the style did not drop block geometry.
     @Test func multiLineBlockQuoteKeepsItsRuleOnEveryLine() throws {
         let source = "> quoted line one\n> quoted line two\n"

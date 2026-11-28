@@ -21,7 +21,7 @@ import Testing
 /// This is deliberately an allowlist of *files* rather than a scanner for assertion shapes.
 /// A scanner would have to parse Swift to tell `contains` used for an absence proof from
 /// `contains` used for a presence proof, and a gate that can be defeated by renaming a local
-/// variable is the kind of proxy `docs/DECISIONS.md` is about. An allowlist cannot be defeated
+/// variable is the kind of proxy ADR 0001 is about. An allowlist cannot be defeated
 /// accidentally: reading production source from a new test file fails here until someone says
 /// what absence it proves.
 struct ProofHygieneTests {

@@ -365,7 +365,7 @@ final class MarkdownAppDelegate: NSObject, NSApplicationDelegate {
         // REQ-002/REQ-131: a plain launch shows an untitled document, as TextEdit does. AppKit
         // asks `applicationShouldOpenUntitledFile` only of the application's own delegate, which
         // in a SwiftUI-lifecycle app is SwiftUI's: launched from the Dock the app opened no window
-        // at all (owner, 2026-11-27). `launchIsDefaultUserInfoKey` is false for a launch that
+        // at all. `launchIsDefaultUserInfoKey` is false for a launch that
         // opens a file or restores windows, so neither gets an extra untitled one, and a document
         // AppKit did open by then is seen on the next turn.
         let isDefaultLaunch = (notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool) ?? false

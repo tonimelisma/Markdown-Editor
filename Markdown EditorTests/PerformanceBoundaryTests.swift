@@ -14,7 +14,7 @@ import Testing
 
 @MainActor
 struct PerformanceBoundaryTests {
-    // Verifies: REQ-090 — an ordinary native insertion takes the synchronous parser-free route
+    // Validates: REQ-090 — an ordinary native insertion takes the synchronous parser-free route
     // through the real session owner and reaches a bounded storage patch before reconciliation.
     @Test func ordinaryNativeInsertionUsesCompleteLocalRoute() throws {
         let trace = InMemoryEditorTrace()
@@ -40,7 +40,7 @@ struct PerformanceBoundaryTests {
     /// Injects a measurable stall inside `NSTextStorage.replaceCharacters`. If the sample were
     /// taken before TextKit application — the defect this test exists to catch — the recorded
     /// duration would not contain the stall.
-    // Verifies: REQ-090/103/109; ARC-020
+    // Validates: REQ-090, REQ-103, REQ-109; ARC-020
     @Test func nativeInputCallbackSampleEnclosesStorageApplication() throws {
         let stall: TimeInterval = 0.05
         // Two paragraphs, so a bounded patch is visibly smaller than the document.
@@ -66,7 +66,7 @@ struct PerformanceBoundaryTests {
         #expect(harness.document.text == "Hello world!.\n\nSecond paragraph.\n")
     }
 
-    // Verifies: REQ-116; ARC-020 — insertion-point repaints are not layout-application samples.
+    // Validates: REQ-116; ARC-020 — insertion-point repaints are not layout-application samples.
     @Test func layoutMetricIgnoresInsertionPointRepaints() throws {
         let harness = try EditorHarness(source: "Hello world.\n")
 
@@ -80,7 +80,7 @@ struct PerformanceBoundaryTests {
         )
     }
 
-    // Verifies: REQ-116; ARC-020 — a changed presentation range is measured only when TextKit
+    // Validates: REQ-116; ARC-020 — a changed presentation range is measured only when TextKit
     // reports that its layout has completed, and subsequent drawing does not add another sample.
     @Test func layoutMetricRecordsCompletedApplicationOnce() throws {
         let harness = try EditorHarness(source: "Hello world.\n")
@@ -99,7 +99,7 @@ struct PerformanceBoundaryTests {
         #expect(summary.count == 1)
     }
 
-    // Verifies: REQ-084 — both native IME termination callbacks use one source transaction route.
+    // Validates: REQ-084 — both native IME termination callbacks use one source transaction route.
     @Test func bothCompositionCommitRoutesUseTheSameTransaction() throws {
         let insertTrace = InMemoryEditorTrace()
         let insertHarness = try EditorHarness(source: "ab\n\nTrailing paragraph.\n", trace: insertTrace)
@@ -133,7 +133,7 @@ struct PerformanceBoundaryTests {
         )
     }
 
-    // Verifies: REQ-103 — ordinary edits feed the sampler and emit no per-keystroke record.
+    // Validates: REQ-103 — ordinary edits feed the sampler and emit no per-keystroke record.
     @Test func ordinaryEditsProduceAggregatesOnlyAndNoPerKeystrokeRecord() throws {
         let trace = InMemoryEditorTrace()
         let harness = try EditorHarness(source: "Hello world.\n", trace: trace)
@@ -155,7 +155,7 @@ struct PerformanceBoundaryTests {
         #expect(harness.document.text == "Hello worldxxxxx.\n")
     }
 
-    // Verifies: REQ-109 — storage drift is resynchronized *and recorded*, never silently.
+    // Validates: REQ-109 — storage drift is resynchronized *and recorded*, never silently.
     @Test func driftedStorageIsResynchronizedAndRecorded() throws {
         let trace = InMemoryEditorTrace()
         let harness = try EditorHarness(source: "Hello world.\n", trace: trace)
@@ -174,7 +174,7 @@ struct PerformanceBoundaryTests {
         #expect(harness.textView.string == harness.session.presentation?.renderedString)
     }
 
-    // Verifies: REQ-109 — a patch whose surrounding text is not identical in both snapshots is
+    // Validates: REQ-109 — a patch whose surrounding text is not identical in both snapshots is
     // refused outright rather than applied on an assumption.
     @Test func patchRefusesWhenSurroundingTextDiffersBetweenSnapshots() throws {
         let fixture = try PatchFixture(source: "hello\n", insert: "!", at: 5)
@@ -215,7 +215,7 @@ struct PerformanceBoundaryTests {
         #expect(patch == nil)
     }
 
-    // Verifies: REQ-109 — a declared replacement that would run past the next snapshot refuses
+    // Validates: REQ-109 — a declared replacement that would run past the next snapshot refuses
     // before Foundation receives an invalid substring range.
     @Test func patchRefusesMalformedNextReplacementRange() throws {
         let fixture = try PatchFixture(source: "hello\n", insert: "!", at: 5)
@@ -239,7 +239,7 @@ struct PerformanceBoundaryTests {
         #expect(patch == nil)
     }
 
-    // Verifies: REQ-109 — changing text before an unchanged suffix preserves the suffix boundary
+    // Validates: REQ-109 — changing text before an unchanged suffix preserves the suffix boundary
     // instead of needlessly including its first grapheme in the patch.
     @Test func changedSpanKeepsUnchangedSuffixAtBoundary() {
         let changed = PresentationPatch.changedSpan(from: "abc\ndef" as NSString, to: "def" as NSString)
@@ -251,7 +251,7 @@ struct PerformanceBoundaryTests {
         #expect(ranges.1 == NSRange(location: 0, length: 0))
     }
 
-    // Verifies: REQ-109 — source-only coordinates and node identities in a distant table do not
+    // Validates: REQ-109 — source-only coordinates and node identities in a distant table do not
     // make a hidden-delimiter command refresh every intervening block.
     @Test func sourceOnlyTableChangesDoNotExpandAttributeRefreshScope() throws {
         let current = try snapshot(
@@ -270,7 +270,7 @@ struct PerformanceBoundaryTests {
         #expect(NSMaxRange(scope) <= tableStart)
     }
 
-    // Verifies: REQ-109 — an element inserted, removed, or changed near the start of a snapshot's
+    // Validates: REQ-109 — an element inserted, removed, or changed near the start of a snapshot's
     // ordered element arrays must not shift every later element onto a different counterpart and
     // expand the attribute refresh across the document. A trailing block that is byte-identical
     // and semantically identical in both snapshots must stay outside the refreshed scope.
@@ -325,7 +325,7 @@ struct PerformanceBoundaryTests {
                 "changed trailing block produced a scope that leaked before it")
     }
 
-    // Verifies: REQ-109 — a decoded image replacing an otherwise identical placeholder expands
+    // Validates: REQ-109 — a decoded image replacing an otherwise identical placeholder expands
     // the attribute refresh to that attachment without rewriting document characters.
     @Test func resolvedImageLocationParticipatesInAttributeRefreshScope() throws {
         let current = try snapshot(source: "![](assets/photo.png)\n", id: 1, revision: 1)
@@ -342,7 +342,7 @@ struct PerformanceBoundaryTests {
         #expect(NSLocationInRange(location, scope))
     }
 
-    // Verifies: REQ-109 — a decoded image can arrive with unchanged projection text and
+    // Validates: REQ-109 — a decoded image can arrive with unchanged projection text and
     // semantics. Its attachment block refreshes once; a later reconciliation using the same
     // bounded-cache image performs no redundant attribute rewrite.
     @Test func resolvedImageRefreshesItsAttachmentOnlyWhenDisplayIdentityChanges() throws {
@@ -375,7 +375,7 @@ struct PerformanceBoundaryTests {
         #expect(harness.storage.attributeReplacements.isEmpty)
     }
 
-    // Verifies: REQ-109; ARC-Q16 — a formatting command whose rendered text is unchanged (the
+    // Validates: REQ-109; ARC-Q16 — a formatting command whose rendered text is unchanged (the
     // delimiters are hidden) refreshes attributes and replaces nothing at all.
     @Test func hiddenDelimiterCommandRefreshesAttributesWithoutReplacing() async throws {
         let harness = try EditorHarness(source: "First paragraph.\n\nSecond paragraph.\n")
@@ -405,7 +405,7 @@ struct PerformanceBoundaryTests {
         #expect(traits.contains(.boldFontMask), "attribute refresh did not apply the bold trait")
     }
 
-    // Verifies: REQ-058/057/087/109; ARC-005/007/009/019 — the shared WYSIWYG command route
+    // Validates: REQ-058, REQ-057, REQ-087, REQ-109; ARC-005/007/009/019 — the shared WYSIWYG command route
     // maps one ordinary paragraph exactly, rewrites only that paragraph as a list, and keeps the
     // matching presentation editable without a full-storage replacement.
     @Test func unorderedListCommandAcceptsAnOrdinaryParagraphSelection() async throws {
@@ -425,7 +425,7 @@ struct PerformanceBoundaryTests {
         #expect(harness.storage.fullReplacements == 0)
     }
 
-    // Verifies: REQ-109; ARC-Q16 — installing a newer snapshot whose rendered text differs uses
+    // Validates: REQ-109; ARC-Q16 — installing a newer snapshot whose rendered text differs uses
     // one bounded patch. This is the route every formatting command and every authoritative
     // reconciliation takes once the session has installed the new snapshot; it is driven at that
     // boundary so the assertion does not depend on an individual planner's preconditions.
@@ -456,7 +456,7 @@ struct PerformanceBoundaryTests {
         #expect(harness.textView.string == next.renderedString)
     }
 
-    // Verifies: REQ-109 — a task-checkbox interaction uses the same bounded attribute refresh
+    // Validates: REQ-109 — a task-checkbox interaction uses the same bounded attribute refresh
     // route even though it asks to apply immediately.
     @Test func taskToggleRefreshesOnlyItsSemanticBlock() async throws {
         let harness = try EditorHarness(source: "- [ ] Task\n\nTrailing paragraph.\n")
@@ -484,7 +484,7 @@ struct PerformanceBoundaryTests {
         )
     }
 
-    // Verifies: REQ-109 — heading and link commands both produce same-text snapshots and refresh
+    // Validates: REQ-109 — heading and link commands both produce same-text snapshots and refresh
     // only their selected block rather than replacing the document.
     @Test func headingAndLinkCommandsRefreshOnlyTheirSelectedBlock() async throws {
         for command in [EditorCommand.heading(2), .editLink] {
@@ -511,7 +511,7 @@ struct PerformanceBoundaryTests {
         }
     }
 
-    // Verifies: REQ-109 — a real table-cell edit uses one local character patch rather than
+    // Validates: REQ-109 — a real table-cell edit uses one local character patch rather than
     // replacing storage, even though table coordinates are synthetic presentation structure.
     @Test func tableCellEditUsesOneBoundedPatch() async throws {
         let harness = try EditorHarness(source: "| Name | Value |\n| --- | --- |\n| A | B |\n\nTrailing paragraph.\n")
@@ -529,7 +529,7 @@ struct PerformanceBoundaryTests {
         #expect(patch.length < (harness.textView.string as NSString).length)
     }
 
-    // Verifies: REQ-084/109 — a real marked-text commit asks for immediate application, and its
+    // Validates: REQ-084, REQ-109 — a real marked-text commit asks for immediate application, and its
     // new snapshot takes only bounded patches rather than a full replacement. The marked text is
     // shown in the native storage first (REQ-084 keeps composition transient but visible), then
     // the commit replaces it; every storage edit stays inside the document and never rebuilds it.
@@ -561,7 +561,7 @@ struct PerformanceBoundaryTests {
         }, "a composition storage edit was not bounded")
     }
 
-    // Verifies: REQ-109 — a newer snapshot carrying the same text refreshes attributes and
+    // Validates: REQ-109 — a newer snapshot carrying the same text refreshes attributes and
     // replaces no characters at all, so it needs no place in the full-replacement allowlist.
     @Test func newerSnapshotWithUnchangedTextReplacesNothing() async throws {
         let harness = try EditorHarness(source: "First paragraph.\n\nSecond paragraph.\n")
@@ -586,7 +586,7 @@ struct PerformanceBoundaryTests {
         #expect(harness.textView.string == next.renderedString)
     }
 
-    // Verifies: REQ-109 — a forced application of an already-current snapshot is a no-op unless
+    // Validates: REQ-109 — a forced application of an already-current snapshot is a no-op unless
     // storage has actually drifted; force alone is never a reason to rebuild.
     @Test func forcedCurrentSnapshotDoesNotRecoverWithoutStorageDrift() throws {
         let trace = InMemoryEditorTrace()
@@ -602,7 +602,7 @@ struct PerformanceBoundaryTests {
         }.isEmpty)
     }
 
-    // Verifies: REQ-109; ENGINEERING §7 — a full rebuild reached from a newer snapshot because
+    // Validates: REQ-109; architecture.md §7 — a full rebuild reached from a newer snapshot because
     // applied storage drifted is recorded, never silent. Without the record this path looks
     // exactly like an ordinary first application.
     @Test func driftedStorageOnNewerSnapshotIsRecorded() async throws {

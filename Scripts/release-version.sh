@@ -1,5 +1,5 @@
 #!/bin/bash
-# The version a release is published as, x.y.z (docs/DECISIONS.md, "Cloud-first development"):
+# The version a release is published as, x.y.z (ADR 0010):
 #   Scripts/release-version.sh <series x.y> [<newest published version x.y.z>]
 # The series is the project's MARKETING_VERSION; a commit that changes it starts a new major or
 # minor version. Each release takes the next patch of its series; a series newer than the newest

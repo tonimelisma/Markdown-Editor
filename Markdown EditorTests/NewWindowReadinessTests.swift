@@ -61,7 +61,7 @@ struct NewWindowReadinessTests {
         }
     }
 
-    // Verifies: REQ-002/REQ-032 — a new window's page has keyboard focus.
+    // Validates: REQ-002/REQ-032 — a new window's page has keyboard focus.
     @Test func aNewWindowsPageHasKeyboardFocus() throws {
         let h = Self.makeHost(text: "")
         defer { h.session.detach() }
@@ -71,7 +71,7 @@ struct NewWindowReadinessTests {
         #expect(h.window.initialFirstResponder === page)
     }
 
-    // Verifies: REQ-084 — closing the find bar gives the keyboard back to the page it searched.
+    // Validates: REQ-084 — closing the find bar gives the keyboard back to the page it searched.
     // Closed with Done it left no first responder, and the next keys went nowhere.
     @Test func closingTheFindBarReturnsTheKeyboardToThePage() throws {
         let h = Self.makeHost(text: "Milk and Eggs\n")
@@ -85,7 +85,7 @@ struct NewWindowReadinessTests {
         #expect(h.window.firstResponder === page, "the keyboard is with \(String(describing: h.window.firstResponder))")
     }
 
-    // Verifies: REQ-086 — the editor of the mode not shown never takes the keyboard. AppKit gave
+    // Validates: REQ-086 — the editor of the mode not shown never takes the keyboard. AppKit gave
     // it to the hidden Source page when the find bar closed, and keys went to a caret nobody saw.
     @Test func theHiddenEditorDeclinesTheKeyboard() throws {
         let h = Self.makeHost(text: "Milk and Eggs\n")
@@ -98,7 +98,7 @@ struct NewWindowReadinessTests {
         #expect(h.window.firstResponder !== hidden, "the hidden Source page took the keyboard")
     }
 
-    // Verifies: REQ-058/REQ-032 — the first command in a new window applies at the caret the page
+    // Validates: REQ-058/REQ-032 — the first command in a new window applies at the caret the page
     // shows. The caret had never moved, so no selection callback reported it, and the command was
     // refused.
     @Test func theFirstCommandInANewWindowApplies() async throws {

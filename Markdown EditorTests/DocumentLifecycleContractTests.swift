@@ -10,7 +10,7 @@ import Testing
 
 @MainActor
 struct DocumentLifecycleContractTests {
-    // Verifies: REQ-002 — direct construction is the same empty, untitled document that AppKit
+    // Validates: REQ-002 — direct construction is the same empty, untitled document that AppKit
     // creates for File > New; no second source or location state is introduced by the app.
     @Test func newDocumentStartsEmptyAndUntitled() {
         let document = MarkdownDocument()
@@ -23,7 +23,7 @@ struct DocumentLifecycleContractTests {
         #expect(document.documentUndoManager === document.undoManager)
     }
 
-    // Verifies: REQ-003/004/015 — the same canonical NSDocument data boundary accepts valid
+    // Validates: REQ-003, REQ-004, REQ-015 — the same canonical NSDocument data boundary accepts valid
     // UTF-8, rejects invalid UTF-8, and never installs a partial invalid document.
     @Test func readContractInstallsOnlyValidUTF8() throws {
         let valid = MarkdownDocument()
@@ -38,7 +38,7 @@ struct DocumentLifecycleContractTests {
         #expect(invalid.sourceVersion == 0)
     }
 
-    // Verifies: REQ-005/017 — a real canonical edit marks the document dirty, while
+    // Validates: REQ-005, REQ-017 — a real canonical edit marks the document dirty, while
     // operation-scoped Save reports a failure without discovering ownership through a view.
     @Test func editIsDirtyAndSaveFailureIsScopedToTheDocument() async throws {
         let document = MarkdownDocument()
@@ -95,7 +95,7 @@ struct DocumentLifecycleContractTests {
         #expect(document.undoManager?.canUndo == canUndoBeforeSave)
     }
 
-    // Verifies: REQ-005 — a canonical edit hands off to NSDocument's autosave contract and
+    // Validates: REQ-005 — a canonical edit hands off to NSDocument's autosave contract and
     // completes without a custom timer or shadow persistence service.
     @Test func autosaveHandoffCompletesAfterCanonicalEdit() async throws {
         let document = MarkdownDocument()
@@ -152,7 +152,7 @@ struct DocumentLifecycleContractTests {
         }
     }
 
-    // Verifies: REQ-006/014/020 — Versions/revert and tabs stay AppKit-owned. The app configures
+    // Validates: REQ-006, REQ-014, REQ-020 — Versions/revert and tabs stay AppKit-owned. The app configures
     // only the standard NSDocument window metadata and document-controller route.
     @Test func standardDocumentLifecycleUsesAppKitOwners() throws {
         let document = MarkdownDocument()
@@ -186,9 +186,9 @@ struct DocumentLifecycleContractTests {
         #expect(NSDocumentController.instancesRespond(to: #selector(NSDocumentController.clearRecentDocuments(_:))))
     }
 
-    // Verifies: REQ-002/014 — the standard New route creates and registers an empty Markdown
+    // Validates: REQ-002, REQ-014 — the standard New route creates and registers an empty Markdown
     // document without a custom document factory or view-owned source.
-    // Verifies: REQ-014 — an untitled duplicate resolves its `assets/` images beside the
+    // Validates: REQ-014 — an untitled duplicate resolves its `assets/` images beside the
     // document it was copied from. The copy has no file of its own, so every image in it showed
     // as missing (tour 45979207044, File › Duplicate).
     @Test func aDuplicateResolvesImagesBesideItsOriginal() async throws {
@@ -218,7 +218,7 @@ struct DocumentLifecycleContractTests {
         )
     }
 
-    // Verifies: REQ-014 — where relative images resolve: a past version beside the document it
+    // Validates: REQ-014 — where relative images resolve: a past version beside the document it
     // is a version of, though its own file is in the version store (the Versions browser showed
     // its images as missing, tour 45980851977); a file beside itself; an untitled duplicate
     // beside its original until it is saved.
@@ -243,7 +243,7 @@ struct DocumentLifecycleContractTests {
         #expect(controller.documents.contains { $0 === document })
     }
 
-    // Verifies: REQ-021 — the standard NSDocumentController route records a recently opened
+    // Validates: REQ-021 — the standard NSDocumentController route records a recently opened
     // document, and File › Open Recent lists what it records.
     @Test func recentsUseTheStandardDocumentControllerRoute() throws {
         let url = FileManager.default.temporaryDirectory
@@ -274,7 +274,7 @@ struct DocumentLifecycleContractTests {
         #expect(RecentDocuments.shared.urls.contains { $0.path == canonicalPath })
     }
 
-    // Verifies: REQ-013/015/019 — the lifecycle boundary is one NSDocument owner with serialized
+    // Validates: REQ-013, REQ-015, REQ-019 — the lifecycle boundary is one NSDocument owner with serialized
     // framework I/O and one URL/location-generation route, not an app shadow subsystem.
     @Test func lifecycleOwnerHasNoDuplicateDocumentSubsystem() throws {
         // Uniqueness and absence only. The five `override func` presence assertions this test

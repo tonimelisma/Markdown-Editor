@@ -2,7 +2,7 @@
 # The check. Build, test, and confirm the built app launches and renders.
 #
 # This replaces twelve gate scripts. If you are tempted to add a thirteenth,
-# read docs/DECISIONS.md#why-the-gates-were-removed first.
+# read ADR 0001 first.
 #
 # On a Mac with Xcode it runs everything. Anywhere else (a Claude Code cloud session, an Ubuntu CI
 # job) it runs only the steps that need no Xcode and ends `check: INCOMPLETE` with exit status 3:
@@ -121,7 +121,7 @@ if (( run_smoke )); then
 
     printf '%s\n' '── docs'
     if command -v npx >/dev/null 2>&1; then
-        if ! npx --yes markdownlint-cli2 >"$derived/markdownlint.log" 2>&1; then
+        if ! npx --yes markdownlint-cli2@0.24.2 >"$derived/markdownlint.log" 2>&1; then
             failures=$((failures + 1))
             tail -20 "$derived/markdownlint.log" >&2
         else
@@ -134,7 +134,7 @@ if (( run_smoke )); then
     if (( has_xcode )); then
         # The Debug app the smoke run launches is signed without the hardened runtime
         # (ENABLE_DEBUG_DYLIB), so no launch here exercises how a release is signed — which is how
-        # build 202 was published unable to start (docs/DECISIONS.md, 2026-11-26). This proves the
+        # build 202 was published unable to start (ADR 0012). This proves the
         # script that repairs it, on a bundle built for the purpose: seconds, and its control must
         # fail to launch before it passes.
         printf '%s\n' '── ad hoc hardening (the release signing a Debug launch cannot show)'
@@ -159,7 +159,7 @@ if (( run_smoke )); then
     fi
 fi
 
-# The five-minute budget (docs/DECISIONS.md, 2026-11-26) counts this run plus CI's. Printed so
+# The five-minute budget (ADR 0010) counts this run plus CI's. Printed so
 # a run's cost is read against it, not guessed.
 duration=$(( $(date +%s) - started_at ))
 printf 'duration: %dm%02ds (budget: 5m for a commit, local and CI together)\n' $((duration / 60)) $((duration % 60))

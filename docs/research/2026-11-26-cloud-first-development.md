@@ -1,14 +1,14 @@
 # Cloud-first development of a macOS app
 
 Date: 2026-11-26. Sources fetched that day. The decision built on it is in
-[DECISIONS.md](../DECISIONS.md), "Cloud-first development".
+[ADR 0010](../adr/0010-cloud-first-development-ci-is-the-mac-sparkle-is-the.md).
 
 ## Question
 
-The owner (2026-11-26): Claude Code cloud sessions become the default environment for this repository
-(development, testing, building and releasing), with no dependency on the owner's MacBook. A session on
+The request: Claude Code cloud sessions become the default environment for this repository
+(development, testing, building and releasing), with no dependency on the maintainer's Mac. A session on
 the Mac stays possible, and then runs the tests locally instead of waiting for CI. The app updates
-itself with Sparkle and ships as a disk image. Do what latchkey and Otos (the owner's other macOS apps)
+itself with Sparkle and ships as a disk image. Do what latchkey and Otos (the maintainer's other macOS apps)
 do, and keep everything in `CLAUDE.md`.
 
 ## What the sibling projects do (read 2026-11-26)
@@ -21,14 +21,14 @@ Both repositories are public, both develop in cloud sessions, and both verify th
   - A SessionStart hook (`script/cloud-setup.sh`) installs the Linux lint tools only when
     `CLAUDE_CODE_REMOTE=true`. In the VM, `check.sh` runs every gate that needs no Xcode and ends
     `check: INCOMPLETE`.
-  - `release.yml` runs after CI passes on `main`. It builds and signs with the owner's Apple
+  - `release.yml` runs after CI passes on `main`. It builds and signs with the maintainer's Apple
     Development certificate, imported into a per-run keychain. It signs the zip with the app's own
     EdDSA key. It publishes `v<x.y.z>` with a DMG, the zip, dSYMs and `appcast.xml`, and marks the
     release latest, so `releases/latest/download/appcast.xml` is a stable feed URL.
   - Versions: the patch is the next one in the `MARKETING_VERSION` series, and `CFBundleVersion` is
     the commit count. The release skips a commit that does not change the app, refuses a Sparkle
     with OSV advisories, keeps the newest three releases, and is not notarized (ADR 0059).
-  - The owner's one-time `script/release-setup.sh` on the Mac makes the key under the app's own
+  - The maintainer's one-time `script/release-setup.sh` on the Mac makes the key under the app's own
     keychain account and sets the environment `release`'s secrets with `gh`.
   - Its plan 0118 ("CI is the only Mac") and research note
     `2026-11-26-agent-instruction-files.md` cut `AGENTS.md` from 728 lines toward about 200.
@@ -39,13 +39,13 @@ Both repositories are public, both develop in cloud sessions, and both verify th
   - Its `CLAUDE.md` had about 300 lines. #59 (`bee78fa`) cut it to about 200, with owner setup
     moved to `docs/development.md`.
   - #59 also settled "two ways to work". Cloud sessions are the main way and never use the
-    MacBook during development, except for a live check the owner asks for. A local session is
+    MacBook during development, except for a live check the maintainer asks for. A local session is
     Claude Code started on the Mac and runs the Mac tests there. Both are described in `CLAUDE.md`
     itself, and the Mac tests gate merging.
   - Merges are squash merges by auto-merge. A pull request opens at its first commit, and a
     pushed branch is never rebased or force-pushed.
 - **Otos, in progress** (branch `friendly-gates-m0b2mj`, `d8cf08c`): a commit is checked within
-  five minutes, locally and on CI together (owner, 2026-11-26). Its CI restores Xcode's
+  five minutes, locally and on CI together. Its CI restores Xcode's
   compilation cache and the lint caches, and only `main` saves them. Every check prints its
   durations.
 
@@ -117,14 +117,14 @@ Both repositories are public, both develop in cloud sessions, and both verify th
 
 ## What differs here
 
-1. **This repository was private, and the siblings are public.** The owner then made it public.
+1. **This repository was private, and the siblings are public.** It was then made public.
    - A private repository's release assets are not downloadable without credentials, so installed
      copies cannot read a feed there.
    - Its macOS CI minutes are billed against the plan.
-   - The siblings resolved both by going public, and so did this repository (owner, 2026-11-26).
-2. **VISION promises Developer ID signing and notarization; the siblings use an Apple Development
-   certificate without notarization**, exported from the owner's Mac (Otos re-exports it yearly).
-   The owner ruled out any Mac step here. Releases therefore sign ad hoc unless a certificate secret
+   - The siblings resolved both by going public, and so did this repository.
+2. **vision.md promises Developer ID signing and notarization; the siblings use an Apple Development
+   certificate without notarization**, exported from the maintainer's Mac (Otos re-exports it yearly).
+   Any Mac step was ruled out here. Releases therefore sign ad hoc unless a certificate secret
    is set, and derive the update key from a secret password. Sparkle 2.10.1's `SUUpdateValidator`
    accepts an update whose EdDSA key is unchanged, whatever its signing identity, and its own
    message says "adhoc signing can be used at minimum". Sparkle's private-key format is the
@@ -143,4 +143,4 @@ Both repositories are public, both develop in cloud sessions, and both verify th
   waits for. A session on the Mac is optional and runs the same gate locally.
 - `Scripts/check.sh` ends INCOMPLETE (exit 3) where there is no Xcode, never PASS.
 - Releases follow the Otos shape, with notarization when the identity allows it.
-- The repository goes public, as the siblings did (owner, 2026-11-26).
+- The repository goes public, as the siblings did.

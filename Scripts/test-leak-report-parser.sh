@@ -1,9 +1,9 @@
 #!/bin/bash
-# REQ-142: the leak-report parser must be shown to discriminate, not assumed to.
+# Validates: REQ-142 — the leak-report parser must be shown to discriminate, not assumed to.
 #
 # Every failure shape COR-83 names — missing report, no count, ambiguous count, nonzero count —
 # gets a fixture. A parser that silently returned 0 on a malformed report would turn the whole leak
-# check into a check that always passes, which is the shape docs/DECISIONS.md exists to warn about.
+# check into a check that always passes, which is the shape ADR 0001 exists to warn about.
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"

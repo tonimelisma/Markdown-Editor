@@ -10,7 +10,7 @@ import Testing
 
 @MainActor
 struct SourceEditorParityTests {
-    // Verifies: REQ-040 — the production incremental patch applies display attributes without
+    // Validates: REQ-040 — the production incremental patch applies display attributes without
     // changing source text.
     @Test func productionIncrementalPatchAppliesStyleWithoutSourceMutation() async throws {
         let source = "# Heading\nplain text\n"
@@ -28,7 +28,7 @@ struct SourceEditorParityTests {
         #expect(fixture.storage.string == source)
     }
 
-    // Verifies: REQ-040/045 — a patch with a different UTF-16 source snapshot cannot style a
+    // Validates: REQ-040, REQ-045 — a patch with a different UTF-16 source snapshot cannot style a
     // canonically equivalent but range-distinct storage value.
     @Test func productionIncrementalPatchRejectsDifferentUTF16Snapshot() async throws {
         let source = "# A\n"
@@ -45,7 +45,7 @@ struct SourceEditorParityTests {
         #expect(fixture.storage.string == "# a\n")
     }
 
-    // Verifies: REQ-045 — the coordinator's production route computes off-main, applies the
+    // Validates: REQ-045 — the coordinator's production route computes off-main, applies the
     // incremental patch, and records both compute and application phases.
     @Test func coordinatorHighlightUsesIncrementalProductionRoute() async throws {
         let fixture = try makeFixture(source: "# Heading\nplain\n")
@@ -60,7 +60,7 @@ struct SourceEditorParityTests {
         #expect(metrics.contains { $0.metric == .sourceHighlightApplication })
     }
 
-    // Verifies: REQ-045 — replacing the document while a real debounced coordinator task is
+    // Validates: REQ-045 — replacing the document while a real debounced coordinator task is
     // outstanding rejects the old patch even when the replacement has the same text and revision.
     @Test func coordinatorHighlightRejectsReplacedDocumentIdentity() async throws {
         let fixture = try makeFixture(source: "# Heading\n")
@@ -73,7 +73,7 @@ struct SourceEditorParityTests {
         #expect(fixture.storage.attributeReplacements.isEmpty)
     }
 
-    // Verifies: REQ-045 — rebinding a persistent source host replaces the incremental cache so
+    // Validates: REQ-045 — rebinding a persistent source host replaces the incremental cache so
     // a replacement document that shares its first line cannot inherit stale tail styling.
     @Test func coordinatorRehighlightUsesReplacementDocumentCache() async throws {
         let fixture = try makeFixture(source: "# Heading\nplain\n")
@@ -98,7 +98,7 @@ struct SourceEditorParityTests {
         #expect(actual == expected)
     }
 
-    // Verifies: REQ-045 — compute work belongs to the captured session even if the coordinator
+    // Validates: REQ-045 — compute work belongs to the captured session even if the coordinator
     // is rebound before the debounced task completes; discarded work must not contaminate the new
     // session's measurements.
     @Test func coordinatorHighlightAttributesComputeToCapturedSession() async throws {
@@ -115,7 +115,7 @@ struct SourceEditorParityTests {
         #expect(!replacementSession.drainPerformanceSummaries().contains { $0.metric == .sourceHighlightCompute })
     }
 
-    // Verifies: REQ-045 — ordinary source edits reset and restyle only their changed line.
+    // Validates: REQ-045 — ordinary source edits reset and restyle only their changed line.
     @Test func sourceHighlightAppliesOnlyToTheChangedWindow() async throws {
         let source = (0..<80).map { "ordinary source line \($0) with enough text to measure" }.joined(separator: "\n") + "\n"
         let fixture = try makeFixture(source: source)
@@ -143,7 +143,7 @@ struct SourceEditorParityTests {
         #expect(fixture.storage.string == editedText)
     }
 
-    // Verifies: REQ-045; ARC-020 — the source styling application is a sampled main-actor boundary.
+    // Validates: REQ-045; ARC-020 — the source styling application is a sampled main-actor boundary.
     @Test func sourceHighlightApplicationIsRecorded() async throws {
         let source = "# Heading\nplain text\n"
         let fixture = try makeFixture(source: source)
@@ -154,7 +154,7 @@ struct SourceEditorParityTests {
         #expect(summaries.contains { $0.metric == .sourceHighlightApplication && $0.count == 1 })
     }
 
-    // Verifies: REQ-045 — changing fence parity widens the pass so content below a new opener is
+    // Validates: REQ-045 — changing fence parity widens the pass so content below a new opener is
     // not left with stale non-code attributes, and the widening is visible in diagnostics.
     @Test func typingAFenceWidensTheStyleWindow() async throws {
         let source = "title\ncode *literal*\nafter\n"
@@ -181,7 +181,7 @@ struct SourceEditorParityTests {
         #expect(fixture.storage.string == editedText)
     }
 
-    // Verifies: REQ-040/051; ARC-018 — source highlighting never rewrites source bytes, including
+    // Validates: REQ-040, REQ-051; ARC-018 — source highlighting never rewrites source bytes, including
     // Unicode and CRLF input.
     @Test func sourceStylingStillLeavesTheStringUnchanged() async throws {
         let source = "# Café 🐙\r\n**literal** and `code`\r\n"
@@ -212,7 +212,7 @@ struct SourceEditorParityTests {
         let textView: MarkdownSourceTextView
     }
 
-    // Verifies: REQ-125
+    // Validates: REQ-125
     @Test(arguments: PerformanceCorpus.allCases)
     func sourceHighlightEnumeratesEveryPerformanceCorpus(_ corpus: PerformanceCorpus) async throws {
         let source = corpus.source(utf16Target: 20_000)

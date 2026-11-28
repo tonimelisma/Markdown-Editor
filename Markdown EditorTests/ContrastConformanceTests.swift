@@ -63,7 +63,7 @@ struct ContrastConformanceTests {
         _ = previous
     }
 
-    // Verifies: REQ-139/141 — a colour made in one appearance is the right colour in another, as a
+    // Validates: REQ-139, REQ-141 — a colour made in one appearance is the right colour in another, as a
     // page built in Light and shown after a switch to Dark has. Quote text was made with a fixed
     // alpha copy of the label colour and stayed near-black in Dark (tour 45974231615). The other
     // tests make each colour inside the appearance they measure, so they could not see it.
@@ -106,7 +106,7 @@ struct ContrastConformanceTests {
         }
     }
 
-    // Verifies: REQ-139 — every declared colour role meets its WCAG 2.1 bound against the surface
+    // Validates: REQ-139 — every declared colour role meets its WCAG 2.1 bound against the surface
     // it is drawn on, in Light and Dark. The enumeration is `EditorColorRole.allCases`, so a new
     // role fails this test until its contrast is measured: the requirement quantifies over "any
     // declared semantic color role", which a hand-picked list of three would not discharge.
@@ -142,7 +142,7 @@ struct ContrastConformanceTests {
         )
     }
 
-    // Verifies: REQ-139 — code text stays legible on the code background, which is the composition
+    // Validates: REQ-139 — code text stays legible on the code background, which is the composition
     // the ordinary-background test cannot see: `codeBackground` is translucent, so code text is
     // measured against quaternary-over-window rather than against the window.
     @Test func codeTextMeetsContrastOnTheCodeBackground() {
@@ -161,7 +161,7 @@ struct ContrastConformanceTests {
         }
     }
 
-    // Verifies: REQ-139 — Increase Contrast never *reduces* contrast for any role. The accessibility
+    // Validates: REQ-139 — Increase Contrast never *reduces* contrast for any role. The accessibility
     // appearance is a different resolution of the same semantic colours, and a regression there is
     // invisible to the two tests above.
     @Test func increasedContrastNeverLowersAnyRolesRatio() {

@@ -10,7 +10,7 @@ import Testing
 
 @MainActor
 struct LocalTransitionDomainTests {
-    // Verifies: COR-71 / REQ-090/091/092 — every classifier route is executable and the
+    // Validates: COR-71 / REQ-090, REQ-091, REQ-092 — every classifier route is executable and the
     // source-location synthetic cases selected by Stage 0 remain refusal cases.
     @Test func everyClassifierCaseHasOneDeclaredRoute() {
         let node = MarkdownNodeID(rawValue: 1)
@@ -41,7 +41,7 @@ struct LocalTransitionDomainTests {
         #expect(routes == [.local, .local, .local, .refusal, .bounded, .refusal, .refusal, .refusal, .refusal, .refusal])
     }
 
-    // Verifies: COR-71 / REQ-091/092 — an ordinary literal insertion uses the parser-free local
+    // Validates: COR-71 / REQ-091, REQ-092 — an ordinary literal insertion uses the parser-free local
     // planner and still returns a complete source/presentation transition.
     @Test func ordinaryLiteralInsertionUsesLocalTransition() throws {
         let document = MarkdownDocument()
@@ -81,7 +81,7 @@ struct LocalTransitionDomainTests {
         session.detach()
     }
 
-    // Verifies: REQ-091 — collapsed backward deletion removes the preceding presented atom and
+    // Validates: REQ-091 — collapsed backward deletion removes the preceding presented atom and
     // advances source/presentation together before another input can arrive.
     @Test func collapsedBackwardDeletionUpdatesRenderedText() throws {
         let document = MarkdownDocument()
@@ -122,7 +122,7 @@ struct LocalTransitionDomainTests {
         session.detach()
     }
 
-    // Verifies: REQ-092 — a parser-free local route refuses a candidate that could join an
+    // Validates: REQ-092 — a parser-free local route refuses a candidate that could join an
     // existing ampersand into a formal-GFM entity instead of silently changing visible meaning.
     @Test func entityFormingLiteralContextRefusesLocally() throws {
         let document = MarkdownDocument()

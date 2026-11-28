@@ -9,7 +9,7 @@ import Testing
 
 /// The undo vocabulary is closed, unique, and shared by both editors.
 ///
-/// // Verifies: REQ-011; ARC-028 — Source mode and WYSIWYG mode plan edits through separate
+/// // Validates: REQ-011; ARC-028 — Source mode and WYSIWYG mode plan edits through separate
 /// domains, and the same operation must read the same way in the Edit menu from either. Before
 /// COR-92 these were literals at nineteen sites across seven files, with `"Delete"` alone
 /// appearing four times; nothing tied the two domains' copies together.

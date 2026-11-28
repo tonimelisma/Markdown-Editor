@@ -10,7 +10,7 @@ import AppKit
 
 struct MarkdownHighlighterTests {
 
-    // Verifies: REQ-041
+    // Validates: REQ-041
     @Test func stylesHeadingWithLevel() async throws {
         let tokens = try await MarkdownHighlighter().tokens(for: "## Title\n")
         #expect(tokens.contains {
@@ -19,7 +19,7 @@ struct MarkdownHighlighterTests {
         })
     }
 
-    // Verifies: REQ-041
+    // Validates: REQ-041
     @Test func stylesInlineElements() async throws {
         let tokens = try await MarkdownHighlighter().tokens(for: "**b** *i* _also italic_ `c` [a](b) ![x](y)")
         #expect(tokens.contains { $0.style == .bold })
@@ -29,13 +29,13 @@ struct MarkdownHighlighterTests {
         #expect(tokens.contains { $0.style == .image })
     }
 
-    // Verifies: REQ-043
+    // Validates: REQ-043
     @Test func stylesFencedCodeBlock() async throws {
         let tokens = try await MarkdownHighlighter().tokens(for: "````swift\nlet answer = 42\n`````\n\n~~~\ncode\n~~~~")
         #expect(tokens.filter { $0.style == .codeBlock }.count == 2)
     }
 
-    // Verifies: REQ-041/043 — closer shorter than opener does not close; content stays fenced.
+    // Validates: REQ-041, REQ-043 — closer shorter than opener does not close; content stays fenced.
     @Test func rejectsShorterFenceCloser() async throws {
         let source = "````\n~~inside~~\n```\nstill code\n````\n"
         let tokens = try await MarkdownHighlighter().tokens(for: source)
@@ -43,7 +43,7 @@ struct MarkdownHighlighterTests {
         #expect(!tokens.contains { $0.style == .strikethrough })
     }
 
-    // Verifies: REQ-041/043 — indent ≤3 and unclosed fence → EOF; no strike inside.
+    // Validates: REQ-041, REQ-043 — indent ≤3 and unclosed fence → EOF; no strike inside.
     @Test func indentedAndUnclosedFenceExcludesInlineStyles() async throws {
         let indented = "   ~~~\n~~inside~~\n~~~\n"
         let indentedTokens = try await MarkdownHighlighter().tokens(for: indented)
@@ -56,7 +56,7 @@ struct MarkdownHighlighterTests {
         #expect(!unclosedTokens.contains { $0.style == .strikethrough })
     }
 
-    // Verifies: REQ-040/051 — token ranges stay within the text bounds.
+    // Validates: REQ-040, REQ-051 — token ranges stay within the text bounds.
     @Test func rangesWithinBounds() async throws {
         let text = "# H\n**b** `c`\n- item\n> quote\n~~strike~~\n![x](<a b>)\n"
         let tokens = try await MarkdownHighlighter().tokens(for: text)
@@ -64,7 +64,7 @@ struct MarkdownHighlighterTests {
         #expect(tokens.allSatisfy { $0.range.location >= 0 && NSMaxRange($0.range) <= length })
     }
 
-    // Verifies: REQ-047 — exhaustive switch over TokenStyle; a new house-extension case fails to compile.
+    // Validates: REQ-047 — exhaustive switch over TokenStyle; a new house-extension case fails to compile.
     @Test func supportedDialectContainsOnlyCommonMarkAndFormalGFMStyles() {
         let samples: [TokenStyle] = [
             .heading(level: 1), .heading(level: 2), .heading(level: 3),
@@ -86,7 +86,7 @@ struct MarkdownHighlighterTests {
         }
     }
 
-    // Verifies: REQ-048/049 — formal GFM double-tilde strikethrough only; single tilde is literal.
+    // Validates: REQ-048, REQ-049 — formal GFM double-tilde strikethrough only; single tilde is literal.
     // Fixtures derived from GFM 0.29-gfm §strikethrough with CMARK_OPT_STRIKETHROUGH_DOUBLE_TILDE.
     @Test(arguments: [
         // Double tilde styles; single tilde does not (formal GFM exactness).
@@ -123,7 +123,7 @@ struct MarkdownHighlighterTests {
         Fixture(source: "~open~~", expectStrikeSources: []),
         Fixture(source: "~~a~b~~", expectStrikeSources: ["~~a~b~~"]),
     ])
-    // Verifies: REQ-048 — formal GFM double-tilde strikethrough is styled.
+    // Validates: REQ-048 — formal GFM double-tilde strikethrough is styled.
     func stylesFormalGFMTildeStrikethroughFixtures(_ fixture: Fixture) async throws {
         let tokens = try await MarkdownHighlighter().tokens(for: fixture.source)
         let strikeRanges = tokens.filter { $0.style == .strikethrough }.map(\.range)
@@ -132,7 +132,7 @@ struct MarkdownHighlighterTests {
         #expect(actual == fixture.expectStrikeSources.sorted())
     }
 
-    // Verifies: REQ-049 — unsupported writing extensions and single-tilde spans stay unstyled.
+    // Validates: REQ-049 — unsupported writing extensions and single-tilde spans stay unstyled.
     @Test func preservesUnknownExtensionsWithoutSemanticStyles() async throws {
         let source = "==highlight== [^footnote] x^super^ H~2~O and ~single~ stay literal"
         let tokens = try await MarkdownHighlighter().tokens(for: source)
@@ -149,7 +149,7 @@ struct MarkdownHighlighterTests {
         #expect(!tokens.contains { ns.substring(with: $0.range) == "~single~" })
     }
 
-    // Verifies: REQ-050 — focused valid CommonMark image destination fixtures (+ negatives).
+    // Validates: REQ-050 — focused valid CommonMark image destination fixtures (+ negatives).
     @Test(arguments: [
         ImageFixture(source: "![](/url)", expectStyled: true),
         ImageFixture(source: "![foo](train.jpg)", expectStyled: true),
@@ -165,7 +165,7 @@ struct MarkdownHighlighterTests {
         ImageFixture(source: "![x](a b)", expectStyled: false),                 // unangled space
         ImageFixture(source: "![x](foo(and(bar(baz))))", expectStyled: false), // deeper nesting
     ])
-    // Verifies: REQ-050 — supported CommonMark image destinations receive source styling.
+    // Validates: REQ-050 — supported CommonMark image destinations receive source styling.
     func stylesCommonMarkImageDestinationFixtures(_ fixture: ImageFixture) async throws {
         let tokens = try await MarkdownHighlighter().tokens(for: fixture.source)
         let images = tokens.filter { $0.style == .image }
@@ -178,7 +178,7 @@ struct MarkdownHighlighterTests {
         }
     }
 
-    // Verifies: REQ-041 — GFM tables without edge pipes are styled.
+    // Validates: REQ-041 — GFM tables without edge pipes are styled.
     @Test func stylesTablesWithoutEdgePipes() async throws {
         let tokens = try await MarkdownHighlighter().tokens(for: "a | b\n--- | ---\n")
         #expect(tokens.contains { $0.style == .table })
@@ -199,7 +199,7 @@ struct ImageFixture: Sendable, CustomTestStringConvertible {
 
 struct TextStatsTests {
 
-    // Verifies: REQ-044
+    // Validates: REQ-044
     @Test func countsWordsAndCharacters() {
         // COR-30: asserts the one shipping implementation. These previously exercised
         // TextStats.wordCount/characterCount, which production never called.
@@ -210,7 +210,7 @@ struct TextStatsTests {
         #expect(TextStats.counts("one two") == .init(words: 2, characters: 7))
     }
 
-    // Verifies: REQ-044/045
+    // Validates: REQ-044, REQ-045
     @Test func computesCountsOffMainActor() async {
         let computer = TextStatsComputer()
         let counts = await computer.counts(for: "one two")
@@ -221,7 +221,7 @@ struct TextStatsTests {
 @MainActor
 struct MarkdownTypographyTests {
 
-    // Verifies: REQ-041/047
+    // Validates: REQ-041, REQ-047
     @Test func returnsAttributesPerStyle() {
         let theme = MarkdownTypography()
         #expect(theme.attributes(for: .bold)[.font] != nil)
@@ -247,7 +247,7 @@ struct MarkdownTypographyTests {
 @MainActor
 struct StylingFidelityTests {
 
-    // Verifies: REQ-040/049/051 — applying style attributes never changes the string (INV-2).
+    // Validates: REQ-040, REQ-049, REQ-051 — applying style attributes never changes the string (INV-2).
     @Test func attributeStylingLeavesStringUnchanged() async throws {
         let text = "# Title\n**bold** and `code`, a [link](url), ![img](<a b>), ~one~, ~~two~~, ==hi== [^1] x^2^.\r\nSecond line.\n"
         let storage = NSTextStorage(string: text)

@@ -4,8 +4,7 @@
 # Compilation caching (Xcode 26+) keeps every compile job's output in one content-addressed store,
 # so the smoke build replays what the test build just compiled, and CI replays what main's newest
 # run left (it restores the store; only a push to main saves it). Measured in Otos (its ADR 0044);
-# here, check.sh's `duration:` line is read against the five-minute budget (docs/DECISIONS.md,
-# 2026-11-26).
+# here, check.sh's `duration:` line is read against the five-minute budget (ADR 0010).
 #
 # Deliberately without Otos's prefix mapping: it rewrites #filePath, which the tests use to find
 # fixtures and production source. CI's checkout path is the same on every run, so its cache hits
@@ -13,7 +12,7 @@
 #
 # Index-while-building feeds only an IDE, and these builds have none.
 #
-# Signed ad hoc ("Sign to Run Locally"), never with the owner's certificate: the project's automatic
+# Signed ad hoc ("Sign to Run Locally"), never with a personal certificate: the project's automatic
 # signing asks for a development certificate of its team, which a CI runner does not have (the
 # first CI run failed on exactly that), and no verification should depend on one person's Apple
 # account. Releases sign with the real identity (Scripts/release.sh).

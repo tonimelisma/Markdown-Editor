@@ -6,7 +6,7 @@
 import AppKit
 @preconcurrency import Sparkle
 
-/// Self-update through Sparkle (REQ-033; `docs/DECISIONS.md`, "Cloud-first development").
+/// Self-update through Sparkle (REQ-033; ADR 0010).
 ///
 /// CI builds every `main` commit whose checks passed and that changed the app, signs it, and
 /// publishes it to GitHub Releases with Sparkle's feed (`Scripts/release.sh`). An installed copy

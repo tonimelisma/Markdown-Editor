@@ -23,7 +23,7 @@ struct TypographyLayoutTests {
         #expect(textView.textContainer?.containerSize.width == 344)
     }
 
-    // Verifies: REQ-107 — the quote has a real 3 pt leading rule and content inset, so color is
+    // Validates: REQ-107 — the quote has a real 3 pt leading rule and content inset, so color is
     // not its only distinction.
     @Test func blockQuoteUsesLeadingRuleAndContentInset() throws {
         let built = try build("> Quoted line\n")
@@ -43,7 +43,7 @@ struct TypographyLayoutTests {
         #expect(block.borderColor(for: .minX) != nil)
     }
 
-    // Verifies: REQ-107 — nesting composes through the block geometry, not a second mechanism.
+    // Validates: REQ-107 — nesting composes through the block geometry, not a second mechanism.
     @Test func nestedBlockQuotesComposeTheirRules() throws {
         let source = "> outer\n>\n> > inner\n"
         let built = try build(source)
@@ -60,7 +60,7 @@ struct TypographyLayoutTests {
         }
     }
 
-    // Verifies: REQ-107 — COR-37: a code block that is the only child of a quote composes both containers.
+    // Validates: REQ-107 — COR-37: a code block that is the only child of a quote composes both containers.
     // The two blocks share the identical projection range; the old wholesale assignment discarded whichever ran last.
     @Test func codeInsideQuoteComposesBothContainers() throws {
         let source = "> ```\n> code here\n> ```\n"
@@ -85,7 +85,7 @@ struct TypographyLayoutTests {
         #expect(controlStyle.textBlocks.first?.backgroundColor != nil, "control code block must have background")
     }
 
-    // Verifies: REQ-107 — the code block is a padded adaptive container, not just tinted text.
+    // Validates: REQ-107 — the code block is a padded adaptive container, not just tinted text.
     @Test func codeBlockIsPaddedAdaptiveContainer() throws {
         let source = "```swift\nlet x = 1\n```\n"
         let built = try build(source)
@@ -103,7 +103,7 @@ struct TypographyLayoutTests {
         #expect(font?.isFixedPitch == true)
     }
 
-    // Verifies: REQ-105 — heading spacing binds a heading to what follows it.
+    // Validates: REQ-105 — heading spacing binds a heading to what follows it.
     @Test func headingSpacingIsLargerBeforeThanAfter() throws {
         let typography = MarkdownTypography()
         for level in 1...6 {
@@ -115,7 +115,7 @@ struct TypographyLayoutTests {
         #expect(typography.headingSpacing(for: 2).before == 24 * 0.9)
     }
 
-    // Verifies: REQ-107 — adaptive colors resolve in both appearances, and the semantic
+    // Validates: REQ-107 — adaptive colors resolve in both appearances, and the semantic
     // distinction is not carried by color alone.
     @Test func semanticTreatmentsResolveInLightAndDark() throws {
         let source = "> Quoted line\n"
@@ -160,7 +160,7 @@ struct TypographyLayoutTests {
         AttributedPresentationBuilder.build(model: model(for: source), theme: MarkdownTypography())
     }
 
-    // Verifies: REQ-107 — cumulative hanging indentation for nested lists.
+    // Validates: REQ-107 — cumulative hanging indentation for nested lists.
     @Test func listParagraphStyleUsesCumulativeHangingIndentation() throws {
         let source = "- outer\n  - inner\n"
         let index = MarkdownSourceIndex(source: source, sourceVersion: 1)

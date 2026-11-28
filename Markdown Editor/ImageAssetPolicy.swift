@@ -31,7 +31,7 @@ nonisolated enum ImageRepresentation: String, Sendable, Hashable, CaseIterable {
 
     /// Every filename extension that names a supported representation, lowercased.
     ///
-    /// // VISION names exactly PNG, JPEG, GIF, HEIC and HEIF. Before COR-92 the literal
+    /// // vision.md names exactly PNG, JPEG, GIF, HEIC and HEIF. Before COR-92 the literal
     /// // `["png", "jpg", "jpeg", "gif", "heic", "heif"]` appeared verbatim in four files and a
     /// // fifth time as a `Set`, none of them derived from this enum — the same defect COR-78
     /// // repaired for the `assets` directory name. Adding a representation now updates every

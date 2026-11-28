@@ -7,7 +7,7 @@ import XCTest
 @testable import Markdown_Editor
 
 final class LocalImageAndPasteTests: XCTestCase {
-    // Verifies: REQ-059
+    // Validates: REQ-059
     @MainActor
     func testPastePolicyPrefersPlainText() {
         let pb = NSPasteboard.withUniqueName()
@@ -24,7 +24,7 @@ final class LocalImageAndPasteTests: XCTestCase {
         XCTAssertEqual(PastePolicy.plainText(from: pb), "plain-only")
     }
 
-    // Verifies: REQ-079 — all URLs open via injected opener (no scheme allowlist).
+    // Validates: REQ-079 — all URLs open via injected opener (no scheme allowlist).
     @MainActor
     func testLinkOpenerAcceptsNonHTTPSchemes() {
         let session = EditorSession()
@@ -40,7 +40,7 @@ final class LocalImageAndPasteTests: XCTestCase {
         ])
     }
 
-    // Verifies: REQ-079 — a native WYSIWYG link callback opens the injected URL and accepts
+    // Validates: REQ-079 — a native WYSIWYG link callback opens the injected URL and accepts
     // arbitrary supported URL schemes without consuming the edit route.
     @MainActor
     func testWYSIWYGLinkClickUsesSessionOpener() {
@@ -65,7 +65,7 @@ final class LocalImageAndPasteTests: XCTestCase {
         XCTAssertEqual(opened?.absoluteString, "mailto:a@b.test")
     }
 
-    // Verifies: REQ-082 — Add Image routes through window-scoped EditorActionRouter.
+    // Validates: REQ-082 — Add Image routes through window-scoped EditorActionRouter.
     @MainActor
     func testAddImageRoutesThroughPlacementClaims() async {
         let document = MarkdownDocument()

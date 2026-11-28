@@ -10,7 +10,7 @@ import Testing
 
 /// The main-actor cost of a semantic formatting command.
 ///
-/// // Verifies: REQ-143 — a command's complete main-actor work is bounded, not merely recorded.
+/// // Validates: REQ-143 — a command's complete main-actor work is bounded, not merely recorded.
 ///
 /// Before COR-86 this cost was computed on every command, summed into
 /// `WorkLedger.mainThreadBlockedNanos`, serialized into every run log, and compared against
@@ -193,7 +193,7 @@ struct SemanticCommandBudgetTests {
         #endif
     }
 
-    /// // Verifies: REQ-143 — the command's main-actor cost, on every approved corpus shape.
+    /// // Validates: REQ-143 — the command's main-actor cost, on every approved corpus shape.
     ///
     /// Fails if a command stops applying, if no sample is recorded, or if the measured p95
     /// regresses past its pinned ceiling.
@@ -262,7 +262,7 @@ struct SemanticCommandBudgetTests {
         #endif
     }
 
-    /// // Verifies: REQ-143 — the budget binds on every shape that is not declared stress, and
+    /// // Validates: REQ-143 — the budget binds on every shape that is not declared stress, and
     /// the stress shapes are declared rather than merely excluded.
     ///
     /// Without this, "stress" could be applied to whatever failed. The rule is fixed in
@@ -294,7 +294,7 @@ struct SemanticCommandBudgetTests {
 
     /// Closed-set gate over `WorkLedger`'s duration fields.
     ///
-    /// // Verifies: REQ-143 — the second door. `mainThreadBlockedNanos` escaped
+    /// // Validates: REQ-143 — the second door. `mainThreadBlockedNanos` escaped
     /// // `PerformanceBudgetTests.everyMetricHasABudget` for months not because that guard was
     /// // wrong but because it iterates `PerformanceSampler.Metric` and this duration lives on a
     /// // different type. Reflection makes the ledger's own fields the closed set, so a new

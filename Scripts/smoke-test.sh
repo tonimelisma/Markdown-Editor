@@ -30,7 +30,7 @@ trap cleanup EXIT
 # SMOKE_APP names a bundle that already exists, to be launched as it stands instead of built.
 # Scripts/release.sh sets it to the signed Release app, so the launch is a launch of exactly the
 # bundle about to be published. Build 202 was published without that launch and could not start at
-# all (docs/DECISIONS.md, 2026-11-26, "An ad hoc app needs the library-validation exception").
+# all (ADR 0012).
 if [[ -n "${SMOKE_APP:-}" ]]; then
     app="$SMOKE_APP"
     echo "smoke: launching the given bundle, unbuilt: $app"
@@ -157,7 +157,7 @@ host_update_threshold="${SMOKE_HOST_UPDATE_THRESHOLD:-8}"
 # Deliberately not a general escape hatch: every value has to be a flag verify-smoke-log.py already
 # defines, and each one names the fault it admits rather than disabling the check.
 # No --allow-orphaned-intents: work replaced by newer demand is recorded as superseded, not as a
-# fault (DECISIONS.md, 2026-11-27), so an orphan here is real. The flag admitted the opening parse
+# fault (ADR 0018), so an orphan here is real. The flag admitted the opening parse
 # that every open cancelled with a second one.
 # shellcheck disable=SC2086
 python3 "$repo_root/Scripts/verify-smoke-log.py" \

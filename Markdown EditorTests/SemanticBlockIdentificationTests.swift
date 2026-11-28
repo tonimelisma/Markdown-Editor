@@ -7,12 +7,12 @@ import Testing
 import Foundation
 @testable import Markdown_Editor
 
-// Verifies: REQ-113; COR-40 — block identification is total for reshapesWholeLine.
+// Validates: REQ-113; COR-40 — block identification is total for reshapesWholeLine.
 // ARC-009 now scoped to content mutation; reshapesWholeLine uses enclosingBlock(at:) total rule.
 
 @MainActor
 struct SemanticBlockIdentificationTests {
-    // Verifies: REQ-113 — caret at 0 finds its block
+    // Validates: REQ-113 — caret at 0 finds its block
     @Test func caretAt0FindsItsBlock() throws {
         let text = "First paragraph.\nSecond paragraph.\n"
         let document = MarkdownDocument()
@@ -25,7 +25,7 @@ struct SemanticBlockIdentificationTests {
         #expect(block?.kind == .paragraph)
     }
 
-    // Verifies: REQ-113 — caret at end finds its block (boundary case)
+    // Validates: REQ-113 — caret at end finds its block (boundary case)
     @Test func caretAtEndFindsItsBlock() throws {
         let text = "Hello world\n"
         let document = MarkdownDocument()
@@ -38,7 +38,7 @@ struct SemanticBlockIdentificationTests {
         #expect(block != nil, "caret at renderedString.length should find enclosing block via NSMaxRange tie")
     }
 
-    // Verifies: REQ-113 — total for non-table blocks (paragraph, heading, list, quote, code, thematicBreak, image, literalHTML)
+    // Validates: REQ-113 — total for non-table blocks (paragraph, heading, list, quote, code, thematicBreak, image, literalHTML)
     @Test func enclosingBlockIsTotalForNonTableBlocks() throws {
         let fixtures: [(String, PresentationBlockKind)] = [
             ("Hello\n", .paragraph),
@@ -65,7 +65,7 @@ struct SemanticBlockIdentificationTests {
         }
     }
 
-    // Verifies: REQ-057 — tableCell still requires exact selection (not via enclosingBlock).
+    // Validates: REQ-057 — tableCell still requires exact selection (not via enclosingBlock).
     // Verifies: ARC-009 — tableCell still requires exact (not via enclosingBlock)
     @Test func tableCellStillRequiresExact() throws {
         let text = "| a | b |\n|---|---|\n| c | d |\n"
@@ -89,7 +89,7 @@ struct SemanticBlockIdentificationTests {
         // This is proven by existing ProjectionSelectionClassifierTests.
     }
 
-    // Verifies: REQ-113 — COR-40 liveness
+    // Validates: REQ-113 — COR-40 liveness
     // Synthetic caret at block boundary previously refused via exact-inverse; now succeeds via enclosingBlock
     @MainActor
     @Test func reshapesWholeLineWithSyntheticSelectionSucceedsViaBlock() throws {

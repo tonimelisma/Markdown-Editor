@@ -5,7 +5,7 @@
 # smoke run's own structured assertions still have to pass — a run with zero leaks that never
 # reached `runEnd` is a crash, not a clean result.
 #
-# Stage 0 selected this route over xctrace; see docs/research/COR-83-leak-tooling.md.
+# Stage 0 selected this route over xctrace; see docs/research/2026-08-22-cor-83-leak-tooling.md.
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"

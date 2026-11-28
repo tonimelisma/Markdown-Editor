@@ -7,7 +7,7 @@ import XCTest
 @testable import Markdown_Editor
 
 final class ProjectionAndSemanticEditTests: XCTestCase {
-    // Verifies: REQ-056
+    // Validates: REQ-056
     func testProjectionOmitsParsedDelimiters() throws {
         let source = "# Title\nThis has **bold** and *italic* and ~~strike~~ and `code` and [link](https://a.test)\n"
         let tree = try XCTUnwrap(MarkdownParser.parse(source, sourceVersion: 1).get())
@@ -25,7 +25,7 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
         XCTAssertTrue(model.runs.contains { $0.linkDestination == "https://a.test" })
     }
 
-    // Verifies: REQ-055
+    // Validates: REQ-055
     func testUnsupportedAndHTMLRemainLiteral() throws {
         let source = "==mark==\n\n<div>raw</div>\n"
         let tree = try XCTUnwrap(MarkdownParser.parse(source, sourceVersion: 0).get())
@@ -35,7 +35,7 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
         XCTAssertTrue(model.renderedString.contains("<div>raw</div>") || model.runs.contains(where: \.isLiteralFallback))
     }
 
-    // Verifies: REQ-057/058
+    // Validates: REQ-057, REQ-058
     func testBoldTogglePreservesSpellingWhenSafe() {
         let snapshot = SourceSnapshot(text: "hello world", sourceVersion: 3, locationGeneration: 0, fileURL: nil)
         let selection = TestSelection(mode: .source, utf16Range: NSRange(location: 0, length: 5), sourceVersion: 3)
@@ -59,7 +59,7 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
         XCTAssertEqual(mutation2.replacement, "hello")
     }
 
-    // Verifies: REQ-057
+    // Validates: REQ-057
     func testStrikethroughUsesDoubleTildeOnly() {
         let snapshot = SourceSnapshot(text: "strike", sourceVersion: 1, locationGeneration: 0, fileURL: nil)
         let selection = TestSelection(mode: .source, utf16Range: NSRange(location: 0, length: 6), sourceVersion: 1)
@@ -73,7 +73,7 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
         XCTAssertTrue(contains(t.root) { if case .strikethrough = $0.kind { return true }; return false })
     }
 
-    // Verifies: REQ-078
+    // Validates: REQ-078
     func testTaskTogglePatchesMarker() throws {
         let source = "- [ ] buy milk\n"
         let tree = try XCTUnwrap(MarkdownParser.parse(source, sourceVersion: 1).get())
@@ -99,7 +99,7 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
         XCTAssertTrue(mutation.replacement.contains("[x]") || mutation.replacement.contains("[X]"))
     }
 
-    // Verifies: REQ-087
+    // Validates: REQ-087
     func testStaleVersionRefused() {
         let snapshot = SourceSnapshot(text: "abc", sourceVersion: 2, locationGeneration: 0, fileURL: nil)
         let selection = TestSelection(mode: .source, utf16Range: NSRange(location: 0, length: 1), sourceVersion: 1)
@@ -109,7 +109,7 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
         }
     }
 
-    // Verifies: REQ-052/086
+    // Validates: REQ-052, REQ-086
     @MainActor
     func testModeToggleDoesNotChangeSource() {
         let document = MarkdownDocument()
@@ -125,7 +125,7 @@ final class ProjectionAndSemanticEditTests: XCTestCase {
         XCTAssertEqual(session.mode, .wysiwyg)
     }
 
-    // Verifies: REQ-083
+    // Validates: REQ-083
     @MainActor
     func testUndoAcrossModesRestoresSource() {
         let document = MarkdownDocument()

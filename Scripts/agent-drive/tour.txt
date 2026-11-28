@@ -9,8 +9,7 @@ shell mkdir -p "$WORK/notes" "$WORK/pictures" && cp "$WORK/assets/sample.png" "$
 
 # --- A0. Warm the runner. The first launch on a runner booted minutes earlier pages AppKit in from
 # a cold, throttled disk, and stalls for it; a release launches its bundle twice for the same
-# reason, and holds only the second to every check (docs/DECISIONS.md, "A release launches its
-# bundle twice"). `faults` lists that launch's records and sets them aside.
+# reason, and holds only the second to every check (ADR 0014). `faults` lists that launch's records and sets them aside.
 launch
 wait 3
 quit

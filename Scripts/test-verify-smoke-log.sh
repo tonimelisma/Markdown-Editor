@@ -1,4 +1,6 @@
 #!/bin/bash
+# Validates: REQ-098 — the smoke-log verifier rejects every broken fixture in Scripts/Fixtures/SmokeLogs/
+# and accepts the valid one, so a smoke run's PASS means its records were really checked.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"

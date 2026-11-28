@@ -7,8 +7,8 @@
 #                                                       Sparkle's sign_update; never print it
 #
 # SPARKLE_SEED is a long random password whose master copy is the secret
-# markdown-editor-sparkle-seed in Azure Key Vault kv-melisma-release; the release workflow fetches it
-# into its environment (docs/DEVELOPMENT.md). The Ed25519 private key is SHA-256 of a fixed label
+# markdown-editor-sparkle-seed in the release environment's Azure Key Vault; the release workflow fetches it
+# into its environment (docs/development.md). The Ed25519 private key is SHA-256 of a fixed label
 # and that password, so every release derives the same key and nothing else needs storing.
 # Sparkle's EdDSA is standard Ed25519 over the archive's bytes, which is what OpenSSL 3 computes.
 # The key exists only in a private temporary folder, removed however the script ends.
